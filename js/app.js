@@ -16,6 +16,9 @@ import { renderAttendanceWorkers } from './modules/attendance/attendance-workers
 import { renderAttendanceSummary } from './modules/attendance/attendance-summary.js';
 import { initReviewWorkspace } from './modules/review/review-workspace.js';
 import { renderReceiptLanding } from './modules/receipt/receipt-landing.js';
+import { renderReceiptBenih } from './modules/receipt/receipt-benih.js';
+import { renderReceiptSir } from './modules/receipt/receipt-sir.js';
+import { renderReceiptCamera } from './modules/receipt/receipt-camera.js';
 import { seedDatabase } from './db/seed.js';
 
 /* ---- PWA: service worker ---- */
@@ -38,6 +41,9 @@ registerRoute('/attendance/supervisor/result', renderAttendanceSupervisorResult)
 registerRoute('/attendance/workers', renderAttendanceWorkers);
 registerRoute('/attendance/summary', renderAttendanceSummary);
 registerRoute('/reception', renderReceiptLanding);
+registerRoute('/reception/benih', renderReceiptBenih);
+registerRoute('/reception/benih/sir', renderReceiptSir);
+registerRoute('/reception/benih/camera', renderReceiptCamera);
 
 /* ---- Bootstrap ---- */
 window.addEventListener('DOMContentLoaded', async () => {
