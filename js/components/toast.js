@@ -19,3 +19,9 @@ export function toast(message, type = 'info', duration = 2600) {
     setTimeout(() => el.remove(), 260);
   }, duration);
 }
+
+toast.success = (msg) => toast(msg, 'success');
+toast.error = (msg) => toast(msg, 'error');
+toast.danger = (msg) => toast(msg, 'error'); // danger maps to error style
+toast.warning = (msg) => toast(msg, 'warning');
+toast.info = (msg) => toast(msg, 'info');

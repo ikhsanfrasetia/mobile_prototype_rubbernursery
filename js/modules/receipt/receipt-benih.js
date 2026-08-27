@@ -195,6 +195,24 @@ export function renderReceiptBenih() {
           <!-- Items injected via JS -->
         </div>
       </div>
+
+      <!-- BOTTOM SHEET KONFIRMASI SIMPAN -->
+      <div id="sheet-konfirmasi" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 16px 16px 0 0; padding: 32px 16px 24px; z-index: 101; flex-direction: column; align-items: center; box-shadow: 0 -4px 12px rgba(0,0,0,0.1);">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="#000000" style="margin-bottom: 16px;">
+          <rect x="2" y="5" width="20" height="6" rx="1" />
+          <circle cx="6" cy="8" r="2" fill="#FFFFFF" />
+          <rect x="2" y="13" width="20" height="6" rx="1" />
+          <circle cx="6" cy="16" r="2" fill="#FFFFFF" />
+        </svg>
+        <h3 style="font-size: 1.2rem; font-weight: 700; color: #111111; margin: 0 0 8px 0;">Konfirmasi Simpan</h3>
+        <p style="font-size: 0.95rem; color: #333333; text-align: center; margin: 0 0 24px 0; line-height: 1.5;">
+          Apakah anda setuju menyimpan<br><strong>Dokumen Penerimaan</strong> ini?
+        </p>
+        <div style="display: flex; gap: 12px; width: 100%;">
+          <button id="btn-konfirm-batal" type="button" style="flex: 1; padding: 14px; background: #FFFFFF; border: 1px solid #356943; border-radius: 6px; color: #356943; font-weight: 700; font-size: 1rem; cursor: pointer;">Kembali</button>
+          <button id="btn-konfirm-simpan" type="button" style="flex: 1; padding: 14px; background: #356943; border: none; border-radius: 6px; color: #FFFFFF; font-weight: 700; font-size: 1rem; cursor: pointer;">Simpan</button>
+        </div>
+      </div>
     </div>
   `;
 
@@ -234,6 +252,10 @@ export function renderReceiptBenih() {
   const btnTambahFoto = app.querySelector('#btn-tambah-foto');
   const photoPreviewContainer = app.querySelector('#photo-preview-container');
   const btnTambahSir = app.querySelector('#btn-tambah-sir');
+
+  const sheetKonfirmasi = app.querySelector('#sheet-konfirmasi');
+  const btnKonfirmBatal = app.querySelector('#btn-konfirm-batal');
+  const btnKonfirmSimpan = app.querySelector('#btn-konfirm-simpan');
 
   // RENDER LISTS
   function renderProgramList() {
@@ -287,6 +309,7 @@ export function renderReceiptBenih() {
     overlay.style.display = 'none';
     sheetProgram.style.display = 'none';
     sheetSumber.style.display = 'none';
+    sheetKonfirmasi.style.display = 'none';
   }
 
   btnProgram.addEventListener('click', () => {
@@ -355,9 +378,48 @@ export function renderReceiptBenih() {
 
   btnSimpan.addEventListener('click', () => {
     if (!btnSimpan.disabled) {
-      console.log('Menyimpan Data Penerimaan', state);
-      // Untuk task ini cukup log, karena workflow Ringkasan tidak diimplementasikan
+      overlay.style.display = 'block';
+      sheetKonfirmasi.style.display = 'flex';
     }
+  });
+
+  btnKonfirmBatal.addEventListener('click', closeModals);
+
+  btnKonfirmSimpan.addEventListener('click', () => {
+    // Simpan dummy data ke storage untuk ditampilkan di landing page
+    const today = new Date();
+    const formattedDate = today.getDate().toString().padStart(2, '0') + '/' + (today.getMonth()+1).toString().padStart(2, '0') + '/' + today.getFullYear();
+    
+    storage.set('has_new_receipt', {
+      program: state.programNurseryCode,
+      klon: selectedKlon ? selectedKlon.title : 'Klon GT-01',
+      tanggal: formattedDate,
+      tipeAsal: originTypeDisplay,
+      sumber: state.sourceName || '-',
+      sir: selectedSir ? selectedSir.issueNo : '-',
+      qty: selectedSir ? selectedSir.qty : '-'
+    });
+    
+    // Clear temp form storage
+    storage.remove('benih_program_id');
+    storage.remove('benih_program_code');
+    storage.remove('benih_source_id');
+    storage.remove('benih_source_name');
+    storage.remove('receipt_photos');
+    storage.remove('selected_sir');
+    storage.remove('selected_klon');
+    
+    closeModals();
+    
+    // Show banner success
+    const banner = document.createElement('div');
+    banner.style.cssText = 'position: absolute; top: 0; left: 0; right: 0; background: #689F38; color: white; text-align: center; padding: 12px; font-weight: 600; font-size: 0.95rem; z-index: 1000; transition: top 0.3s ease-out;';
+    banner.textContent = 'Data berhasil disimpan';
+    app.querySelector('.page').appendChild(banner);
+    
+    setTimeout(() => {
+      navigate('/reception');
+    }, 1000);
   });
 
   // Initial rendering

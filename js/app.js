@@ -19,6 +19,7 @@ import { renderReceiptLanding } from './modules/receipt/receipt-landing.js';
 import { renderReceiptBenih } from './modules/receipt/receipt-benih.js';
 import { renderReceiptSir } from './modules/receipt/receipt-sir.js';
 import { renderReceiptCamera } from './modules/receipt/receipt-camera.js';
+import { renderReceiptSummary } from './modules/receipt/receipt-summary.js';
 import { seedDatabase } from './db/seed.js';
 
 /* ---- PWA: service worker ---- */
@@ -44,6 +45,7 @@ registerRoute('/reception', renderReceiptLanding);
 registerRoute('/reception/benih', renderReceiptBenih);
 registerRoute('/reception/benih/sir', renderReceiptSir);
 registerRoute('/reception/benih/camera', renderReceiptCamera);
+registerRoute('/reception/summary', renderReceiptSummary);
 
 /* ---- Bootstrap ---- */
 window.addEventListener('DOMContentLoaded', async () => {

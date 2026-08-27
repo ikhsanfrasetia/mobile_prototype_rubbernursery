@@ -25,20 +25,49 @@ export function renderReceiptLanding() {
         </button>
       </header>
 
-      <!-- CONTENT (EMPTY STATE) -->
-      <main class="receipt-content" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; min-height: 0;">
-        <div style="margin-bottom: 16px;">
-          <svg viewBox="0 0 24 24" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M10 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4Z" fill="#111111"/>
-            <path d="M16 13H13V16H11V13H8V11H11V8H13V11H16V13Z" fill="#FFFFFF"/>
-          </svg>
-        </div>
-        <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 8px 0; line-height: 1.4;">
-          Belum ada Dokumen<br>Penerimaan Benih/Bibit hari ini
-        </h2>
-        <p style="font-size: 0.95rem; color: #999999; text-align: center; margin: 0; line-height: 1.4;">
-          Pilih Jenis Penerimaan<br>untuk memulai rekam data
-        </p>
+      <!-- CONTENT -->
+      <main class="receipt-content" style="flex: 1; display: flex; flex-direction: column; padding: 24px 16px; min-height: 0; overflow-y: auto; background: #F5F5F5;">
+        ${storage.get('has_new_receipt') ? `
+          <h2 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Ringkasan Penerimaan</h2>
+          <div style="background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 8px; padding: 16px; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+              <div style="font-weight: 700; font-size: 1rem; color: #111111;">RCV/SEEDS/2026/AGUS/01</div>
+              <div style="position: relative;">
+                <button id="btn-card-menu" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #116834;">
+                  <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="1"></circle>
+                    <circle cx="12" cy="5" r="1"></circle>
+                    <circle cx="12" cy="19" r="1"></circle>
+                  </svg>
+                </button>
+                <div id="card-popover" style="display: none; position: absolute; top: 24px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
+                  <button id="btn-popover-lihat" style="padding: 12px 16px; text-align: left; background: #E8F5E9; border: none; border-bottom: 1px solid #D9D9D9; font-size: 0.9rem; color: #111111; cursor: pointer;">Lihat</button>
+                  <button id="btn-popover-edit" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; border-bottom: 1px solid #D9D9D9; font-size: 0.9rem; color: #111111; cursor: pointer;">Edit</button>
+                  <button id="btn-popover-hapus" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.9rem; color: #D32F2F; cursor: pointer;">Hapus</button>
+                </div>
+              </div>
+            </div>
+            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${storage.get('has_new_receipt').program || 'PRG/NUR/TB/01/2026'}</div>
+            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">Rubber Main Nursery</div>
+            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 12px;">${storage.get('has_new_receipt').klon || 'Klon GT-01'}</div>
+            <div style="font-size: 0.75rem; color: #999999; text-align: right;">Diterima pada Rabu, 26 Agustus 2026</div>
+          </div>
+        ` : `
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+            <div style="margin-bottom: 16px;">
+              <svg viewBox="0 0 24 24" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4Z" fill="#111111"/>
+                <path d="M16 13H13V16H11V13H8V11H11V8H13V11H16V13Z" fill="#FFFFFF"/>
+              </svg>
+            </div>
+            <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 8px 0; line-height: 1.4;">
+              Belum ada Dokumen<br>Penerimaan Benih/Bibit hari ini
+            </h2>
+            <p style="font-size: 0.95rem; color: #999999; text-align: center; margin: 0; line-height: 1.4;">
+              Pilih Jenis Penerimaan<br>untuk memulai rekam data
+            </p>
+          </div>
+        `}
       </main>
 
       <!-- BOTTOM ACTION -->
@@ -141,4 +170,34 @@ export function renderReceiptLanding() {
   app.querySelector('#btn-bibit').addEventListener('click', () => {
     console.log('Lanjut ke flow Penerimaan Bibit');
   });
+
+  // Popover Actions
+  const btnCardMenu = app.querySelector('#btn-card-menu');
+  const cardPopover = app.querySelector('#card-popover');
+  if (btnCardMenu && cardPopover) {
+    btnCardMenu.addEventListener('click', (e) => {
+      e.stopPropagation(); // prevent document click from closing it immediately
+      cardPopover.style.display = cardPopover.style.display === 'none' ? 'flex' : 'none';
+    });
+
+    document.addEventListener('click', () => {
+      cardPopover.style.display = 'none';
+    });
+
+    app.querySelector('#btn-popover-lihat').addEventListener('click', () => {
+      navigate('/reception/summary');
+    });
+
+    app.querySelector('#btn-popover-edit').addEventListener('click', () => {
+      // Simulate editing by setting origin type then navigating to form
+      storage.set('transaction_originType', 'KEBUN_SENDIRI');
+      navigate('/reception/benih');
+    });
+
+    app.querySelector('#btn-popover-hapus').addEventListener('click', () => {
+      storage.remove('has_new_receipt');
+      // Refresh page to show empty state
+      renderReceiptLanding();
+    });
+  }
 }
