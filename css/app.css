@@ -1,0 +1,265 @@
+/* ============================================================
+   Sigma Nursery — CSS Foundation
+   Design standard: operasional perkebunan — sederhana & konsisten
+   Tokens, reset, layout, utilities
+   ============================================================ */
+
+:root {
+  /* Brand — primary green wajib */
+  --primary: #116834;
+  --primary-600: #0d5529;
+  --primary-700: #0a4522;
+  --primary-light: #e8f3ec;
+  --primary-soft: #f3f8f5;
+
+  /* Neutrals — background putih, bukan abu-abu */
+  --background: #ffffff;
+  --white: #ffffff;
+  --surface: #ffffff;
+  --surface-alt: #f7f7f7;
+  --text: #111111;
+  --text-secondary: #999999;
+  --muted: #999999;
+  --border: #d9d9d9;
+  --border-strong: #c4c4c4;
+  --disabled: #d3d3d3;
+
+  /* Feedback */
+  --danger: #e53935;
+  --danger-light: #fdecea;
+  --warning: #b54708;
+  --warning-light: #fef4e8;
+  --info: #175cd3;
+  --info-light: #e8f0fe;
+  --success-light: #e8f3ec;
+
+  /* Shape — radius standar 6px */
+  --radius-sm: 6px;
+  --radius: 6px;
+  --radius-lg: 6px;
+  --radius-full: 6px;
+
+  /* Elevation — minimal */
+  --shadow-xs: 0 1px 2px rgba(17, 17, 17, 0.06);
+  --shadow-sm: 0 1px 2px rgba(17, 17, 17, 0.08);
+  --shadow-md: 0 2px 6px rgba(17, 17, 17, 0.1);
+  --shadow-lg: 0 4px 14px rgba(17, 17, 17, 0.12);
+
+  /* Layout */
+  --header-h: 56px;
+  --bottom-h: 64px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Motion — minimal */
+  --ease: ease-out;
+  --dur: 0.15s;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: Arial, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--background);
+  color: var(--text);
+  line-height: 1.45;
+  min-height: 100vh;
+  overscroll-behavior-y: none;
+}
+
+/* ============================================================
+   Bingkai HP Android — visualisasi mobile (prototype)
+   ============================================================ */
+.device-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+}
+
+.device-frame {
+  position: relative;
+  width: 375px;
+  max-width: 100%;
+  height: 760px;
+  max-height: calc(100dvh - 48px);
+  background: #111111;
+  border-radius: 44px;
+  padding: 14px;
+  box-shadow: 0 20px 50px rgba(17, 17, 17, 0.22);
+}
+
+.device-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  border-radius: 32px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transform: translateZ(0);
+}
+
+.device-notch {
+  display: none;
+}
+
+#app {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#app .page {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (max-width: 767px) {
+  .device-frame {
+    width: 340px;
+    height: 640px;
+    max-height: 78vh;
+    border-radius: 36px;
+    padding: 10px;
+  }
+  .device-screen {
+    border-radius: 26px;
+  }
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+  border-radius: var(--radius);
+}
+
+/* ---------- Layout ---------- */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.page {
+  flex: 1;
+  padding: 0;
+  animation: fade-up 0.28s var(--ease);
+}
+
+.page-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.page-subtitle {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  margin-bottom: 18px;
+}
+
+/* ---------- Utilities ---------- */
+.hidden {
+  display: none !important;
+}
+
+.text-muted { color: var(--muted); }
+.text-danger { color: var(--danger); }
+.text-primary { color: var(--primary); }
+.text-center { text-align: center; }
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-24 { margin-bottom: 24px; }
+
+.w-full { width: 100%; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

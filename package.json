@@ -1,0 +1,17 @@
+{
+  "name": "sigma-nursery-pwa",
+  "version": "1.0.0",
+  "description": "Prototype mobile-first PWA untuk proses bisnis pembibitan (nursery).",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx http-server . -p 8080 -c-1",
+    "start": "npm run dev"
+  },
+  "keywords": [
+    "pwa",
+    "nursery",
+    "prototype"
+  ],
+  "author": "",
+  "license": "ISC"
+}
