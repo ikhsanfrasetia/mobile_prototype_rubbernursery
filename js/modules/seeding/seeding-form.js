@@ -23,7 +23,7 @@ export function renderSeedingForm() {
   // Form state
   const state = {
     ditolak: editTx ? editTx.ditolak : '',
-    alasanDitolak: editTx ? editTx.alasanDitolak : 'Rusak',
+    alasanDitolak: editTx ? editTx.alasanDitolak : 'Tidak Ada',
     tableRows: editTx ? JSON.parse(JSON.stringify(editTx.rows)) : [
       { bedengan: '', klon: '', disemai: '', polybag: '' }
     ],
@@ -34,6 +34,21 @@ export function renderSeedingForm() {
   const bedenganList = Array.from({length: 10}, (_, i) => `Bedengan ${(i + 1).toString().padStart(2, '0')}`);
   
   const totalPenerimaan = parseInt(sourceTx.qty || 0);
+
+  // Calculate previous accumulations for this source document
+  let accumulatedDisemai = 0;
+  let accumulatedDitolak = 0;
+  seedingTxs.forEach((s, idx) => {
+    if (s.sourceIndex == sourceIdx) {
+      // If editing, don't count the current transaction in the previous balance
+      if (editIdx === null || editIdx != idx) {
+        accumulatedDisemai += parseInt(s.totalDisemai || 0);
+        accumulatedDitolak += parseInt(s.ditolak || 0);
+      }
+    }
+  });
+  
+  const previousBalance = totalPenerimaan - accumulatedDisemai - accumulatedDitolak;
 
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #FFFFFF; font-family: sans-serif;">
@@ -100,10 +115,11 @@ export function renderSeedingForm() {
             <div style="display: flex; align-items: center; border: 1px solid #D9D9D9; border-radius: 4px; overflow: hidden; height: 32px;">
               <input type="number" id="input-ditolak" value="${state.ditolak}" placeholder="0" style="width: 40px; border: none; outline: none; padding: 0 4px; text-align: right; font-size: 0.8rem;">
               <div style="width: 1px; height: 20px; background: #D9D9D9;"></div>
-              <select id="select-alasan" style="flex: 1; border: none; outline: none; background: transparent; padding: 0 4px; font-size: 0.8rem; color: #333333; cursor: pointer;">
-                <option value="Rusak" ${state.alasanDitolak === 'Rusak' ? 'selected' : ''}>Rusak</option>
-                <option value="Mati" ${state.alasanDitolak === 'Mati' ? 'selected' : ''}>Mati</option>
-                <option value="Lainnya" ${state.alasanDitolak === 'Lainnya' ? 'selected' : ''}>Lainnya</option>
+              <select id="select-alasan" style="flex: 1; border: none; outline: none; background: transparent; padding: 0 4px; font-size: 0.8rem; color: #333333; cursor: pointer;" ${(!state.ditolak || parseInt(state.ditolak) === 0) ? 'disabled' : ''}>
+                <option value="Tidak Ada" ${state.alasanDitolak === 'Tidak Ada' || !state.ditolak || parseInt(state.ditolak) === 0 ? 'selected' : ''}>Tidak Ada</option>
+                <option value="Rusak" ${state.alasanDitolak === 'Rusak' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Rusak</option>
+                <option value="Mati" ${state.alasanDitolak === 'Mati' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Mati</option>
+                <option value="Lainnya" ${state.alasanDitolak === 'Lainnya' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Lainnya</option>
               </select>
             </div>
           </div>
@@ -142,7 +158,7 @@ export function renderSeedingForm() {
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span style="font-size: 0.8rem; font-weight: 700; color: #116834;">Bibit Belum Diseleksi</span>
-              <span id="lbl-belum" style="font-size: 0.8rem; font-weight: 700; color: #D32F2F;">${totalPenerimaan}</span>
+              <span id="lbl-belum" style="font-size: 0.8rem; font-weight: 700; color: #D32F2F;">${previousBalance}</span>
             </div>
           </div>
         </section>
@@ -276,7 +292,7 @@ export function renderSeedingForm() {
     lblTersedia.textContent = disemaiTotal;
     lblDitolak.textContent = ditolak;
     
-    const belumDiseleksi = totalPenerimaan - ditolak - disemaiTotal;
+    const belumDiseleksi = previousBalance - ditolak - disemaiTotal;
     lblBelum.textContent = belumDiseleksi;
     if (belumDiseleksi < 0 || belumDiseleksi > 0) {
       lblBelum.style.color = '#D32F2F';
@@ -371,8 +387,22 @@ export function renderSeedingForm() {
     let val = parseInt(e.target.value || 0);
     if (val < 0) {
       e.target.value = 0;
+      val = 0;
     }
     state.ditolak = e.target.value;
+    
+    if (val === 0 || !e.target.value) {
+      selectAlasan.value = 'Tidak Ada';
+      state.alasanDitolak = 'Tidak Ada';
+      selectAlasan.disabled = true;
+    } else {
+      selectAlasan.disabled = false;
+      if (selectAlasan.value === 'Tidak Ada') {
+        selectAlasan.value = 'Rusak';
+        state.alasanDitolak = 'Rusak';
+      }
+    }
+    
     calculateTotals();
     validateForm();
   });

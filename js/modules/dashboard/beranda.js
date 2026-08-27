@@ -57,14 +57,37 @@ export function renderBeranda() {
   const app = document.getElementById('app');
   
   const txs = storage.get('receipt_transactions', []);
-  const hasBenih = txs.some(tx => tx.jenis === 'Benih / Biji Kelatak');
+  const seedingTxs = storage.get('seeding_transactions', []);
+  let hasPendingBenih = false;
+
+  for (let i = 0; i < txs.length; i++) {
+    const tx = txs[i];
+    if (tx.jenis === 'Benih / Biji Kelatak') {
+      const qty = parseInt(tx.qty || 0);
+      let accumulatedDisemai = 0;
+      let accumulatedDitolak = 0;
+      
+      seedingTxs.forEach((s) => {
+        if (s.sourceIndex == i) {
+          accumulatedDisemai += parseInt(s.totalDisemai || 0);
+          accumulatedDitolak += parseInt(s.ditolak || 0);
+        }
+      });
+      
+      const bibitTersedia = qty - accumulatedDisemai - accumulatedDitolak;
+      if (bibitTersedia > 0) {
+        hasPendingBenih = true;
+        break;
+      }
+    }
+  }
 
   const menuCards = MENU_ITEMS.map(
     (item) => `
     <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
       <div class="beranda-card-icon">${item.icon}</div>
       <div class="beranda-card-title">${item.title}</div>
-      ${item.id === 'penyemaian' && hasBenih ? `
+      ${item.id === 'penyemaian' && hasPendingBenih ? `
         <div style="position: absolute; top: 14px; right: 14px; width: 12px; height: 12px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF;"></div>
       ` : ''}
     </button>

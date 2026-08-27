@@ -94,12 +94,12 @@ export function renderSeedingLanding() {
               
               <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                 <div style="flex: 1; min-width: 0;">
-                  <div class="btn-seeding-form" data-index="${tx.originalIndex}" style="font-weight: 700; font-size: 0.95rem; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;">${docNo}</div>
+                  <div class="btn-seeding-form" data-index="${tx.originalIndex}" data-status="${statusText}" style="font-weight: 700; font-size: 0.95rem; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;">${docNo}</div>
                   <div style="font-size: 0.8rem; color: #999999; margin-top: 4px;">Penerimaan, ${tx.tanggal || '28/08/2026'}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
                   <span style="background: ${topBadgeBg}; color: ${topBadgeColor}; font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; white-space: nowrap; border: ${topBadgeBorder};">${topBadgeText}</span>
-                  <svg class="btn-seeding-form" data-index="${tx.originalIndex}" viewBox="0 0 24 24" width="18" height="18" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;">
+                  <svg class="btn-seeding-form" data-index="${tx.originalIndex}" data-status="${statusText}" viewBox="0 0 24 24" width="18" height="18" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;">
                     <polyline points="9 18 15 12 9 6"></polyline>
                   </svg>
                 </div>
@@ -251,6 +251,19 @@ export function renderSeedingLanding() {
           `}
         </div>
       </main>
+
+      <!-- POPUP SELESAI -->
+      <div id="popup-selesai" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; padding: 24px;">
+        <div style="background: #FFFFFF; border-radius: 8px; padding: 24px; text-align: center; max-width: 320px; width: 100%;">
+          <svg viewBox="0 0 24 24" width="64" height="64" stroke="#116834" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 16px;">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+          <h3 style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 12px 0; line-height: 1.4;">Proses Penyemaian pada Dokumen ini Telah Selesai</h3>
+          <p style="font-size: 0.9rem; color: #666666; margin: 0 0 24px 0; line-height: 1.5;">Tidak ada lagi Bibit yang perlu Disemai</p>
+          <button id="btn-tutup-popup" style="width: 100%; padding: 12px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.95rem; cursor: pointer;">Tutup</button>
+        </div>
+      </div>
     </div>
   `;
 
@@ -291,12 +304,26 @@ export function renderSeedingLanding() {
   });
 
   // Event listener for Form Penyemaian (Chevron or No Dokumen)
+  const popupSelesai = app.querySelector('#popup-selesai');
+  const btnTutupPopup = app.querySelector('#btn-tutup-popup');
+  
+  if (btnTutupPopup) {
+    btnTutupPopup.addEventListener('click', () => {
+      popupSelesai.style.display = 'none';
+    });
+  }
+
   app.querySelectorAll('.btn-seeding-form').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const idx = e.currentTarget.dataset.index;
-      storage.set('seeding_source_index', idx);
-      storage.set('editing_seeding_index', null); // clear edit state
-      navigate('/seeding/form');
+      const status = e.currentTarget.dataset.status;
+      if (status === 'Selesai Disemai') {
+        popupSelesai.style.display = 'flex';
+      } else {
+        const idx = e.currentTarget.dataset.index;
+        storage.set('seeding_source_index', idx);
+        storage.set('editing_seeding_index', null); // clear edit state
+        navigate('/seeding/form');
+      }
     });
   });
 
