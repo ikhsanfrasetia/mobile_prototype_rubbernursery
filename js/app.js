@@ -20,6 +20,8 @@ import { renderReceiptBenih } from './modules/receipt/receipt-benih.js';
 import { renderReceiptSir } from './modules/receipt/receipt-sir.js';
 import { renderReceiptCamera } from './modules/receipt/receipt-camera.js';
 import { renderReceiptSummary } from './modules/receipt/receipt-summary.js';
+import { renderSeedingLanding } from './modules/seeding/seeding-landing.js';
+import { renderSeedingForm } from './modules/seeding/seeding-form.js';
 import { seedDatabase } from './db/seed.js';
 
 /* ---- PWA: service worker ---- */
@@ -32,6 +34,7 @@ if ('serviceWorker' in navigator) {
 }
 
 /* ---- Routes ---- */
+registerRoute('/', () => navigate('/login', { replace: true }));
 registerRoute('/login', renderLogin);
 registerRoute('/splash', renderSplash);
 registerRoute('/sync', renderSync);
@@ -46,6 +49,8 @@ registerRoute('/reception/benih', renderReceiptBenih);
 registerRoute('/reception/benih/sir', renderReceiptSir);
 registerRoute('/reception/benih/camera', renderReceiptCamera);
 registerRoute('/reception/summary', renderReceiptSummary);
+registerRoute('/seeding', renderSeedingLanding);
+registerRoute('/seeding/form', renderSeedingForm);
 
 /* ---- Bootstrap ---- */
 window.addEventListener('DOMContentLoaded', async () => {

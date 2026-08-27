@@ -6,6 +6,7 @@
  */
 
 import { session } from '../../core/session.js';
+import { storage } from '../../core/storage.js';
 import { openDrawer } from '../../components/drawer.js';
 import { toast } from '../../components/toast.js';
 import { navigate } from '../../core/router.js';
@@ -54,12 +55,18 @@ const MENU_ITEMS = [
 
 export function renderBeranda() {
   const app = document.getElementById('app');
+  
+  const txs = storage.get('receipt_transactions', []);
+  const hasBenih = txs.some(tx => tx.jenis === 'Benih / Biji Kelatak');
 
   const menuCards = MENU_ITEMS.map(
     (item) => `
-    <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button">
+    <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
       <div class="beranda-card-icon">${item.icon}</div>
       <div class="beranda-card-title">${item.title}</div>
+      ${item.id === 'penyemaian' && hasBenih ? `
+        <div style="position: absolute; top: 14px; right: 14px; width: 12px; height: 12px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF;"></div>
+      ` : ''}
     </button>
   `
   ).join('');

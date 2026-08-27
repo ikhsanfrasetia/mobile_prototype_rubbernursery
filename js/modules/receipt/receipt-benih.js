@@ -23,7 +23,8 @@ export function renderReceiptBenih() {
     sourceId: storage.get('benih_source_id', null),
     sourceName: storage.get('benih_source_name', null),
     photos: storage.get('receipt_photos', []),
-    tableRows: storage.get('benih_table_rows', [{ klon: '', qty: '', rejected: '', reason: '' }])
+    tableRows: storage.get('benih_table_rows', [{ klon: '', qty: '', rejected: '', reason: '' }]),
+    batchCode: storage.get('benih_batch_code', null)
   };
 
   // Get Selected SIR if exists
@@ -185,6 +186,31 @@ export function renderReceiptBenih() {
           </div>
         </section>
 
+        <!-- SCAN QR / BATCH MANUAL -->
+        <section id="section-qr-batch" style="padding: 16px; border-bottom: 1px solid #D9D9D9; display: none;">
+          <h2 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Scan QR Batch / Pilih Manual <span style="color: #D32F2F;">*</span></h2>
+          
+          <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+            <button id="btn-scan-qr" type="button" style="flex: 1; height: 44px; display: flex; justify-content: center; align-items: center; gap: 8px; background: #FFFFFF; border: 1px solid #116834; border-radius: 6px; color: #116834; font-weight: 600; font-size: 0.9rem; cursor: pointer;">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01"></path></svg>
+              Scan QR Code
+            </button>
+            <button id="btn-pilih-batch" type="button" style="flex: 1; height: 44px; display: flex; justify-content: center; align-items: center; background: #FFFFFF; border: 1px solid #116834; border-radius: 6px; color: #116834; font-weight: 600; font-size: 0.9rem; cursor: pointer;">
+              Pilih Manual
+            </button>
+          </div>
+          
+          <div id="selected-batch-container" style="display: none; background: #E8F5E9; padding: 12px; border-radius: 6px; border: 1px solid #C8E6C9; align-items: center; justify-content: space-between;">
+            <div>
+              <div style="font-size: 0.75rem; color: #356943; font-weight: 600; margin-bottom: 2px;">Batch Terpilih</div>
+              <div id="selected-batch-text" style="font-size: 0.95rem; font-weight: 700; color: #111111;">-</div>
+            </div>
+            <button id="btn-hapus-batch" type="button" style="background: none; border: none; padding: 4px; cursor: pointer;">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="#D32F2F" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        </section>
+
         <!-- TAMBAH FOTO -->
         <section style="padding: 16px;">
           <h2 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 8px 0;">Tambah Foto</h2>
@@ -259,6 +285,42 @@ export function renderReceiptBenih() {
         </div>
       </div>
 
+      <!-- BOTTOM SHEET BATCH MANUAL -->
+      <div id="sheet-batch" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 12px 12px 0 0; padding: 24px 16px; z-index: 101; flex-direction: column;">
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 16px 0;">Pilih Batch Manual</h3>
+        <div id="list-batch" style="display: flex; flex-direction: column; border: 1px solid #D9D9D9; border-radius: 6px; overflow-y: auto; max-height: 60vh;">
+          <!-- Items injected via JS -->
+        </div>
+      </div>
+
+      <!-- FAKE QR SCANNER OVERLAY -->
+      <div id="qr-camera-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #000000; z-index: 200; flex-direction: column;">
+        <header style="display: flex; align-items: center; justify-content: space-between; padding: 16px;">
+          <button id="btn-close-qr" type="button" style="background: none; border: none; color: #FFFFFF; padding: 8px; cursor: pointer;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+          <span style="color: #FFFFFF; font-weight: 600; font-size: 1rem;">Scan QR Batch</span>
+          <div style="width: 40px;"></div>
+        </header>
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; position: relative;">
+          <div style="width: 250px; height: 250px; border: 2px solid #4CAF50; position: relative;">
+            <div style="position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: #4CAF50; animation: scan 2s linear infinite;"></div>
+          </div>
+        </div>
+        <div style="padding: 32px; display: flex; justify-content: center;">
+          <button id="btn-simulate-scan" type="button" style="background: #4CAF50; color: #FFFFFF; border: none; padding: 12px 24px; border-radius: 6px; font-weight: 700; font-size: 1rem; cursor: pointer;">
+            [Simulasi] Scan Berhasil (Batch-03)
+          </button>
+        </div>
+        <style>
+          @keyframes scan {
+            0% { top: 0; }
+            50% { top: 100%; }
+            100% { top: 0; }
+          }
+        </style>
+      </div>
+
       <!-- BOTTOM SHEET KONFIRMASI SIMPAN -->
       <div id="sheet-konfirmasi" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 16px 16px 0 0; padding: 32px 16px 24px; z-index: 101; flex-direction: column; align-items: center; box-shadow: 0 -4px 12px rgba(0,0,0,0.1);">
         <svg viewBox="0 0 24 24" width="48" height="48" fill="#000000" style="margin-bottom: 16px;">
@@ -280,6 +342,10 @@ export function renderReceiptBenih() {
   `;
 
   // DATA DUMMY
+  const batchData = [
+    'Batch-01', 'Batch-02', 'Batch-03', 'Batch-04', 'Batch-05'
+  ];
+
   const programData = [
     { id: '1', code: 'PRG/NUR/01/2026' },
     { id: '2', code: 'PRG/NUR/02/2027' },
@@ -359,6 +425,34 @@ export function renderReceiptBenih() {
   const sheetKonfirmasi = app.querySelector('#sheet-konfirmasi');
   const btnKonfirmBatal = app.querySelector('#btn-konfirm-batal');
   const btnKonfirmSimpan = app.querySelector('#btn-konfirm-simpan');
+  
+  const sectionQrBatch = app.querySelector('#section-qr-batch');
+  const btnScanQr = app.querySelector('#btn-scan-qr');
+  const btnPilihBatch = app.querySelector('#btn-pilih-batch');
+  const selectedBatchContainer = app.querySelector('#selected-batch-container');
+  const selectedBatchText = app.querySelector('#selected-batch-text');
+  const btnHapusBatch = app.querySelector('#btn-hapus-batch');
+  
+  const sheetBatch = app.querySelector('#sheet-batch');
+  const listBatch = app.querySelector('#list-batch');
+  const qrCameraOverlay = app.querySelector('#qr-camera-overlay');
+  
+  function updateBatchVisibility() {
+    if (state.jenisPenerimaan === 'Bibit / Tanaman Muda' && state.tahapanPertumbuhan === 'Rubber Advance Planting Material') {
+      sectionQrBatch.style.display = 'block';
+    } else {
+      sectionQrBatch.style.display = 'none';
+      state.batchCode = null;
+      storage.remove('benih_batch_code');
+    }
+    
+    if (state.batchCode) {
+      selectedBatchContainer.style.display = 'flex';
+      selectedBatchText.textContent = state.batchCode;
+    } else {
+      selectedBatchContainer.style.display = 'none';
+    }
+  }
 
   // RENDER LISTS
   function renderJenisList() {
@@ -392,11 +486,17 @@ export function renderReceiptBenih() {
           iconTahapan.style.display = 'none';
         } else {
           if (headerTitle) headerTitle.textContent = 'Penerimaan Bibit';
+          if (state.tahapanPertumbuhan === 'Rubber Advance Planting Material' && state.jenisPenerimaan === 'Bibit / Tanaman Muda') {
+            labelTahapan.parentElement.style.background = '#FFFFFF';
+            iconTahapan.style.display = 'block';
+            labelTahapan.parentElement.style.cursor = 'pointer';
+          }
           btnTahapan.style.background = '#FFFFFF';
           btnTahapan.style.cursor = 'pointer';
           iconTahapan.style.display = 'block';
         }
         
+        updateBatchVisibility();
         closeModals();
         validateForm();
       });
@@ -421,6 +521,7 @@ export function renderReceiptBenih() {
         storage.set('benih_tahapan', state.tahapanPertumbuhan);
         
         labelTahapan.textContent = state.tahapanPertumbuhan;
+        updateBatchVisibility();
         closeModals();
         validateForm();
       });
@@ -467,6 +568,26 @@ export function renderReceiptBenih() {
         
         labelSumber.textContent = state.sourceName;
         labelSumber.style.color = '#111111';
+        closeModals();
+        validateForm();
+      });
+    });
+  }
+  
+  function renderBatchList() {
+    listBatch.innerHTML = batchData.map((b, idx) => `
+      <div class="item-batch" data-code="${b}" style="display: flex; justify-content: space-between; padding: 16px; background: ${state.batchCode === b ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === batchData.length - 1 ? 'none' : '1px solid #D9D9D9'}; cursor: pointer;">
+        <span style="font-size: 0.95rem; color: #111111; font-weight: ${state.batchCode === b ? '700' : '400'};">${b}</span>
+        <span style="font-size: 0.95rem; color: #116834; font-weight: 600;">Pilih</span>
+      </div>
+    `).join('');
+
+    listBatch.querySelectorAll('.item-batch').forEach(el => {
+      el.addEventListener('click', () => {
+        state.batchCode = el.dataset.code;
+        storage.set('benih_batch_code', state.batchCode);
+        
+        updateBatchVisibility();
         closeModals();
         validateForm();
       });
@@ -605,6 +726,7 @@ export function renderReceiptBenih() {
     sheetProgram.style.display = 'none';
     sheetSumber.style.display = 'none';
     sheetKonfirmasi.style.display = 'none';
+    sheetBatch.style.display = 'none';
     if (app.querySelector('#sheet-kembali')) app.querySelector('#sheet-kembali').style.display = 'none';
   }
 
@@ -630,6 +752,35 @@ export function renderReceiptBenih() {
     renderSumberList();
     overlay.style.display = 'block';
     sheetSumber.style.display = 'flex';
+  });
+  
+  btnPilihBatch.addEventListener('click', () => {
+    renderBatchList();
+    overlay.style.display = 'block';
+    sheetBatch.style.display = 'flex';
+  });
+  
+  btnScanQr.addEventListener('click', () => {
+    qrCameraOverlay.style.display = 'flex';
+  });
+  
+  app.querySelector('#btn-close-qr').addEventListener('click', () => {
+    qrCameraOverlay.style.display = 'none';
+  });
+  
+  app.querySelector('#btn-simulate-scan').addEventListener('click', () => {
+    qrCameraOverlay.style.display = 'none';
+    state.batchCode = 'Batch-03';
+    storage.set('benih_batch_code', state.batchCode);
+    updateBatchVisibility();
+    validateForm();
+  });
+  
+  btnHapusBatch.addEventListener('click', () => {
+    state.batchCode = null;
+    storage.remove('benih_batch_code');
+    updateBatchVisibility();
+    validateForm();
   });
 
   overlay.addEventListener('click', closeModals);
@@ -680,6 +831,13 @@ export function renderReceiptBenih() {
       isValid = false;
     }
     
+    // Validasi Batch: jika wajib
+    if (state.jenisPenerimaan === 'Bibit / Tanaman Muda' && state.tahapanPertumbuhan === 'Rubber Advance Planting Material') {
+      if (!state.batchCode) {
+        isValid = false;
+      }
+    }
+    
     if (isValid) {
       btnSimpan.disabled = false;
       btnSimpan.style.background = '#116834';
@@ -712,6 +870,7 @@ export function renderReceiptBenih() {
     storage.remove('selected_sir');
     storage.remove('selected_klon');
     storage.remove('benih_table_rows');
+    storage.remove('benih_batch_code');
     storage.remove('editing_transaction_index');
     
     closeModals();
@@ -778,6 +937,7 @@ export function renderReceiptBenih() {
         sourceName: state.sourceName,
         photos: state.photos,
         tableRows: state.tableRows,
+        batchCode: state.batchCode,
         selectedSir,
         selectedKlon
       }
@@ -805,6 +965,7 @@ export function renderReceiptBenih() {
     storage.remove('selected_sir');
     storage.remove('selected_klon');
     storage.remove('benih_table_rows');
+    storage.remove('benih_batch_code');
     
     closeModals();
     
@@ -824,5 +985,6 @@ export function renderReceiptBenih() {
     renderTableRows();
   }
   renderPhotos();
+  updateBatchVisibility();
   validateForm();
 }

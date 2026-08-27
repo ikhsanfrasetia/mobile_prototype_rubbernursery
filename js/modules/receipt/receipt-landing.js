@@ -238,6 +238,7 @@ export function renderReceiptLanding() {
           storage.set('benih_table_rows', tx.rawState.tableRows);
           storage.set('selected_sir', tx.rawState.selectedSir);
           storage.set('selected_klon', tx.rawState.selectedKlon);
+          storage.set('benih_batch_code', tx.rawState.batchCode);
           
           storage.set('editing_transaction_index', idx);
         } else {
