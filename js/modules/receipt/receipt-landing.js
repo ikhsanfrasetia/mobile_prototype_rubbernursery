@@ -27,31 +27,35 @@ export function renderReceiptLanding() {
 
       <!-- CONTENT -->
       <main class="receipt-content" style="flex: 1; display: flex; flex-direction: column; padding: 24px 16px; min-height: 0; overflow-y: auto; background: #F5F5F5;">
-        ${storage.get('has_new_receipt') ? `
-          <h2 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Ringkasan Penerimaan</h2>
-          <div style="background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 8px; padding: 16px; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        ${storage.get('receipt_transactions', []).length > 0 ? `
+          <h2 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Ringkasan Penerimaan (${storage.get('receipt_transactions', []).length})</h2>
+          ${storage.get('receipt_transactions', []).map((tx, idx) => `
+          <div style="background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 8px; padding: 16px; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-              <div style="font-weight: 700; font-size: 1rem; color: #111111;">RCV/SEEDS/2026/AGUS/01</div>
+              <div style="font-weight: 700; font-size: 1rem; color: #111111;">RCV/SEEDS/2026/AGUS/0${idx + 1}</div>
               <div style="position: relative;">
-                <button id="btn-card-menu" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #116834;">
+                <button class="btn-card-menu" data-index="${idx}" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #116834;">
                   <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="1"></circle>
                     <circle cx="12" cy="5" r="1"></circle>
                     <circle cx="12" cy="19" r="1"></circle>
                   </svg>
                 </button>
-                <div id="card-popover" style="display: none; position: absolute; top: 24px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
-                  <button id="btn-popover-lihat" style="padding: 12px 16px; text-align: left; background: #E8F5E9; border: none; border-bottom: 1px solid #D9D9D9; font-size: 0.9rem; color: #111111; cursor: pointer;">Lihat</button>
-                  <button id="btn-popover-edit" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; border-bottom: 1px solid #D9D9D9; font-size: 0.9rem; color: #111111; cursor: pointer;">Edit</button>
-                  <button id="btn-popover-hapus" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.9rem; color: #D32F2F; cursor: pointer;">Hapus</button>
+                <div class="card-popover" id="popover-${idx}" style="display: none; position: absolute; top: 24px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
+                  <button class="btn-popover-lihat" data-index="${idx}" style="padding: 12px 16px; text-align: left; background: #E8F5E9; border: none; border-bottom: 1px solid #D9D9D9; font-size: 0.9rem; color: #111111; cursor: pointer;">Lihat</button>
+                  <button class="btn-popover-edit" data-index="${idx}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; border-bottom: 1px solid #D9D9D9; font-size: 0.9rem; color: #111111; cursor: pointer;">Edit</button>
+                  <button class="btn-popover-hapus" data-index="${idx}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.9rem; color: #D32F2F; cursor: pointer;">Hapus</button>
                 </div>
               </div>
             </div>
-            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${storage.get('has_new_receipt').program || 'PRG/NUR/TB/01/2026'}</div>
-            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">Rubber Main Nursery</div>
-            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 12px;">${storage.get('has_new_receipt').klon || 'Klon GT-01'}</div>
-            <div style="font-size: 0.75rem; color: #999999; text-align: right;">Diterima pada Rabu, 26 Agustus 2026</div>
+            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.program || 'PRG/NUR/TB/01/2026'}</div>
+            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.tahapan || 'Rubber Main Nursery'}</div>
+            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.klon || 'Klon GT-01'}</div>
+            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.tipeAsal || '-'}</div>
+            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 12px;">${tx.sumber || '-'}</div>
+            <div style="font-size: 0.75rem; color: #999999; text-align: right;">Diterima pada ${tx.tanggal || 'Rabu, 26 Agustus 2026'}</div>
           </div>
+          `).join('')}
         ` : `
           <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
             <div style="margin-bottom: 16px;">
@@ -72,10 +76,10 @@ export function renderReceiptLanding() {
 
       <!-- BOTTOM ACTION -->
       <footer class="receipt-footer" style="padding: 16px; background: #FFFFFF; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px;">
-        <button id="btn-biji" type="button" style="width: 100%; height: 48px; background: #116834; color: #FFFFFF; border-radius: 6px; font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; justify-content: center;">
+        <button id="btn-biji" type="button" style="width: 100%; height: 48px; background: #116834; color: #FFFFFF; border-radius: 6px; font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; justify-content: flex-start; padding: 0 16px;">
           Penerimaan Benih / Biji Kelatak
         </button>
-        <button id="btn-bibit" type="button" style="width: 100%; height: 48px; background: #116834; color: #FFFFFF; border-radius: 6px; font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; justify-content: center;">
+        <button id="btn-bibit" type="button" style="width: 100%; height: 48px; background: #116834; color: #FFFFFF; border-radius: 6px; font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; justify-content: flex-start; padding: 0 16px;">
           Penerimaan Bibit
         </button>
       </footer>
@@ -126,8 +130,10 @@ export function renderReceiptLanding() {
   const btnLanjut = app.querySelector('#btn-sheet-lanjut');
   const radios = app.querySelectorAll('input[name="origin_type"]');
   let selectedOriginType = null;
+  let selectedJenis = null;
 
   app.querySelector('#btn-biji').addEventListener('click', () => {
+    selectedJenis = 'Benih / Biji Kelatak';
     // Reset state
     selectedOriginType = null;
     radios.forEach(r => r.checked = false);
@@ -158,6 +164,12 @@ export function renderReceiptLanding() {
 
     // Save originType to state
     storage.set('transaction_originType', selectedOriginType);
+    
+    // Prepare fresh form state for new transaction
+    storage.set('benih_jenis', selectedJenis);
+    storage.set('benih_tahapan', 'Rubber Main Nursery');
+    
+    // Optionally clear other state here to guarantee a fresh form, but since the user might back and forth, we keep it simple
 
     // Hide sheet
     overlay.style.display = 'none';
@@ -168,36 +180,83 @@ export function renderReceiptLanding() {
   });
 
   app.querySelector('#btn-bibit').addEventListener('click', () => {
-    console.log('Lanjut ke flow Penerimaan Bibit');
+    selectedJenis = 'Bibit / Tanaman Muda';
+    // Reset state
+    selectedOriginType = null;
+    radios.forEach(r => r.checked = false);
+    btnLanjut.disabled = true;
+    btnLanjut.style.background = '#B0B0B0';
+
+    // Show sheet
+    overlay.style.display = 'block';
+    sheet.style.display = 'flex';
   });
 
   // Popover Actions
-  const btnCardMenu = app.querySelector('#btn-card-menu');
-  const cardPopover = app.querySelector('#card-popover');
-  if (btnCardMenu && cardPopover) {
-    btnCardMenu.addEventListener('click', (e) => {
-      e.stopPropagation(); // prevent document click from closing it immediately
-      cardPopover.style.display = cardPopover.style.display === 'none' ? 'flex' : 'none';
+  const btnCardMenus = app.querySelectorAll('.btn-card-menu');
+  const cardPopovers = app.querySelectorAll('.card-popover');
+  
+  if (btnCardMenus.length > 0) {
+    btnCardMenus.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation(); // prevent document click from closing it immediately
+        const idx = e.currentTarget.dataset.index;
+        const popover = app.querySelector(`#popover-${idx}`);
+        cardPopovers.forEach(p => p.style.display = 'none');
+        popover.style.display = 'flex';
+      });
     });
 
     document.addEventListener('click', () => {
-      cardPopover.style.display = 'none';
+      cardPopovers.forEach(p => p.style.display = 'none');
     });
 
-    app.querySelector('#btn-popover-lihat').addEventListener('click', () => {
-      navigate('/reception/summary');
+    app.querySelectorAll('.btn-popover-lihat').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.currentTarget.dataset.index;
+        storage.set('viewing_transaction_index', idx);
+        navigate('/reception/summary');
+      });
     });
 
-    app.querySelector('#btn-popover-edit').addEventListener('click', () => {
-      // Simulate editing by setting origin type then navigating to form
-      storage.set('transaction_originType', 'KEBUN_SENDIRI');
-      navigate('/reception/benih');
+    app.querySelectorAll('.btn-popover-edit').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.currentTarget.dataset.index;
+        const txs = storage.get('receipt_transactions', []);
+        const tx = txs[idx];
+        
+        if (tx && tx.rawState) {
+          // Restore form state
+          storage.set('transaction_originType', tx.rawState.originTypeRaw);
+          storage.set('benih_jenis', tx.rawState.jenisPenerimaan);
+          storage.set('benih_tahapan', tx.rawState.tahapanPertumbuhan);
+          storage.set('benih_program_id', tx.rawState.programNurseryId);
+          storage.set('benih_program_code', tx.rawState.programNurseryCode);
+          storage.set('benih_source_id', tx.rawState.sourceId);
+          storage.set('benih_source_name', tx.rawState.sourceName);
+          storage.set('receipt_photos', tx.rawState.photos);
+          storage.set('benih_table_rows', tx.rawState.tableRows);
+          storage.set('selected_sir', tx.rawState.selectedSir);
+          storage.set('selected_klon', tx.rawState.selectedKlon);
+          
+          storage.set('editing_transaction_index', idx);
+        } else {
+          storage.set('transaction_originType', 'KEBUN_SENDIRI');
+        }
+        
+        navigate('/reception/benih');
+      });
     });
 
-    app.querySelector('#btn-popover-hapus').addEventListener('click', () => {
-      storage.remove('has_new_receipt');
-      // Refresh page to show empty state
-      renderReceiptLanding();
+    app.querySelectorAll('.btn-popover-hapus').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = e.currentTarget.dataset.index;
+        const txs = storage.get('receipt_transactions', []);
+        txs.splice(idx, 1);
+        storage.set('receipt_transactions', txs);
+        // Refresh page to show updated list
+        renderReceiptLanding();
+      });
     });
   }
 }

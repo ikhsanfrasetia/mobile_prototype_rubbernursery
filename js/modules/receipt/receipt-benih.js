@@ -16,11 +16,14 @@ export function renderReceiptBenih() {
 
   // State from storage to persist across navigations (like opening camera)
   const state = {
+    jenisPenerimaan: storage.get('benih_jenis', 'Benih / Biji Kelatak'),
+    tahapanPertumbuhan: storage.get('benih_tahapan', 'Rubber Main Nursery'),
     programNurseryId: storage.get('benih_program_id', null),
     programNurseryCode: storage.get('benih_program_code', null),
     sourceId: storage.get('benih_source_id', null),
     sourceName: storage.get('benih_source_name', null),
-    photos: storage.get('receipt_photos', [])
+    photos: storage.get('receipt_photos', []),
+    tableRows: storage.get('benih_table_rows', [{ klon: '', qty: '', rejected: '', reason: '' }])
   };
 
   // Get Selected SIR if exists
@@ -39,7 +42,7 @@ export function renderReceiptBenih() {
             <polyline points="12 19 5 12 12 5"></polyline>
           </svg>
         </button>
-        <h1 style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 0 8px;">Penerimaan Benih / Biji Kelatak</h1>
+        <h1 id="header-title" style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 0 8px;">${state.jenisPenerimaan === 'Bibit / Tanaman Muda' ? 'Penerimaan Bibit' : 'Penerimaan Benih / Biji Kelatak'}</h1>
       </header>
 
       <!-- SCROLLABLE CONTENT -->
@@ -56,24 +59,28 @@ export function renderReceiptBenih() {
             <div style="font-size: 0.95rem; color: #111111; font-weight: 700;">${today}</div>
           </div>
         </section>
-
-        <!-- RINCIAN PENERIMAAN -->
-        <section style="padding: 16px; border-bottom: 1px solid #D9D9D9;">
-          <h2 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Rincian Penerimaan</h2>
-          
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px;">
-            <span style="font-size: 0.9rem; color: #666666; flex-shrink: 0;">Jenis Penerimaan</span>
-            <span style="font-size: 0.9rem; color: #111111; font-weight: 700; text-align: right; word-break: break-word;">Benih / Biji Kelatak</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-            <span style="font-size: 0.9rem; color: #666666; flex-shrink: 0;">Tahapan Pertumbuhan</span>
-            <span style="font-size: 0.9rem; color: #111111; font-weight: 700; text-align: right; word-break: break-word;">Rubber Main Nursery</span>
-          </div>
-        </section>
-
         <!-- FORM SECTIONS -->
         <section style="padding: 16px; display: flex; flex-direction: column; gap: 16px; border-bottom: 1px solid #D9D9D9;">
           
+          <!-- JENIS PENERIMAAN -->
+          <div>
+            <label style="display: block; font-size: 0.85rem; font-weight: 700; color: #111111; margin-bottom: 6px;">Jenis Penerimaan</label>
+            <button id="btn-jenis" type="button" style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #EFEFEF; border: 1px solid #D9D9D9; border-radius: 6px; font-size: 0.9rem; color: #111111; text-align: left; cursor: not-allowed;">
+              <span id="label-jenis" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">${state.jenisPenerimaan}</span>
+            </button>
+          </div>
+
+          <!-- TAHAPAN PERTUMBUHAN -->
+          <div>
+            <label style="display: block; font-size: 0.85rem; font-weight: 700; color: #111111; margin-bottom: 6px;">Tahapan Pertumbuhan</label>
+            <button id="btn-tahapan" type="button" style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${state.jenisPenerimaan === 'Benih / Biji Kelatak' ? '#EFEFEF' : '#FFFFFF'}; border: 1px solid #D9D9D9; border-radius: 6px; font-size: 0.9rem; color: #111111; text-align: left; cursor: ${state.jenisPenerimaan === 'Benih / Biji Kelatak' ? 'not-allowed' : 'pointer'};">
+              <span id="label-tahapan" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">${state.tahapanPertumbuhan}</span>
+              <svg id="icon-tahapan" viewBox="0 0 24 24" width="18" height="18" stroke="#111111" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; display: ${state.jenisPenerimaan === 'Benih / Biji Kelatak' ? 'none' : 'block'};">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+
           <!-- PROGRAM PEMBIBITAN -->
           <div>
             <label style="display: block; font-size: 0.85rem; font-weight: 700; color: #111111; margin-bottom: 6px;">Program Pembibitan</label>
@@ -109,7 +116,7 @@ export function renderReceiptBenih() {
         </section>
 
         <!-- DETAIL DOKUMEN SIR -->
-        <section style="padding: 16px; border-bottom: 1px solid #D9D9D9;">
+        <section id="section-detail-sir" style="padding: 16px; border-bottom: 1px solid #D9D9D9; display: ${(originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? 'none' : 'block'};">
           <h2 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Detail Dokumen SIR</h2>
           <div style="border: 1px solid #D9D9D9; border-radius: 6px; overflow: hidden;">
             <div style="padding: 12px 16px; min-height: 80px; font-size: 0.85rem; color: #111111; background: #FFFFFF;">
@@ -149,6 +156,35 @@ export function renderReceiptBenih() {
           </div>
         </section>
 
+        <!-- DETAIL PENERIMAAN TABLE -->
+        <section id="section-detail-table" style="padding: 16px; border-bottom: 1px solid #D9D9D9; display: ${(originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? 'block' : 'none'};">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 style="font-size: 1rem; font-weight: 700; color: #111111; margin: 0;">Detail Penerimaan</h2>
+            <button id="btn-tambah-data" type="button" style="background: #356943; color: white; border: none; border-radius: 4px; padding: 6px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">Tambah Data</button>
+          </div>
+          
+          <div style="background: #E8F5E9; border-radius: 6px 6px 0 0; padding: 10px; display: grid; grid-template-columns: 1fr 0.9fr 1.3fr; gap: 8px; border: 1px solid #D1CDCD; border-bottom: none;">
+            <div style="font-size: 0.8rem; font-weight: 600; color: #356943;">Klon *</div>
+            <div style="font-size: 0.8rem; font-weight: 600; color: #356943;">Banyaknya *</div>
+            <div style="font-size: 0.8rem; font-weight: 600; color: #356943;">Diseleksi</div>
+          </div>
+          
+          <div id="container-receipt-rows" style="display: flex; flex-direction: column; border-left: 1px solid #D1CDCD; border-right: 1px solid #D1CDCD;">
+             <!-- rows go here -->
+          </div>
+          
+          <div style="background: #E8F5E9; border-radius: 0 0 6px 6px; padding: 10px; border: 1px solid #D1CDCD; border-top: none;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span style="font-size: 0.85rem; font-weight: 600; color: #356943;">Total Jumlah Diterima</span>
+              <span id="total-qty" style="font-size: 0.85rem; font-weight: 700; color: #111111;">0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="font-size: 0.85rem; font-weight: 600; color: #356943;">Jumlah Diseleksi</span>
+              <span id="total-rejected" style="font-size: 0.85rem; font-weight: 700; color: #111111;">0</span>
+            </div>
+          </div>
+        </section>
+
         <!-- TAMBAH FOTO -->
         <section style="padding: 16px;">
           <h2 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 8px 0;">Tambah Foto</h2>
@@ -180,18 +216,45 @@ export function renderReceiptBenih() {
       <!-- OVERLAY -->
       <div id="modal-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100;"></div>
 
-      <!-- BOTTOM SHEET PROGRAM -->
-      <div id="sheet-program" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 12px 12px 0 0; padding: 24px 16px; z-index: 101; flex-direction: column; max-height: 70vh; overflow-y: auto;">
-        <h3 style="font-size: 1.05rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 16px 0;">Pilih Program Pembibitan</h3>
-        <div id="list-program" style="display: flex; flex-direction: column; border: 1px solid #D9D9D9; border-radius: 6px; overflow: hidden;">
+      <!-- BOTTOM SHEET JENIS -->
+      <div id="sheet-jenis" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 12px 12px 0 0; padding: 24px 16px; z-index: 101; flex-direction: column;">
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 16px 0;">Pilih Jenis Penerimaan</h3>
+        <div id="list-jenis" style="display: flex; flex-direction: column; border: 1px solid #D9D9D9; border-radius: 6px; overflow-y: auto; max-height: 60vh;">
           <!-- Items injected via JS -->
         </div>
       </div>
 
+      <!-- BOTTOM SHEET TAHAPAN -->
+      <div id="sheet-tahapan" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 12px 12px 0 0; padding: 24px 16px; z-index: 101; flex-direction: column;">
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 16px 0;">Pilih Tahapan Pertumbuhan</h3>
+        <div id="list-tahapan" style="display: flex; flex-direction: column; border: 1px solid #D9D9D9; border-radius: 6px; overflow-y: auto; max-height: 60vh;">
+          <!-- Items injected via JS -->
+        </div>
+      </div>
+
+      <!-- BOTTOM SHEET PROGRAM -->
+      <div id="sheet-program" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 12px 12px 0 0; padding: 24px 16px; z-index: 101; flex-direction: column;">
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 16px 0;">Pilih Program Pembibitan</h3>
+        <div id="list-program" style="display: flex; flex-direction: column; border: 1px solid #D9D9D9; border-radius: 6px; overflow-y: auto; max-height: 60vh;">
+          <!-- Items injected via JS -->
+        </div>
+      </div>
+
+      <!-- BOTTOM SHEET KEMBALI -->
+      <div id="sheet-kembali" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 12px 12px 0 0; padding: 24px 16px; z-index: 101; flex-direction: column;">
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 12px 0;">Simpan Perubahan?</h3>
+        <p style="font-size: 0.95rem; color: #666666; text-align: center; margin: 0 0 24px 0;">Anda memiliki data yang sedang diisi/diubah. Apakah Anda ingin menyimpannya terlebih dahulu?</p>
+        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+          <button id="btn-kembali-batal" type="button" style="flex: 1; height: 48px; background: #FFFFFF; color: #D32F2F; border: 1px solid #D32F2F; border-radius: 6px; font-weight: 700; font-size: 1rem;">Buang</button>
+          <button id="btn-kembali-simpan" type="button" style="flex: 1; height: 48px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 1rem;">Simpan</button>
+        </div>
+        <button id="btn-kembali-tutup" type="button" style="width: 100%; height: 48px; background: transparent; color: #116834; border: none; font-weight: 600; font-size: 0.95rem;">Kembali Edit</button>
+      </div>
+
       <!-- BOTTOM SHEET SUMBER -->
-      <div id="sheet-sumber" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 12px 12px 0 0; padding: 24px 16px; z-index: 101; flex-direction: column; max-height: 70vh; overflow-y: auto;">
+      <div id="sheet-sumber" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 12px 12px 0 0; padding: 24px 16px; z-index: 101; flex-direction: column;">
         <h3 style="font-size: 1.05rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 16px 0;">Pilih Asal Benih / Rekanan</h3>
-        <div id="list-sumber" style="display: flex; flex-direction: column; border: 1px solid #D9D9D9; border-radius: 6px; overflow: hidden;">
+        <div id="list-sumber" style="display: flex; flex-direction: column; border: 1px solid #D9D9D9; border-radius: 6px; overflow-y: auto; max-height: 60vh;">
           <!-- Items injected via JS -->
         </div>
       </div>
@@ -224,40 +287,146 @@ export function renderReceiptBenih() {
     { id: '4', code: 'PRG/NUR/08/2029' }
   ];
 
-  const sumberData = [
-    { id: 'S1', name: 'UD Ganang Jaya' },
-    { id: 'S2', name: 'UD Semesta Benih' },
-    { id: 'S3', name: 'UD Mitra Sejati' },
-    { id: 'S4', name: 'UD Tani Makmur' },
-    { id: 'S5', name: 'UD Sumber Rezeki' },
-    { id: 'S6', name: 'UD Karya Benih' },
-    { id: 'S7', name: 'UD Maju Bersama' },
-    { id: 'S8', name: 'UD Berkah Tani' }
-  ];
+  let sumberData = [];
+  if (originTypeRaw === 'KEBUN_SENDIRI') {
+    sumberData = [
+      { id: 'DIV1', name: 'Divisi I' },
+      { id: 'DIV2', name: 'Divisi II' },
+      { id: 'DIV3', name: 'Divisi III' },
+      { id: 'DIVK', name: 'Divisi Kantor' },
+      { id: 'DIVP', name: 'Divisi Pabrik' }
+    ];
+  } else if (originTypeRaw === 'LAINNYA') {
+    sumberData = [
+      { id: 'AL', name: 'AL - Aek Loba' },
+      { id: 'AP', name: 'AP - Aek Pamienke' },
+      { id: 'BB', name: 'BB - Bangun Bandar' },
+      { id: 'LB', name: 'LB - Lae Butar' },
+      { id: 'MP', name: 'MP - Mata Pao' },
+      { id: 'NL', name: 'NL - Negeri Lama' },
+      { id: 'SL', name: 'SL - Sei Liput' },
+      { id: 'SG', name: 'SG - Seunagan' },
+      { id: 'SY', name: 'SY - Seumanyam' },
+      { id: 'SSPL', name: 'SSPL - Socfindo Seed Production & Laboratory' },
+      { id: 'TB', name: 'TB - Tanah Besih' },
+      { id: 'TG', name: 'TG - Tanah Gambus' }
+    ];
+  } else {
+    sumberData = [
+      { id: 'S1', name: 'UD Ganang Jaya' },
+      { id: 'S2', name: 'UD Semesta Benih' },
+      { id: 'S3', name: 'UD Mitra Sejati' },
+      { id: 'S4', name: 'UD Tani Makmur' },
+      { id: 'S5', name: 'UD Sumber Rezeki' },
+      { id: 'S6', name: 'UD Karya Benih' },
+      { id: 'S7', name: 'UD Maju Bersama' },
+      { id: 'S8', name: 'UD Berkah Tani' }
+    ];
+  }
 
   // DOM ELEMENTS
   const btnBack = app.querySelector('#btn-back');
   const btnSimpan = app.querySelector('#btn-simpan');
+  const labelJenis = app.querySelector('#label-jenis');
+  const labelTahapan = app.querySelector('#label-tahapan');
   const labelProgram = app.querySelector('#label-program');
   const labelSumber = app.querySelector('#label-sumber');
+  const btnJenis = app.querySelector('#btn-jenis');
+  const btnTahapan = app.querySelector('#btn-tahapan');
+  const iconTahapan = app.querySelector('#icon-tahapan');
   const btnProgram = app.querySelector('#btn-program');
   const btnSumber = app.querySelector('#btn-sumber');
 
   const overlay = app.querySelector('#modal-overlay');
+  const sheetJenis = app.querySelector('#sheet-jenis');
+  const sheetTahapan = app.querySelector('#sheet-tahapan');
   const sheetProgram = app.querySelector('#sheet-program');
   const sheetSumber = app.querySelector('#sheet-sumber');
+  const listJenis = app.querySelector('#list-jenis');
+  const listTahapan = app.querySelector('#list-tahapan');
   const listProgram = app.querySelector('#list-program');
   const listSumber = app.querySelector('#list-sumber');
 
   const btnTambahFoto = app.querySelector('#btn-tambah-foto');
   const photoPreviewContainer = app.querySelector('#photo-preview-container');
   const btnTambahSir = app.querySelector('#btn-tambah-sir');
+  
+  const containerReceiptRows = app.querySelector('#container-receipt-rows');
+  const btnTambahData = app.querySelector('#btn-tambah-data');
+  const totalQtyEl = app.querySelector('#total-qty');
+  const totalRejectedEl = app.querySelector('#total-rejected');
 
   const sheetKonfirmasi = app.querySelector('#sheet-konfirmasi');
   const btnKonfirmBatal = app.querySelector('#btn-konfirm-batal');
   const btnKonfirmSimpan = app.querySelector('#btn-konfirm-simpan');
 
   // RENDER LISTS
+  function renderJenisList() {
+    const jenisData = [
+      'Benih / Biji Kelatak',
+      'Bibit / Tanaman Muda'
+    ];
+    listJenis.innerHTML = jenisData.map((j, idx) => `
+      <div class="item-jenis" data-val="${j}" style="display: flex; justify-content: space-between; padding: 16px; background: ${state.jenisPenerimaan === j ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === jenisData.length - 1 ? 'none' : '1px solid #D9D9D9'}; cursor: pointer;">
+        <span style="font-size: 0.95rem; color: #111111; font-weight: ${state.jenisPenerimaan === j ? '700' : '400'};">${j}</span>
+        <span style="font-size: 0.95rem; color: #116834; font-weight: 600;">Pilih</span>
+      </div>
+    `).join('');
+
+    listJenis.querySelectorAll('.item-jenis').forEach(el => {
+      el.addEventListener('click', () => {
+        state.jenisPenerimaan = el.dataset.val;
+        storage.set('benih_jenis', state.jenisPenerimaan);
+        
+        labelJenis.textContent = state.jenisPenerimaan;
+        const headerTitle = app.querySelector('#header-title');
+        
+        // Handle Tahapan Pertumbuhan Logic
+        if (state.jenisPenerimaan === 'Benih / Biji Kelatak') {
+          if (headerTitle) headerTitle.textContent = 'Penerimaan Benih / Biji Kelatak';
+          state.tahapanPertumbuhan = 'Rubber Main Nursery';
+          storage.set('benih_tahapan', state.tahapanPertumbuhan);
+          labelTahapan.textContent = state.tahapanPertumbuhan;
+          btnTahapan.style.background = '#EFEFEF';
+          btnTahapan.style.cursor = 'not-allowed';
+          iconTahapan.style.display = 'none';
+        } else {
+          if (headerTitle) headerTitle.textContent = 'Penerimaan Bibit';
+          btnTahapan.style.background = '#FFFFFF';
+          btnTahapan.style.cursor = 'pointer';
+          iconTahapan.style.display = 'block';
+        }
+        
+        closeModals();
+        validateForm();
+      });
+    });
+  }
+
+  function renderTahapanList() {
+    const tahapanData = [
+      'Rubber Main Nursery',
+      'Rubber Advance Planting Material'
+    ];
+    listTahapan.innerHTML = tahapanData.map((t, idx) => `
+      <div class="item-tahapan" data-val="${t}" style="display: flex; justify-content: space-between; padding: 16px; background: ${state.tahapanPertumbuhan === t ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === tahapanData.length - 1 ? 'none' : '1px solid #D9D9D9'}; cursor: pointer;">
+        <span style="font-size: 0.95rem; color: #111111; font-weight: ${state.tahapanPertumbuhan === t ? '700' : '400'};">${t}</span>
+        <span style="font-size: 0.95rem; color: #116834; font-weight: 600;">Pilih</span>
+      </div>
+    `).join('');
+
+    listTahapan.querySelectorAll('.item-tahapan').forEach(el => {
+      el.addEventListener('click', () => {
+        state.tahapanPertumbuhan = el.dataset.val;
+        storage.set('benih_tahapan', state.tahapanPertumbuhan);
+        
+        labelTahapan.textContent = state.tahapanPertumbuhan;
+        closeModals();
+        validateForm();
+      });
+    });
+  }
+
   function renderProgramList() {
     listProgram.innerHTML = programData.map((p, idx) => `
       <div class="item-program" data-id="${p.id}" data-code="${p.code}" style="display: flex; justify-content: space-between; padding: 16px; background: ${state.programNurseryId === p.id ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === programData.length - 1 ? 'none' : '1px solid #D9D9D9'}; cursor: pointer;">
@@ -304,13 +473,152 @@ export function renderReceiptBenih() {
     });
   }
 
+  // TABLE LOGIC
+  function renderTableRows() {
+    containerReceiptRows.innerHTML = state.tableRows.map((row, index) => `
+      <div class="receipt-row" data-index="${index}" style="display: grid; grid-template-columns: 1fr 0.9fr 1.3fr; border-bottom: 1px solid #D1CDCD; align-items: stretch; position: relative;">
+        <!-- Klon -->
+        <div style="padding: 12px 8px; border-right: 1px solid #D1CDCD; position: relative;">
+           <select class="input-klon" data-index="${index}" style="width: 100%; border: none; background: transparent; font-size: 0.85rem; outline: none; appearance: none; padding-right: 16px; color: ${row.klon ? '#111' : '#999'};">
+             <option value="" disabled ${!row.klon ? 'selected' : ''} hidden>Klon</option>
+             <option value="IRCA120" ${row.klon === 'IRCA120' ? 'selected' : ''}>IRCA120</option>
+             <option value="IRR300" ${row.klon === 'IRR300' ? 'selected' : ''}>IRR300</option>
+             <option value="GT1" ${row.klon === 'GT1' ? 'selected' : ''}>GT1</option>
+             <option value="PB260" ${row.klon === 'PB260' ? 'selected' : ''}>PB260</option>
+           </select>
+           <svg viewBox="0 0 24 24" width="14" height="14" stroke="#999" stroke-width="2" fill="none" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+        
+        <!-- Banyaknya -->
+        <div style="padding: 12px 8px; border-right: 1px solid #D1CDCD; display: flex; align-items: center;">
+           <input type="number" class="input-qty" data-index="${index}" placeholder="0" value="${row.qty}" style="width: 100%; border: none; background: transparent; font-size: 0.85rem; outline: none; text-align: left; color: #111;" />
+        </div>
+        
+        <!-- Diseleksi -->
+        <div style="padding: 12px 8px; display: flex; gap: 4px; align-items: center;">
+           <input type="number" class="input-rejected" data-index="${index}" placeholder="0" value="${row.rejected}" style="width: 40px; border: none; background: transparent; font-size: 0.85rem; outline: none; text-align: left; color: #111;" />
+           
+           <div style="position: relative; flex: 1;">
+             <select class="input-reason" data-index="${index}" style="width: 100%; border: none; background: transparent; font-size: 0.85rem; outline: none; appearance: none; color: ${row.rejected > 0 ? '#111' : '#999'}; padding-right: 16px;" ${row.rejected > 0 ? '' : 'disabled'}>
+               <option value="" disabled ${!row.reason ? 'selected' : ''} hidden>Alasan</option>
+               <option value="Rusak" ${row.reason === 'Rusak' ? 'selected' : ''}>Rusak</option>
+               <option value="Mati" ${row.reason === 'Mati' ? 'selected' : ''}>Mati</option>
+               <option value="Afkir" ${row.reason === 'Afkir' ? 'selected' : ''}>Afkir</option>
+             </select>
+             <svg viewBox="0 0 24 24" width="14" height="14" stroke="#999" stroke-width="2" fill="none" style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+           </div>
+        </div>
+        
+        ${index > 0 ? `
+        <!-- Hapus baris (Opsional) -->
+        <button type="button" class="btn-hapus-row" data-index="${index}" style="position: absolute; top: -4px; right: 2px; width: 20px; height: 20px; background: #FFFFFF; border: 1px solid #D32F2F; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 0; z-index: 10;">
+          <svg viewBox="0 0 24 24" width="12" height="12" stroke="#D32F2F" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        ` : ''}
+      </div>
+    `).join('');
+
+    bindTableEvents();
+    calculateTotals();
+  }
+
+  function bindTableEvents() {
+    containerReceiptRows.querySelectorAll('.input-klon').forEach(el => {
+      el.addEventListener('change', (e) => {
+        const index = e.target.dataset.index;
+        state.tableRows[index].klon = e.target.value;
+        e.target.style.color = '#111';
+        saveTableState();
+      });
+    });
+    
+    containerReceiptRows.querySelectorAll('.input-qty').forEach(el => {
+      el.addEventListener('input', (e) => {
+        const index = e.target.dataset.index;
+        state.tableRows[index].qty = e.target.value;
+        saveTableState();
+        calculateTotals();
+      });
+    });
+
+    containerReceiptRows.querySelectorAll('.input-rejected').forEach(el => {
+      el.addEventListener('input', (e) => {
+        const index = e.target.dataset.index;
+        const val = parseInt(e.target.value || 0);
+        state.tableRows[index].rejected = val > 0 ? val : '';
+        if (val <= 0) {
+           state.tableRows[index].reason = '';
+        }
+        saveTableState();
+        renderTableRows(); // Re-render to enable/disable reason dropdown
+      });
+    });
+
+    containerReceiptRows.querySelectorAll('.input-reason').forEach(el => {
+      el.addEventListener('change', (e) => {
+        const index = e.target.dataset.index;
+        state.tableRows[index].reason = e.target.value;
+        e.target.style.color = '#111';
+        saveTableState();
+      });
+    });
+    
+    containerReceiptRows.querySelectorAll('.btn-hapus-row').forEach(el => {
+      el.addEventListener('click', (e) => {
+        const index = e.target.dataset.index;
+        state.tableRows.splice(index, 1);
+        saveTableState();
+        renderTableRows();
+      });
+    });
+  }
+
+  function calculateTotals() {
+    let tQty = 0;
+    let tRej = 0;
+    state.tableRows.forEach(r => {
+      tQty += parseInt(r.qty || 0);
+      tRej += parseInt(r.rejected || 0);
+    });
+    totalQtyEl.textContent = tQty;
+    totalRejectedEl.textContent = tRej;
+  }
+
+  function saveTableState() {
+    storage.set('benih_table_rows', state.tableRows);
+    validateForm();
+  }
+
+  btnTambahData?.addEventListener('click', () => {
+    state.tableRows.push({ klon: '', qty: '', rejected: '', reason: '' });
+    saveTableState();
+    renderTableRows();
+  });
+
   // MODAL LOGIC
   function closeModals() {
     overlay.style.display = 'none';
+    sheetJenis.style.display = 'none';
+    sheetTahapan.style.display = 'none';
     sheetProgram.style.display = 'none';
     sheetSumber.style.display = 'none';
     sheetKonfirmasi.style.display = 'none';
+    if (app.querySelector('#sheet-kembali')) app.querySelector('#sheet-kembali').style.display = 'none';
   }
+
+  btnJenis.addEventListener('click', () => {
+    // Disabled permanently per user requirement (now set via landing page buttons)
+    return;
+  });
+
+  btnTahapan.addEventListener('click', () => {
+    if (state.jenisPenerimaan === 'Benih / Biji Kelatak') return;
+    renderTahapanList();
+    overlay.style.display = 'block';
+    sheetTahapan.style.display = 'flex';
+  });
 
   btnProgram.addEventListener('click', () => {
     renderProgramList();
@@ -355,7 +663,23 @@ export function renderReceiptBenih() {
 
   // VALIDATION
   function validateForm() {
-    const isValid = state.programNurseryId && originTypeRaw && state.sourceId;
+    let isValid = state.programNurseryId && originTypeRaw && state.sourceId;
+    
+    // Validate table if Kebun Sendiri or Lainnya
+    if (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') {
+      const hasValidRow = state.tableRows.every(r => {
+        if (!r.klon || parseInt(r.qty || 0) <= 0) return false;
+        if (parseInt(r.rejected || 0) > 0 && !r.reason) return false;
+        return true;
+      });
+      if (!hasValidRow || state.tableRows.length === 0) isValid = false;
+    }
+    
+    // Validasi Foto: Wajib minimal 1 foto
+    if (!state.photos || state.photos.length === 0) {
+      isValid = false;
+    }
+    
     if (isValid) {
       btnSimpan.disabled = false;
       btnSimpan.style.background = '#116834';
@@ -369,7 +693,44 @@ export function renderReceiptBenih() {
 
   // BUTTON ACTIONS
   btnBack.addEventListener('click', () => {
+    // Show confirmation dialog before going back
+    overlay.style.display = 'block';
+    app.querySelector('#sheet-kembali').style.display = 'flex';
+  });
+  
+  app.querySelector('#btn-kembali-tutup').addEventListener('click', closeModals);
+  
+  app.querySelector('#btn-kembali-batal').addEventListener('click', () => {
+    // Clear temp form storage and clear edit index
+    storage.remove('benih_jenis');
+    storage.remove('benih_tahapan');
+    storage.remove('benih_program_id');
+    storage.remove('benih_program_code');
+    storage.remove('benih_source_id');
+    storage.remove('benih_source_name');
+    storage.remove('receipt_photos');
+    storage.remove('selected_sir');
+    storage.remove('selected_klon');
+    storage.remove('benih_table_rows');
+    storage.remove('editing_transaction_index');
+    
+    closeModals();
     navigate('/reception');
+  });
+  
+  app.querySelector('#btn-kembali-simpan').addEventListener('click', () => {
+    closeModals();
+    if (!btnSimpan.disabled) {
+      overlay.style.display = 'block';
+      sheetKonfirmasi.style.display = 'flex';
+    } else {
+      // Show toast error
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position: fixed; bottom: 24px; left: 16px; right: 16px; background: #D32F2F; color: #FFFFFF; padding: 16px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+      toast.textContent = 'Data belum lengkap untuk disimpan!';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
   });
 
   btnTambahSir.addEventListener('click', () => {
@@ -390,17 +751,52 @@ export function renderReceiptBenih() {
     const today = new Date();
     const formattedDate = today.getDate().toString().padStart(2, '0') + '/' + (today.getMonth()+1).toString().padStart(2, '0') + '/' + today.getFullYear();
     
-    storage.set('has_new_receipt', {
+    let totalQtyTable = 0;
+    if (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') {
+       state.tableRows.forEach(r => totalQtyTable += parseInt(r.qty || 0));
+    }
+    
+    const newTx = {
+      jenis: state.jenisPenerimaan,
+      tahapan: state.tahapanPertumbuhan,
       program: state.programNurseryCode,
-      klon: selectedKlon ? selectedKlon.title : 'Klon GT-01',
+      klon: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') 
+             ? (state.tableRows[0]?.klon || 'Klon GT-01') 
+             : (selectedKlon ? selectedKlon.title : 'Klon GT-01'),
       tanggal: formattedDate,
       tipeAsal: originTypeDisplay,
       sumber: state.sourceName || '-',
-      sir: selectedSir ? selectedSir.issueNo : '-',
-      qty: selectedSir ? selectedSir.qty : '-'
-    });
+      sir: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? '-' : (selectedSir ? selectedSir.issueNo : '-'),
+      qty: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? totalQtyTable : (selectedSir ? selectedSir.qty : '-'),
+      rawState: {
+        originTypeRaw,
+        jenisPenerimaan: state.jenisPenerimaan,
+        tahapanPertumbuhan: state.tahapanPertumbuhan,
+        programNurseryId: state.programNurseryId,
+        programNurseryCode: state.programNurseryCode,
+        sourceId: state.sourceId,
+        sourceName: state.sourceName,
+        photos: state.photos,
+        tableRows: state.tableRows,
+        selectedSir,
+        selectedKlon
+      }
+    };
+    
+    const txs = storage.get('receipt_transactions', []);
+    const editingIdx = storage.get('editing_transaction_index', null);
+    
+    if (editingIdx !== null) {
+      txs[editingIdx] = newTx;
+      storage.remove('editing_transaction_index');
+    } else {
+      txs.push(newTx);
+    }
+    storage.set('receipt_transactions', txs);
     
     // Clear temp form storage
+    storage.remove('benih_jenis');
+    storage.remove('benih_tahapan');
     storage.remove('benih_program_id');
     storage.remove('benih_program_code');
     storage.remove('benih_source_id');
@@ -408,6 +804,7 @@ export function renderReceiptBenih() {
     storage.remove('receipt_photos');
     storage.remove('selected_sir');
     storage.remove('selected_klon');
+    storage.remove('benih_table_rows');
     
     closeModals();
     
@@ -423,6 +820,9 @@ export function renderReceiptBenih() {
   });
 
   // Initial rendering
+  if (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') {
+    renderTableRows();
+  }
   renderPhotos();
   validateForm();
 }

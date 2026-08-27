@@ -3,7 +3,14 @@ import { storage } from '../../core/storage.js';
 
 export function renderReceiptSummary() {
   const app = document.getElementById('app');
-  const summaryData = storage.get('has_new_receipt') || {};
+  
+  const txs = storage.get('receipt_transactions', []);
+  const viewingIdx = storage.get('viewing_transaction_index', 0);
+  const summaryData = txs[viewingIdx] || {};
+  
+  // Format No. Dokumen
+  const docIdxStr = (parseInt(viewingIdx) + 1).toString().padStart(2, '0');
+  const noDoc = `RCV/SEEDS/2026/AGUS/${docIdxStr}`;
   
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: sans-serif;">
@@ -23,7 +30,7 @@ export function renderReceiptSummary() {
         <div style="background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
           <div style="border-bottom: 1px solid #EFEFEF; padding-bottom: 12px; margin-bottom: 12px;">
             <div style="font-size: 0.85rem; color: #666666;">No. Dokumen</div>
-            <div style="font-size: 1rem; font-weight: 700; color: #111111;">RCV/SEEDS/2026/AGUS/01</div>
+            <div style="font-size: 1rem; font-weight: 700; color: #111111;">${noDoc}</div>
           </div>
           <div style="border-bottom: 1px solid #EFEFEF; padding-bottom: 12px; margin-bottom: 12px;">
             <div style="font-size: 0.85rem; color: #666666;">Tanggal Penerimaan</div>
@@ -31,15 +38,15 @@ export function renderReceiptSummary() {
           </div>
           <div style="border-bottom: 1px solid #EFEFEF; padding-bottom: 12px; margin-bottom: 12px;">
             <div style="font-size: 0.85rem; color: #666666;">Jenis Penerimaan</div>
-            <div style="font-size: 1rem; font-weight: 700; color: #111111;">Benih / Biji Kelatak</div>
+            <div style="font-size: 1rem; font-weight: 700; color: #111111;">${summaryData.jenis || '-'}</div>
           </div>
           <div style="border-bottom: 1px solid #EFEFEF; padding-bottom: 12px; margin-bottom: 12px;">
             <div style="font-size: 0.85rem; color: #666666;">Tahapan Pertumbuhan</div>
-            <div style="font-size: 1rem; font-weight: 700; color: #111111;">Rubber Main Nursery</div>
+            <div style="font-size: 1rem; font-weight: 700; color: #111111;">${summaryData.tahapan || '-'}</div>
           </div>
           <div style="border-bottom: 1px solid #EFEFEF; padding-bottom: 12px; margin-bottom: 12px;">
             <div style="font-size: 0.85rem; color: #666666;">Program Pembibitan</div>
-            <div style="font-size: 1rem; font-weight: 700; color: #111111;">${summaryData.program || 'PRG/NUR/TB/01/2026'}</div>
+            <div style="font-size: 1rem; font-weight: 700; color: #111111;">${summaryData.program || '-'}</div>
           </div>
           <div style="border-bottom: 1px solid #EFEFEF; padding-bottom: 12px; margin-bottom: 12px;">
             <div style="font-size: 0.85rem; color: #666666;">Tipe Asal</div>
@@ -59,7 +66,7 @@ export function renderReceiptSummary() {
           </div>
           <div style="padding-bottom: 12px;">
             <div style="font-size: 0.85rem; color: #666666;">Klon</div>
-            <div style="font-size: 1rem; font-weight: 700; color: #111111;">${summaryData.klon || 'Klon GT-01'}</div>
+            <div style="font-size: 1rem; font-weight: 700; color: #111111;">${summaryData.klon || '-'}</div>
           </div>
         </div>
       </main>
