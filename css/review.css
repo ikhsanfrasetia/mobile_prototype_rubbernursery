@@ -860,28 +860,72 @@
 }
 
 /* ============================================================
-   RESPONSIVE BREAKPOINTS (SPEC §12)
+   RESPONSIVE BREAKPOINTS (UNIVERSAL MULTI-DEVICE)
    ============================================================ */
 
-/* Tablet (768px – 999px): Vertikal 1 Kolom */
-@media (min-width: 768px) and (max-width: 999px) {
+/* Mobile Navigation Switcher (Hanya Muncul di Layar Mobile < 768px) */
+.mobile-workspace-nav {
+  display: none;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 300;
+  width: 100%;
+}
+
+.mobile-tab-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #64748b;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mobile-tab-btn.is-active {
+  color: #116834;
+  border-bottom-color: #116834;
+  background: #f0fdf4;
+}
+
+.mobile-tab-badge {
+  background: #116834;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+/* Tablet (768px – 1023px): Side-by-Side Adaptif */
+@media (min-width: 768px) and (max-width: 1023px) {
   .workspace-layout {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    height: 100vh;
+    overflow: hidden;
   }
 
   .workspace-preview-column {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: 24px 16px;
+    padding: 16px 10px;
     background: #e8eaed;
+    overflow-y: auto;
+    height: 100vh;
   }
 
   .workspace-review-column {
-    padding: 24px 20px;
-    max-height: none;
-    overflow-y: visible;
+    padding: 18px 20px;
+    overflow-y: auto;
+    height: 100vh;
   }
 
   .review-table-container {
@@ -893,31 +937,65 @@
   }
 }
 
-/* Mobile (< 768px): 1 Kolom + Feedback Card List */
+/* Mobile Smartphone (< 768px): Fullscreen Native App + Tab Switcher */
 @media (max-width: 767px) {
+  .mobile-workspace-nav {
+    display: flex;
+  }
+
   .workspace-layout {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    width: 100%;
+    height: 100dvh;
+    height: 100vh;
+    overflow: hidden;
+    background: #ffffff;
   }
 
-  .workspace-preview-column {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: 16px 8px;
-    background: #e8eaed;
+  /* Mode 1: Mobile Prototype Preview */
+  .workspace-layout.is-mobile-preview .workspace-preview-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: calc(100dvh - 44px);
+    height: calc(100vh - 44px);
+    padding: 0;
+    background: #ffffff;
+    overflow: hidden;
   }
 
-  .workspace-review-column {
-    padding: 20px 14px calc(24px + var(--safe-bottom));
-    max-height: none;
-    overflow-y: visible;
+  .workspace-layout.is-mobile-preview .workspace-review-column {
+    display: none;
+  }
+
+  .workspace-layout.is-mobile-preview .device-toolbar-container {
+    width: 100%;
+    padding: 6px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  /* Mode 2: Mobile Catatan Review */
+  .workspace-layout.is-mobile-review .workspace-preview-column {
+    display: none;
+  }
+
+  .workspace-layout.is-mobile-review .workspace-review-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: calc(100dvh - 44px);
+    height: calc(100vh - 44px);
+    padding: 16px 12px calc(24px + var(--safe-bottom));
+    background: #f8fafc;
+    overflow-y: auto;
   }
 
   .review-panel-head {
     flex-direction: column;
     align-items: stretch;
-    gap: 12px;
+    gap: 10px;
   }
 
   .review-actions-group {
@@ -940,12 +1018,11 @@
     width: 100%;
   }
 
-  /* Sembunyikan tabel desktop pada mobile */
+  /* Sembunyikan tabel desktop yang terlalu lebar pada mobile, tampilkan kartu mobile list */
   .review-table-container {
     display: none;
   }
 
-  /* Tampilkan list card feedback pada mobile */
   .review-mobile-list {
     display: flex;
     flex-direction: column;

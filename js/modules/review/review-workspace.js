@@ -113,11 +113,60 @@ function saveNotesLocally() {
 export function initReviewWorkspace() {
   loadNotes();
   setupMarkerLayer();
+  setupMobileWorkspaceSwitcher();
 
   // Dengarkan perubahan hash route agar marker dan filter tersinkron
   window.addEventListener('hashchange', () => {
     updateMarkers();
   });
+}
+
+/** Setup switcher tab navigasi pada layar mobile (< 768px) */
+function setupMobileWorkspaceSwitcher() {
+  const layout = document.getElementById('workspace-layout');
+  if (!layout) return;
+
+  layout.classList.add('is-mobile-preview');
+
+  if (document.getElementById('mobile-workspace-nav')) return;
+
+  const nav = document.createElement('div');
+  nav.className = 'mobile-workspace-nav';
+  nav.id = 'mobile-workspace-nav';
+  nav.innerHTML = `
+    <button class="mobile-tab-btn is-active" id="tab-mobile-preview" type="button">
+      📱 Prototype Aplikasi
+    </button>
+    <button class="mobile-tab-btn" id="tab-mobile-review" type="button">
+      📝 Catatan Review <span class="mobile-tab-badge" id="mobile-tab-badge">${notes.length}</span>
+    </button>
+  `;
+
+  layout.parentNode.insertBefore(nav, layout);
+
+  const tabPreview = nav.querySelector('#tab-mobile-preview');
+  const tabReview = nav.querySelector('#tab-mobile-review');
+
+  tabPreview.addEventListener('click', () => {
+    tabPreview.classList.add('is-active');
+    tabReview.classList.remove('is-active');
+    layout.classList.remove('is-mobile-review');
+    layout.classList.add('is-mobile-preview');
+  });
+
+  tabReview.addEventListener('click', () => {
+    tabReview.classList.add('is-active');
+    tabPreview.classList.remove('is-active');
+    layout.classList.remove('is-mobile-preview');
+    layout.classList.add('is-mobile-review');
+  });
+}
+
+function updateMobileTabBadge() {
+  const badge = document.getElementById('mobile-tab-badge');
+  if (badge) {
+    badge.textContent = notes.length;
+  }
 }
 
 /** Setup layer marker di atas layar prototype */
@@ -205,6 +254,7 @@ function selectNote(noteId, openDetail = false) {
 
 /** Render Panel Review (Desktop Table & Mobile Cards) */
 export function renderReviewPanel() {
+  updateMobileTabBadge();
   const container = document.getElementById('review-panel-container');
   if (!container) return;
 
