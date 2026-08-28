@@ -23,6 +23,7 @@ import { renderReceiptSummary } from './modules/receipt/receipt-summary.js';
 import { renderSeedingLanding } from './modules/seeding/seeding-landing.js';
 import { renderSeedingForm } from './modules/seeding/seeding-form.js';
 import { seedDatabase } from './db/seed.js';
+import { initExportScreenToolbar } from './core/export-screen.js';
 
 /* ---- PWA: service worker ---- */
 if ('serviceWorker' in navigator) {
@@ -61,4 +62,5 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   initRouter();
   initReviewWorkspace();
+  initExportScreenToolbar();
 });

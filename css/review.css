@@ -38,7 +38,161 @@
   background: transparent;
   width: 100%;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ---------- Device Preview Toolbar (Di atas Frame HP) ---------- */
+.device-toolbar-container {
+  width: 375px;
+  max-width: 100%;
+  z-index: 100;
+}
+
+.device-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  gap: 8px;
+}
+
+.device-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.device-live-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #22c55e;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+  flex-shrink: 0;
+}
+
+.device-page-tag {
+  font-size: 0.78rem;
+  color: #4b5563;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.device-page-tag strong {
+  color: #111827;
+  font-weight: 700;
+}
+
+.device-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.export-dropdown-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.btn-export-screen {
+  background: #116834;
+  color: #ffffff;
+  border: none;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 6px 0 0 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-export-screen:hover {
+  background: #0d5529;
+}
+
+.btn-export-screen.is-loading {
+  background: #64748b;
+  cursor: wait;
+}
+
+.btn-export-options {
+  background: #0d5529;
+  color: #ffffff;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 6px 6px;
+  border-radius: 0 6px 6px 0;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-export-options:hover {
+  background: #083c1c;
+}
+
+.export-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  min-width: 230px;
+  z-index: 500;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.export-dropdown-menu.is-open {
+  display: flex;
+  animation: dropdown-fade-in 0.15s ease;
+}
+
+@keyframes dropdown-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.export-dropdown-item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #334155;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.export-dropdown-item:hover {
+  background: #f0fdf4;
+  color: #116834;
 }
 
 /* Kolom Kanan: Review Panel */
