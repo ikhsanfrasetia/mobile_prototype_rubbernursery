@@ -795,7 +795,9 @@
 .feedback-card-desc {
   font-size: 0.88rem;
   color: #334155;
-  line-height: 1.4;
+  line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .feedback-card-footer {
@@ -937,20 +939,35 @@
   }
 }
 
-/* Mobile Smartphone (< 768px): Fullscreen Native App + Tab Switcher */
+/* Mobile Smartphone (< 768px): Fullscreen Native App + Tab Switcher Harmonis */
 @media (max-width: 767px) {
+  html, body {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    background: #ffffff;
+  }
+
   .mobile-workspace-nav {
     display: flex;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    height: 46px;
   }
 
   .workspace-layout {
     display: flex;
     flex-direction: column;
-    width: 100%;
-    height: 100dvh;
-    height: 100vh;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: calc(100dvh - 46px) !important;
+    height: calc(100vh - 46px) !important;
     overflow: hidden;
     background: #ffffff;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* Mode 1: Mobile Prototype Preview */
@@ -958,15 +975,15 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    height: calc(100dvh - 44px);
-    height: calc(100vh - 44px);
+    width: 100%;
+    height: 100%;
     padding: 0;
     background: #ffffff;
     overflow: hidden;
   }
 
   .workspace-layout.is-mobile-preview .workspace-review-column {
-    display: none;
+    display: none !important;
   }
 
   .workspace-layout.is-mobile-preview .device-toolbar-container {
@@ -974,58 +991,157 @@
     padding: 6px 12px;
     background: #f8fafc;
     border-bottom: 1px solid #e2e8f0;
+    box-sizing: border-box;
   }
 
   /* Mode 2: Mobile Catatan Review */
   .workspace-layout.is-mobile-review .workspace-preview-column {
-    display: none;
+    display: none !important;
   }
 
   .workspace-layout.is-mobile-review .workspace-review-column {
     display: flex;
     flex-direction: column;
     flex: 1;
-    height: calc(100dvh - 44px);
-    height: calc(100vh - 44px);
-    padding: 16px 12px calc(24px + var(--safe-bottom));
+    width: 100%;
+    height: 100%;
+    padding: 14px 14px calc(24px + var(--safe-bottom));
     background: #f8fafc;
     overflow-y: auto;
+    box-sizing: border-box;
   }
 
   .review-panel-head {
+    display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .review-title-group h2 {
+    font-size: 1.18rem;
+  }
+
+  .review-title-group p {
+    display: none;
   }
 
   .review-actions-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
     width: 100%;
   }
 
-  .btn-add-feedback,
-  .btn-toggle-review-mode {
-    flex: 1;
+  .btn-add-feedback {
+    grid-column: span 2;
+    width: 100%;
+    height: 42px;
+    font-size: 0.9rem;
+    font-weight: 700;
     justify-content: center;
+    border-radius: 8px;
+  }
+
+  .btn-toggle-all-markers,
+  .btn-toggle-review-mode {
+    width: 100%;
+    height: 38px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    justify-content: center;
+    text-align: center;
+    border-radius: 6px;
+    padding: 4px 6px;
   }
 
   .review-filter-bar {
+    display: flex;
     flex-direction: column;
-    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 14px;
   }
 
   .filter-search-wrap,
   .filter-select {
     width: 100%;
+    box-sizing: border-box;
+    height: 40px;
   }
 
-  /* Sembunyikan tabel desktop yang terlalu lebar pada mobile, tampilkan kartu mobile list */
+  .review-stats-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 14px;
+  }
+
+  .review-stats-summary > div:first-child {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+  }
+
+  .review-stats-summary > div:last-child {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .review-stats-summary > div:last-child button {
+    width: 100%;
+    height: 36px;
+    justify-content: center;
+    font-size: 0.8rem;
+  }
+
+  /* Sembunyikan tabel desktop pada mobile */
   .review-table-container {
-    display: none;
+    display: none !important;
   }
 
+  /* List Card Mobile Harmonis */
   .review-mobile-list {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    width: 100%;
+  }
+
+  .feedback-card-item {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  .feedback-card-desc {
+    font-size: 0.86rem;
+    line-height: 1.5;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    color: #334155;
+  }
+
+  .feedback-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid #f1f5f9;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 }

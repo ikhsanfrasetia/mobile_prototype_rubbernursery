@@ -79,7 +79,7 @@ function generateEmailHTML(note) {
               <table width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td>
-                    <div style="font-size: 11px; font-weight: 700; letter-spacing: 1.2px; color: #bbf7d0; text-transform: uppercase;">PT. IndoWebhost Kreasi - Proyek SIGMA Rubber Nursery</div>
+                    <div style="font-size: 11px; font-weight: 800; letter-spacing: 1.2px; color: #000000; text-transform: uppercase;">PT. IndoWebhost Kreasi - Proyek SIGMA Rubber Nursery</div>
                     <div style="font-size: 20px; font-weight: 800; color: #ffffff; margin-top: 4px;">🌿 Catatan Perbaikan Baru #${String(note.number).padStart(2, '0')}</div>
                   </td>
                   <td align="right" style="vertical-align: middle;">
@@ -257,7 +257,7 @@ function generateStatusUpdateHTML(note, oldStatus, newStatus) {
               <table width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td>
-                    <div style="font-size: 11px; font-weight: 700; letter-spacing: 1.2px; color: #bbf7d0; text-transform: uppercase;">PT. IndoWebhost Kreasi - Proyek SIGMA Rubber Nursery</div>
+                    <div style="font-size: 11px; font-weight: 800; letter-spacing: 1.2px; color: #000000; text-transform: uppercase;">PT. IndoWebhost Kreasi - Proyek SIGMA Rubber Nursery</div>
                     <div style="font-size: 20px; font-weight: 800; color: #ffffff; margin-top: 4px;">🔄 Status Catatan #${String(note.number).padStart(2, '0')} Diperbarui</div>
                   </td>
                 </tr>
