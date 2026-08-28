@@ -1,14 +1,17 @@
 /**
  * modules/review/review-workspace.js — Prototype Review & Catatan Perbaikan Workspace.
- * Mengelola feedback, marker layer responsif (persentase relatif), filter, dan CRUD status.
+ * Mengelola feedback dinamis ke Database Server (REST API /api/notes),
+ * notifikasi email otomatis, marker layer responsif, filter, dan CRUD status.
  */
 
 import { getCurrent } from '../../core/router.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { esc } from '../../core/utils.js';
+import { session } from '../../core/session.js';
 
 const STORAGE_KEY = 'sigma_feedback_notes';
+const API_URL = '/api/notes';
 
 const INITIAL_NOTES = [
   {
@@ -17,6 +20,7 @@ const INITIAL_NOTES = [
     createdAt: '26/08/2026',
     author: 'Budi Santoso',
     creatorRole: 'Customer / User Field',
+    email: 'budi.santoso@example.com',
     page: '/login',
     pageTitle: 'Login',
     description: 'Logo PT SOCFINDO dan tombol masuk proporsinya sudah bagus.',
@@ -29,6 +33,7 @@ const INITIAL_NOTES = [
     createdAt: '26/08/2026',
     author: 'Ahmad Rivai',
     creatorRole: 'Asisten Lapangan',
+    email: 'ahmad.rivai@example.com',
     page: '/sync',
     pageTitle: 'Sinkronisasi',
     description: 'Pilihan divisi kerja dan indikator centang sudah rapi.',
@@ -41,6 +46,7 @@ const INITIAL_NOTES = [
     createdAt: '26/08/2026',
     author: 'Wagiman',
     creatorRole: 'Mandor Semprot',
+    email: 'wagiman@example.com',
     page: '/home',
     pageTitle: 'Beranda',
     description: 'Menu 3x3 Beranda mudah diakses dan teks tidak terpotong.',
@@ -56,36 +62,57 @@ let selectedNoteId = null;
 let searchQuery = '';
 let filterStatus = 'ALL';
 let filterPage = 'ALL';
+let isServerConnected = false;
 
-function loadNotes() {
+/** Memuat data catatan dari API Server (dengan fallback LocalStorage) */
+async function loadNotes() {
+  try {
+    const res = await fetch(API_URL, { headers: { 'Accept': 'application/json' } });
+    if (res.ok) {
+      const result = await res.json();
+      if (result.success && Array.isArray(result.data)) {
+        notes = result.data;
+        isServerConnected = true;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+        renderReviewPanel();
+        updateMarkers();
+        return;
+      }
+    }
+  } catch (err) {
+    console.warn('[review] Gagal koneksi ke server API, beralih ke penyimpanan lokal:', err);
+    isServerConnected = false;
+  }
+
+  // Fallback ke LocalStorage bila server offline
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       notes = JSON.parse(raw);
     } else {
       notes = [...INITIAL_NOTES];
-      saveNotes();
+      saveNotesLocally();
     }
   } catch (err) {
-    console.warn('[review] failed to load notes:', err);
     notes = [...INITIAL_NOTES];
   }
+  renderReviewPanel();
+  updateMarkers();
 }
 
-function saveNotes() {
+/** Menyimpan catatan lokal sebagai cache */
+function saveNotesLocally() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
   } catch (err) {
-    console.warn('[review] failed to save notes:', err);
+    console.warn('[review] failed to save notes locally:', err);
   }
 }
 
 /** Inisialisasi Review Workspace */
 export function initReviewWorkspace() {
   loadNotes();
-  renderReviewPanel();
   setupMarkerLayer();
-  updateMarkers();
 
   // Dengarkan perubahan hash route agar marker dan filter tersinkron
   window.addEventListener('hashchange', () => {
@@ -188,6 +215,7 @@ export function renderReviewPanel() {
       n.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       n.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (n.creatorRole && n.creatorRole.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (n.email && n.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
       String(n.number).includes(searchQuery);
 
     const matchStatus = filterStatus === 'ALL' || n.status === filterStatus;
@@ -200,13 +228,16 @@ export function renderReviewPanel() {
   const countProses = notes.filter((n) => n.status === 'Dalam Proses').length;
   const countSelesai = notes.filter((n) => n.status === 'Selesai').length;
 
-  const currentRoute = (getCurrent().route || '/login').split('?')[0];
-
   container.innerHTML = `
     <div class="review-panel-head">
       <div class="review-title-group">
-        <h2>Catatan Perbaikan</h2>
-        <p>Prototype Review & Quality Assurance Panel</p>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h2>Catatan Perbaikan</h2>
+          <span class="server-status-pill ${isServerConnected ? 'online' : 'offline'}" title="${isServerConnected ? 'Tersambung ke Server Database & Email' : 'Berjalan dalam mode offline lokal'}">
+            ${isServerConnected ? '🟢 Database Server Online' : '🟡 Mode Offline (Lokal)'}
+          </span>
+        </div>
+        <p>Prototype Review & Quality Assurance Panel &bull; Otomatis Notifikasi Email</p>
       </div>
       <div class="review-actions-group">
         <button class="btn-toggle-all-markers ${isAllMarkersHidden ? 'is-hidden-mode' : ''}" id="btn-toggle-all-markers" type="button" title="Sembunyikan / Tampilkan Semua Pin Marker">
@@ -224,7 +255,7 @@ export function renderReviewPanel() {
     <div class="review-filter-bar">
       <div class="filter-search-wrap">
         <span class="filter-search-icon">🔍</span>
-        <input class="filter-search-input" id="review-search" type="text" placeholder="Cari catatan / pembuat..." value="${esc(searchQuery)}" />
+        <input class="filter-search-input" id="review-search" type="text" placeholder="Cari catatan, pembuat, email..." value="${esc(searchQuery)}" />
       </div>
       <select class="filter-select" id="review-filter-status">
         <option value="ALL" ${filterStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
@@ -238,14 +269,27 @@ export function renderReviewPanel() {
         <option value="/splash" ${filterPage === '/splash' ? 'selected' : ''}>Halaman: Splash</option>
         <option value="/sync" ${filterPage === '/sync' ? 'selected' : ''}>Halaman: Sinkronisasi</option>
         <option value="/home" ${filterPage === '/home' ? 'selected' : ''}>Halaman: Beranda</option>
+        <option value="/attendance" ${filterPage === '/attendance' ? 'selected' : ''}>Halaman: Absensi</option>
+        <option value="/reception" ${filterPage === '/reception' ? 'selected' : ''}>Halaman: Penerimaan Benih</option>
+        <option value="/seeding" ${filterPage === '/seeding' ? 'selected' : ''}>Halaman: Penanaman</option>
       </select>
     </div>
 
-    <div class="review-stats-summary">
-      <span>Total: <strong>${notes.length} Catatan</strong></span>
-      <span class="stat-pill baru">Baru: ${countBaru}</span>
-      <span class="stat-pill proses">Proses: ${countProses}</span>
-      <span class="stat-pill selesai">Selesai: ${countSelesai}</span>
+    <div class="review-stats-summary" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div>
+        <span>Total: <strong>${notes.length} Catatan</strong></span>
+        <span class="stat-pill baru">Baru: ${countBaru}</span>
+        <span class="stat-pill proses">Proses: ${countProses}</span>
+        <span class="stat-pill selesai">Selesai: ${countSelesai}</span>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-refresh-notes" id="btn-refresh-notes" type="button" title="Muat ulang data dari database server" style="background:#f1f5f9; border:1px solid #cbd5e1; padding:4px 10px; border-radius:6px; font-size:0.8rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+          🔄 Refresh Data
+        </button>
+        <button class="btn-test-email-trigger" id="btn-test-email-trigger" type="button" title="Kirim email uji coba ke admin" style="background:#f0fdf4; border:1px solid #86efac; color:#15803d; padding:4px 10px; border-radius:6px; font-size:0.8rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+          ✉️ Tes Email
+        </button>
+      </div>
     </div>
 
     <!-- Desktop & Tablet Table (Horizontal scroll container) -->
@@ -274,9 +318,12 @@ export function renderReviewPanel() {
             <tr class="${selectedNoteId === n.id ? 'is-selected' : ''}" data-id="${n.id}">
               <td style="font-weight:800; color:#116834;">#${String(n.number).padStart(2, '0')}</td>
               <td style="white-space:nowrap;">${esc(n.createdAt)}</td>
-              <td style="font-weight:700; color:#111;">${esc(n.author)}</td>
+              <td>
+                <div style="font-weight:700; color:#111;">${esc(n.author)}</div>
+                ${n.email ? `<div style="font-size:0.75rem; color:#64748b;">${esc(n.email)}</div>` : ''}
+              </td>
               <td><span class="badge" style="background:#f1f5f9; color:#334155; font-size:0.75rem;">${esc(n.pageTitle || n.page || '-')}</span></td>
-              <td style="max-width:280px;">${esc(n.description)}</td>
+              <td style="max-width:280px; word-break:break-word;">${esc(n.description)}</td>
               <td>
                 <span class="table-status-badge ${
                   n.status === 'Dalam Proses' ? 'status-proses' : n.status === 'Selesai' ? 'status-selesai' : 'status-baru'
@@ -320,7 +367,7 @@ export function renderReviewPanel() {
             }">${esc(n.status)}</span>
           </div>
           <div class="feedback-card-date">📅 ${esc(n.createdAt)} &bull; ${esc(n.pageTitle || n.page || '-')}</div>
-          <div class="feedback-card-author">👤 ${esc(n.author)}</div>
+          <div class="feedback-card-author">👤 ${esc(n.author)} ${n.email ? `<span style="font-size:0.75rem; color:#64748b;">(${esc(n.email)})</span>` : ''}</div>
           <div class="feedback-card-desc">${esc(n.description)}</div>
           <div class="feedback-card-footer">
             <span>Dibuat Oleh: <strong>${esc(n.creatorRole || 'Customer')}</strong></span>
@@ -359,6 +406,33 @@ export function renderReviewPanel() {
   const btnAdd = container.querySelector('#btn-add-feedback');
   btnAdd?.addEventListener('click', () => {
     openAddFeedbackModal();
+  });
+
+  const btnRefresh = container.querySelector('#btn-refresh-notes');
+  btnRefresh?.addEventListener('click', async () => {
+    toast('Memperbarui data dari server...', 'info');
+    await loadNotes();
+    toast('Data catatan berhasil diperbarui!', 'success');
+  });
+
+  const btnTestEmail = container.querySelector('#btn-test-email-trigger');
+  btnTestEmail?.addEventListener('click', async () => {
+    try {
+      toast('Mengirimkan email uji coba...', 'info');
+      const res = await fetch('/api/notes/test-email', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        if (data.result?.simulated) {
+          toast('Email simulasi berhasil diproses di server (Cek log server)', 'info');
+        } else {
+          toast(`Email uji coba berhasil dikirim ke: ${data.result?.recipient || 'Admin'}`, 'success');
+        }
+      } else {
+        toast('Gagal mengirim email: ' + (data.error || 'Server error'), 'danger');
+      }
+    } catch (e) {
+      toast('Server tidak merespons pengujian email', 'danger');
+    }
   });
 
   const searchInput = container.querySelector('#review-search');
@@ -401,16 +475,28 @@ export function renderReviewPanel() {
 
   // Toggle single marker visibility
   container.querySelectorAll('.btn-toggle-marker-visibility').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const id = btn.dataset.id;
       const note = notes.find((n) => n.id === id);
       if (!note) return;
+      
       note.hidden = !note.hidden;
-      saveNotes();
-      toast(`Pin #${note.number} ${note.hidden ? 'disembunyikan' : 'ditampilkan'} di layar`, 'info');
+      saveNotesLocally();
       updateMarkers();
       renderReviewPanel();
+
+      // Sync ke backend bila online
+      try {
+        await fetch(`${API_URL}/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hidden: note.hidden })
+        });
+      } catch (err) {
+        // Safe offline ignore
+      }
+      toast(`Pin #${note.number} ${note.hidden ? 'disembunyikan' : 'ditampilkan'} di layar`, 'info');
     });
   });
 
@@ -453,9 +539,16 @@ export function renderReviewPanel() {
 
       const root = document.getElementById('modal-root');
       root.querySelector('[data-del-cancel]')?.addEventListener('click', closeModal);
-      root.querySelector('[data-del-confirm]')?.addEventListener('click', () => {
+      root.querySelector('[data-del-confirm]')?.addEventListener('click', async () => {
+        // Hapus dari server
+        try {
+          await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+        } catch (err) {
+          console.warn('[review] failed to delete on server, falling back to local deletion');
+        }
+
         notes = notes.filter((n) => n.id !== id);
-        saveNotes();
+        saveNotesLocally();
         closeModal();
         toast('Catatan berhasil dihapus', 'info');
         renderReviewPanel();
@@ -468,7 +561,9 @@ export function renderReviewPanel() {
 /** Modal Tambah Catatan */
 function openAddFeedbackModal(markerCoords = null) {
   const currentRoute = (getCurrent().route || '/login').split('?')[0];
-  const pageName = currentRoute === '/login' ? 'Login' : currentRoute === '/splash' ? 'Splash' : currentRoute === '/sync' ? 'Sinkronisasi' : 'Beranda';
+  const user = session.get() || {};
+  const defaultAuthor = user.name && user.name !== 'Mantri Tanaman' ? user.name : 'Pengunjung / User';
+  const defaultRole = user.role ? (user.role === 'MANTRI_TANAMAN' ? 'Mandor Semprot' : user.role) : 'Customer / User Field';
 
   const defaultCoords = markerCoords || { x: 50.0, y: 40.0 };
 
@@ -476,12 +571,16 @@ function openAddFeedbackModal(markerCoords = null) {
     title: 'Tambah Catatan Perbaikan',
     body: `
       <div class="feedback-form-row">
-        <label class="feedback-form-label">Nama Pembuat</label>
-        <input class="feedback-form-input" id="input-fb-author" type="text" placeholder="Masukkan nama Anda" value="Budi" />
+        <label class="feedback-form-label">Nama Pembuat <span style="color:#ef4444;">*</span></label>
+        <input class="feedback-form-input" id="input-fb-author" type="text" placeholder="Masukkan nama Anda" value="${esc(defaultAuthor)}" />
+      </div>
+      <div class="feedback-form-row">
+        <label class="feedback-form-label">Email Anda <span style="font-size:0.75rem; color:#64748b;">(opsional, untuk notifikasi balasan)</span></label>
+        <input class="feedback-form-input" id="input-fb-email" type="email" placeholder="nama@email.com" />
       </div>
       <div class="feedback-form-row">
         <label class="feedback-form-label">Peran / Kategori</label>
-        <input class="feedback-form-input" id="input-fb-role" type="text" placeholder="Contoh: Customer, Asisten, QA" value="Customer / Tim Review" />
+        <input class="feedback-form-input" id="input-fb-role" type="text" placeholder="Contoh: Customer, Asisten, QA" value="${esc(defaultRole)}" />
       </div>
       <div class="feedback-form-row">
         <label class="feedback-form-label">Halaman Terkait</label>
@@ -490,10 +589,13 @@ function openAddFeedbackModal(markerCoords = null) {
           <option value="/splash" ${currentRoute === '/splash' ? 'selected' : ''}>Splash</option>
           <option value="/sync" ${currentRoute === '/sync' ? 'selected' : ''}>Sinkronisasi</option>
           <option value="/home" ${currentRoute === '/home' ? 'selected' : ''}>Beranda</option>
+          <option value="/attendance" ${currentRoute.startsWith('/attendance') ? 'selected' : ''}>Absensi</option>
+          <option value="/reception" ${currentRoute.startsWith('/reception') ? 'selected' : ''}>Penerimaan Benih</option>
+          <option value="/seeding" ${currentRoute.startsWith('/seeding') ? 'selected' : ''}>Penanaman</option>
         </select>
       </div>
       <div class="feedback-form-row">
-        <label class="feedback-form-label">Deskripsi Catatan / Perbaikan</label>
+        <label class="feedback-form-label">Deskripsi Catatan / Perbaikan <span style="color:#ef4444;">*</span></label>
         <textarea class="feedback-form-textarea" id="input-fb-desc" placeholder="Tuliskan catatan perbaikan atau feedback secara detail..."></textarea>
       </div>
       <div class="feedback-form-row">
@@ -505,15 +607,16 @@ function openAddFeedbackModal(markerCoords = null) {
     `,
     footer: `
       <button class="btn btn-ghost" data-fb-cancel>Batal</button>
-      <button class="btn btn-primary" data-fb-save>Simpan Catatan</button>
+      <button class="btn btn-primary" data-fb-save id="btn-save-note-modal">Simpan & Kirim Notifikasi</button>
     `
   });
 
   const root = document.getElementById('modal-root');
   root.querySelector('[data-fb-cancel]')?.addEventListener('click', closeModal);
 
-  root.querySelector('[data-fb-save]')?.addEventListener('click', () => {
+  root.querySelector('#btn-save-note-modal')?.addEventListener('click', async () => {
     const author = root.querySelector('#input-fb-author')?.value.trim() || 'Reviewer';
+    const email = root.querySelector('#input-fb-email')?.value.trim() || '';
     const role = root.querySelector('#input-fb-role')?.value.trim() || 'Customer';
     const page = root.querySelector('#input-fb-page')?.value || currentRoute;
     const desc = root.querySelector('#input-fb-desc')?.value.trim();
@@ -524,15 +627,26 @@ function openAddFeedbackModal(markerCoords = null) {
       return;
     }
 
-    const now = new Date();
-    const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-    const pageTitle = page === '/login' ? 'Login' : page === '/splash' ? 'Splash' : page === '/sync' ? 'Sinkronisasi' : 'Beranda';
+    const saveBtn = root.querySelector('#btn-save-note-modal');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Menyimpan...';
+    }
 
-    const newNote = {
-      id: `FB-${Date.now()}`,
-      number: notes.length + 1,
-      createdAt: dateStr,
+    const pageTitleMap = {
+      '/login': 'Login',
+      '/splash': 'Splash',
+      '/sync': 'Sinkronisasi',
+      '/home': 'Beranda',
+      '/attendance': 'Absensi',
+      '/reception': 'Penerimaan Benih',
+      '/seeding': 'Penanaman'
+    };
+    const pageTitle = pageTitleMap[page] || 'Aplikasi';
+
+    const payload = {
       author,
+      email,
       creatorRole: role,
       page,
       pageTitle,
@@ -541,11 +655,58 @@ function openAddFeedbackModal(markerCoords = null) {
       marker: defaultCoords
     };
 
-    notes.unshift(newNote);
-    saveNotes();
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success && result.data) {
+          notes.unshift(result.data);
+          saveNotesLocally();
+          closeModal();
+          isReviewMode = false;
+          
+          if (result.emailStatus?.sent) {
+            toast('Catatan disimpan ke Database & notifikasi email terkirim!', 'success');
+          } else {
+            toast('Catatan berhasil disimpan ke Database Server!', 'success');
+          }
+
+          renderReviewPanel();
+          updateMarkers();
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[review] API POST gagal, menyimpan secara lokal:', err);
+    }
+
+    // Fallback Offline
+    const now = new Date();
+    const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    const fallbackNote = {
+      id: `FB-${Date.now()}`,
+      number: notes.length + 1,
+      createdAt: dateStr,
+      author,
+      email,
+      creatorRole: role,
+      page,
+      pageTitle,
+      description: desc,
+      status: 'Baru',
+      marker: defaultCoords
+    };
+
+    notes.unshift(fallbackNote);
+    saveNotesLocally();
     closeModal();
     isReviewMode = false;
-    toast('Catatan perbaikan berhasil disimpan!', 'success');
+    toast('Catatan tersimpan (mode offline).', 'success');
     renderReviewPanel();
     updateMarkers();
   });
@@ -560,11 +721,12 @@ function openFeedbackDetailModal(note) {
         <div><strong>Halaman:</strong> ${esc(note.pageTitle || note.page)}</div>
         <div><strong>Tanggal:</strong> ${esc(note.createdAt)}</div>
         <div><strong>Pembuat:</strong> ${esc(note.author)} (${esc(note.creatorRole || 'Customer')})</div>
+        ${note.email ? `<div><strong>Email:</strong> <a href="mailto:${esc(note.email)}" style="color:#116834;">${esc(note.email)}</a></div>` : ''}
         <div><strong>Status:</strong> <span class="table-status-badge ${
           note.status === 'Dalam Proses' ? 'status-proses' : note.status === 'Selesai' ? 'status-selesai' : 'status-baru'
         }">${esc(note.status)}</span></div>
         <div><strong>Deskripsi:</strong></div>
-        <div style="background:#f8fafc; padding:12px; border-radius:6px; border:1px solid #e2e8f0; line-height:1.45;">
+        <div style="background:#f8fafc; padding:12px; border-radius:6px; border:1px solid #e2e8f0; line-height:1.45; word-break:break-word;">
           ${esc(note.description)}
         </div>
         <div style="font-size:0.8rem; color:#64748b;">
@@ -609,12 +771,24 @@ function openChangeStatusModal(note) {
   const root = document.getElementById('modal-root');
   root.querySelector('[data-status-cancel]')?.addEventListener('click', closeModal);
 
-  root.querySelector('[data-status-save]')?.addEventListener('click', () => {
+  root.querySelector('[data-status-save]')?.addEventListener('click', async () => {
     const newStatus = root.querySelector('#select-change-status')?.value;
     if (newStatus) {
       note.status = newStatus;
-      saveNotes();
+      saveNotesLocally();
       closeModal();
+      
+      // Update di server
+      try {
+        await fetch(`${API_URL}/${note.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+      } catch (err) {
+        console.warn('[review] failed to update status on server:', err);
+      }
+
       toast(`Status catatan #${note.number} diperbarui menjadi ${newStatus}`, 'success');
       renderReviewPanel();
       updateMarkers();

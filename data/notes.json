@@ -1,0 +1,23 @@
+{
+  "notes": [
+    {
+      "id": "FB-007-MTCNW5DF",
+      "number": 7,
+      "createdAt": "28/08/2026",
+      "author": "test",
+      "creatorRole": "test",
+      "email": "iinparlina2404@gmail.com",
+      "page": "/login",
+      "pageTitle": "Login",
+      "description": "test",
+      "status": "Baru",
+      "marker": {
+        "x": 30.8,
+        "y": 44.3
+      },
+      "hidden": false,
+      "timestamp": "2026-08-28T08:00:23.091Z"
+    }
+  ],
+  "lastNumber": 7
+}
