@@ -297,15 +297,15 @@ export function renderReviewPanel() {
       <table class="review-table">
         <thead>
           <tr>
-            <th>No</th>
-            <th>Tanggal</th>
-            <th>Pembuat</th>
-            <th>Halaman</th>
-            <th>Deskripsi</th>
-            <th>Status</th>
-            <th>Dibuat Oleh</th>
-            <th style="text-align:center;">Marker</th>
-            <th style="text-align:center;">Aksi</th>
+            <th class="col-no">No</th>
+            <th class="col-date">Tanggal</th>
+            <th class="col-author">Pembuat</th>
+            <th class="col-page">Halaman</th>
+            <th class="col-desc">Deskripsi Catatan</th>
+            <th class="col-status">Status</th>
+            <th class="col-role">Dibuat Oleh</th>
+            <th class="col-marker">Marker</th>
+            <th class="col-actions">Aksi</th>
           </tr>
         </thead>
         <tbody>
@@ -316,26 +316,30 @@ export function renderReviewPanel() {
                   .map(
                     (n) => `
             <tr class="${selectedNoteId === n.id ? 'is-selected' : ''}" data-id="${n.id}">
-              <td style="font-weight:800; color:#116834;">#${String(n.number).padStart(2, '0')}</td>
-              <td style="white-space:nowrap;">${esc(n.createdAt)}</td>
-              <td>
-                <div style="font-weight:700; color:#111;">${esc(n.author)}</div>
-                ${n.email ? `<div style="font-size:0.75rem; color:#64748b;">${esc(n.email)}</div>` : ''}
+              <td class="col-no">#${String(n.number).padStart(2, '0')}</td>
+              <td class="col-date">${esc(n.createdAt)}</td>
+              <td class="col-author">
+                <div style="font-weight:700; color:#0f172a; margin-bottom:2px;">${esc(n.author)}</div>
+                ${n.email ? `<div style="font-size:0.75rem; color:#64748b; word-break:break-all;">✉️ ${esc(n.email)}</div>` : ''}
               </td>
-              <td><span class="badge" style="background:#f1f5f9; color:#334155; font-size:0.75rem;">${esc(n.pageTitle || n.page || '-')}</span></td>
-              <td style="max-width:280px; word-break:break-word;">${esc(n.description)}</td>
-              <td>
+              <td class="col-page">
+                <span class="badge" style="background:#f1f5f9; border:1px solid #e2e8f0; color:#334155; font-size:0.75rem; padding:3px 8px; border-radius:4px; font-weight:600; white-space:nowrap;">
+                  ${esc(n.pageTitle || n.page || '-')}
+                </span>
+              </td>
+              <td class="col-desc">${esc(n.description)}</td>
+              <td class="col-status">
                 <span class="table-status-badge ${
                   n.status === 'Dalam Proses' ? 'status-proses' : n.status === 'Selesai' ? 'status-selesai' : 'status-baru'
                 }">${esc(n.status)}</span>
               </td>
-              <td style="color:#64748b; font-size:0.82rem;">${esc(n.creatorRole || 'Customer')}</td>
-              <td style="text-align:center;">
+              <td class="col-role">${esc(n.creatorRole || 'Customer')}</td>
+              <td class="col-marker">
                 <button class="btn-table-action btn-toggle-marker-visibility ${n.hidden ? 'is-hidden' : ''}" data-id="${n.id}" type="button" title="${n.hidden ? 'Tampilkan Pin Marker di Layar' : 'Sembunyikan Pin Marker dari Layar'}">
                   ${n.hidden ? '🙈 Sembunyi' : '👁️ Tampil'}
                 </button>
               </td>
-              <td style="text-align:center;">
+              <td class="col-actions">
                 <div class="table-action-btns">
                   <button class="btn-table-action btn-view-pin" data-id="${n.id}" type="button" title="Lihat Pin">📍 Pin</button>
                   <button class="btn-table-action btn-edit-status" data-id="${n.id}" type="button" title="Ubah Status">✏️ Status</button>
@@ -774,22 +778,40 @@ function openChangeStatusModal(note) {
   root.querySelector('[data-status-save]')?.addEventListener('click', async () => {
     const newStatus = root.querySelector('#select-change-status')?.value;
     if (newStatus) {
+      const saveBtn = root.querySelector('[data-status-save]');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Menyimpan...';
+      }
+
       note.status = newStatus;
       saveNotesLocally();
       closeModal();
       
+      let emailNotified = false;
       // Update di server
       try {
-        await fetch(`${API_URL}/${note.id}`, {
+        const res = await fetch(`${API_URL}/${note.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus })
         });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.emailStatus?.sent) {
+            emailNotified = true;
+          }
+        }
       } catch (err) {
         console.warn('[review] failed to update status on server:', err);
       }
 
-      toast(`Status catatan #${note.number} diperbarui menjadi ${newStatus}`, 'success');
+      if (emailNotified) {
+        toast(`Status #${note.number} diubah ke ${newStatus} & email notifikasi terkirim!`, 'success');
+      } else {
+        toast(`Status catatan #${note.number} diperbarui menjadi ${newStatus}`, 'success');
+      }
+
       renderReviewPanel();
       updateMarkers();
     }

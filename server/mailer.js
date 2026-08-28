@@ -220,6 +220,196 @@ export async function sendNewNoteNotification(note) {
 }
 
 /**
+ * Format HTML template email pembaruan status
+ */
+function generateStatusUpdateHTML(note, oldStatus, newStatus) {
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'admin@socfindo.co.id';
+  const siteUrl = process.env.APP_URL || 'http://localhost:3000';
+  const authorEmail = note.email ? `<a href="mailto:${note.email}" style="color:#116834; text-decoration:none;">${note.email}</a>` : '<span style="color:#94a3b8;">Tidak dicantumkan</span>';
+
+  const getStatusColor = (st) => {
+    if (st === 'Selesai') return { bg: '#dcfce7', text: '#15803d', border: '#86efac' };
+    if (st === 'Dalam Proses') return { bg: '#fef3c7', text: '#b45309', border: '#fde68a' };
+    return { bg: '#fee2e2', text: '#b91c1c', border: '#fca5a5' };
+  };
+
+  const oldC = getStatusColor(oldStatus);
+  const newC = getStatusColor(newStatus);
+
+  return `
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pembaruan Status Catatan — SIGMA Rubber Nursery</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; color: #1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f1f5f9; padding: 30px 15px;">
+    <tr>
+      <td align="center">
+        <!-- Main Card -->
+        <table role="presentation" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;" cellspacing="0" cellpadding="0">
+          
+          <!-- Header Banner -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #116834 0%, #15803d 100%); padding: 24px 30px; text-align: left;">
+              <table width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td>
+                    <div style="font-size: 11px; font-weight: 700; letter-spacing: 1.2px; color: #bbf7d0; text-transform: uppercase;">PT. IndoWebhost Kreasi - Proyek SIGMA Rubber Nursery</div>
+                    <div style="font-size: 20px; font-weight: 800; color: #ffffff; margin-top: 4px;">🔄 Status Catatan #${String(note.number).padStart(2, '0')} Diperbarui</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body Content -->
+          <tr>
+            <td style="padding: 28px 30px;">
+              <p style="margin: 0 0 16px 0; font-size: 15px; color: #334155; line-height: 1.5;">
+                Halo Tim & Pembuat Catatan,
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; color: #475569; line-height: 1.6;">
+                Status catatan perbaikan pada prototype aplikasi <strong>SIGMA Rubber Nursery</strong> telah diperbarui:
+              </p>
+
+              <!-- Status Change Highlight Box -->
+              <div style="text-align: center; margin-bottom: 22px; padding: 18px; background-color: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0;">
+                <div style="font-size: 11px; color: #64748b; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;">PERUBAHAN STATUS PERBAIKAN:</div>
+                <table role="presentation" align="center" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td>
+                      <span style="display: inline-block; background-color: ${oldC.bg}; color: ${oldC.text}; border: 1px solid ${oldC.border}; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 700;">
+                        ${oldStatus || 'Baru'}
+                      </span>
+                    </td>
+                    <td style="padding: 0 12px; font-size: 18px; color: #94a3b8; font-weight: bold;">
+                      &rarr;
+                    </td>
+                    <td>
+                      <span style="display: inline-block; background-color: ${newC.bg}; color: ${newC.text}; border: 1px solid ${newC.border}; padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: 800; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                        ${newStatus}
+                      </span>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- Meta Box -->
+              <table role="presentation" width="100%" style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 22px;" cellspacing="0" cellpadding="12">
+                <tr>
+                  <td width="35%" style="font-size: 13px; color: #64748b; font-weight: 600; border-bottom: 1px solid #edf2f7;">👤 Pembuat</td>
+                  <td style="font-size: 13px; color: #0f172a; font-weight: 700; border-bottom: 1px solid #edf2f7;">${note.author || '-'} <span style="font-weight: 400; color: #64748b;">(${note.creatorRole || 'Customer'})</span></td>
+                </tr>
+                <tr>
+                  <td style="font-size: 13px; color: #64748b; font-weight: 600; border-bottom: 1px solid #edf2f7;">📱 Halaman</td>
+                  <td style="font-size: 13px; color: #0f172a; font-weight: 700; border-bottom: 1px solid #edf2f7;"><span style="background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${note.pageTitle || note.page}</span></td>
+                </tr>
+                <tr>
+                  <td style="font-size: 13px; color: #64748b; font-weight: 600; border-bottom: 1px solid #edf2f7;">📅 Waktu Pembaruan</td>
+                  <td style="font-size: 13px; color: #0f172a; border-bottom: 1px solid #edf2f7;">${new Date().toLocaleDateString('id-ID')} - ${new Date().toLocaleTimeString('id-ID')}</td>
+                </tr>
+              </table>
+
+              <!-- Description Box -->
+              <div style="margin-bottom: 24px;">
+                <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">📝 Isi Catatan Terkait:</div>
+                <div style="background-color: #f8fafc; border-left: 4px solid #116834; padding: 14px 16px; border-radius: 0 8px 8px 0; font-size: 14px; color: #334155; line-height: 1.6;">
+                  "${note.description}"
+                </div>
+              </div>
+
+              <!-- Action Button -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top: 26px; text-align: center;">
+                <tr>
+                  <td align="center">
+                    <a href="${siteUrl}/#${note.page || '/home'}" target="_blank" style="display: inline-block; background-color: #116834; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 700; box-shadow: 0 2px 6px rgba(17,104,52,0.3);">
+                      Buka Aplikasi SIGMA Rubber Nursery &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 18px 30px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+              Email otomatis dari <strong>SIGMA Rubber Nursery Prototype</strong> &bull; PT. IndoWebhost Kreasi<br>
+              Notifikasi dikirim ke: <span style="color:#64748b;">${adminEmail}</span>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
+/**
+ * Mengirim notifikasi email pembaruan status catatan
+ */
+export async function sendStatusUpdateNotification(note, oldStatus, newStatus) {
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER;
+  const fromEmail = process.env.MAIL_FROM || `"SIGMA Rubber Nursery System" <${process.env.SMTP_USER || 'noreply@sigmanursery.com'}>`;
+  const subject = `[SIGMA Rubber Nursery] Status Catatan #${String(note.number).padStart(2, '0')} Diperbarui: ${newStatus} (${note.pageTitle || note.page})`;
+
+  // Kumpulkan daftar penerima: admin + pembuat catatan (jika mencantumkan email)
+  const recipients = [adminEmail].filter(Boolean);
+  if (note.email && note.email.includes('@') && !recipients.includes(note.email)) {
+    recipients.push(note.email);
+  }
+
+  if (!isConfigured() || !adminEmail) {
+    console.log('\n========================================================');
+    console.log('📧 [SIMULASI EMAIL PEMBARUAN STATUS CATATAN]');
+    console.log('--------------------------------------------------------');
+    console.log(`Kepada     : ${recipients.join(', ')}`);
+    console.log(`Subjek     : ${subject}`);
+    console.log(`Catatan    : #${note.number} (${note.author})`);
+    console.log(`Perubahan  : ${oldStatus} ➔ ${newStatus}`);
+    console.log('========================================================\n');
+
+    return {
+      sent: false,
+      simulated: true,
+      message: 'SMTP belum dikonfigurasi. Notifikasi email status disimulasikan.',
+      previewSubject: subject
+    };
+  }
+
+  const transporter = getTransporter();
+  try {
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: recipients.join(', '),
+      subject: subject,
+      html: generateStatusUpdateHTML(note, oldStatus, newStatus)
+    });
+
+    console.log(`[Mailer] Notifikasi pembaruan status (${oldStatus} -> ${newStatus}) berhasil dikirim ke ${recipients.join(', ')}. MessageID: ${info.messageId}`);
+    return {
+      sent: true,
+      simulated: false,
+      messageId: info.messageId,
+      recipients
+    };
+  } catch (err) {
+    console.error('[Mailer] Gagal mengirim email pembaruan status:', err);
+    return {
+      sent: false,
+      simulated: false,
+      error: err.message
+    };
+  }
+}
+
+/**
  * Menguji koneksi dan mengirim email percobaan
  */
 export async function sendTestEmail(targetEmail) {

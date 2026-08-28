@@ -18,7 +18,7 @@ import {
   deleteNote,
   getStats
 } from './server/db.js';
-import { sendNewNoteNotification, sendTestEmail } from './server/mailer.js';
+import { sendNewNoteNotification, sendStatusUpdateNotification, sendTestEmail } from './server/mailer.js';
 
 dotenv.config();
 
@@ -134,17 +134,37 @@ app.post('/api/notes', async (req, res) => {
 /**
  * PATCH /api/notes/:id — Memperbarui status atau data catatan
  */
-app.patch('/api/notes/:id', (req, res) => {
+app.patch('/api/notes/:id', async (req, res) => {
   try {
-    const updated = updateNote(req.params.id, req.body);
-    if (!updated) {
+    const currentNote = getNoteById(req.params.id);
+    if (!currentNote) {
       return res.status(404).json({ success: false, error: 'Catatan tidak ditemukan' });
     }
-    console.log(`[API] Catatan #${updated.number} diperbarui (Status: ${updated.status})`);
+
+    const oldStatus = currentNote.status;
+    const isStatusChanged = req.body.status && req.body.status !== oldStatus;
+
+    const updated = updateNote(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Gagal memperbarui catatan' });
+    }
+
+    let emailResult = null;
+    if (isStatusChanged) {
+      console.log(`[API] Status Catatan #${updated.number} berubah: ${oldStatus} -> ${updated.status}`);
+      try {
+        emailResult = await sendStatusUpdateNotification(updated, oldStatus, updated.status);
+      } catch (mailErr) {
+        console.warn('[API] Peringatan: Gagal mengirim email pembaruan status:', mailErr);
+        emailResult = { sent: false, error: mailErr.message };
+      }
+    }
+
     res.json({
       success: true,
       message: 'Catatan berhasil diperbarui',
-      data: updated
+      data: updated,
+      emailStatus: emailResult
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

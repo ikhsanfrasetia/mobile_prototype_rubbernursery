@@ -387,30 +387,50 @@
 .stat-pill.selesai { background: #dcfce7; color: #15803d; }
 
 /* ---------- Table Responsive (Desktop & Tablet) ---------- */
+/* ---------- Table Responsive (Desktop & Tablet) ---------- */
 .review-table-container {
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   background: #ffffff;
   margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.review-table-container::-webkit-scrollbar {
+  height: 7px;
+}
+.review-table-container::-webkit-scrollbar-track {
+  background: #f8fafc;
+  border-radius: 4px;
+}
+.review-table-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.review-table-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .review-table {
   width: 100%;
+  min-width: 980px;
   border-collapse: collapse;
   text-align: left;
-  font-size: 0.88rem;
-  min-width: 650px;
+  font-size: 0.86rem;
 }
 
 .review-table th {
   background: #f8fafc;
   padding: 12px 14px;
+  font-size: 0.78rem;
   font-weight: 700;
-  color: var(--text);
-  border-bottom: 1px solid var(--border);
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 2px solid #e2e8f0;
   white-space: nowrap;
 }
 
@@ -419,6 +439,61 @@
   border-bottom: 1px solid #f1f5f9;
   color: #334155;
   vertical-align: middle;
+}
+
+/* Kolom Spesifik untuk Harmonisasi Lebar */
+.review-table .col-no {
+  width: 55px;
+  text-align: center;
+  font-weight: 800;
+  color: #116834;
+}
+
+.review-table .col-date {
+  width: 95px;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.review-table .col-author {
+  width: 160px;
+  min-width: 140px;
+}
+
+.review-table .col-page {
+  width: 120px;
+  min-width: 110px;
+}
+
+.review-table .col-desc {
+  min-width: 260px;
+  max-width: 380px;
+  line-height: 1.55;
+  color: #1e293b;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.review-table .col-status {
+  width: 110px;
+  text-align: center;
+}
+
+.review-table .col-role {
+  width: 125px;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.review-table .col-marker {
+  width: 95px;
+  text-align: center;
+}
+
+.review-table .col-actions {
+  width: 145px;
+  text-align: center;
 }
 
 .review-table tbody tr {
@@ -437,12 +512,14 @@
 .table-status-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 0.76rem;
+  border-radius: 20px;
+  font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   border: 1px solid transparent;
+  white-space: nowrap;
 }
 
 .table-status-badge.status-baru {
@@ -464,20 +541,25 @@
 }
 
 .table-action-btns {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .btn-table-action {
-  padding: 4px 8px;
+  padding: 5px 9px;
   font-size: 0.78rem;
   font-weight: 600;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
   background: #ffffff;
   color: #475569;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   transition: all 0.15s ease;
 }
 
@@ -494,7 +576,7 @@
 }
 
 .btn-toggle-marker-visibility {
-  min-width: 78px;
+  min-width: 80px;
   justify-content: center;
 }
 
