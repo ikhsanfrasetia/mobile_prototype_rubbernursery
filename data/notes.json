@@ -1,6 +1,24 @@
 {
   "notes": [
     {
+      "id": "FB-010-MTCTQBNN",
+      "number": 10,
+      "createdAt": "28/08/2026",
+      "author": "Pengujian Sistem",
+      "creatorRole": "Admin",
+      "email": "ichsanprastia@gmail.com",
+      "page": "/home",
+      "pageTitle": "Beranda",
+      "description": "Uji kirim notifikasi email terbaru setelah perubahan warna teks",
+      "status": "Baru",
+      "marker": {
+        "x": 50,
+        "y": 50
+      },
+      "hidden": false,
+      "timestamp": "2026-08-28T10:43:48.995Z"
+    },
+    {
       "id": "FB-009-MTCOIBWM",
       "number": 9,
       "createdAt": "28/08/2026",
@@ -58,5 +76,5 @@
       "updatedAt": "2026-08-28T08:28:43.818Z"
     }
   ],
-  "lastNumber": 9
+  "lastNumber": 10
 }
