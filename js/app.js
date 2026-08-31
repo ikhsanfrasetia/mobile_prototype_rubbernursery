@@ -4,7 +4,7 @@
  * Alur: Login → Splash → Sinkronisasi.
  */
 
-import { registerRoute, initRouter, navigate } from './core/router.js';
+import { registerRoute, initRouter, navigate, setNotFound } from './core/router.js';
 import { renderLogin } from './modules/auth/login.js';
 import { renderSplash } from './modules/auth/splash.js';
 import { renderSync } from './modules/auth/sync.js';
@@ -22,6 +22,7 @@ import { renderReceiptCamera } from './modules/receipt/receipt-camera.js';
 import { renderReceiptSummary } from './modules/receipt/receipt-summary.js';
 import { renderSeedingLanding } from './modules/seeding/seeding-landing.js';
 import { renderSeedingForm } from './modules/seeding/seeding-form.js';
+import { renderAnalysisPlaceholder } from './modules/placeholder/analysis-placeholder.js';
 import { seedDatabase } from './db/seed.js';
 import { initExportScreenToolbar } from './core/export-screen.js';
 
@@ -52,6 +53,18 @@ registerRoute('/reception/benih/camera', renderReceiptCamera);
 registerRoute('/reception/summary', renderReceiptSummary);
 registerRoute('/seeding', renderSeedingLanding);
 registerRoute('/seeding/form', renderSeedingForm);
+
+/* Modul dalam tahap analisis */
+registerRoute('/budding', renderAnalysisPlaceholder);
+registerRoute('/inspection', renderAnalysisPlaceholder);
+registerRoute('/selection', renderAnalysisPlaceholder);
+registerRoute('/material', renderAnalysisPlaceholder);
+registerRoute('/nursery-activity', renderAnalysisPlaceholder);
+registerRoute('/request', renderAnalysisPlaceholder);
+registerRoute('/entres', renderAnalysisPlaceholder);
+
+/* Fallback Not Found */
+setNotFound(renderAnalysisPlaceholder);
 
 /* ---- Bootstrap ---- */
 window.addEventListener('DOMContentLoaded', async () => {
