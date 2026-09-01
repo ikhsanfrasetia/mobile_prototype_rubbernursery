@@ -63,7 +63,7 @@ export async function renderLogin() {
         </div>
         <div class="status-group">
           <span class="status-label">Status</span>
-          <span class="status-badge ${vpnOn ? 'is-connected' : 'is-disconnected'}" id="conn-status">${vpnOn ? 'Connected' : 'Disconected'}</span>
+          <span class="status-badge ${vpnOn ? 'is-connected' : 'is-disconnected'}" id="conn-status">${vpnOn ? 'Connected' : 'Disconnected'}</span>
         </div>
       </div>
 
@@ -106,6 +106,9 @@ export async function renderLogin() {
   const vpnToggle = app.querySelector('#vpn-toggle');
   const connStatus = app.querySelector('#conn-status');
 
+  const showError = (msg) => { errorEl.textContent = msg; errorEl.hidden = false; };
+  const clearError = () => { errorEl.hidden = true; };
+
   // VPN toggle (simulasi, tanpa koneksi nyata).
   const applyVpn = (on) => {
     storage.set(VPN_KEY, on);
@@ -113,7 +116,8 @@ export async function renderLogin() {
     vpnToggle.setAttribute('aria-pressed', String(on));
     connStatus.classList.toggle('is-connected', on);
     connStatus.classList.toggle('is-disconnected', !on);
-    connStatus.textContent = on ? 'Connected' : 'Disconected';
+    connStatus.textContent = on ? 'Connected' : 'Disconnected';
+    if (on) clearError();
   };
   vpnToggle.addEventListener('click', () => applyVpn(!storage.get(VPN_KEY, false)));
 
@@ -125,11 +129,14 @@ export async function renderLogin() {
     pwdToggle.setAttribute('aria-label', show ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi');
   });
 
-  const showError = (msg) => { errorEl.textContent = msg; errorEl.hidden = false; };
-  const clearError = () => { errorEl.hidden = true; };
-
   const doLogin = () => {
     clearError();
+    const isVpnConnected = storage.get(VPN_KEY, false) === true;
+    if (!isVpnConnected) {
+      showError('VPN wajib diaktifkan (Status: Connected) agar dapat login ke sistem SIGMA.');
+      return;
+    }
+
     const username = userInput.value.trim();
     const password = pwdInput.value;
     if (!username) { showError('Nama akun wajib diisi.'); userInput.focus(); return; }
@@ -147,10 +154,10 @@ export async function renderLogin() {
   pwdInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
 
   // Role Switch User (demo).
-  app.querySelector('#role-switch-trigger').addEventListener('click', () => openRolePicker(users));
+  app.querySelector('#role-switch-trigger').addEventListener('click', () => openRolePicker(users, showError));
 }
 
-function openRolePicker(users) {
+function openRolePicker(users, showError) {
   const roles = ROLE_ORDER.filter((r) => users.some((u) => u.role === r && u.active !== false));
   const radios = roles
     .map(
@@ -182,6 +189,15 @@ function openRolePicker(users) {
   cancelBtn?.addEventListener('click', closeModal);
 
   confirmBtn?.addEventListener('click', () => {
+    const isVpnConnected = storage.get(VPN_KEY, false) === true;
+    if (!isVpnConnected) {
+      closeModal();
+      if (showError) {
+        showError('VPN wajib diaktifkan (Status: Connected) agar semua role dapat login ke sistem SIGMA.');
+      }
+      return;
+    }
+
     const sel = root.querySelector('input[name="demo-role"]:checked');
     const role = sel?.value;
     const user = users.find((u) => u.role === role && u.active !== false);
