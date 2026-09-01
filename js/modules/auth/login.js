@@ -11,7 +11,7 @@ import { esc } from '../../core/utils.js';
 import { storage } from '../../core/storage.js';
 import { openModal, closeModal } from '../../components/modal.js';
 
-const ROLE_ORDER = ['MANTRI_TANAMAN', 'ASISTEN', 'ASKEP', 'PENGURUS'];
+const ROLE_ORDER = ['MANTRI_TANAMAN', 'ASISTEN', 'ASISTEN_BIBITAN', 'ASKEP', 'PENGURUS'];
 const VPN_KEY = 'vpn';
 
 function startSession(user, { demo = false } = {}) {

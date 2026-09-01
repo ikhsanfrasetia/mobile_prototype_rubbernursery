@@ -11,7 +11,7 @@ import {
 } from './indexeddb.js';
 import { buildSeedData } from '../data/demo-data.js';
 
-export const SEED_VERSION = 3;
+export const SEED_VERSION = 4;
 
 export async function needsSeeding() {
   const v = await getMeta('seedVersion');

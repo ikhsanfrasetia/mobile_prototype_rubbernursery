@@ -30,6 +30,16 @@ export const DEMO_USERS = [
     active: true
   },
   {
+    id: 'ASB001',
+    code: 'ASB001',
+    name: 'Asisten Bibitan',
+    role: 'ASISTEN_BIBITAN',
+    position: 'Asisten Pembibitan',
+    divisionId: 'DIV-001',
+    password: 'demo',
+    active: true
+  },
+  {
     id: 'ASK001',
     code: 'ASK001',
     name: 'Askep',
@@ -192,6 +202,7 @@ function ROLES_DEMO() {
   return [
     { id: 'MANTRI_TANAMAN', code: 'MANTRI_TANAMAN', name: 'Mantri Tanaman' },
     { id: 'ASISTEN', code: 'ASISTEN', name: 'Asisten' },
+    { id: 'ASISTEN_BIBITAN', code: 'ASISTEN_BIBITAN', name: 'Asisten Bibitan' },
     { id: 'ASKEP', code: 'ASKEP', name: 'Askep' },
     { id: 'PENGURUS', code: 'PENGURUS', name: 'Pengurus' }
   ];

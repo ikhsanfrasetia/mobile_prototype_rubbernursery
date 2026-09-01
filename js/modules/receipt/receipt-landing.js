@@ -27,51 +27,92 @@ export function renderReceiptLanding() {
 
       <!-- CONTENT -->
       <main class="receipt-content" style="flex: 1; display: flex; flex-direction: column; padding: 24px 16px; min-height: 0; overflow-y: auto; background: #F5F5F5;">
-        ${storage.get('receipt_transactions', []).length > 0 ? `
-          <h2 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Ringkasan Penerimaan (${storage.get('receipt_transactions', []).length})</h2>
-          ${storage.get('receipt_transactions', []).map((tx, idx) => `
-          <div style="background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 8px; padding: 16px; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-              <div style="font-weight: 700; font-size: 1rem; color: #111111;">RCV/SEEDS/2026/AGUS/0${idx + 1}</div>
-              <div style="position: relative;">
-                <button class="btn-card-menu" data-index="${idx}" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #116834;">
-                  <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="1"></circle>
-                    <circle cx="12" cy="5" r="1"></circle>
-                    <circle cx="12" cy="19" r="1"></circle>
+        ${(() => {
+          const txs = storage.get('receipt_transactions', []);
+          const seedingTxs = storage.get('seeding_transactions', []);
+          if (txs.length === 0) {
+            return `
+              <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                <div style="margin-bottom: 16px;">
+                  <svg viewBox="0 0 24 24" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4Z" fill="#111111"/>
+                    <path d="M16 13H13V16H11V13H8V11H11V8H13V11H16V13Z" fill="#FFFFFF"/>
                   </svg>
-                </button>
-                <div class="card-popover" id="popover-${idx}" style="display: none; position: absolute; top: 24px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
-                  <button class="btn-popover-lihat" data-index="${idx}" style="padding: 12px 16px; text-align: left; background: #E8F5E9; border: none; border-bottom: 1px solid #D9D9D9; font-size: 0.9rem; color: #111111; cursor: pointer;">Lihat</button>
-                  <button class="btn-popover-edit" data-index="${idx}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; border-bottom: 1px solid #D9D9D9; font-size: 0.9rem; color: #111111; cursor: pointer;">Edit</button>
-                  <button class="btn-popover-hapus" data-index="${idx}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.9rem; color: #D32F2F; cursor: pointer;">Hapus</button>
                 </div>
+                <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 8px 0; line-height: 1.4;">
+                  Belum ada Dokumen<br>Penerimaan Benih/Bibit hari ini
+                </h2>
+                <p style="font-size: 0.95rem; color: #999999; text-align: center; margin: 0; line-height: 1.4;">
+                  Pilih Jenis Penerimaan<br>untuk memulai rekam data
+                </p>
               </div>
-            </div>
-            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.program || 'PRG/NUR/TB/01/2026'}</div>
-            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.tahapan || 'Rubber Main Nursery'}</div>
-            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.klon || 'Klon GT-01'}</div>
-            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.tipeAsal || '-'}</div>
-            <div style="font-size: 0.85rem; color: #666666; margin-bottom: 12px;">${tx.sumber || '-'}</div>
-            <div style="font-size: 0.75rem; color: #999999; text-align: right;">Diterima pada ${tx.tanggal || 'Rabu, 26 Agustus 2026'}</div>
-          </div>
-          `).join('')}
-        ` : `
-          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
-            <div style="margin-bottom: 16px;">
-              <svg viewBox="0 0 24 24" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M10 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4Z" fill="#111111"/>
-                <path d="M16 13H13V16H11V13H8V11H11V8H13V11H16V13Z" fill="#FFFFFF"/>
-              </svg>
-            </div>
-            <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 8px 0; line-height: 1.4;">
-              Belum ada Dokumen<br>Penerimaan Benih/Bibit hari ini
-            </h2>
-            <p style="font-size: 0.95rem; color: #999999; text-align: center; margin: 0; line-height: 1.4;">
-              Pilih Jenis Penerimaan<br>untuk memulai rekam data
-            </p>
-          </div>
-        `}
+            `;
+          }
+
+          return `
+            <h2 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Ringkasan Penerimaan (${txs.length})</h2>
+            ${txs.map((tx, idx) => {
+              const hasSeeding = seedingTxs.some(s => s.sourceIndex == idx);
+              const docNo = `RCV/SEEDS/2026/AGUS/0${idx + 1}`;
+
+              return `
+              <div style="background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 8px; padding: 16px; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <div style="font-weight: 700; font-size: 0.95rem; color: #111111;">${docNo}</div>
+                    ${hasSeeding ? `
+                      <span style="font-size: 0.68rem; font-weight: 700; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9; padding: 2px 6px; border-radius: 12px; display: inline-flex; align-items: center; gap: 3px;">
+                        <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        Sudah Disemai
+                      </span>
+                    ` : ''}
+                  </div>
+                  <div style="position: relative;">
+                    <button class="btn-card-menu" data-index="${idx}" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #116834;">
+                      <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="12" cy="5" r="1"></circle>
+                        <circle cx="12" cy="19" r="1"></circle>
+                      </svg>
+                    </button>
+                    <div class="card-popover" id="popover-${idx}" style="display: none; position: absolute; top: 24px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); width: 140px; z-index: 20; flex-direction: column; overflow: hidden;">
+                      <button class="btn-popover-lihat" data-index="${idx}" style="padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; border-bottom: 1px solid #EFEFEF; font-size: 0.85rem; font-weight: 600; color: #116834; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        Lihat
+                      </button>
+                      ${hasSeeding ? `
+                        <button class="btn-popover-locked" data-index="${idx}" data-doc="${docNo}" style="padding: 10px 14px; text-align: left; background: #FAFAFA; border: none; border-bottom: 1px solid #EFEFEF; font-size: 0.82rem; color: #9CA3AF; cursor: not-allowed; display: flex; align-items: center; gap: 6px;" title="Dokumen tidak dapat diubah karena telah diproses penyemaian">
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                          Edit (Terkunci)
+                        </button>
+                        <button class="btn-popover-locked" data-index="${idx}" data-doc="${docNo}" style="padding: 10px 14px; text-align: left; background: #FAFAFA; border: none; font-size: 0.82rem; color: #9CA3AF; cursor: not-allowed; display: flex; align-items: center; gap: 6px;" title="Dokumen tidak dapat dihapus karena telah diproses penyemaian">
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                          Hapus (Terkunci)
+                        </button>
+                      ` : `
+                        <button class="btn-popover-edit" data-index="${idx}" style="padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; border-bottom: 1px solid #EFEFEF; font-size: 0.85rem; font-weight: 500; color: #111111; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                          Edit
+                        </button>
+                        <button class="btn-popover-hapus" data-index="${idx}" style="padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.85rem; font-weight: 500; color: #D32F2F; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                          Hapus
+                        </button>
+                      `}
+                    </div>
+                  </div>
+                </div>
+                <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.program || 'PRG/NUR/TB/01/2026'}</div>
+                <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.tahapan || 'Rubber Main Nursery'}</div>
+                <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.klon || 'Klon GT-01'}</div>
+                <div style="font-size: 0.85rem; color: #666666; margin-bottom: 4px;">${tx.tipeAsal || '-'}</div>
+                <div style="font-size: 0.85rem; color: #666666; margin-bottom: 12px;">${tx.sumber || '-'}</div>
+                <div style="font-size: 0.75rem; color: #999999; text-align: right;">Diterima pada ${tx.tanggal || 'Rabu, 26 Agustus 2026'}</div>
+              </div>
+              `;
+            }).join('')}
+          `;
+        })()}
       </main>
 
       <!-- BOTTOM ACTION -->
@@ -246,6 +287,23 @@ export function renderReceiptLanding() {
         }
         
         navigate('/reception/benih');
+      });
+    });
+
+    app.querySelectorAll('.btn-popover-locked').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const docNo = e.currentTarget.dataset.doc || 'Dokumen ini';
+        cardPopovers.forEach(p => p.style.display = 'none');
+        
+        // Show floating warning toast
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position: absolute; top: 16px; left: 16px; right: 16px; background: #C62828; color: #FFFFFF; padding: 12px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 8px; animation: slideDown 0.25s ease-out;';
+        toast.innerHTML = `
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <span style="line-height: 1.3;">${docNo} tidak dapat diubah/dihapus karena telah diproses pada tahap Penyemaian.</span>
+        `;
+        app.querySelector('.page').appendChild(toast);
+        setTimeout(() => toast.remove(), 3500);
       });
     });
 

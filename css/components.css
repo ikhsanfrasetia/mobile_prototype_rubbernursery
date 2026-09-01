@@ -213,21 +213,37 @@ textarea.field-control {
   margin-top: 5px;
 }
 
+/* ---------- Modal Root & Container ---------- */
+#modal-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 300;
+}
+
+#modal-root:empty {
+  display: none;
+}
+
 /* ---------- Modal ---------- */
 .modal-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  background: rgba(17, 17, 17, 0.5);
+  background: rgba(17, 17, 17, 0.55);
+  backdrop-filter: blur(2px);
   z-index: 300;
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  border-radius: 32px;
+  overflow: hidden;
+  pointer-events: auto;
   animation: fade-in 0.15s ease;
 }
 
 .modal {
   width: 100%;
-  max-width: 520px;
+  max-width: 100%;
   max-height: 88%;
   background: var(--white);
   border-radius: var(--radius) var(--radius) 0 0;
@@ -287,8 +303,9 @@ textarea.field-control {
 }
 
 /* ---------- Toast ---------- */
+#toast-root,
 .toast-root {
-  position: fixed;
+  position: absolute;
   top: 12px;
   left: 50%;
   transform: translateX(-50%);

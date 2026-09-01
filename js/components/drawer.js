@@ -104,7 +104,7 @@ export function openDrawer() {
           </div>
         </button>
 
-        <button class="drawer-nav-row" id="menu-riwayat" type="button">
+        <button class="drawer-nav-row ${currentPath === '/history' ? 'is-active' : ''}" id="menu-riwayat" type="button">
           <div class="drawer-row-left">
             <span class="drawer-row-icon">${SVGS.calendar}</span>
             <span class="drawer-row-label">Riwayat Data</span>
@@ -151,6 +151,7 @@ export function openDrawer() {
         <div class="drawer-demo-pills">
           <button class="demo-pill ${user.role === 'MANTRI_TANAMAN' ? 'active' : ''}" data-role="MANTRI_TANAMAN">Mantri</button>
           <button class="demo-pill ${user.role === 'ASISTEN' ? 'active' : ''}" data-role="ASISTEN">Asisten</button>
+          <button class="demo-pill ${user.role === 'ASISTEN_BIBITAN' ? 'active' : ''}" data-role="ASISTEN_BIBITAN">Ast. Bibitan</button>
           <button class="demo-pill ${user.role === 'ASKEP' ? 'active' : ''}" data-role="ASKEP">Askep</button>
           <button class="demo-pill ${user.role === 'PENGURUS' ? 'active' : ''}" data-role="PENGURUS">Pengurus</button>
         </div>
@@ -177,7 +178,8 @@ export function openDrawer() {
   });
 
   drawerEl.querySelector('#menu-riwayat').addEventListener('click', () => {
-    toast('Halaman Riwayat Data', 'info');
+    closeDrawer();
+    navigate('/history');
   });
 
   drawerEl.querySelector('#menu-sync').addEventListener('click', () => {

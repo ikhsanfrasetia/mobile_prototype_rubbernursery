@@ -6,6 +6,7 @@
 export const ROLES_MASTER = [
   { id: 'MANTRI_TANAMAN', code: 'MANTRI_TANAMAN', name: 'Mantri Tanaman', desc: 'Input & pelaksanaan kegiatan operasional' },
   { id: 'ASISTEN', code: 'ASISTEN', name: 'Asisten', desc: 'Verifikasi & review/koreksi transaksi' },
+  { id: 'ASISTEN_BIBITAN', code: 'ASISTEN_BIBITAN', name: 'Asisten Bibitan', desc: 'Verifikasi & approval bibitan' },
   { id: 'ASKEP', code: 'ASKEP', name: 'Askep', desc: 'Monitoring & approval sesuai kewenangan' },
   { id: 'PENGURUS', code: 'PENGURUS', name: 'Pengurus', desc: 'Monitoring & approval/penentuan sumber' }
 ];

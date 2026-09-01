@@ -9,6 +9,7 @@ import { session } from './session.js';
 export const ROLES = Object.freeze({
   MANTRI_TANAMAN: 'MANTRI_TANAMAN',
   ASISTEN: 'ASISTEN',
+  ASISTEN_BIBITAN: 'ASISTEN_BIBITAN',
   ASKEP: 'ASKEP',
   PENGURUS: 'PENGURUS'
 });
@@ -16,6 +17,7 @@ export const ROLES = Object.freeze({
 export const ROLE_LABELS = Object.freeze({
   MANTRI_TANAMAN: 'Mantri Tanaman',
   ASISTEN: 'Asisten',
+  ASISTEN_BIBITAN: 'Asisten Bibitan',
   ASKEP: 'Askep',
   PENGURUS: 'Pengurus'
 });
@@ -33,6 +35,13 @@ const CAPABILITIES = {
     'transaction:submit'
   ],
   [ROLES.ASISTEN]: [
+    'transaction:view-submitted',
+    'transaction:open-detail',
+    'transaction:correct-allowed-fields',
+    'transaction:approve',
+    'monitor:process'
+  ],
+  [ROLES.ASISTEN_BIBITAN]: [
     'transaction:view-submitted',
     'transaction:open-detail',
     'transaction:correct-allowed-fields',
@@ -63,7 +72,7 @@ export const permissions = {
   },
 
   isAsisten(role) {
-    return (role || session.getRole()) === ROLES.ASISTEN;
+    return [ROLES.ASISTEN, ROLES.ASISTEN_BIBITAN].includes(role || session.getRole());
   },
 
   isViewer(role) {

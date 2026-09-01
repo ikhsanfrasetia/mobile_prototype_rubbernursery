@@ -38,6 +38,13 @@ const ICONS = {
       <path d="M13.2 19.5 C9.5 19.5 3.5 15.2 3.5 9 C9.5 8.5 13.8 13.2 13.8 17 C13.8 18 13.5 18.8 13.2 19.5 Z" fill="#116834"/>
       <path d="M18.8 19.5 C22.5 19.5 28.5 15.2 28.5 9 C22.5 8.5 18.2 13.2 18.2 17 C18.2 18 18.5 18.8 18.8 19.5 Z" fill="#116834"/>
     </svg>
+  `,
+  entres: `
+    <svg viewBox="2 2 28 28" width="56" height="56" fill="#116834">
+      <path d="M14 26 C14 26 14 13 14 9 C14 5.5 17.5 3 22 2.5 C22.5 7 19.5 10.5 15.8 11 C15.8 13 15.8 17 15.8 26 Z" fill="#116834"/>
+      <path d="M14 16.5 C10.5 16.5 6.5 14 6 10 C10 9.5 13.5 12 14 15 Z" fill="#116834"/>
+      <circle cx="14" cy="24" r="2.5" fill="#116834"/>
+    </svg>
   `
 };
 
@@ -48,6 +55,7 @@ const MENU_ITEMS = [
   { id: 'okulasi', title: 'Okulasi', icon: ICONS.sprout, route: '/budding' },
   { id: 'pemeriksaan', title: 'Pemeriksaan', icon: ICONS.documentPlus, route: '/inspection' },
   { id: 'penyeleksian', title: 'Penyeleksian', icon: ICONS.sprout, route: '/selection' },
+  { id: 'kebun-entres', title: 'Kebun<br>Entres', icon: ICONS.entres, route: '/entres' },
   { id: 'material', title: 'Material &<br>Bahan', icon: ICONS.sprout, route: '/material' },
   { id: 'pemeliharaan', title: 'Rekam<br>Pemeliharaan', icon: ICONS.documentPlus, route: '/nursery-activity' },
   { id: 'permintaan', title: 'Permintaan', icon: ICONS.sprout, route: '/request' }
@@ -82,17 +90,122 @@ export function renderBeranda() {
     }
   }
 
-  const menuCards = MENU_ITEMS.map(
-    (item) => `
-    <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
-      <div class="beranda-card-icon">${item.icon}</div>
-      <div class="beranda-card-title">${item.title}</div>
-      ${item.id === 'penyemaian' && hasPendingBenih ? `
-        <div style="position: absolute; top: 14px; right: 14px; width: 12px; height: 12px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF;"></div>
-      ` : ''}
-    </button>
-  `
-  ).join('');
+  const buddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
+  let hasPendingOkulasi = false;
+
+  for (let i = 0; i < seedingTxs.length; i++) {
+    const stx = seedingTxs[i];
+    const populasiBibit = parseInt(stx.totalDisemai || 0);
+    const batchNo = stx.batchNo || `Batch-0${i + 1}`;
+    let ttlRealized = 0;
+    buddingTxs.filter(b => b.seedingIndex === i || b.batchNo === batchNo).forEach(b => {
+      ttlRealized += parseInt(b.jumlah || 0) + parseInt(b.jumlahDitolak || 0);
+    });
+    if (populasiBibit - ttlRealized > 0) {
+      hasPendingOkulasi = true;
+      break;
+    }
+  }
+
+  const allBuddingTxs = storage.get('budding_transactions', []);
+  const inspectionTxs = storage.get('inspection_transactions', []);
+  let hasPendingPemeriksaan = false;
+  for (let i = 0; i < allBuddingTxs.length; i++) {
+    const btx = allBuddingTxs[i];
+    const populasiDiokulasi = parseInt(btx.jumlah || 0);
+    let totalDiperiksa = 0;
+    inspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo || insp.buddingIndex === i).forEach(insp => {
+      totalDiperiksa += parseInt(insp.totalDiperiksa || (parseInt(insp.jumlahJadi || 0) + parseInt(insp.jumlahGagal || 0)));
+    });
+    if (populasiDiokulasi - totalDiperiksa > 0) {
+      hasPendingPemeriksaan = true;
+      break;
+    }
+  }
+
+  const regraftPool = storage.get('regrafting_pool', []);
+  const regraftTxs = storage.get('budding_transactions', []).filter(b => b.type === 'REGRAFTING');
+  let hasPendingRegrafting = false;
+  for (let i = 0; i < regraftPool.length; i++) {
+    const item = regraftPool[i];
+    const qty = parseInt(item.jumlah || 0);
+    let done = 0;
+    regraftTxs.filter(r => r.regraftPoolDocNo === item.docNo || r.inspectionDocNo === item.inspectionDocNo).forEach(r => {
+      done += parseInt(r.jumlah || 0);
+    });
+    if (qty - done > 0) {
+      hasPendingRegrafting = true;
+      break;
+    }
+  }
+
+  // Hitung pending penyeleksian (dari pemeriksaan gagal, reject okulasi, dan reject penerimaan APM/benih)
+  let pendingSelectionCount = 0;
+  const culledTxs = storage.get('selection_transactions', []);
+  const culledPoolDocs = new Set(culledTxs.map(c => c.selectionPoolDocNo).filter(Boolean));
+
+  // 1. selection_pool eksisting
+  const selectionPool = storage.get('selection_pool', []);
+  selectionPool.forEach(s => {
+    if (s.status !== 'DECLARED_CULLED' && !culledPoolDocs.has(s.docNo)) {
+      pendingSelectionCount++;
+    }
+  });
+
+  // 2. data reject dari receipt_transactions (Penerimaan Bibit APM / Benih)
+  const receiptTxs = storage.get('receipt_transactions', []);
+  receiptTxs.forEach((rtx, i) => {
+    const rows = (rtx.rawState && rtx.rawState.tableRows) || [];
+    if (rows.length > 0) {
+      rows.forEach((row, rIdx) => {
+        if (parseInt(row.rejected || 0) > 0) {
+          const poolDocNo = `SEL/RCV/2026/0${i + 1}_${rIdx + 1}`;
+          if (!culledPoolDocs.has(poolDocNo) && !selectionPool.some(s => s.docNo === poolDocNo && s.status === 'DECLARED_CULLED')) {
+            pendingSelectionCount++;
+          }
+        }
+      });
+    } else if (parseInt(rtx.rejected || rtx.jumlahDitolak || 0) > 0) {
+      const poolDocNo = `SEL/RCV/2026/0${i + 1}`;
+      if (!culledPoolDocs.has(poolDocNo) && !selectionPool.some(s => s.docNo === poolDocNo && s.status === 'DECLARED_CULLED')) {
+        pendingSelectionCount++;
+      }
+    }
+  });
+
+  // 3. data reject dari budding_transactions (Okulasi)
+  const allBuddingForSel = storage.get('budding_transactions', []);
+  allBuddingForSel.forEach((btx, i) => {
+    if (parseInt(btx.jumlahDitolak || 0) > 0) {
+      const poolDocNo = `SEL/REJ/2026/0${i + 1}`;
+      if (!culledPoolDocs.has(poolDocNo) && !selectionPool.some(s => s.docNo === poolDocNo && s.status === 'DECLARED_CULLED')) {
+        pendingSelectionCount++;
+      }
+    }
+  });
+
+  const menuCards = MENU_ITEMS.map((item) => {
+    let badgeHtml = '';
+    if (item.id === 'penyeleksian' && pendingSelectionCount > 0) {
+      badgeHtml = `
+        <div style="position: absolute; top: 10px; right: 10px; background: #DC2626; color: #FFFFFF; font-size: 0.68rem; font-weight: 800; min-width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 0 4px; box-shadow: 0 2px 4px rgba(220,38,38,0.4); border: 2px solid #FFFFFF; z-index: 5;">
+          ${pendingSelectionCount}
+        </div>
+      `;
+    } else if ((item.id === 'penyemaian' && hasPendingBenih) || (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting)) || (item.id === 'pemeriksaan' && hasPendingPemeriksaan)) {
+      badgeHtml = `
+        <div style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    }
+
+    return `
+      <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
+        <div class="beranda-card-icon">${item.icon}</div>
+        <div class="beranda-card-title">${item.title}</div>
+        ${badgeHtml}
+      </button>
+    `;
+  }).join('');
 
   app.innerHTML = `
     <div class="page beranda-page">

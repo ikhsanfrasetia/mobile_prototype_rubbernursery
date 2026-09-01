@@ -8,6 +8,17 @@ export function renderReceiptBenih() {
   const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan' };
   const today = formatDate(new Date().toISOString());
 
+  // Guard against editing locked document that already has seeding transactions
+  const editingIdx = storage.get('editing_transaction_index', null);
+  if (editingIdx !== null) {
+    const seedingTxs = storage.get('seeding_transactions', []);
+    if (seedingTxs.some(s => s.sourceIndex == editingIdx)) {
+      storage.remove('editing_transaction_index');
+      navigate('/reception');
+      return;
+    }
+  }
+
   // Get initial state
   const originTypeRaw = storage.get('transaction_originType', 'KEBUN_SENDIRI');
   let originTypeDisplay = 'Kebun Sendiri';
@@ -164,23 +175,23 @@ export function renderReceiptBenih() {
             <button id="btn-tambah-data" type="button" style="background: #356943; color: white; border: none; border-radius: 4px; padding: 6px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">Tambah Data</button>
           </div>
           
-          <div style="background: #E8F5E9; border-radius: 6px 6px 0 0; padding: 10px; display: grid; grid-template-columns: 1fr 0.9fr 1.3fr; gap: 8px; border: 1px solid #D1CDCD; border-bottom: none;">
-            <div style="font-size: 0.8rem; font-weight: 600; color: #356943;">Klon *</div>
-            <div style="font-size: 0.8rem; font-weight: 600; color: #356943;">Banyaknya *</div>
-            <div style="font-size: 0.8rem; font-weight: 600; color: #356943;">Diseleksi</div>
+          <div style="background: #E8F5E9; border-radius: 6px 6px 0 0; padding: 10px 8px; display: grid; grid-template-columns: 1.1fr 1fr 1.5fr; gap: 6px; border: 1px solid #D1CDCD; border-bottom: none; text-align: center;">
+            <div style="font-size: 0.78rem; font-weight: 700; color: #356943;">Klon *</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #356943;">Banyaknya *</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #356943;">Diseleksi</div>
           </div>
           
           <div id="container-receipt-rows" style="display: flex; flex-direction: column; border-left: 1px solid #D1CDCD; border-right: 1px solid #D1CDCD;">
              <!-- rows go here -->
           </div>
           
-          <div style="background: #E8F5E9; border-radius: 0 0 6px 6px; padding: 10px; border: 1px solid #D1CDCD; border-top: none;">
+          <div style="background: #E8F5E9; border-radius: 0 0 6px 6px; padding: 10px 12px; border: 1px solid #D1CDCD; border-top: none;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-              <span style="font-size: 0.85rem; font-weight: 600; color: #356943;">Total Jumlah Diterima</span>
+              <span style="font-size: 0.82rem; font-weight: 600; color: #356943;">Total Jumlah Diterima</span>
               <span id="total-qty" style="font-size: 0.85rem; font-weight: 700; color: #111111;">0</span>
             </div>
             <div style="display: flex; justify-content: space-between;">
-              <span style="font-size: 0.85rem; font-weight: 600; color: #356943;">Jumlah Diseleksi</span>
+              <span style="font-size: 0.82rem; font-weight: 600; color: #356943;">Jumlah Diseleksi</span>
               <span id="total-rejected" style="font-size: 0.85rem; font-weight: 700; color: #111111;">0</span>
             </div>
           </div>
@@ -597,44 +608,46 @@ export function renderReceiptBenih() {
   // TABLE LOGIC
   function renderTableRows() {
     containerReceiptRows.innerHTML = state.tableRows.map((row, index) => `
-      <div class="receipt-row" data-index="${index}" style="display: grid; grid-template-columns: 1fr 0.9fr 1.3fr; border-bottom: 1px solid #D1CDCD; align-items: stretch; position: relative;">
+      <div class="receipt-row" data-index="${index}" style="display: grid; grid-template-columns: 1.1fr 1fr 1.5fr; border-bottom: 1px solid #D1CDCD; align-items: center; position: relative; background: #FFFFFF;">
+        
         <!-- Klon -->
-        <div style="padding: 12px 8px; border-right: 1px solid #D1CDCD; position: relative;">
-           <select class="input-klon" data-index="${index}" style="width: 100%; border: none; background: transparent; font-size: 0.85rem; outline: none; appearance: none; padding-right: 16px; color: ${row.klon ? '#111' : '#999'};">
-             <option value="" disabled ${!row.klon ? 'selected' : ''} hidden>Klon</option>
+        <div style="padding: 8px 6px; border-right: 1px solid #D1CDCD; position: relative;">
+           <select class="input-klon" data-index="${index}" style="width: 100%; border: 1px solid #D1D5DB; border-radius: 4px; background: #FFFFFF; font-size: 0.80rem; outline: none; appearance: none; padding: 6px 18px 6px 6px; color: ${row.klon ? '#111' : '#999'}; box-sizing: border-box;">
+             <option value="" disabled ${!row.klon ? 'selected' : ''} hidden>Pilih Klon</option>
              <option value="IRCA120" ${row.klon === 'IRCA120' ? 'selected' : ''}>IRCA120</option>
              <option value="IRR300" ${row.klon === 'IRR300' ? 'selected' : ''}>IRR300</option>
              <option value="GT1" ${row.klon === 'GT1' ? 'selected' : ''}>GT1</option>
              <option value="PB260" ${row.klon === 'PB260' ? 'selected' : ''}>PB260</option>
            </select>
-           <svg viewBox="0 0 24 24" width="14" height="14" stroke="#999" stroke-width="2" fill="none" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+           <svg viewBox="0 0 24 24" width="12" height="12" stroke="#6B7280" stroke-width="2" fill="none" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </div>
         
         <!-- Banyaknya -->
-        <div style="padding: 12px 8px; border-right: 1px solid #D1CDCD; display: flex; align-items: center;">
-           <input type="number" class="input-qty" data-index="${index}" placeholder="0" value="${row.qty}" style="width: 100%; border: none; background: transparent; font-size: 0.85rem; outline: none; text-align: left; color: #111;" />
+        <div style="padding: 8px 6px; border-right: 1px solid #D1CDCD; display: flex; align-items: center;">
+           <input type="number" class="input-qty" data-index="${index}" placeholder="0" value="${row.qty || ''}" style="width: 100%; border: 1px solid #D1D5DB; border-radius: 4px; background: #FFFFFF; font-size: 0.80rem; outline: none; padding: 6px 6px; text-align: center; color: #111; box-sizing: border-box;" />
         </div>
         
-        <!-- Diseleksi -->
-        <div style="padding: 12px 8px; display: flex; gap: 4px; align-items: center;">
-           <input type="number" class="input-rejected" data-index="${index}" placeholder="0" value="${row.rejected}" style="width: 40px; border: none; background: transparent; font-size: 0.85rem; outline: none; text-align: left; color: #111;" />
+        <!-- Diseleksi: Input Nilai + Alasan Simetris -->
+        <div style="padding: 8px 6px; display: flex; gap: 4px; align-items: center; min-width: 0;">
+           <input type="number" class="input-rejected" data-index="${index}" placeholder="0" value="${row.rejected !== undefined && row.rejected !== '' ? row.rejected : ''}" style="width: 52px; min-width: 48px; border: 1px solid #D1D5DB; border-radius: 4px; background: #FFFFFF; font-size: 0.80rem; outline: none; padding: 6px 4px; text-align: center; color: #111; box-sizing: border-box;" />
            
-           <div style="position: relative; flex: 1;">
-             <select class="input-reason" data-index="${index}" style="width: 100%; border: none; background: transparent; font-size: 0.85rem; outline: none; appearance: none; color: ${row.rejected > 0 ? '#111' : '#999'}; padding-right: 16px;" ${row.rejected > 0 ? '' : 'disabled'}>
+           <div style="position: relative; flex: 1; min-width: 0;">
+             <select class="input-reason" data-index="${index}" style="width: 100%; border: 1px solid #D1D5DB; border-radius: 4px; background: ${parseInt(row.rejected || 0) > 0 ? '#FFFFFF' : '#F9FAFB'}; font-size: 0.76rem; outline: none; appearance: none; color: ${parseInt(row.rejected || 0) > 0 ? (row.reason ? '#111' : '#999') : '#9CA3AF'}; padding: 6px 16px 6px 4px; box-sizing: border-box;" ${parseInt(row.rejected || 0) > 0 ? '' : 'disabled'}>
                <option value="" disabled ${!row.reason ? 'selected' : ''} hidden>Alasan</option>
                <option value="Rusak" ${row.reason === 'Rusak' ? 'selected' : ''}>Rusak</option>
                <option value="Mati" ${row.reason === 'Mati' ? 'selected' : ''}>Mati</option>
                <option value="Afkir" ${row.reason === 'Afkir' ? 'selected' : ''}>Afkir</option>
              </select>
-             <svg viewBox="0 0 24 24" width="14" height="14" stroke="#999" stroke-width="2" fill="none" style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+             <svg viewBox="0 0 24 24" width="12" height="12" stroke="#6B7280" stroke-width="2" fill="none" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
            </div>
         </div>
         
         ${index > 0 ? `
         <!-- Hapus baris (Opsional) -->
-        <button type="button" class="btn-hapus-row" data-index="${index}" style="position: absolute; top: -4px; right: 2px; width: 20px; height: 20px; background: #FFFFFF; border: 1px solid #D32F2F; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 0; z-index: 10;">
-          <svg viewBox="0 0 24 24" width="12" height="12" stroke="#D32F2F" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"></line>
+        <button type="button" class="btn-hapus-row" data-index="${index}" style="position: absolute; top: -5px; right: -5px; width: 18px; height: 18px; background: #FFFFFF; border: 1px solid #D32F2F; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 0; z-index: 10;">
+          <svg viewBox="0 0 24 24" width="10" height="10" stroke="#D32F2F" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
         ` : ''}
@@ -667,13 +680,27 @@ export function renderReceiptBenih() {
     containerReceiptRows.querySelectorAll('.input-rejected').forEach(el => {
       el.addEventListener('input', (e) => {
         const index = e.target.dataset.index;
-        const val = parseInt(e.target.value || 0);
-        state.tableRows[index].rejected = val > 0 ? val : '';
-        if (val <= 0) {
-           state.tableRows[index].reason = '';
+        const rawVal = e.target.value.trim();
+        const val = rawVal === '' ? '' : parseInt(rawVal || 0);
+        state.tableRows[index].rejected = val;
+        
+        const rowEl = e.target.closest('.receipt-row');
+        const reasonSelect = rowEl ? rowEl.querySelector('.input-reason') : null;
+        if (reasonSelect) {
+          const hasReject = typeof val === 'number' && val > 0;
+          reasonSelect.disabled = !hasReject;
+          reasonSelect.style.background = hasReject ? '#FFFFFF' : '#F9FAFB';
+          if (!hasReject) {
+            state.tableRows[index].reason = '';
+            reasonSelect.value = '';
+            reasonSelect.style.color = '#9CA3AF';
+          } else {
+            reasonSelect.style.color = state.tableRows[index].reason ? '#111' : '#999';
+          }
         }
+        
         saveTableState();
-        renderTableRows(); // Re-render to enable/disable reason dropdown
+        calculateTotals();
       });
     });
 
@@ -688,7 +715,7 @@ export function renderReceiptBenih() {
     
     containerReceiptRows.querySelectorAll('.btn-hapus-row').forEach(el => {
       el.addEventListener('click', (e) => {
-        const index = e.target.dataset.index;
+        const index = parseInt(e.currentTarget.dataset.index);
         state.tableRows.splice(index, 1);
         saveTableState();
         renderTableRows();
