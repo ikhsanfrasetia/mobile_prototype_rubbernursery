@@ -7,8 +7,19 @@
 import { getCurrent, navigate } from '../../core/router.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { esc } from '../../core/utils.js';
+import { esc, todayISO, uid } from '../../core/utils.js';
 import { session } from '../../core/session.js';
+import { storage } from '../../core/storage.js';
+import {
+  attendanceRepository,
+  receptionRepository,
+  seedingRepository,
+  buddingRepository,
+  inspectionRepository,
+  selectionRepository,
+  syncQueueRepository
+} from '../../db/repositories.js';
+import { resetDatabase } from '../../db/indexeddb.js';
 
 const STORAGE_KEY = 'sigma_feedback_notes';
 const API_URL = '/api/notes';
@@ -323,7 +334,177 @@ const INITIAL_NOTES = [
 ];
 
 let notes = [];
-let activeWorkspaceTab = 'notes'; // 'notes' | 'flow'
+let activeWorkspaceTab = 'notes'; // 'notes' | 'flow' | 'transactions'
+let activeTxTab = 'reception'; // 'attendance' | 'reception' | 'seeding' | 'budding' | 'inspection' | 'regrafting' | 'selection' | 'syncQueue'
+let txSearchQuery = '';
+let txStatusFilter = 'ALL';
+
+const TX_MODULES = {
+  attendance: {
+    id: 'attendance',
+    title: 'Presensi',
+    subtitle: 'Kehadiran Mandor & Pekerja',
+    icon: '👥',
+    route: '/attendance',
+    storageKey: 'attendance_transactions',
+    repo: attendanceRepository,
+    qtyField: null,
+    unit: 'Orang'
+  },
+  reception: {
+    id: 'reception',
+    title: 'Penerimaan',
+    subtitle: 'Stok Masuk Benih & Bibit',
+    icon: '📦',
+    route: '/reception',
+    storageKey: 'receipt_transactions',
+    repo: receptionRepository,
+    qtyField: 'qty',
+    unit: 'Pkk'
+  },
+  seeding: {
+    id: 'seeding',
+    title: 'Penyemaian',
+    subtitle: 'Penanaman & Batching Semai',
+    icon: '🌱',
+    route: '/seeding',
+    storageKey: 'seeding_transactions',
+    repo: seedingRepository,
+    qtyField: 'totalDisemai',
+    unit: 'Pkk'
+  },
+  budding: {
+    id: 'budding',
+    title: 'Okulasi Pokok',
+    subtitle: 'Grafting Mata Tunas Unggul',
+    icon: '🌿',
+    route: '/budding',
+    storageKey: 'budding_transactions',
+    repo: buddingRepository,
+    qtyField: 'jumlah',
+    unit: 'Pkk'
+  },
+  inspection: {
+    id: 'inspection',
+    title: 'Pemeriksaan',
+    subtitle: 'Inspeksi & Evaluasi Keberhasilan',
+    icon: '🔍',
+    route: '/inspection',
+    storageKey: 'inspection_transactions',
+    repo: inspectionRepository,
+    qtyField: 'totalDiperiksa',
+    unit: 'Pkk'
+  },
+  regrafting: {
+    id: 'regrafting',
+    title: 'Okulasi Janda',
+    subtitle: 'Regrafting Okulasi Gagal',
+    icon: '🔄',
+    route: '/budding/regrafting',
+    storageKey: 'regrafting_pool',
+    repo: buddingRepository,
+    qtyField: 'jumlah',
+    unit: 'Pkk'
+  },
+  selection: {
+    id: 'selection',
+    title: 'Penyeleksian',
+    subtitle: 'Afkir & Pengurangan Fisik Stok',
+    icon: '✂️',
+    route: '/selection',
+    storageKey: 'selection_pool',
+    repo: selectionRepository,
+    qtyField: 'jumlahAfkir',
+    unit: 'Pkk'
+  },
+  syncQueue: {
+    id: 'syncQueue',
+    title: 'Sinkronisasi',
+    subtitle: 'Antrean Transaksi Offline ERP',
+    icon: '⚡',
+    route: '/sync',
+    storageKey: 'sync_queue',
+    repo: syncQueueRepository,
+    qtyField: null,
+    unit: 'Item'
+  }
+};
+
+function loadTxList(modId) {
+  const cfg = TX_MODULES[modId];
+  if (!cfg) return [];
+  if (modId === 'regrafting') {
+    const regrafts = storage.get('budding_transactions', []).filter((t) => t.type === 'REGRAFTING');
+    if (regrafts && regrafts.length > 0) {
+      return regrafts.map(item => {
+        const kayuVal = parseInt(item.jumlahKayu !== undefined ? item.jumlahKayu : (item.kayu || 0));
+        return {
+          ...item,
+          jumlahKayu: kayuVal,
+          jumlah: parseInt(item.jumlah || item.qty || 0),
+          jumlahDitolak: parseInt(item.jumlahDitolak || 0)
+        };
+      });
+    }
+    const pool = storage.get('regrafting_pool', []);
+    if (pool && pool.length > 0) {
+      return pool.map(item => {
+        const match = regrafts.find(r => r.regraftPoolDocNo === item.docNo || r.batchNo === item.batchNo);
+        const kayuVal = match ? parseInt(match.jumlahKayu || match.kayu || 0) : parseInt(item.jumlahKayu || 0);
+        return {
+          ...item,
+          jumlahKayu: kayuVal
+        };
+      });
+    }
+    return [];
+  }
+  if (modId === 'selection') {
+    const pool = storage.get('selection_pool', []);
+    const txs = storage.get('selection_transactions', []);
+    if (txs && txs.length > 0) return txs;
+    if (pool && pool.length > 0) return pool;
+    return [];
+  }
+  if (modId === 'budding') {
+    const items = storage.get('budding_transactions', []);
+    return (items || []).filter(t => t.type !== 'REGRAFTING');
+  }
+  if (modId === 'seeding') {
+    const items = storage.get(cfg.storageKey, []);
+    return (items || []).map(item => {
+      if (!item.bedengan && Array.isArray(item.rows) && item.rows.length > 0) {
+        const rowBeds = Array.from(new Set(item.rows.map(r => r.bedengan).filter(Boolean)));
+        item.bedengan = rowBeds.length > 0 ? rowBeds.join(', ') : 'Bedengan 01';
+      }
+      return item;
+    });
+  }
+  const items = storage.get(cfg.storageKey, []);
+  return items || [];
+}
+
+function saveTxList(modId, list) {
+  const cfg = TX_MODULES[modId];
+  if (!cfg) return;
+  storage.set(cfg.storageKey, list);
+  if (modId === 'selection') {
+    storage.set('selection_pool', list);
+    storage.set('selection_transactions', list);
+  }
+  if (modId === 'regrafting') {
+    const allBudding = storage.get('budding_transactions', []);
+    const otherBudding = allBudding.filter((t) => t.type !== 'REGRAFTING');
+    const updatedBudding = [...otherBudding, ...list.map(item => ({ ...item, type: 'REGRAFTING' }))];
+    storage.set('budding_transactions', updatedBudding);
+    storage.set('regrafting_pool', list);
+  }
+  list.forEach((item) => {
+    try {
+      cfg.repo.create(item);
+    } catch (e) {}
+  });
+}
 let flowRoleFilter = 'ALL';
 let expandedFlowSteps = new Set([1]); // Step 1 terbuka secara default untuk preview langsung
 let isReviewMode = false;
@@ -574,6 +755,11 @@ export function renderReviewPanel() {
         <span>Flow Proses</span>
         <span class="tab-badge-pulse">${PROCESS_STEPS.length} Tahapan</span>
       </button>
+      <button class="workspace-main-tab-btn ${activeWorkspaceTab === 'transactions' ? 'is-active' : ''}" id="tab-main-transactions" type="button">
+        <span>📊</span>
+        <span>Data Transaksi</span>
+        <span class="tab-badge-pulse" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd;">8 Modul (CRUD)</span>
+      </button>
     </div>
   `;
 
@@ -740,7 +926,7 @@ export function renderReviewPanel() {
         }
       </div>
     `;
-  } else {
+  } else if (activeWorkspaceTab === 'flow') {
     // TAB 2: FLOW PROSES (WORKFLOW PIPELINE)
     html += `
       <div class="flow-process-container">
@@ -896,6 +1082,8 @@ export function renderReviewPanel() {
         </div>
       </div>
     `;
+  } else if (activeWorkspaceTab === 'transactions') {
+    html += renderTransactionsWorkspaceTab();
   }
 
   container.innerHTML = html;
@@ -912,6 +1100,16 @@ export function renderReviewPanel() {
     activeWorkspaceTab = 'flow';
     renderReviewPanel();
   });
+
+  container.querySelector('#tab-main-transactions')?.addEventListener('click', () => {
+    activeWorkspaceTab = 'transactions';
+    renderReviewPanel();
+  });
+
+  if (activeWorkspaceTab === 'transactions') {
+    attachTransactionsWorkspaceEvents(container);
+    return;
+  }
 
   if (activeWorkspaceTab === 'flow') {
     // Flow Role Filter Pills
@@ -1411,4 +1609,1247 @@ function openChangeStatusModal(note) {
       updateMarkers();
     }
   });
+}
+
+// ==========================================================================
+// WORKSPACE TAB 3: DATA TRANSAKSI (KATALOG & CRUD 8 MODUL)
+// ==========================================================================
+
+function renderTransactionsWorkspaceTab() {
+  const curMod = TX_MODULES[activeTxTab] || TX_MODULES.reception;
+  let rawList = loadTxList(activeTxTab);
+
+  // Search filter
+  let filteredList = rawList.filter((item) => {
+    if (txSearchQuery) {
+      const q = txSearchQuery.toLowerCase().trim();
+      const str = JSON.stringify(item).toLowerCase();
+      if (!str.includes(q)) return false;
+    }
+    if (txStatusFilter !== 'ALL') {
+      if ((item.status || 'SUBMITTED') !== txStatusFilter) return false;
+    }
+    return true;
+  });
+
+  // Calculate volume
+  const totalVolume = curMod.qtyField
+    ? filteredList.reduce((sum, it) => sum + (parseInt(it[curMod.qtyField] || it.qty || 0) || 0), 0)
+    : 0;
+
+  let html = `
+    <div class="review-panel-head" style="margin-bottom: 16px;">
+      <div class="review-title-group">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <h2>Katalog & Manajemen Data Transaksi</h2>
+          <span class="server-status-pill online" style="background: #e0f2fe; color: #0369a1; border-color: #bae6fd;">
+            📊 8 Modul Pembibitan (CRUD Aktif)
+          </span>
+        </div>
+        <p>Kelola data seluruh transaksi operasional: Presensi, Penerimaan, Penyemaian, Okulasi, Pemeriksaan, Okulasi Janda, Penyeleksian, dan Sinkronisasi.</p>
+      </div>
+      <div class="review-actions-group">
+        <button class="btn-toggle-all-markers" id="btn-tx-reset-all" type="button" title="Kosongkan seluruh data transaksi & afkir di prototype" style="background: #fef2f2; border-color: #fecaca; color: #b91c1c; font-weight: 700;">
+          🗑️ Bersihkan Semua Data
+        </button>
+        <button class="btn-toggle-all-markers" id="btn-tx-open-screen" type="button" title="Buka modul terkait di layar HP" style="background: #f8fafc; border-color: #cbd5e1; color: #334155;">
+          📱 Buka Modul di HP
+        </button>
+        <button class="btn-toggle-all-markers" id="btn-tx-seed-sample" type="button" title="Muat data sampel realistis jika kosong" style="background: #f0fdf4; border-color: #bbf7d0; color: #166534;">
+          ⚡ Muat Demo Data
+        </button>
+        <button class="btn-add-feedback" id="btn-tx-add-new" type="button">
+          <span>+</span> Tambah Transaksi
+        </button>
+      </div>
+    </div>
+
+    <!-- 8 MODUL SUB-TABS -->
+    <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 14px; border-bottom: 1px solid #e2e8f0; margin-bottom: 16px; scrollbar-width: none;">
+      ${Object.values(TX_MODULES)
+        .map((m) => {
+          const isActive = m.id === activeTxTab;
+          const count = loadTxList(m.id).length;
+          return `
+          <button class="tx-sub-tab-btn" data-mod="${m.id}" type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 20px; font-size: 0.82rem; font-weight: ${
+            isActive ? '700' : '600'
+          }; background: ${isActive ? '#116834' : '#f1f5f9'}; color: ${isActive ? '#ffffff' : '#475569'}; border: 1px solid ${
+            isActive ? '#116834' : '#cbd5e1'
+          }; cursor: pointer; white-space: nowrap; transition: all 0.15s ease;">
+            <span>${m.icon}</span>
+            <span>${m.title}</span>
+            <span style="font-size: 0.72rem; padding: 1px 6px; border-radius: 10px; background: ${
+              isActive ? 'rgba(255,255,255,0.25)' : '#e2e8f0'
+            }; color: ${isActive ? '#ffffff' : '#334155'}; font-weight: 700;">${count}</span>
+          </button>
+        `;
+        })
+        .join('')}
+    </div>
+
+    <!-- FILTER BAR & METRICS -->
+    <div class="review-filter-bar" style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 260px;">
+        <div class="filter-search-wrap" style="flex: 1;">
+          <span class="filter-search-icon">🔍</span>
+          <input class="filter-search-input" id="tx-search-input" type="text" placeholder="Cari no. dokumen, batch, klon, bedengan..." value="${esc(
+            txSearchQuery
+          )}" />
+        </div>
+        <select class="filter-select" id="tx-filter-status" style="min-width: 140px;">
+          <option value="ALL" ${txStatusFilter === 'ALL' ? 'selected' : ''}>Semua Status</option>
+          <option value="APPROVED" ${txStatusFilter === 'APPROVED' ? 'selected' : ''}>Status: Approved</option>
+          <option value="SUBMITTED" ${txStatusFilter === 'SUBMITTED' ? 'selected' : ''}>Status: Submitted</option>
+          <option value="COMPLETED" ${txStatusFilter === 'COMPLETED' ? 'selected' : ''}>Status: Completed</option>
+          <option value="VERIFIED" ${txStatusFilter === 'VERIFIED' ? 'selected' : ''}>Status: Verified</option>
+          <option value="DRAFT" ${txStatusFilter === 'DRAFT' ? 'selected' : ''}>Status: Draft</option>
+          <option value="HADIR" ${txStatusFilter === 'HADIR' ? 'selected' : ''}>Status: Hadir</option>
+        </select>
+        ${
+          txSearchQuery
+            ? '<button id="btn-tx-reset-search" style="padding: 6px 10px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.75rem; cursor: pointer;">Reset</button>'
+            : ''
+        }
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 0.78rem; font-weight: 700; background: #e0f2fe; color: #0369a1; padding: 6px 12px; border-radius: 6px; border: 1px solid #bae6fd;">
+          Total: ${filteredList.length} Record
+        </span>
+        ${
+          curMod.qtyField
+            ? `
+          <span style="font-size: 0.78rem; font-weight: 700; background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 6px; border: 1px solid #fde68a;">
+            Volume: ${totalVolume.toLocaleString('id-ID')} ${curMod.unit}
+          </span>
+        `
+            : ''
+        }
+      </div>
+    </div>
+
+    <!-- TABLE / CARD LIST -->
+    ${
+      filteredList.length === 0
+        ? `
+      <div class="review-empty-state" style="padding: 40px 16px; text-align: center; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">${curMod.icon}</div>
+        <h3 style="margin: 0 0 6px; font-size: 1rem; color: #1e293b;">Belum ada data transaksi pada modul ${curMod.title}</h3>
+        <p style="margin: 0 0 16px; font-size: 0.82rem; color: #64748b;">Gunakan tombol di bawah untuk menambah data transaksi baru atau memuat data sampel demo.</p>
+        <div style="display: flex; gap: 8px; justify-content: center;">
+          <button id="btn-tx-empty-add" class="btn btn-primary" style="font-size: 0.8rem;">+ Tambah Transaksi</button>
+          <button id="btn-tx-empty-sample" class="btn btn-ghost" style="font-size: 0.8rem; border: 1px solid #cbd5e1;">Muat Demo Data</button>
+        </div>
+      </div>
+    `
+        : `
+      <div class="review-table-wrap" style="background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; overflow-x: auto;">
+        ${renderDynamicTxTable(activeTxTab, curMod, filteredList)}
+      </div>
+    `}
+  `;
+
+  return html;
+}
+
+function getTxStatusBadge(status) {
+  status = status || 'SUBMITTED';
+  let bg = '#f1f5f9';
+  let color = '#475569';
+  if (['APPROVED', 'VERIFIED', 'COMPLETED', 'HADIR', 'SYNCED'].includes(status)) {
+    bg = '#dcfce7';
+    color = '#15803d';
+  } else if (['SUBMITTED', 'UNDER_REVIEW', 'PROCESS'].includes(status)) {
+    bg = '#eff6ff';
+    color = '#1d4ed8';
+  } else if (['DRAFT', 'PENDING', 'REGRAFTING', 'PENDING_DECLARATION'].includes(status)) {
+    bg = '#fef3c7';
+    color = '#b45309';
+  } else if (['FAILED', 'AFKIR', 'REJECTED', 'MATI'].includes(status)) {
+    bg = '#fee2e2';
+    color = '#b91c1c';
+  }
+  return `<span style="display: inline-block; font-size: 0.7rem; font-weight: 700; background: ${bg}; color: ${color}; padding: 3px 8px; border-radius: 4px; text-transform: uppercase;">${esc(status)}</span>`;
+}
+
+function getTxCrudButtons(idx) {
+  return `
+    <div style="position: relative; display: inline-block;">
+      <button type="button" class="btn-tx-action-trigger" data-idx="${idx}" title="Menu Aksi" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #475569; padding: 0; transition: all 0.15s ease;">
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="1.3" fill="currentColor"></circle>
+          <circle cx="19" cy="12" r="1.3" fill="currentColor"></circle>
+          <circle cx="5" cy="12" r="1.3" fill="currentColor"></circle>
+        </svg>
+      </button>
+
+      <div class="tx-action-dropdown" style="display: none; position: absolute; right: 0; top: 32px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); z-index: 100; min-width: 125px; overflow: hidden; text-align: left;">
+        <button type="button" class="btn-tx-detail" data-idx="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.76rem; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #f1f5f9;">
+          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#475569" stroke-width="2.2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          <span>Detail</span>
+        </button>
+        <button type="button" class="btn-tx-edit" data-idx="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.76rem; font-weight: 600; color: #1d4ed8; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #f1f5f9;">
+          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#1d4ed8" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          <span>Edit</span>
+        </button>
+        <button type="button" class="btn-tx-del" data-idx="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.76rem; font-weight: 600; color: #dc2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#dc2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          <span>Hapus</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderDynamicTxTable(modId, curMod, list) {
+  let theadHtml = '';
+  let tbodyHtml = '';
+
+  if (modId === 'attendance') {
+    theadHtml = `
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
+        <th style="padding: 10px 12px; width: 40px;">#</th>
+        <th style="padding: 10px 12px;">NIK & Pekerja</th>
+        <th style="padding: 10px 12px;">Jabatan</th>
+        <th style="padding: 10px 12px;">Tanggal</th>
+        <th style="padding: 10px 12px;">Jam Presensi</th>
+        <th style="padding: 10px 12px;">Lokasi Kebun</th>
+        <th style="padding: 10px 12px; text-align: center;">Status</th>
+        <th style="padding: 10px 12px; text-align: center; width: 60px;">Aksi</th>
+      </tr>
+    `;
+    tbodyHtml = list.map((item, idx) => `
+      <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
+        <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">
+          ${esc(item.name || 'Pekerja')}
+          <div style="font-size: 0.72rem; color: #64748b; font-weight: 400;">NIK: ${esc(item.code || item.nik || '104521')}</div>
+        </td>
+        <td style="padding: 10px 12px; color: #334155;">${esc(item.position || item.jabatan || 'Pekerja Bibitan')}</td>
+        <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
+        <td style="padding: 10px 12px; font-weight: 600; color: #0f172a;">${esc(item.time || '07:15')} WIB</td>
+        <td style="padding: 10px 12px; color: #475569;">${esc(item.location || item.kebun || 'Divisi I Kebun Induk')}</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxStatusBadge(item.status || 'HADIR')}</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxCrudButtons(idx)}</td>
+      </tr>
+    `).join('');
+  } else if (modId === 'reception') {
+    theadHtml = `
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
+        <th style="padding: 10px 12px; width: 40px;">#</th>
+        <th style="padding: 10px 12px;">No. Dokumen / PO</th>
+        <th style="padding: 10px 12px;">Tanggal</th>
+        <th style="padding: 10px 12px;">Tahapan Pertumbuhan</th>
+        <th style="padding: 10px 12px;">Jenis Klon</th>
+        <th style="padding: 10px 12px;">Sumber Asal Bibit</th>
+        <th style="padding: 10px 12px; text-align: right;">Jlh Diterima (Pkk)</th>
+        <th style="padding: 10px 12px; text-align: center;">Status</th>
+        <th style="padding: 10px 12px; text-align: center; width: 60px;">Aksi</th>
+      </tr>
+    `;
+    tbodyHtml = list.map((item, idx) => `
+      <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
+        <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">${esc(item.docNo || `RCV-${idx + 1}`)}</td>
+        <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
+        <td style="padding: 10px 12px; font-weight: 600; color: #334155;">${esc(item.tahapan || 'Rubber Main Nursery')}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">${esc(item.klon || 'PB 260')}</td>
+        <td style="padding: 10px 12px; color: #475569;">${esc(item.sumber || item.supplier || '-')}</td>
+        <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #116834;">${(parseInt(item.qty || 0)).toLocaleString('id-ID')} Pkk</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxStatusBadge(item.status || 'APPROVED')}</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxCrudButtons(idx)}</td>
+      </tr>
+    `).join('');
+  } else if (modId === 'seeding') {
+    theadHtml = `
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
+        <th style="padding: 10px 12px; width: 40px;">#</th>
+        <th style="padding: 10px 12px;">Dokumen Ref & Batch</th>
+        <th style="padding: 10px 12px;">Tanggal Semai</th>
+        <th style="padding: 10px 12px;">No. Bedengan</th>
+        <th style="padding: 10px 12px;">Klon Batang Bawah</th>
+        <th style="padding: 10px 12px; text-align: right;">Bibit Disemai (Pkk)</th>
+        <th style="padding: 10px 12px; text-align: right;">Jlh Polybag</th>
+        <th style="padding: 10px 12px; text-align: right;">Ditolak (Pkk)</th>
+        <th style="padding: 10px 12px; text-align: center;">Status</th>
+        <th style="padding: 10px 12px; text-align: center; width: 60px;">Aksi</th>
+      </tr>
+    `;
+    tbodyHtml = list.map((item, idx) => {
+      let bedDisplay = item.bedengan;
+      if (!bedDisplay && Array.isArray(item.rows) && item.rows.length > 0) {
+        const beds = Array.from(new Set(item.rows.map(r => r.bedengan).filter(Boolean)));
+        bedDisplay = beds.length > 0 ? beds.join(', ') : 'Bedengan 01';
+      }
+      bedDisplay = bedDisplay || 'Bedengan 01';
+
+      const polybagVal = parseInt(item.totalPolybag || (item.totalDisemai ? Math.ceil(item.totalDisemai / 2) : 0)) || 0;
+      const ditolakVal = parseInt(item.ditolak || 0);
+
+      return `
+        <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
+          <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
+          <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">
+            ${esc(item.docNo || '-')}
+            <div style="font-size: 0.72rem; color: #116834; font-weight: 700;">${esc(item.batchNo || 'Batch-01')}</div>
+          </td>
+          <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
+          <td style="padding: 10px 12px; font-weight: 700; color: #111827;">${esc(bedDisplay)}</td>
+          <td style="padding: 10px 12px; font-weight: 600; color: #334155;">${esc(item.klonAwal || item.klon || 'GT 1')}</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #116834;">${(parseInt(item.totalDisemai || item.qty || 0)).toLocaleString('id-ID')} Pkk</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 600; color: #475569;">${polybagVal.toLocaleString('id-ID')} Plb</td>
+          <td style="padding: 10px 12px; text-align: right; color: ${ditolakVal > 0 ? '#dc2626' : '#64748b'}; font-weight: ${ditolakVal > 0 ? '700' : '500'};">${ditolakVal.toLocaleString('id-ID')} Pkk</td>
+          <td style="padding: 10px 12px; text-align: center;">${getTxStatusBadge(item.status || 'SUBMITTED')}</td>
+          <td style="padding: 10px 12px; text-align: center;">${getTxCrudButtons(idx)}</td>
+        </tr>
+      `;
+    }).join('');
+  } else if (modId === 'budding') {
+    theadHtml = `
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
+        <th style="padding: 10px 12px; width: 40px;">#</th>
+        <th style="padding: 10px 12px;">No. Dokumen & Batch</th>
+        <th style="padding: 10px 12px;">Tanggal Okulasi</th>
+        <th style="padding: 10px 12px;">Bedengan</th>
+        <th style="padding: 10px 12px;">Klon Batang Bawah</th>
+        <th style="padding: 10px 12px;">Klon Entres</th>
+        <th style="padding: 10px 12px; text-align: right;">Kayu Okulasi</th>
+        <th style="padding: 10px 12px; text-align: right;">Diokulasi (Pkk)</th>
+        <th style="padding: 10px 12px; text-align: right;">Ditolak</th>
+        <th style="padding: 10px 12px; text-align: center;">Status</th>
+        <th style="padding: 10px 12px; text-align: center; width: 60px;">Aksi</th>
+      </tr>
+    `;
+    tbodyHtml = list.map((item, idx) => `
+      <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
+        <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">
+          ${esc(item.docNo || 'OKL/2026/01')}
+          <div style="font-size: 0.72rem; color: #116834; font-weight: 700;">${esc(item.batchNo || 'Batch-01')}</div>
+        </td>
+        <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #111827;">${esc(item.bedengan || 'Bedengan 01')}</td>
+        <td style="padding: 10px 12px; color: #334155;">${esc(item.klonRootstock || 'GT 1')}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #116834;">${esc(item.klonEntres || item.klon || 'PB 260')}</td>
+        <td style="padding: 10px 12px; text-align: right; color: #475569;">${(parseInt(item.jumlahKayu || 0)).toLocaleString('id-ID')} Btg</td>
+        <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #116834;">${(parseInt(item.jumlah || item.qty || 0)).toLocaleString('id-ID')} Pkk</td>
+        <td style="padding: 10px 12px; text-align: right; color: ${parseInt(item.jumlahDitolak || 0) > 0 ? '#dc2626' : '#64748b'}; font-weight: ${parseInt(item.jumlahDitolak || 0) > 0 ? '700' : '500'};">${(parseInt(item.jumlahDitolak || 0)).toLocaleString('id-ID')} Pkk</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxStatusBadge(item.status || 'COMPLETED')}</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxCrudButtons(idx)}</td>
+      </tr>
+    `).join('');
+  } else if (modId === 'inspection') {
+    theadHtml = `
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
+        <th style="padding: 10px 12px; width: 40px;">#</th>
+        <th style="padding: 10px 12px;">No. Dokumen & Batch</th>
+        <th style="padding: 10px 12px;">Tanggal Periksa</th>
+        <th style="padding: 10px 12px;">Ref. Dokumen Okulasi</th>
+        <th style="padding: 10px 12px;">Bedengan</th>
+        <th style="padding: 10px 12px; text-align: right;">Total Diperiksa</th>
+        <th style="padding: 10px 12px; text-align: right;">Hasil Jadi (Sukses)</th>
+        <th style="padding: 10px 12px; text-align: right;">Hasil Gagal</th>
+        <th style="padding: 10px 12px; text-align: center;">% Jadi</th>
+        <th style="padding: 10px 12px; text-align: center;">Status</th>
+        <th style="padding: 10px 12px; text-align: center; width: 60px;">Aksi</th>
+      </tr>
+    `;
+    tbodyHtml = list.map((item, idx) => {
+      const periksaVal = parseInt(item.totalDiperiksa || 0);
+      const jadiVal = parseInt(item.jumlahJadi || 0);
+      const gagalVal = parseInt(item.jumlahGagal || (periksaVal - jadiVal)) || 0;
+      const persen = item.persenJadi !== undefined ? item.persenJadi : (periksaVal > 0 ? Math.round((jadiVal / periksaVal) * 100) : 0);
+
+      return `
+        <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
+          <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
+          <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">
+            ${esc(item.docNo || 'INSP/2026/01')}
+            <div style="font-size: 0.72rem; color: #116834; font-weight: 700;">${esc(item.batchNo || 'Batch-01')}</div>
+          </td>
+          <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
+          <td style="padding: 10px 12px; font-size: 0.72rem; color: #475569;">${esc(item.buddingDocNo || '-')}</td>
+          <td style="padding: 10px 12px; font-weight: 700; color: #111827;">${esc(item.bedengan || 'Bedengan 01')}</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #0f172a;">${periksaVal.toLocaleString('id-ID')} Pkk</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #15803d;">${jadiVal.toLocaleString('id-ID')} Pkk</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #b91c1c;">${gagalVal.toLocaleString('id-ID')} Pkk</td>
+          <td style="padding: 10px 12px; text-align: center;">
+            <span style="font-weight: 800; font-size: 0.75rem; color: #116834; padding: 2px 7px; background: #dcfce7; border-radius: 4px; border: 1px solid #bbf7d0;">${persen}%</span>
+          </td>
+          <td style="padding: 10px 12px; text-align: center;">${getTxStatusBadge(item.status || 'VERIFIED')}</td>
+          <td style="padding: 10px 12px; text-align: center;">${getTxCrudButtons(idx)}</td>
+        </tr>
+      `;
+    }).join('');
+  } else if (modId === 'regrafting') {
+    theadHtml = `
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
+        <th style="padding: 10px 12px; width: 40px;">#</th>
+        <th style="padding: 10px 12px;">No. Dokumen & Batch</th>
+        <th style="padding: 10px 12px;">Tanggal</th>
+        <th style="padding: 10px 12px;">Bedengan</th>
+        <th style="padding: 10px 12px;">Klon Entres</th>
+        <th style="padding: 10px 12px; text-align: right;">Kayu Entres</th>
+        <th style="padding: 10px 12px; text-align: right;">Jlh Regrafting (Pkk)</th>
+        <th style="padding: 10px 12px; text-align: right;">Ditolak</th>
+        <th style="padding: 10px 12px; text-align: center;">Status</th>
+        <th style="padding: 10px 12px; text-align: center; width: 60px;">Aksi</th>
+      </tr>
+    `;
+    tbodyHtml = list.map((item, idx) => `
+      <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
+        <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">
+          ${esc(item.docNo || 'REG/2026/01')}
+          <div style="font-size: 0.72rem; color: #116834; font-weight: 700;">${esc(item.batchNo || 'Batch-01')}</div>
+        </td>
+        <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #111827;">${esc(item.bedengan || 'Bedengan 01')}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #116834;">${esc(item.klonEntres || item.klon || 'PB 260')}</td>
+        <td style="padding: 10px 12px; text-align: right; color: #475569;">${(parseInt(item.jumlahKayu || 0)).toLocaleString('id-ID')} Btg</td>
+        <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #116834;">${(parseInt(item.jumlah || item.qty || 0)).toLocaleString('id-ID')} Pkk</td>
+        <td style="padding: 10px 12px; text-align: right; color: ${parseInt(item.jumlahDitolak || 0) > 0 ? '#dc2626' : '#64748b'}; font-weight: ${parseInt(item.jumlahDitolak || 0) > 0 ? '700' : '500'};">${(parseInt(item.jumlahDitolak || 0)).toLocaleString('id-ID')} Pkk</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxStatusBadge(item.status || 'SUBMITTED')}</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxCrudButtons(idx)}</td>
+      </tr>
+    `).join('');
+  } else if (modId === 'selection') {
+    theadHtml = `
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
+        <th style="padding: 10px 12px; width: 40px;">#</th>
+        <th style="padding: 10px 12px;">No. Dokumen Seleksi</th>
+        <th style="padding: 10px 12px;">Tanggal</th>
+        <th style="padding: 10px 12px;">Asal Afkir</th>
+        <th style="padding: 10px 12px;">Ref Dokumen / Batch</th>
+        <th style="padding: 10px 12px;">Bedengan</th>
+        <th style="padding: 10px 12px;">Klon</th>
+        <th style="padding: 10px 12px; text-align: right;">Jlh Afkir (Pkk)</th>
+        <th style="padding: 10px 12px;">Alasan Afkir</th>
+        <th style="padding: 10px 12px; text-align: center;">Status</th>
+        <th style="padding: 10px 12px; text-align: center; width: 60px;">Aksi</th>
+      </tr>
+    `;
+    tbodyHtml = list.map((item, idx) => `
+      <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
+        <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">${esc(item.docNo || 'SEL/2026/01')}</td>
+        <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
+        <td style="padding: 10px 12px;">
+          <span style="font-size: 0.68rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca;">
+            ${esc(item.originType || 'AFKIR')}
+          </span>
+        </td>
+        <td style="padding: 10px 12px; font-size: 0.72rem; color: #475569;">${esc(item.batchNo || item.buddingDocNo || item.inspectionDocNo || '-')}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #111827;">${esc(item.bedengan || 'Bedengan 01')}</td>
+        <td style="padding: 10px 12px; font-weight: 600;">${esc(item.klon || 'GT 1')}</td>
+        <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #b91c1c;">${(parseInt(item.jumlahAfkir || item.jumlah || item.qty || 0)).toLocaleString('id-ID')} Pkk</td>
+        <td style="padding: 10px 12px; font-size: 0.75rem; font-weight: 600; color: #7f1d1d;">${esc(item.alasan || 'MATI')}</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxStatusBadge(item.status || 'AFKIR')}</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxCrudButtons(idx)}</td>
+      </tr>
+    `).join('');
+  } else if (modId === 'syncQueue') {
+    theadHtml = `
+      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
+        <th style="padding: 10px 12px; width: 40px;">#</th>
+        <th style="padding: 10px 12px;">Queue ID</th>
+        <th style="padding: 10px 12px;">Entitas / Modul</th>
+        <th style="padding: 10px 12px;">Operasi</th>
+        <th style="padding: 10px 12px;">Ringkasan Data</th>
+        <th style="padding: 10px 12px;">Waktu Antre</th>
+        <th style="padding: 10px 12px; text-align: center;">Status</th>
+        <th style="padding: 10px 12px; text-align: center; width: 60px;">Aksi</th>
+      </tr>
+    `;
+    tbodyHtml = list.map((item, idx) => `
+      <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
+        <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">${esc(item.id || item.docNo || `SYNC-${idx + 1}`)}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #0284c7; text-transform: uppercase;">${esc(item.entity || 'receptions')}</td>
+        <td style="padding: 10px 12px;">
+          <span style="font-size: 0.70rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #e0f2fe; color: #0369a1;">
+            ${esc(item.action || 'CREATE')}
+          </span>
+        </td>
+        <td style="padding: 10px 12px;">
+          <div style="font-size: 0.72rem; color: #475569; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            ${esc(typeof item.payload === 'object' ? JSON.stringify(item.payload) : (item.payload || '-'))}
+          </div>
+        </td>
+        <td style="padding: 10px 12px; color: #334155;">${esc(item.createdAt || item.timestamp || todayISO())}</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxStatusBadge(item.status || 'PENDING')}</td>
+        <td style="padding: 10px 12px; text-align: center;">${getTxCrudButtons(idx)}</td>
+      </tr>
+    `).join('');
+  }
+
+  return `
+    <table class="review-table" style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+      <thead>${theadHtml}</thead>
+      <tbody>${tbodyHtml}</tbody>
+    </table>
+  `;
+}
+
+function attachTransactionsWorkspaceEvents(container) {
+  // Sub-tabs switching
+  container.querySelectorAll('.tx-sub-tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activeTxTab = btn.dataset.mod;
+      txSearchQuery = '';
+      renderReviewPanel();
+    });
+  });
+
+  // Search input
+  const searchInput = container.querySelector('#tx-search-input');
+  searchInput?.addEventListener('input', (e) => {
+    txSearchQuery = e.target.value;
+    clearTimeout(window._txSearchTimeout);
+    window._txSearchTimeout = setTimeout(() => {
+      renderReviewPanel();
+    }, 250);
+  });
+
+  // Reset search
+  container.querySelector('#btn-tx-reset-search')?.addEventListener('click', () => {
+    txSearchQuery = '';
+    renderReviewPanel();
+  });
+
+  // Status Filter
+  const statusSelect = container.querySelector('#tx-filter-status');
+  statusSelect?.addEventListener('change', (e) => {
+    txStatusFilter = e.target.value;
+    renderReviewPanel();
+  });
+
+  // Buka Layar Modul di HP
+  container.querySelector('#btn-tx-open-screen')?.addEventListener('click', () => {
+    const curMod = TX_MODULES[activeTxTab];
+    if (curMod?.route) {
+      navigate(curMod.route);
+      toast(`Menampilkan layar ${curMod.title} di frame HP`, 'info');
+    }
+  });
+
+  // Reset / Bersihkan Seluruh Data Transaksi
+  container.querySelector('#btn-tx-reset-all')?.addEventListener('click', () => {
+    openModal({
+      title: 'Kosongkan Seluruh Data Transaksi & Afkir',
+      body: `
+        <div style="text-align: center; padding: 10px 0;">
+          <div style="font-size: 2.5rem; margin-bottom: 8px;">⚠️</div>
+          <h3 style="font-size: 1rem; font-weight: 800; color: #991b1b; margin: 0 0 8px;">Hapus Bersih Semua Data Transaksi?</h3>
+          <p style="font-size: 0.82rem; color: #334155; line-height: 1.5; margin: 0 0 12px;">
+            Tindakan ini akan <strong>menghapus seluruh data operasional</strong> di prototype, termasuk:
+            <br>&bull; Penerimaan Benih & Bibit APM
+            <br>&bull; Batching & Bedengan Penyemaian
+            <br>&bull; Okulasi & Okulasi Janda (Regrafting)
+            <br>&bull; Pemeriksaan Okulasi (Hasil Sukses vs Gagal)
+            <br>&bull; <strong>Daftar Bibit Afkir / Penyeleksian (Selection Pool)</strong>
+            <br>&bull; Presensi & Antrean Sinkronisasi
+          </p>
+          <div style="background: #fef2f2; border: 1px dashed #f87171; border-radius: 6px; padding: 8px; font-size: 0.75rem; color: #b91c1c;">
+            Seluruh layar prototype di frame HP akan otomatis kembali bersih (0 data).
+          </div>
+        </div>
+      `,
+      footer: `
+        <button class="btn btn-ghost" data-reset-cancel>Batal</button>
+        <button class="btn btn-danger" id="btn-confirm-reset-all">Ya, Kosongkan Bersih</button>
+      `
+    });
+
+    const root = document.getElementById('modal-root');
+    root.querySelector('[data-reset-cancel]')?.addEventListener('click', closeModal);
+    root.querySelector('#btn-confirm-reset-all')?.addEventListener('click', async () => {
+      // 1. Kosongkan semua storage transaksi & pool
+      storage.set('selection_pool', []);
+      storage.set('selection_transactions', []);
+      storage.set('regrafting_pool', []);
+      storage.set('budding_transactions', []);
+      storage.set('inspection_transactions', []);
+      storage.set('receipt_transactions', []);
+      storage.set('seeding_transactions', []);
+      storage.set('attendance_transactions', []);
+      storage.set('sync_queue', []);
+
+      // 2. Kosongkan draft form cache
+      storage.set('receipt_photos', []);
+      storage.set('benih_table_rows', []);
+      storage.remove('editing_transaction_index');
+      storage.remove('viewing_transaction_index');
+      storage.remove('seeding_source_index');
+      storage.remove('editing_seeding_index');
+      storage.remove('selected_sir');
+      storage.remove('selected_klon');
+      storage.remove('benih_jenis');
+      storage.remove('benih_tahapan');
+      storage.remove('benih_program_id');
+      storage.remove('benih_program_code');
+      storage.remove('benih_source_id');
+      storage.remove('benih_source_name');
+      storage.remove('benih_batch_code');
+      storage.remove('transaction_originType');
+
+      // 3. Kosongkan IndexedDB khusus tabel transaksi (User, Role, dan Master Data tetap aman terjaga!)
+      try {
+        const txStores = [
+          'attendance', 'receptions', 'seedings', 'transplantations',
+          'buddings', 'inspections', 'regraftings', 'selections',
+          'batchTransfers', 'stageTransfers', 'entresActivities',
+          'nurseryActivities', 'requests', 'syncQueue', 'auditLogs', 'photos'
+        ];
+        const db = await (await import('../../db/indexeddb.js')).getDB();
+        const tx = db.transaction(txStores, 'readwrite');
+        for (const s of txStores) {
+          tx.objectStore(s).clear();
+        }
+      } catch (err) {
+        console.warn('[review] clear tx stores error:', err);
+      }
+
+      // Pastikan master data & akun role login selalu lengkap tersedia
+      try {
+        const { seedDatabase } = await import('../../db/seed.js');
+        await seedDatabase();
+      } catch (err) {
+        console.warn('[review] seedDatabase error:', err);
+      }
+
+      closeModal();
+      toast('Seluruh data transaksi dan bibit afkir telah dibersihkan!', 'success');
+      renderReviewPanel();
+
+      // Refresh frame HP jika sedang di halaman yang relevan
+      const cur = getCurrent();
+      if (cur?.route) {
+        navigate(cur.route);
+      }
+    });
+  });
+
+  // Muat Demo Data
+  const seedDemo = async () => {
+    await injectTxDemoSample(activeTxTab);
+    toast(`Data sampel ${TX_MODULES[activeTxTab]?.title} berhasil dimuat!`, 'success');
+    renderReviewPanel();
+  };
+  container.querySelector('#btn-tx-seed-sample')?.addEventListener('click', seedDemo);
+  container.querySelector('#btn-tx-empty-sample')?.addEventListener('click', seedDemo);
+
+  // Tambah Transaksi
+  const openAdd = () => openTxFormModal(null, activeTxTab);
+  container.querySelector('#btn-tx-add-new')?.addEventListener('click', openAdd);
+  container.querySelector('#btn-tx-empty-add')?.addEventListener('click', openAdd);
+
+  // Menu Aksi 3-dots Trigger & Dropdown
+  container.querySelectorAll('.btn-tx-action-trigger').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const parent = btn.closest('div');
+      const menu = parent?.querySelector('.tx-action-dropdown');
+
+      container.querySelectorAll('.tx-action-dropdown').forEach((m) => {
+        if (m !== menu) m.style.display = 'none';
+      });
+
+      if (menu) {
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+      }
+    });
+  });
+
+  // Tutup dropdown jika klik di luar
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.tx-action-dropdown').forEach((m) => {
+      m.style.display = 'none';
+    });
+  });
+
+  // Edit Transaksi
+  container.querySelectorAll('.btn-tx-edit').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      container.querySelectorAll('.tx-action-dropdown').forEach((m) => (m.style.display = 'none'));
+      const idx = parseInt(btn.dataset.idx, 10);
+      const list = loadTxList(activeTxTab);
+      if (list[idx]) {
+        openTxFormModal(list[idx], activeTxTab, idx);
+      }
+    });
+  });
+
+  // Hapus Transaksi
+  container.querySelectorAll('.btn-tx-del').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      container.querySelectorAll('.tx-action-dropdown').forEach((m) => (m.style.display = 'none'));
+      const idx = parseInt(btn.dataset.idx, 10);
+      const list = loadTxList(activeTxTab);
+      if (list[idx]) {
+        openTxDeleteConfirm(list[idx], activeTxTab, idx);
+      }
+    });
+  });
+
+  // Detail Transaksi
+  container.querySelectorAll('.btn-tx-detail').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      container.querySelectorAll('.tx-action-dropdown').forEach((m) => (m.style.display = 'none'));
+      const idx = parseInt(btn.dataset.idx, 10);
+      const list = loadTxList(activeTxTab);
+      if (list[idx]) {
+        openTxDetailModal(list[idx], activeTxTab, idx);
+      }
+    });
+  });
+}
+
+function openTxFormModal(item, modId, editIndex = null) {
+  const isEdit = item !== null && editIndex !== null;
+  const cfg = TX_MODULES[modId];
+  const docNo = item ? item.docNo || item.nomorDokumen || item.id || '' : generateNewDocNo(modId);
+  const tanggal = item ? item.tanggal || item.date || todayISO() : todayISO();
+  const status = item ? item.status || 'SUBMITTED' : 'SUBMITTED';
+  const notes = item ? item.notes || item.catatan || '' : '';
+
+  openModal({
+    title: isEdit ? `Edit Transaksi: ${cfg.title}` : `Tambah Transaksi: ${cfg.title}`,
+    body: `
+      <div style="display: flex; flex-direction: column; gap: 12px; font-size: 0.85rem;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nomor Dokumen / ID Transaksi <span style="color:#ef4444;">*</span></label>
+          <input class="feedback-form-input" id="tx-input-docNo" type="text" value="${esc(docNo)}" required />
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Tanggal Transaksi</label>
+            <input class="feedback-form-input" id="tx-input-date" type="text" value="${esc(tanggal)}" placeholder="YYYY-MM-DD" />
+          </div>
+          <div>
+            <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Status Transaksi</label>
+            <select class="feedback-form-select" id="tx-input-status">
+              <option value="SUBMITTED" ${status === 'SUBMITTED' ? 'selected' : ''}>SUBMITTED</option>
+              <option value="APPROVED" ${status === 'APPROVED' ? 'selected' : ''}>APPROVED</option>
+              <option value="VERIFIED" ${status === 'VERIFIED' ? 'selected' : ''}>VERIFIED</option>
+              <option value="COMPLETED" ${status === 'COMPLETED' ? 'selected' : ''}>COMPLETED</option>
+              <option value="DRAFT" ${status === 'DRAFT' ? 'selected' : ''}>DRAFT</option>
+              <option value="HADIR" ${status === 'HADIR' ? 'selected' : ''}>HADIR</option>
+            </select>
+          </div>
+        </div>
+
+        ${renderTxModuleFields(modId, item)}
+
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Catatan Operasional</label>
+          <textarea class="feedback-form-textarea" id="tx-input-notes" placeholder="Catatan opsional...">${esc(notes)}</textarea>
+        </div>
+      </div>
+    `,
+    footer: `
+      <button class="btn btn-ghost" data-tx-cancel>Batal</button>
+      <button class="btn btn-primary" id="btn-tx-save-modal">${isEdit ? 'Perbarui Transaksi' : 'Simpan Transaksi'}</button>
+    `
+  });
+
+  const root = document.getElementById('modal-root');
+  root.querySelector('[data-tx-cancel]')?.addEventListener('click', closeModal);
+  root.querySelector('#btn-tx-save-modal')?.addEventListener('click', () => {
+    const docNoVal = root.querySelector('#tx-input-docNo')?.value.trim();
+    if (!docNoVal) {
+      toast('Nomor dokumen wajib diisi!', 'danger');
+      return;
+    }
+
+    const payload = extractTxFormPayload(modId, root);
+    payload.docNo = docNoVal;
+    payload.tanggal = root.querySelector('#tx-input-date')?.value || todayISO();
+    payload.status = root.querySelector('#tx-input-status')?.value || 'SUBMITTED';
+    payload.notes = root.querySelector('#tx-input-notes')?.value || '';
+
+    const list = loadTxList(modId);
+    if (isEdit) {
+      list[editIndex] = { ...item, ...payload, updatedAt: new Date().toISOString() };
+    } else {
+      payload.id = uid(`${modId.toUpperCase().slice(0, 3)}-`);
+      payload.createdAt = new Date().toISOString();
+      list.unshift(payload);
+    }
+
+    saveTxList(modId, list);
+    closeModal();
+    toast(isEdit ? 'Data transaksi berhasil diperbarui!' : 'Transaksi baru berhasil ditambahkan!', 'success');
+    renderReviewPanel();
+  });
+}
+
+function openTxDeleteConfirm(item, modId, index) {
+  const docTitle = item.docNo || item.name || item.id || `Item #${index + 1}`;
+  const cfg = TX_MODULES[modId];
+
+  openModal({
+    title: `Hapus Transaksi ${cfg.title}`,
+    body: `
+      <div style="text-align: center; padding: 10px 0;">
+        <div style="font-size: 2.5rem; margin-bottom: 8px;">⚠️</div>
+        <p style="font-size: 0.95rem; color: #1e293b; margin: 0 0 8px;">
+          Yakin ingin menghapus data <strong>${esc(docTitle)}</strong>?
+        </p>
+        <p style="font-size: 0.8rem; color: #64748b; margin: 0;">
+          Transaksi akan dihapus dari modul ${cfg.title} dan perubahan akan langsung merefleksikan saldo ketersediaan.
+        </p>
+      </div>
+    `,
+    footer: `
+      <button class="btn btn-ghost" data-tx-del-cancel>Batal</button>
+      <button class="btn btn-danger" id="btn-tx-del-confirm">Ya, Hapus Data</button>
+    `
+  });
+
+  const root = document.getElementById('modal-root');
+  root.querySelector('[data-tx-del-cancel]')?.addEventListener('click', closeModal);
+  root.querySelector('#btn-tx-del-confirm')?.addEventListener('click', () => {
+    const list = loadTxList(modId);
+    list.splice(index, 1);
+    saveTxList(modId, list);
+    if (modId === 'selection') {
+      let pool = storage.get('selection_pool', []);
+      let culled = storage.get('selection_transactions', []);
+      pool = pool.filter((p) => p.docNo !== item.docNo && p.id !== item.id);
+      culled = culled.filter((c) => c.docNo !== item.docNo && c.selectionPoolDocNo !== item.docNo && c.id !== item.id);
+      storage.set('selection_pool', pool);
+      storage.set('selection_transactions', culled);
+    }
+    if (item.id) {
+      try {
+        cfg.repo.remove(item.id);
+      } catch (e) {}
+    }
+    closeModal();
+    toast('Data transaksi berhasil dihapus!', 'info');
+    renderReviewPanel();
+    const cur = getCurrent();
+    if (cur?.route) navigate(cur.route);
+  });
+}
+
+function openTxDetailModal(item, modId, index) {
+  const cfg = TX_MODULES[modId];
+  openModal({
+    title: `Detail Transaksi: ${cfg.title}`,
+    body: `
+      <div style="max-height: 60vh; overflow-y: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+          ${Object.entries(item)
+            .map(([k, v]) => {
+              if (k === 'rawState' || k === 'photos' || k === 'photo') return '';
+              const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
+              return `
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 38%; vertical-align: top;">${esc(k)}</td>
+                <td style="padding: 6px 0; color: #0f172a; word-break: break-word;">${esc(val)}</td>
+              </tr>
+            `;
+            })
+            .join('')}
+        </table>
+      </div>
+    `,
+    footer: `
+      <button class="btn btn-primary" data-detail-close>Tutup</button>
+    `
+  });
+
+  const root = document.getElementById('modal-root');
+  root.querySelector('[data-detail-close]')?.addEventListener('click', closeModal);
+}
+
+function renderTxModuleFields(modId, item) {
+  if (modId === 'attendance') {
+    return `
+      <div>
+        <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nama Mandor / Pekerja <span style="color:#ef4444;">*</span></label>
+        <input class="feedback-form-input" id="tx-input-name" type="text" value="${esc(item?.name || 'Fadilah Yusuf Purba')}" />
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jabatan</label>
+          <input class="feedback-form-input" id="tx-input-position" type="text" value="${esc(item?.position || 'Pekerja Bibitan')}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jam Presensi</label>
+          <input class="feedback-form-input" id="tx-input-time" type="text" value="${esc(item?.time || '07:15')}" />
+        </div>
+      </div>
+    `;
+  }
+  if (modId === 'reception') {
+    return `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Tahapan Pertumbuhan</label>
+          <select class="feedback-form-select" id="tx-input-tahapan">
+            <option value="Rubber Main Nursery" ${item?.tahapan !== 'Rubber Advance Planting Material' ? 'selected' : ''}>Rubber Main Nursery (RMN)</option>
+            <option value="Rubber Advance Planting Material" ${item?.tahapan === 'Rubber Advance Planting Material' ? 'selected' : ''}>Rubber Advance Planting Material (APM)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jenis Klon</label>
+          <input class="feedback-form-input" id="tx-input-klon" type="text" value="${esc(item?.klon || 'PB 260')}" />
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Sumber Asal Bibit</label>
+          <input class="feedback-form-input" id="tx-input-sumber" type="text" value="${esc(item?.sumber || 'Supplier Bibit Jaya')}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Diterima (Pkk) <span style="color:#ef4444;">*</span></label>
+          <input class="feedback-form-input" id="tx-input-qty" type="number" value="${esc(item?.qty || 5000)}" />
+        </div>
+      </div>
+    `;
+  }
+  if (modId === 'seeding') {
+    return `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nomor Batch</label>
+          <input class="feedback-form-input" id="tx-input-batchNo" type="text" value="${esc(item?.batchNo || 'Batch-01')}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nomor Bedengan</label>
+          <input class="feedback-form-input" id="tx-input-bedengan" type="text" value="${esc(item?.bedengan || (item?.rows && item.rows[0]?.bedengan) || 'Bedengan 01')}" />
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Klon Rootstock</label>
+          <input class="feedback-form-input" id="tx-input-klonAwal" type="text" value="${esc(item?.klonAwal || item?.klon || 'GT 1')}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Disemai (Pkk)</label>
+          <input class="feedback-form-input" id="tx-input-totalDisemai" type="number" value="${esc(item?.totalDisemai || item?.qty || 3000)}" />
+        </div>
+      </div>
+    `;
+  }
+  if (modId === 'budding' || modId === 'regrafting') {
+    return `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nomor Batch</label>
+          <input class="feedback-form-input" id="tx-input-batchNo" type="text" value="${esc(item?.batchNo || 'Batch-01')}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nomor Bedengan</label>
+          <input class="feedback-form-input" id="tx-input-bedengan" type="text" value="${esc(item?.bedengan || 'Bedengan 01')}" />
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Klon Entres (Mata)</label>
+          <input class="feedback-form-input" id="tx-input-klonEntres" type="text" value="${esc(item?.klonEntres || 'PB 260')}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Klon Rootstock (Bawah)</label>
+          <input class="feedback-form-input" id="tx-input-klonRootstock" type="text" value="${esc(item?.klonRootstock || 'GT 1')}" />
+        </div>
+      </div>
+      <div>
+        <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Diokulasi (Pkk)</label>
+        <input class="feedback-form-input" id="tx-input-jumlah" type="number" value="${esc(item?.jumlah || 1500)}" />
+      </div>
+    `;
+  }
+  if (modId === 'inspection') {
+    return `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Ref. Dokumen Okulasi</label>
+          <input class="feedback-form-input" id="tx-input-buddingDocNo" type="text" value="${esc(item?.buddingDocNo || 'OKL/2026/01')}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nomor Batch</label>
+          <input class="feedback-form-input" id="tx-input-batchNo" type="text" value="${esc(item?.batchNo || 'Batch-01')}" />
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Total Diperiksa (Pkk)</label>
+          <input class="feedback-form-input" id="tx-input-totalDiperiksa" type="number" value="${esc(item?.totalDiperiksa || 1500)}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Hasil Jadi (Sukses)</label>
+          <input class="feedback-form-input" id="tx-input-jumlahJadi" type="number" value="${esc(item?.jumlahJadi || 1350)}" />
+        </div>
+      </div>
+    `;
+  }
+  if (modId === 'selection') {
+    return `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nomor Batch</label>
+          <input class="feedback-form-input" id="tx-input-batchNo" type="text" value="${esc(item?.batchNo || 'Batch-01')}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Alasan Pengafkiran</label>
+          <select class="feedback-form-select" id="tx-input-alasan">
+            <option value="MATI" ${item?.alasan === 'MATI' ? 'selected' : ''}>MATI (Kering / Busuk)</option>
+            <option value="ABNORMAL" ${item?.alasan === 'ABNORMAL' ? 'selected' : ''}>ABNORMAL (Kerdil / Rusak)</option>
+            <option value="RUSAK" ${item?.alasan === 'RUSAK' ? 'selected' : ''}>RUSAK (Hama / Penyakit)</option>
+          </select>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Klon</label>
+          <input class="feedback-form-input" id="tx-input-klon" type="text" value="${esc(item?.klon || 'PB 260')}" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Diafkir (Pkk)</label>
+          <input class="feedback-form-input" id="tx-input-jumlahAfkir" type="number" value="${esc(item?.jumlahAfkir || 50)}" />
+        </div>
+      </div>
+    `;
+  }
+  if (modId === 'syncQueue') {
+    return `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Modul Entitas</label>
+          <select class="feedback-form-select" id="tx-input-entity">
+            <option value="receptions">receptions (Penerimaan)</option>
+            <option value="seedings">seedings (Penyemaian)</option>
+            <option value="buddings">buddings (Okulasi)</option>
+            <option value="inspections">inspections (Pemeriksaan)</option>
+            <option value="attendance">attendance (Presensi)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Aksi Operasi</label>
+          <select class="feedback-form-select" id="tx-input-action">
+            <option value="CREATE">CREATE</option>
+            <option value="UPDATE">UPDATE</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+        </div>
+      </div>
+    `;
+  }
+  return '';
+}
+
+function extractTxFormPayload(modId, root) {
+  const p = {};
+  if (modId === 'attendance') {
+    p.name = root.querySelector('#tx-input-name')?.value || '';
+    p.position = root.querySelector('#tx-input-position')?.value || '';
+    p.time = root.querySelector('#tx-input-time')?.value || '';
+    p.type = 'WORKER';
+  } else if (modId === 'reception') {
+    p.tahapan = root.querySelector('#tx-input-tahapan')?.value || 'Rubber Main Nursery';
+    p.klon = root.querySelector('#tx-input-klon')?.value || 'PB 260';
+    p.sumber = root.querySelector('#tx-input-sumber')?.value || '';
+    p.qty = parseInt(root.querySelector('#tx-input-qty')?.value || 0) || 0;
+  } else if (modId === 'seeding') {
+    p.batchNo = root.querySelector('#tx-input-batchNo')?.value || 'Batch-01';
+    p.bedengan = root.querySelector('#tx-input-bedengan')?.value || 'Bedengan 01';
+    p.klonAwal = root.querySelector('#tx-input-klonAwal')?.value || 'GT 1';
+    p.totalDisemai = parseInt(root.querySelector('#tx-input-totalDisemai')?.value || 0) || 0;
+  } else if (modId === 'budding' || modId === 'regrafting') {
+    p.batchNo = root.querySelector('#tx-input-batchNo')?.value || 'Batch-01';
+    p.bedengan = root.querySelector('#tx-input-bedengan')?.value || 'Bedengan 01';
+    p.klonEntres = root.querySelector('#tx-input-klonEntres')?.value || 'PB 260';
+    p.klonRootstock = root.querySelector('#tx-input-klonRootstock')?.value || 'GT 1';
+    p.jumlah = parseInt(root.querySelector('#tx-input-jumlah')?.value || 0) || 0;
+    if (modId === 'regrafting') p.type = 'REGRAFTING';
+  } else if (modId === 'inspection') {
+    p.buddingDocNo = root.querySelector('#tx-input-buddingDocNo')?.value || '';
+    p.batchNo = root.querySelector('#tx-input-batchNo')?.value || 'Batch-01';
+    p.totalDiperiksa = parseInt(root.querySelector('#tx-input-totalDiperiksa')?.value || 0) || 0;
+    p.jumlahJadi = parseInt(root.querySelector('#tx-input-jumlahJadi')?.value || 0) || 0;
+    p.jumlahGagal = Math.max(0, p.totalDiperiksa - p.jumlahJadi);
+    p.persenJadi = p.totalDiperiksa > 0 ? Math.round((p.jumlahJadi / p.totalDiperiksa) * 100) : 0;
+  } else if (modId === 'selection') {
+    p.batchNo = root.querySelector('#tx-input-batchNo')?.value || 'Batch-01';
+    p.alasan = root.querySelector('#tx-input-alasan')?.value || 'MATI';
+    p.klon = root.querySelector('#tx-input-klon')?.value || 'PB 260';
+    p.jumlahAfkir = parseInt(root.querySelector('#tx-input-jumlahAfkir')?.value || 0) || 0;
+  } else if (modId === 'syncQueue') {
+    p.entity = root.querySelector('#tx-input-entity')?.value || 'receptions';
+    p.action = root.querySelector('#tx-input-action')?.value || 'CREATE';
+  }
+  return p;
+}
+
+function generateNewDocNo(modId) {
+  const num = Math.floor(Math.random() * 899 + 100);
+  switch (modId) {
+    case 'reception':
+      return `RCV/2026/${num}`;
+    case 'seeding':
+      return `SEED/2026/${num}`;
+    case 'budding':
+      return `OKL/2026/${num}`;
+    case 'inspection':
+      return `INSP/2026/${num}`;
+    case 'regrafting':
+      return `OKL/REG/2026/${num}`;
+    case 'selection':
+      return `DEC-CUL/2026/${num}`;
+    case 'attendance':
+      return `ATT-${num}`;
+    case 'syncQueue':
+      return `SYNC-${num}`;
+    default:
+      return `DOC/2026/${num}`;
+  }
+}
+
+async function injectTxDemoSample(modId) {
+  const today = todayISO();
+  const samples = {
+    reception: [
+      {
+        id: 'RCV-001',
+        docNo: 'RCV/2026/01',
+        program: 'Program Nursery 2026 - Batch 1',
+        tahapan: 'Rubber Main Nursery',
+        jenis: 'Benih / Biji Kelatak',
+        sumber: 'Supplier Bibit Jaya',
+        klon: 'PB 260',
+        qty: 10000,
+        batchNo: 'Batch-01',
+        tanggal: today,
+        status: 'APPROVED'
+      },
+      {
+        id: 'RCV-002',
+        docNo: 'RCV/2026/02',
+        program: 'Program Nursery 2026 - Batch 1',
+        tahapan: 'Rubber Advance Planting Material',
+        jenis: 'Bibit / Tanaman Muda',
+        sumber: 'Divisi I Kebun Induk',
+        klon: 'RRIM 600',
+        qty: 2500,
+        batchNo: 'Batch-APM-01',
+        tanggal: today,
+        status: 'APPROVED'
+      }
+    ],
+    seeding: [
+      {
+        id: 'SEED-001',
+        docNo: 'SEED/2026/01',
+        program: 'Program Nursery 2026 - Batch 1',
+        tahapan: 'Rubber Main Nursery',
+        batchNo: 'Batch-01',
+        bedengan: 'Bedengan 01',
+        klonAwal: 'GT 1',
+        totalDisemai: 9500,
+        tanggal: today,
+        status: 'COMPLETED'
+      }
+    ],
+    budding: [
+      {
+        id: 'OKL-001',
+        docNo: 'OKL/2026/01',
+        program: 'Program Nursery 2026 - Batch 1',
+        tahapan: 'Rubber Main Nursery',
+        batchNo: 'Batch-01',
+        bedengan: 'Bedengan 01',
+        klonRootstock: 'GT 1',
+        klonEntres: 'PB 260',
+        jumlah: 4500,
+        tanggal: today,
+        status: 'COMPLETED'
+      }
+    ],
+    inspection: [
+      {
+        id: 'INSP-001',
+        docNo: 'INSP/2026/01',
+        buddingDocNo: 'OKL/2026/01',
+        batchNo: 'Batch-01',
+        bedengan: 'Bedengan 01',
+        totalDiperiksa: 4500,
+        jumlahJadi: 4100,
+        jumlahGagal: 400,
+        persenJadi: 91,
+        tanggal: today,
+        status: 'VERIFIED'
+      }
+    ],
+    regrafting: [
+      {
+        id: 'REG-001',
+        docNo: 'OKL/REG/2026/01',
+        type: 'REGRAFTING',
+        batchNo: 'Batch-01',
+        bedengan: 'Bedengan 01',
+        klonRootstock: 'GT 1',
+        klonEntres: 'PB 260',
+        jumlah: 300,
+        tanggal: today,
+        status: 'SUBMITTED'
+      }
+    ],
+    selection: [
+      {
+        id: 'CUL-001',
+        docNo: 'DEC-CUL/2026/01',
+        batchNo: 'Batch-01',
+        bedengan: 'Bedengan 01',
+        klon: 'PB 260',
+        jumlahAfkir: 100,
+        alasan: 'MATI',
+        tanggal: today,
+        status: 'APPROVED'
+      }
+    ],
+    attendance: [
+      {
+        id: 'ATT-001',
+        name: 'Wagiman',
+        position: 'Mandor Semprot',
+        type: 'SUPERVISOR',
+        time: '06:55',
+        status: 'HADIR',
+        date: today
+      },
+      {
+        id: 'ATT-002',
+        name: 'Fadilah Yusuf Purba',
+        position: 'Pekerja Bibitan',
+        type: 'WORKER',
+        time: '07:05',
+        status: 'HADIR',
+        date: today
+      }
+    ],
+    syncQueue: [
+      {
+        id: 'SYNC-001',
+        entity: 'receptions',
+        recordId: 'RCV/2026/01',
+        action: 'CREATE',
+        status: 'SYNCED',
+        createdAt: today
+      }
+    ]
+  };
+
+  const list = samples[modId] || [];
+  if (list.length > 0) {
+    saveTxList(modId, list);
+  }
 }

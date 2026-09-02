@@ -11,8 +11,10 @@ const ROUTE_TITLE_MAP = {
   '/selection': { title: 'Penyeleksian', desc: 'Penyeleksian dan afkir bibit sesuai kriteria operasional.' },
   '/material': { title: 'Material & Bahan', desc: 'Pencatatan dan pemakaian material serta bahan pembibitan.' },
   '/nursery-activity': { title: 'Rekam Pemeliharaan', desc: 'Pencatatan berkala kegiatan pemeliharaan tanaman di nursery.' },
-  '/request': { title: 'Permintaan', desc: 'Pengajuan dan monitoring permintaan bibit & kebutuhan nursery.' },
-  '/entres': { title: 'Kebun Entres', desc: 'Pengelolaan dan monitoring kebun mata entres.' }
+  '/request': { title: 'Pengeluaran', desc: 'Pencatatan dan monitoring pengeluaran bibit & kebutuhan nursery.' },
+  '/entres': { title: 'Kebun Entres', desc: 'Pengelolaan dan monitoring kebun mata entres.' },
+  '/entres/menunas': { title: 'Menunas Entres', desc: 'Pencatatan kegiatan pembuangan tunas liar / menunas pada kebun entres.' },
+  '/entres/topping': { title: 'Topping Entres', desc: 'Pencatatan pemangkasan pucuk / topping tanaman kebun entres.' }
 };
 
 export function renderAnalysisPlaceholder(context = {}) {

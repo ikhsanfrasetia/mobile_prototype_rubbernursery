@@ -8,6 +8,83 @@ export function renderBuddingGrafting() {
   const seedingTxs = storage.get('seeding_transactions', []);
   const buddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
 
+  // Process and sort batches: yang belum selesai (Perlu Diokulasi) di ATAS, yang sudah selesai (Selesai Diokulasi) di BAWAH
+  const processedBatchList = seedingTxs.map((stx, idx) => {
+    const batchNo = stx.batchNo || `Batch-0${idx + 1}`;
+    const docNo = stx.docNo || `RCV/SEEDS/2026/AGUS/0${(stx.sourceIndex || 0) + 1}`;
+    const populasiBibit = parseInt(stx.totalDisemai || 0);
+
+    // Calculate accumulated budding for this batch
+    let ttlDiokulasi = 0;
+    let ttlDitolak = 0;
+    let ttlKayu = 0;
+    const relatedBuddings = buddingTxs.filter(b => b.seedingIndex === idx || b.batchNo === batchNo);
+    relatedBuddings.forEach(b => {
+      ttlDiokulasi += parseInt(b.jumlah || 0);
+      ttlDitolak += parseInt(b.jumlahDitolak || 0);
+      ttlKayu += parseInt(b.jumlahKayu || 0);
+    });
+
+    const totalRealisasi = ttlDiokulasi + ttlDitolak;
+    const sisaBelumOkulasi = Math.max(0, populasiBibit - totalRealisasi);
+    const persenSelesai = populasiBibit > 0 ? Math.min(100, Math.round((totalRealisasi / populasiBibit) * 100)) : 0;
+    const isCompleted = sisaBelumOkulasi <= 0 && populasiBibit > 0;
+
+    // Status badge
+    let statusBadgeText = 'Perlu Diokulasi';
+    let statusBadgeBg = '#E53935';
+    let statusBadgeColor = '#FFFFFF';
+    let statusBadgeBorder = 'none';
+
+    if (totalRealisasi === 0) {
+      statusBadgeText = 'Perlu Diokulasi';
+      statusBadgeBg = '#E53935';
+      statusBadgeColor = '#FFFFFF';
+    } else if (sisaBelumOkulasi <= 0) {
+      statusBadgeText = 'Selesai Diokulasi';
+      statusBadgeBg = '#E8F5E9';
+      statusBadgeColor = '#116834';
+      statusBadgeBorder = '1px solid #116834';
+    } else {
+      statusBadgeText = 'Okulasi Belum Selesai';
+      statusBadgeBg = '#FFF8E1';
+      statusBadgeColor = '#F57F17';
+      statusBadgeBorder = '1px solid #FFE082';
+    }
+
+    // Extract bedengan rows
+    const rows = stx.rows || [];
+    const bedenganNames = rows.map(r => r.bedengan).filter(Boolean);
+    const bedenganDisplay = bedenganNames.length > 0 ? Array.from(new Set(bedenganNames)).join(', ') : 'Bedengan 01';
+
+    return {
+      stx,
+      originalIdx: idx,
+      batchNo,
+      docNo,
+      populasiBibit,
+      ttlDiokulasi,
+      ttlDitolak,
+      ttlKayu,
+      relatedBuddings,
+      totalRealisasi,
+      sisaBelumOkulasi,
+      persenSelesai,
+      isCompleted,
+      statusBadgeText,
+      statusBadgeBg,
+      statusBadgeColor,
+      statusBadgeBorder,
+      bedenganDisplay
+    };
+  });
+
+  // Urutkan: Dokumen/Batch yang belum selesai paling ATAS, yang sudah selesai paling BAWAH
+  processedBatchList.sort((a, b) => {
+    if (a.isCompleted === b.isCompleted) return 0;
+    return a.isCompleted ? 1 : -1;
+  });
+
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
@@ -31,54 +108,29 @@ export function renderBuddingGrafting() {
           <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Daftar Batch Siap Okulasi</h2>
         </div>
 
-        ${seedingTxs.length > 0 ? `
+        ${processedBatchList.length > 0 ? `
           <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
-            ${seedingTxs.map((stx, idx) => {
-              const batchNo = stx.batchNo || `Batch-0${idx + 1}`;
-              const docNo = stx.docNo || `RCV/SEEDS/2026/AGUS/0${(stx.sourceIndex || 0) + 1}`;
-              const populasiBibit = parseInt(stx.totalDisemai || 0);
-
-              // Calculate accumulated budding for this batch
-              let ttlDiokulasi = 0;
-              let ttlDitolak = 0;
-              let ttlKayu = 0;
-              const relatedBuddings = buddingTxs.filter(b => b.seedingIndex === idx || b.batchNo === batchNo);
-              relatedBuddings.forEach(b => {
-                ttlDiokulasi += parseInt(b.jumlah || 0);
-                ttlDitolak += parseInt(b.jumlahDitolak || 0);
-                ttlKayu += parseInt(b.jumlahKayu || 0);
-              });
-
-              const totalRealisasi = ttlDiokulasi + ttlDitolak;
-              const sisaBelumOkulasi = Math.max(0, populasiBibit - totalRealisasi);
-              const persenSelesai = populasiBibit > 0 ? Math.min(100, Math.round((totalRealisasi / populasiBibit) * 100)) : 0;
-
-              // Status badge
-              let statusBadgeText = 'Perlu Diokulasi';
-              let statusBadgeBg = '#E53935';
-              let statusBadgeColor = '#FFFFFF';
-              let statusBadgeBorder = 'none';
-
-              if (totalRealisasi === 0) {
-                statusBadgeText = 'Perlu Diokulasi';
-                statusBadgeBg = '#E53935';
-                statusBadgeColor = '#FFFFFF';
-              } else if (sisaBelumOkulasi <= 0) {
-                statusBadgeText = 'Selesai Diokulasi';
-                statusBadgeBg = '#E8F5E9';
-                statusBadgeColor = '#116834';
-                statusBadgeBorder = '1px solid #116834';
-              } else {
-                statusBadgeText = 'Okulasi Belum Selesai';
-                statusBadgeBg = '#FFF8E1';
-                statusBadgeColor = '#F57F17';
-                statusBadgeBorder = '1px solid #FFE082';
-              }
-
-              // Extract bedengan rows
+            ${processedBatchList.map((item) => {
+              const {
+                stx,
+                originalIdx,
+                batchNo,
+                docNo,
+                populasiBibit,
+                ttlDiokulasi,
+                ttlDitolak,
+                ttlKayu,
+                relatedBuddings,
+                totalRealisasi,
+                sisaBelumOkulasi,
+                persenSelesai,
+                statusBadgeText,
+                statusBadgeBg,
+                statusBadgeColor,
+                statusBadgeBorder,
+                bedenganDisplay
+              } = item;
               const rows = stx.rows || [];
-              const bedenganNames = rows.map(r => r.bedengan).filter(Boolean);
-              const bedenganDisplay = bedenganNames.length > 0 ? Array.from(new Set(bedenganNames)).join(', ') : 'Bedengan 01';
 
               return `
                 <div class="card-batch-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
@@ -187,7 +239,7 @@ export function renderBuddingGrafting() {
 
                   <!-- FOOTER ACTION ROW -->
                   ${sisaBelumOkulasi <= 0 ? `
-                    <div class="card-action-rekam" data-index="${idx}" data-completed="true" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: default;">
+                    <div class="card-action-rekam" data-index="${originalIdx}" data-completed="true" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: default;">
                       <span style="font-size: 0.74rem; color: #116834; font-weight: 700;">✓ Okulasi Selesai (100% Balance)</span>
                       <div style="display: flex; align-items: center; gap: 4px; color: #116834; font-weight: 700; font-size: 0.74rem;">
                         <span>Batch Selesai</span>
@@ -197,7 +249,7 @@ export function renderBuddingGrafting() {
                       </div>
                     </div>
                   ` : `
-                    <div class="card-action-rekam" data-index="${idx}" data-completed="false" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: pointer;">
+                    <div class="card-action-rekam" data-index="${originalIdx}" data-completed="false" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: pointer;">
                       <span style="font-size: 0.74rem; color: #116834; font-weight: 600;">Ketuk untuk Rekam Okulasi</span>
                       <div style="display: flex; align-items: center; gap: 3px; color: #116834; font-weight: 700; font-size: 0.76rem;">
                         <span>Input Data</span>
@@ -377,7 +429,8 @@ export function renderBuddingGrafting() {
       const idx = e.currentTarget.dataset.index;
       storage.remove('editing_budding_index');
       storage.set('selected_grafting_batch_index', idx);
-      navigate('/budding/grafting/form');
+      storage.remove('budding_qr_verified');
+      navigate('/budding/grafting/scan');
     });
   });
 

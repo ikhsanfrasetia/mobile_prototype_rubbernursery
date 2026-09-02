@@ -122,11 +122,12 @@ export function renderSelectionLanding() {
       <!-- MAIN CONTENT -->
       <main style="flex: 1; overflow-y: auto; padding: 14px 16px;">
         
-        <div style="margin-bottom: 10px;">
-          <h2 style="font-size: 0.90rem; font-weight: 700; color: #111111; margin: 0 0 8px 0;">Daftar Bibit Afkir / Diseleksi dari Transaksi</h2>
-        </div>
-
+        <!-- DAFTAR BIBIT AFKIR / SELECTION POOL (HANYA MUNCUL JIKA ADA DATA) -->
         ${selectionPool.length > 0 ? `
+          <div style="margin-bottom: 10px;">
+            <h2 style="font-size: 0.90rem; font-weight: 700; color: #111111; margin: 0;">Daftar Bibit Afkir / Diseleksi dari Transaksi</h2>
+          </div>
+
           <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
             ${selectionPool.map((item, idx) => {
               const isDeclared = item.status === 'DECLARED_CULLED';
@@ -192,7 +193,7 @@ export function renderSelectionLanding() {
                       <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.2" fill="none">
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
-                      <span>Deklarasi Afkir (-${parseInt(item.jumlahAfkir || 0).toLocaleString('id-ID')} Pkk)</span>
+                      <span>Deklarasi Bibit Afkir (${parseInt(item.jumlahAfkir || 0).toLocaleString('id-ID')} Pkk)</span>
                     </button>
                   ` : ''}
 
@@ -200,18 +201,26 @@ export function renderSelectionLanding() {
               `;
             }).join('')}
           </div>
-        ` : `
+        ` : ''}
+
+        <!-- STATE KOSONG JIKA TIDAK ADA DATA SAMA SEKALI -->
+        ${selectionPool.length === 0 && culledTxs.length === 0 ? `
           <div style="background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 32px 16px; text-align: center; margin-top: 24px;">
-            <div style="width: 48px; height: 48px; border-radius: 50%; background: #FEE2E2; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; color: #DC2626;">
-              <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="15" y1="9" x2="9" y2="15"></line>
-                <line x1="9" y1="9" x2="15" y2="15"></line>
+            <div style="width: 64px; height: 64px; border-radius: 50%; background: #F1F5F9; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #64748B;">
+              <svg viewBox="0 0 24 24" width="34" height="34" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
               </svg>
             </div>
-            <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Belum Ada Data Penyeleksian / Afkir</h3>
+            <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Belum Ada Data Penyeleksian</h3>
+            <p style="font-size: 0.78rem; color: #757575; margin: 0; line-height: 1.4;">
+              Data bibit afkir akan muncul saat terdapat bibit yang diseleksi atau ditolak pada transaksi Penerimaan, Okulasi, atau Pemeriksaan.
+            </p>
           </div>
-        `}
+        ` : ''}
 
         <!-- HISTORI DEKLARASI SELEKSI -->
         ${culledTxs.length > 0 ? `
@@ -244,14 +253,10 @@ export function renderSelectionLanding() {
                       </button>
 
                       <!-- DROPDOWN POPUP MENU -->
-                      <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 130px; overflow: hidden;">
-                        <button type="button" class="menu-action-rincian" data-index="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #374151; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
+                      <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 120px; overflow: hidden;">
+                        <button type="button" class="menu-action-rincian" data-index="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #374151; display: flex; align-items: center; gap: 8px; cursor: pointer;">
                           <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                           <span class="text-menu-rincian">Rincian</span>
-                        </button>
-                        <button type="button" class="menu-action-delete-culled" data-index="${idx}" data-doc="${ctx.docNo || ''}" data-pool-doc="${ctx.selectionPoolDocNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                          <span>Hapus</span>
                         </button>
                       </div>
                     </div>
@@ -301,10 +306,10 @@ export function renderSelectionLanding() {
         <div id="modal-declare-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.45); z-index: 1000; backdrop-filter: blur(2px);"></div>
         
         <div id="dialog-confirm-declare" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 88%; max-width: 320px; background: #FFFFFF; border-radius: 12px; padding: 20px 18px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 1001; text-align: center; box-sizing: border-box;">
-          <div style="width: 48px; height: 48px; border-radius: 50%; background: #FEE2E2; color: #DC2626; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none">
+          <div style="width: 58px; height: 58px; border-radius: 50%; background: #F3F4F6; color: #111827; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px;">
+            <svg viewBox="0 0 24 24" width="34" height="34" stroke="#111827" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12"></line>
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
           </div>
@@ -315,7 +320,7 @@ export function renderSelectionLanding() {
             <button id="btn-cancel-declare" type="button" style="flex: 1; height: 38px; background: #F3F4F6; color: #374151; border: none; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
               Batal
             </button>
-            <button id="btn-confirm-declare" type="button" style="flex: 1; height: 38px; background: #DC2626; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 4px rgba(220,38,38,0.25);">
+            <button id="btn-confirm-declare" type="button" style="flex: 1; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.25);">
               Setuju
             </button>
           </div>
@@ -367,32 +372,6 @@ export function renderSelectionLanding() {
       // Close menu
       const menu = btn.closest('.tx-action-menu');
       if (menu) menu.style.display = 'none';
-    });
-  });
-
-  // Action: Hapus Deklarasi
-  app.querySelectorAll('.menu-action-delete-culled').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const idx = parseInt(btn.dataset.index);
-      const poolDoc = btn.dataset.poolDoc;
-      const docNo = btn.dataset.doc;
-
-      if (confirm(`Apakah Anda yakin ingin menghapus data deklarasi ${docNo || 'ini'}? Status bibit akan dikembalikan ke daftar perlu deklarasi.`)) {
-        let currentCulled = storage.get('selection_transactions', []);
-        currentCulled.splice(idx, 1);
-        storage.set('selection_transactions', currentCulled);
-
-        // Restore pool item status
-        let pool = storage.get('selection_pool', []);
-        const targetPoolItem = pool.find(p => p.docNo === poolDoc);
-        if (targetPoolItem) {
-          targetPoolItem.status = 'PENDING_DECLARATION';
-          storage.set('selection_pool', pool);
-        }
-
-        renderSelectionLanding();
-      }
     });
   });
 

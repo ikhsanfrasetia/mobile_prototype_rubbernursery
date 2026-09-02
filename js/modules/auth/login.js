@@ -10,6 +10,8 @@ import { ROLE_LABELS } from '../../core/permissions.js';
 import { esc } from '../../core/utils.js';
 import { storage } from '../../core/storage.js';
 import { openModal, closeModal } from '../../components/modal.js';
+import { seedDatabase } from '../../db/seed.js';
+import { DEMO_USERS } from '../../data/demo-data.js';
 
 const ROLE_ORDER = ['MANTRI_TANAMAN', 'ASISTEN', 'ASISTEN_BIBITAN', 'ASKEP', 'PENGURUS'];
 const VPN_KEY = 'vpn';
@@ -35,7 +37,14 @@ function renderSuccess(user, { demo = false } = {}) {
 }
 
 export async function renderLogin() {
-  const users = await userRepository.list();
+  let users = await userRepository.list();
+  if (!users || users.length === 0) {
+    await seedDatabase({ force: true });
+    users = await userRepository.list();
+    if (!users || users.length === 0) {
+      users = DEMO_USERS;
+    }
+  }
   const vpnOn = storage.get(VPN_KEY, false) === true;
 
   const eyeOffSvg = `

@@ -58,7 +58,7 @@ const MENU_ITEMS = [
   { id: 'kebun-entres', title: 'Kebun<br>Entres', icon: ICONS.entres, route: '/entres' },
   { id: 'material', title: 'Material &<br>Bahan', icon: ICONS.sprout, route: '/material' },
   { id: 'pemeliharaan', title: 'Rekam<br>Pemeliharaan', icon: ICONS.documentPlus, route: '/nursery-activity' },
-  { id: 'permintaan', title: 'Permintaan', icon: ICONS.sprout, route: '/request' }
+  { id: 'pengeluaran', title: 'Pengeluaran', icon: ICONS.sprout, route: '/request' }
 ];
 
 export function renderBeranda() {

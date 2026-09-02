@@ -74,7 +74,7 @@ export function renderInspectionForm() {
           </svg>
         </button>
         <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 8px; letter-spacing: -0.01em;">
-          ${isEditing ? 'Edit Pemeriksaan Okulasi' : 'Rekam Pemeriksaan Okulasi'}
+          ${isEditing ? 'Edit Pemeriksaan' : 'Rekam Pemeriksaan'}
         </h1>
       </header>
 

@@ -57,6 +57,80 @@ export function renderBuddingRegrafting() {
 
   storage.set('regrafting_pool', regraftPool);
 
+  const processedRegraftPool = regraftPool.map((poolItem, idx) => {
+    const batchNo = poolItem.batchNo || `Batch-0${idx + 1}`;
+    const docNo = poolItem.docNo || `REG-POOL/2026/0${idx + 1}`;
+    const populasiGagal = parseInt(poolItem.jumlah || 0);
+
+    // Calculate accumulated done regraftings for this parent batch
+    let ttlRegrafted = 0;
+    let ttlDitolak = 0;
+    let ttlKayu = 0;
+    const relatedRegrafts = regraftTxs.filter(r => r.regraftPoolDocNo === docNo || r.inspectionDocNo === poolItem.inspectionDocNo || r.batchNo === batchNo);
+    
+    relatedRegrafts.forEach(r => {
+      ttlRegrafted += parseInt(r.jumlah || 0);
+      ttlDitolak += parseInt(r.jumlahDitolak || 0);
+      ttlKayu += parseInt(r.jumlahKayu || 0);
+    });
+
+    const totalRealisasi = ttlRegrafted + ttlDitolak;
+    const sisaBelumRegraft = Math.max(0, populasiGagal - totalRealisasi);
+    const persenSelesai = populasiGagal > 0 ? Math.min(100, Math.round((totalRealisasi / populasiGagal) * 100)) : 0;
+
+    // Status badge
+    let statusBadgeText = 'Perlu Okulasi Ulang';
+    let statusBadgeBg = '#E53935';
+    let statusBadgeColor = '#FFFFFF';
+    let statusBadgeBorder = 'none';
+
+    if (totalRealisasi === 0) {
+      statusBadgeText = 'Perlu Okulasi Ulang';
+      statusBadgeBg = '#E53935';
+      statusBadgeColor = '#FFFFFF';
+    } else if (sisaBelumRegraft <= 0) {
+      statusBadgeText = 'Selesai Regrafting';
+      statusBadgeBg = '#E8F5E9';
+      statusBadgeColor = '#116834';
+      statusBadgeBorder = '1px solid #116834';
+    } else {
+      statusBadgeText = `Sisa ${sisaBelumRegraft} Pkk`;
+      statusBadgeBg = '#FFF8E1';
+      statusBadgeColor = '#F57F17';
+      statusBadgeBorder = '1px solid #FFE082';
+    }
+
+    return {
+      poolItem,
+      originalIndex: idx,
+      batchNo,
+      docNo,
+      populasiGagal,
+      relatedRegrafts,
+      ttlRegrafted,
+      ttlDitolak,
+      ttlKayu,
+      totalRealisasi,
+      sisaBelumRegraft,
+      persenSelesai,
+      statusBadgeText,
+      statusBadgeBg,
+      statusBadgeColor,
+      statusBadgeBorder
+    };
+  });
+
+  // Urutkan: Dokumen yang perlu okulasi ulang / belum selesai paling ATAS, yang sudah selesai di BAWAH
+  processedRegraftPool.sort((a, b) => {
+    const aNeed = a.sisaBelumRegraft > 0;
+    const bNeed = b.sisaBelumRegraft > 0;
+    if (aNeed !== bNeed) return aNeed ? -1 : 1;
+    const aPerlu = a.statusBadgeText === 'Perlu Okulasi Ulang';
+    const bPerlu = b.statusBadgeText === 'Perlu Okulasi Ulang';
+    if (aPerlu !== bPerlu) return aPerlu ? -1 : 1;
+    return 0;
+  });
+
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; position: relative;">
       
@@ -80,50 +154,11 @@ export function renderBuddingRegrafting() {
           <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Daftar Bibit Gagal Okulasi (Siap Regrafting)</h2>
         </div>
 
-        ${regraftPool.length > 0 ? `
+        ${processedRegraftPool.length > 0 ? `
           <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
-            ${regraftPool.map((poolItem, idx) => {
-              const batchNo = poolItem.batchNo || `Batch-0${idx + 1}`;
-              const docNo = poolItem.docNo || `REG-POOL/2026/0${idx + 1}`;
-              const populasiGagal = parseInt(poolItem.jumlah || 0);
-
-              // Calculate accumulated done regraftings for this parent batch
-              let ttlRegrafted = 0;
-              let ttlDitolak = 0;
-              let ttlKayu = 0;
-              const relatedRegrafts = regraftTxs.filter(r => r.regraftPoolDocNo === docNo || r.inspectionDocNo === poolItem.inspectionDocNo || r.batchNo === batchNo);
-              
-              relatedRegrafts.forEach(r => {
-                ttlRegrafted += parseInt(r.jumlah || 0);
-                ttlDitolak += parseInt(r.jumlahDitolak || 0);
-                ttlKayu += parseInt(r.jumlahKayu || 0);
-              });
-
-              const totalRealisasi = ttlRegrafted + ttlDitolak;
-              const sisaBelumRegraft = Math.max(0, populasiGagal - totalRealisasi);
-              const persenSelesai = populasiGagal > 0 ? Math.min(100, Math.round((totalRealisasi / populasiGagal) * 100)) : 0;
-
-              // Status badge
-              let statusBadgeText = 'Perlu Okulasi Ulang';
-              let statusBadgeBg = '#E53935';
-              let statusBadgeColor = '#FFFFFF';
-              let statusBadgeBorder = 'none';
-
-              if (totalRealisasi === 0) {
-                statusBadgeText = 'Perlu Okulasi Ulang';
-                statusBadgeBg = '#E53935';
-                statusBadgeColor = '#FFFFFF';
-              } else if (sisaBelumRegraft <= 0) {
-                statusBadgeText = 'Selesai Regrafting';
-                statusBadgeBg = '#E8F5E9';
-                statusBadgeColor = '#116834';
-                statusBadgeBorder = '1px solid #116834';
-              } else {
-                statusBadgeText = `Sisa ${sisaBelumRegraft} Pkk`;
-                statusBadgeBg = '#FFF8E1';
-                statusBadgeColor = '#F57F17';
-                statusBadgeBorder = '1px solid #FFE082';
-              }
+            ${processedRegraftPool.map((item) => {
+              const { poolItem, originalIndex, batchNo, docNo, populasiGagal, relatedRegrafts, ttlRegrafted, ttlDitolak, ttlKayu, totalRealisasi, sisaBelumRegraft, persenSelesai, statusBadgeText, statusBadgeBg, statusBadgeColor, statusBadgeBorder } = item;
+              const idx = originalIndex;
 
               return `
                 <div class="card-regraft-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
@@ -239,7 +274,7 @@ export function renderBuddingRegrafting() {
 
                   <!-- FOOTER ACTION ROW -->
                   ${sisaBelumRegraft <= 0 ? `
-                    <div class="card-action-regraft" data-index="${idx}" data-completed="true" data-batch="${batchNo}" data-total="${populasiGagal}" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: pointer;">
+                    <div class="card-action-regraft" data-index="${idx}" data-completed="true" data-batch="${batchNo}" data-total="${populasiGagal}" style="display: flex; justify-content: space-between; align-items: center; background: #E8F5E9; border: 1px solid #C8E6C9; border-radius: 6px; padding: 8px 12px; margin-top: 10px; cursor: default;">
                       <span style="font-size: 0.74rem; color: #116834; font-weight: 700;">✓ Selesai Regrafting (100% Selesai)</span>
                       <div style="display: flex; align-items: center; gap: 4px; color: #116834; font-weight: 700; font-size: 0.74rem;">
                         <span>Selesai</span>
@@ -249,14 +284,11 @@ export function renderBuddingRegrafting() {
                       </div>
                     </div>
                   ` : `
-                    <div class="card-action-regraft" data-index="${idx}" data-completed="false" data-batch="${batchNo}" data-total="${populasiGagal}" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: pointer;">
-                      <span style="font-size: 0.74rem; color: #116834; font-weight: 600;">Ketuk untuk Rekam Okulasi Janda</span>
-                      <div style="display: flex; align-items: center; gap: 3px; color: #116834; font-weight: 700; font-size: 0.76rem;">
-                        <span>Input Regrafting</span>
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none">
-                          <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                      </div>
+                    <div class="card-action-regraft" data-index="${idx}" data-completed="false" data-batch="${batchNo}" data-total="${populasiGagal}" style="display: flex; justify-content: space-between; align-items: center; background: #116834; color: #FFFFFF; border-radius: 6px; padding: 10px 14px; margin-top: 10px; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.22); transition: opacity 0.15s ease;">
+                      <span style="font-size: 0.78rem; color: #FFFFFF; font-weight: 700; letter-spacing: -0.01em;">Ketuk untuk Rekam Okulasi Janda</span>
+                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
                     </div>
                   `}
 
@@ -446,8 +478,8 @@ export function renderBuddingRegrafting() {
   if (btnCloseRegraft) btnCloseRegraft.addEventListener('click', closeRegraftDialog);
   if (overlayRegraft) overlayRegraft.addEventListener('click', closeRegraftDialog);
 
-  // Event Listener: Expand / Collapse on Parent Regraft Cards
-  app.querySelectorAll('.card-regraft-parent-wrapper').forEach(wrapper => {
+  // Event Listener: Expand / Collapse on Cards (Detail Akumulasi)
+  app.querySelectorAll('.card-regraft-wrapper').forEach(wrapper => {
     const btnToggle = wrapper.querySelector('.btn-toggle-expand-regraft');
     const content = wrapper.querySelector('.regraft-expand-content');
     const textSpan = wrapper.querySelector('.text-expand-regraft');
@@ -459,8 +491,8 @@ export function renderBuddingRegrafting() {
         e.stopPropagation();
         const isOpen = content.style.display === 'block';
         content.style.display = isOpen ? 'none' : 'block';
-        textSpan.textContent = isOpen ? 'Tampilkan Detail Akumulasi' : 'Sembunyikan Detail';
-        icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+        if (textSpan) textSpan.textContent = isOpen ? 'Tampilkan Detail Akumulasi' : 'Sembunyikan Detail';
+        if (icon) icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
       });
     }
   });

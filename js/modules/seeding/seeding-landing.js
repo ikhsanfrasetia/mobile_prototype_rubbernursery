@@ -204,10 +204,6 @@ export function renderSeedingLanding() {
                   <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.tahapan || 'Rubber Main Nursery'}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Penerimaan</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.totalPenerimaan || '0'}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Disemai HI</span>
                   <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.totalDisemai || '0'}</span>
                 </div>
@@ -326,7 +322,8 @@ export function renderSeedingLanding() {
         const idx = e.currentTarget.dataset.index;
         storage.set('seeding_source_index', idx);
         storage.set('editing_seeding_index', null); // clear edit state
-        navigate('/seeding/form');
+        storage.remove('scanned_bedengan'); // clear previous scan session
+        navigate('/seeding/scan');
       }
     });
   });

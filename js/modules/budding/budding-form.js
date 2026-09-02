@@ -124,7 +124,7 @@ export function renderBuddingForm() {
   const sisaBelumDiokulasi = Math.max(0, totalDisemai - totalDiokulasiSDHI);
 
   // State
-  let selectedKlon = editingTx ? (editingTx.klonEntres || editingTx.klon || 'PB 260') : 'PB 260';
+  let selectedKlon = editingTx ? (editingTx.klonEntres || editingTx.klon || '') : '';
   let selectedWorkers = editingTx && editingTx.workers && editingTx.workers.length > 0
     ? editingTx.workers.map(w => ({ id: w.id, name: w.name, code: w.code, qty: parseInt(w.qty || 0) }))
     : [{ id: 'W001', name: 'Ahmad Rifai', code: '104521', qty: 0 }];
@@ -200,7 +200,7 @@ export function renderBuddingForm() {
               <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #374151; margin-bottom: 6px;">Pilih Klon Entres Okulasi <span style="color:#D32F2F;">*</span></label>
               <div id="btn-open-klon-modal" style="width: 100%; height: 40px; border: 1px solid #D1D5DB; border-radius: 6px; padding: 0 12px; background: #FFFFFF; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-sizing: border-box; transition: border-color 0.15s ease;">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: 0.82rem; font-weight: 700; color: #111111;" id="text-selected-klon">${selectedKlon}</span>
+                  <span style="font-size: 0.82rem; font-weight: ${selectedKlon ? '700' : '500'}; color: ${selectedKlon ? '#111111' : '#9CA3AF'};" id="text-selected-klon">${selectedKlon || '-- Pilih Klon Entres --'}</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px; color: #116834;">
                   <span style="font-size: 0.72rem; font-weight: 600; color: #6B7280;">Cari / Ganti</span>
@@ -228,7 +228,7 @@ export function renderBuddingForm() {
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
-                  <span style="text-align: left;">+ Cari & Tambah / Ganti Pekerja Okulasi</span>
+                  <span style="text-align: left;">Pilih Pekerja Okulasi</span>
                 </button>
               </div>
 
@@ -256,7 +256,7 @@ export function renderBuddingForm() {
                 `).join('') : `
                   <div style="background: #FFFFFF; border: 1px dashed #D1D5DB; border-radius: 6px; padding: 14px 10px; text-align: center;">
                     <div style="font-size: 0.76rem; color: #6B7280; margin-bottom: 2px;">Belum ada pekerja okulasi dipilih</div>
-                    <div style="font-size: 0.70rem; color: #116834; font-weight: 600;">Ketuk "+ Cari & Tambah" di atas untuk memilih pekerja</div>
+                    <div style="font-size: 0.70rem; color: #116834; font-weight: 600;">Ketuk "Pilih Pekerja Okulasi" di atas untuk memilih pekerja</div>
                   </div>
                 `}
               </div>
@@ -297,9 +297,8 @@ export function renderBuddingForm() {
 
             <!-- RINCIAN REKONSILIASI & STATUS SISA OKULASI -->
             <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; box-sizing: border-box;">
-              <div style="font-size: 0.76rem; font-weight: 700; color: #111827; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <div style="font-size: 0.76rem; font-weight: 700; color: #111827; margin-bottom: 8px;">
                 <span>Rincian & Rekonsiliasi Realisasi:</span>
-                <span id="reconcile-badge" style="font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9;">Balance (Final)</span>
               </div>
 
               <div style="display: flex; flex-direction: column; gap: 5px; font-size: 0.73rem;">
@@ -619,13 +618,7 @@ export function renderBuddingForm() {
       if (reconTotalReal) reconTotalReal.textContent = `${totalRealisasi} Pkk`;
 
       if (sisaAkhir === 0) {
-        // Realisasi Balance / Final Selesai 100%
-        if (reconBadge) {
-          reconBadge.textContent = 'Balance (Final)';
-          reconBadge.style.background = '#E8F5E9';
-          reconBadge.style.color = '#116834';
-          reconBadge.style.borderColor = '#C8E6C9';
-        }
+        // Realisasi Selesai 100%
         if (reconStatusBox) {
           reconStatusBox.style.background = '#E8F5E9';
           reconStatusBox.style.borderColor = '#C8E6C9';
@@ -635,7 +628,7 @@ export function renderBuddingForm() {
           reconStatusTitle.style.color = '#116834';
         }
         if (reconStatusDesc) {
-          reconStatusDesc.textContent = 'Realisasi Balance (Selesai 100% / Nilai Final)';
+          reconStatusDesc.textContent = 'Realisasi Selesai 100%';
           reconStatusDesc.style.color = '#2E7D32';
         }
         if (reconSisaVal) {
@@ -643,13 +636,7 @@ export function renderBuddingForm() {
           reconSisaVal.style.color = '#116834';
         }
       } else if (sisaAkhir > 0) {
-        // Belum Balance / Masih ada sisa yang perlu dilanjutkan
-        if (reconBadge) {
-          reconBadge.textContent = 'Belum Balance (Parsial)';
-          reconBadge.style.background = '#FFF8E1';
-          reconBadge.style.color = '#B45309';
-          reconBadge.style.borderColor = '#FFE082';
-        }
+        // Masih ada sisa yang perlu dilanjutkan
         if (reconStatusBox) {
           reconStatusBox.style.background = '#FFF8E1';
           reconStatusBox.style.borderColor = '#FFE082';
@@ -823,6 +810,25 @@ export function renderBuddingForm() {
         storage.set('budding_transactions', txs);
       }
 
+      // SINKRONISASI KE REGRAFTING POOL UNTUK AKUMULASI KAYU ENTRES & SISA
+      if (isRegrafting) {
+        let pool = storage.get('regrafting_pool', []);
+        pool = pool.map(p => {
+          if (p.docNo === poolDocNo || p.batchNo === batchNo) {
+            const currentKayu = (parseInt(p.jumlahKayu || 0) + kayu);
+            const newSisa = Math.max(0, parseInt(p.sisaRegrafting || p.jumlah || 0) - totalDiokulasi);
+            return {
+              ...p,
+              jumlahKayu: currentKayu,
+              sisaRegrafting: newSisa,
+              status: newSisa <= 0 ? 'COMPLETED' : 'IN_PROGRESS'
+            };
+          }
+          return p;
+        });
+        storage.set('regrafting_pool', pool);
+      }
+
       // SINKRONISASI KE PENYELEKSIAN (SELECTION_POOL) UNTUK BIBIT DITOLAK SAAT OKULASI
       let selPool = storage.get('selection_pool', []);
       selPool = selPool.filter(s => !(s.buddingDocNo === docNoBudding && s.originType === 'REJECT_OKULASI'));
@@ -841,6 +847,9 @@ export function renderBuddingForm() {
         });
       }
       storage.set('selection_pool', selPool);
+
+      storage.remove('budding_qr_verified');
+      storage.remove('budding_verified_at');
 
       navigate(isRegrafting ? '/budding/regrafting' : '/budding/grafting');
     });

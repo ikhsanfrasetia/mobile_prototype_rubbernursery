@@ -104,6 +104,21 @@ export function renderInspectionLanding() {
     };
   });
 
+  // Urutkan: Dokumen yang memiliki label "Perlu Pemeriksaan" / belum selesai berada di posisi PALING ATAS, yang sudah selesai di posisi BAWAH
+  items.sort((a, b) => {
+    const aNeed = a.sisaBelumDiperiksa > 0;
+    const bNeed = b.sisaBelumDiperiksa > 0;
+    if (aNeed !== bNeed) {
+      return aNeed ? -1 : 1;
+    }
+    const aPerlu = a.statusText === 'Perlu Pemeriksaan';
+    const bPerlu = b.statusText === 'Perlu Pemeriksaan';
+    if (aPerlu !== bPerlu) {
+      return aPerlu ? -1 : 1;
+    }
+    return 0;
+  });
+
   const graftingCount = items.filter(i => !i.isRegrafting).length;
   const regraftingCount = items.filter(i => i.isRegrafting).length;
 
@@ -119,7 +134,7 @@ export function renderInspectionLanding() {
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">Pemeriksaan Okulasi</h1>
+          <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">Pemeriksaan</h1>
         </div>
       </header>
 
@@ -262,38 +277,7 @@ export function renderInspectionLanding() {
                       ` : ''}
                     </div>
 
-                    <!-- 3. RIWAYAT SESI PEMERIKSAAN -->
-                    ${relatedInspections.length > 0 ? `
-                      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #D1D5DB;">
-                        <div style="font-weight: 700; color: #374151; margin-bottom: 6px; font-size: 0.74rem;">Riwayat Sesi Pemeriksaan (${relatedInspections.length}):</div>
-                        <div style="display: flex; flex-direction: column; gap: 6px;">
-                          ${relatedInspections.map((insp, sIdx) => {
-                            const sesiDiperiksa = parseInt(insp.totalDiperiksa || (parseInt(insp.jumlahJadi || 0) + parseInt(insp.jumlahGagal || 0)));
-                            const sesiJadi = parseInt(insp.jumlahJadi || 0);
-                            const sesiGagal = parseInt(insp.jumlahGagal || 0);
-                            const sesiRegraft = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : sesiGagal;
-                            const sesiSeleksi = insp.totalToSelection !== undefined ? parseInt(insp.totalToSelection || 0) : Math.max(0, sesiGagal - sesiRegraft);
-                            const sesiPersen = sesiDiperiksa > 0 ? (sesiGagal === 0 ? '100%' : `${((sesiJadi / sesiDiperiksa) * 100).toFixed(1)}%`) : '0%';
-                            return `
-                              <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                  <span style="font-weight: 700; color: #111827; font-size: 0.76rem;">Sesi ${sIdx + 1} <span style="font-weight: 500; color: #6B7280; font-size: 0.70rem;">(${insp.tanggal || 'Hari ini'})</span></span>
-                                  <span style="font-weight: 700; color: #374151; font-size: 0.76rem; text-align: right;">${sesiDiperiksa} Pkk</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem;">
-                                  <span style="color: #116834; font-weight: 600;">
-                                    ${sesiJadi} Berhasil
-                                    ${sesiRegraft > 0 ? `<span style="color: #D97706; margin-left: 4px;">/ ${sesiRegraft} Janda</span>` : ''}
-                                    ${sesiSeleksi > 0 ? `<span style="color: #DC2626; margin-left: 4px;">/ ${sesiSeleksi} Mati</span>` : ''}
-                                  </span>
-                                  <span style="background: #E8F5E9; color: #116834; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid #C8E6C9; text-align: right;">${sesiPersen} Berhasil</span>
-                                </div>
-                              </div>
-                            `;
-                          }).join('')}
-                        </div>
-                      </div>
-                    ` : ''}
+
 
                     <!-- 4. PEKERJA OKULASI -->
                     ${workers.length > 0 ? `
@@ -323,14 +307,11 @@ export function renderInspectionLanding() {
                       </div>
                     </div>
                   ` : `
-                    <div class="card-action-periksa" data-index="${item.originalIndex}" data-completed="false" data-batch="${item.batchNo || 'Batch'}" data-total="${item.populasiDiokulasi}" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: pointer;">
-                      <span style="font-size: 0.74rem; color: #116834; font-weight: 600;">Ketuk untuk Rekam Pemeriksaan</span>
-                      <div style="display: flex; align-items: center; gap: 3px; color: #116834; font-weight: 700; font-size: 0.76rem;">
-                        <span>Input Pemeriksaan</span>
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none">
-                          <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                      </div>
+                    <div class="card-action-periksa" data-index="${item.originalIndex}" data-completed="false" data-batch="${item.batchNo || 'Batch'}" data-total="${item.populasiDiokulasi}" style="display: flex; justify-content: space-between; align-items: center; background: #116834; color: #FFFFFF; border-radius: 6px; padding: 10px 14px; margin-top: 10px; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.22); transition: opacity 0.15s ease;">
+                      <span style="font-size: 0.78rem; color: #FFFFFF; font-weight: 700; letter-spacing: -0.01em;">Ketuk untuk Rekam Pemeriksaan</span>
+                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
                     </div>
                   `}
 

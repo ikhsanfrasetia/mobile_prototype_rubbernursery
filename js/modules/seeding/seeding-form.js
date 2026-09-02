@@ -25,13 +25,17 @@ export function renderSeedingForm() {
     ? (editTx.batchNo || 'Batch-01')
     : (sourceTx.rawState?.batchCode || sourceTx.batchCode || `Batch-${(seedingTxs.filter(s => s.sourceIndex == sourceIdx).length + 1).toString().padStart(2, '0')}`);
 
+  // Scanned Bedengan from QR or Manual
+  const scannedBedengan = storage.get('scanned_bedengan', 'Bedengan 01');
+  const verifiedMethod = storage.get('bedengan_verified_method', 'QR_SCAN');
+
   // Form state
   const state = {
     batchNo: defaultBatch,
     ditolak: editTx ? editTx.ditolak : '',
     alasanDitolak: editTx ? editTx.alasanDitolak : 'Tidak Ada',
     tableRows: editTx ? JSON.parse(JSON.stringify(editTx.rows)) : [
-      { bedengan: '', klon: sourceTx.klon || 'GT-01', disemai: '', polybag: '' }
+      { bedengan: scannedBedengan || 'Bedengan 01', klon: sourceTx.klon || 'GT-01', disemai: '', polybag: '' }
     ],
     photos: editTx ? JSON.parse(JSON.stringify(editTx.photos)) : []
   };
@@ -140,7 +144,7 @@ export function renderSeedingForm() {
 
         <!-- DETAIL PENYEMAIAN -->
         <section style="padding: 14px 16px; border-bottom: 1px solid #D9D9D9;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <h2 style="font-size: 0.88rem; font-weight: 700; color: #111111; margin: 0;">Detail Penyemaian</h2>
             <button id="btn-tambah-data" type="button" style="background: #116834; color: white; border: none; border-radius: 4px; padding: 4px 10px; font-size: 0.72rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
               <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -150,8 +154,10 @@ export function renderSeedingForm() {
               Tambah Data
             </button>
           </div>
+
+
           
-          <div style="background: #E8F5E9; padding: 8px 6px; display: grid; grid-template-columns: 1.4fr 1fr 0.9fr 24px; gap: 6px; border: 1px solid #C8E6C9; border-bottom: none; text-align: center; align-items: center;">
+          <div style="background: #E8F5E9; padding: 8px 6px; display: grid; grid-template-columns: 1.6fr 1fr 0.9fr 24px; gap: 6px; border: 1px solid #C8E6C9; border-bottom: none; text-align: center; align-items: center;">
             <div style="font-size: 0.68rem; font-weight: 700; color: #116834;">No. Bedengan</div>
             <!-- <div style="font-size: 0.68rem; font-weight: 700; color: #116834;">Klon Baru</div> -->
             <div style="font-size: 0.68rem; font-weight: 700; color: #116834;">Bibit Disemai</div>
@@ -179,7 +185,7 @@ export function renderSeedingForm() {
               <span id="lbl-ditolak" style="font-size: 0.78rem; font-weight: 700; color: #111111;">0</span>
             </div>
             <div style="display: flex; justify-content: space-between;">
-              <span style="font-size: 0.74rem; font-weight: 700; color: #116834;">Bibit Belum Diseleksi</span>
+              <span style="font-size: 0.74rem; font-weight: 700; color: #116834;">Bibit Belum Disemai</span>
               <span id="lbl-belum" style="font-size: 0.78rem; font-weight: 700; color: #D32F2F;">${previousBalance}</span>
             </div>
           </div>
@@ -326,11 +332,10 @@ export function renderSeedingForm() {
 
   function renderTableRows() {
     tableBody.innerHTML = state.tableRows.map((row, idx) => `
-      <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.9fr 24px; gap: 6px; padding: 6px; border-bottom: 1px solid #E5E7EB; align-items: center;">
-        <select class="sel-bedengan" data-index="${idx}" style="width: 100%; border: none; outline: none; background: transparent; font-size: 0.72rem; text-overflow: ellipsis; padding: 3px 0; color: ${row.bedengan ? '#111111' : '#6B7280'}; cursor: pointer;">
-          <option value="" disabled ${!row.bedengan ? 'selected' : ''}>Pilih</option>
-          ${bedenganList.map(b => `<option value="${b}" ${row.bedengan === b ? 'selected' : ''}>${b}</option>`).join('')}
-        </select>
+      <div style="display: grid; grid-template-columns: 1.6fr 1fr 0.9fr 24px; gap: 6px; padding: 8px 6px; border-bottom: 1px solid #E5E7EB; align-items: center;">
+        <div style="font-size: 0.78rem; font-weight: 700; color: #111827; text-align: center; white-space: nowrap;">
+          ${row.bedengan || scannedBedengan || 'Bedengan 01'}
+        </div>
         <!-- 
         <select class="sel-klon" data-index="${idx}" style="width: 100%; border: none; outline: none; background: transparent; font-size: 0.72rem; text-overflow: ellipsis; padding: 3px 0; color: ${row.klon ? '#111111' : '#6B7280'}; cursor: pointer;">
           <option value="" disabled ${!row.klon ? 'selected' : ''}>Pilih</option>
@@ -361,13 +366,7 @@ export function renderSeedingForm() {
       </div>
     `).join('');
 
-    tableBody.querySelectorAll('.sel-bedengan').forEach(el => {
-      el.addEventListener('change', (e) => {
-        state.tableRows[e.target.dataset.index].bedengan = e.target.value;
-        e.target.style.color = '#111';
-        validateForm();
-      });
-    });
+
     tableBody.querySelectorAll('.sel-klon').forEach(el => {
       el.addEventListener('change', (e) => {
         state.tableRows[e.target.dataset.index].klon = e.target.value;
@@ -475,7 +474,8 @@ export function renderSeedingForm() {
   });
 
   btnTambahData.addEventListener('click', () => {
-    state.tableRows.push({ bedengan: '', klon: sourceTx.klon || 'GT-01', disemai: '', polybag: '' });
+    const currentBedengan = scannedBedengan || state.tableRows[0]?.bedengan || 'Bedengan 01';
+    state.tableRows.push({ bedengan: currentBedengan, klon: sourceTx.klon || 'GT-01', disemai: '', polybag: '' });
     renderTableRows();
     validateForm();
   });
@@ -599,6 +599,8 @@ export function renderSeedingForm() {
       totalPolybag += parseInt(r.polybag || 0);
     });
 
+    const bedenganDisplay = Array.from(new Set((state.tableRows || []).map(r => r.bedengan).filter(Boolean))).join(', ') || 'Bedengan 01';
+
     const newTx = {
       date: today,
       docNo: docNo,
@@ -607,6 +609,7 @@ export function renderSeedingForm() {
       program: sourceTx.program || 'PRG/NUR/01/2026',
       tahapan: sourceTx.tahapan || 'Rubber Main Nursery',
       klonAwal: sourceTx.klon || 'GT-01',
+      bedengan: bedenganDisplay,
       totalPenerimaan,
       ditolak: state.ditolak,
       alasanDitolak: state.alasanDitolak,
@@ -624,9 +627,14 @@ export function renderSeedingForm() {
     
     storage.set('seeding_transactions', txs);
 
+    // Bersihkan session scan bedengan
+    storage.remove('scanned_bedengan');
+    storage.remove('bedengan_verified_method');
+    storage.remove('bedengan_verified_at');
+
     setTimeout(() => {
       navigate('/seeding');
-    }, 1000);
+    }, 1500);
   });
 
   // Render initial
