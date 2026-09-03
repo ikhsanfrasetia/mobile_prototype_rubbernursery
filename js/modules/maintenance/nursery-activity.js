@@ -632,10 +632,12 @@ export function renderNurseryActivityForm() {
 
   // Event Listener: Tombol Simpan
   app.querySelector('#btn-simpan-hasil')?.addEventListener('click', () => {
-    const aktIdx = parseInt(selectAktivitas?.value || '0');
+    const selectAktivitasEl = app.querySelector('#select-aktivitas');
+    const selectBlokEl = app.querySelector('#select-blok');
+    const aktIdx = parseInt(selectAktivitasEl?.value || '0');
     const selectedAkt = MASTER_AKTIVITAS[aktIdx] || MASTER_AKTIVITAS[0];
     const selectedProg = selectedProgram || MASTER_PROGRAM_PEMBIBITAN[0];
-    const blkIdx = parseInt(selectBlok?.value || '0');
+    const blkIdx = parseInt(selectBlokEl?.value || '0');
     const selectedBlok = MASTER_LOKASI_BLOK[blkIdx] || MASTER_LOKASI_BLOK[0];
     const selectedWorkers = MASTER_PEKERJA_LIST.filter(w => workerSelectionState[w.id]);
 
