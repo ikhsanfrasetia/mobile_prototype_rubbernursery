@@ -200,6 +200,10 @@ export function renderSeedingLanding() {
                   <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right; word-break: break-word;">${tx.batchNo || 'Batch-01'}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
+                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">No. Bedengan</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.bedengan || (tx.rows && tx.rows.length > 0 ? Array.from(new Set(tx.rows.map(r => r.bedengan).filter(Boolean))).join(', ') : 'Bedengan 01')}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Tahapan Pertumbuhan</span>
                   <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.tahapan || 'Rubber Main Nursery'}</span>
                 </div>
