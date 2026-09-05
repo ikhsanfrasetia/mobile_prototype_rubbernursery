@@ -5,9 +5,8 @@
  * SINGLE SOURCE OF TRUTH — This JS module is the runtime data source.
  * The JSON file (data/process-mapping-data.json) is kept only for export/import/backup.
  *
- * DO NOT manually edit this file. To update baseline data:
- * 1. Use the Export function in Process Mapping Manage Mode
- * 2. Replace the PROCESS_MAPPING_BASELINE object with the exported data
+ * DO NOT manually edit this file. To update baseline data, run the node script
+ * that transforms data/process-mapping-data.json into this module.
  */
 
 export const PROCESS_MAPPING_BASELINE = {
@@ -3616,7 +3615,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Presensi datang terekam",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-supervisor"
     },
     {
       "id": "RN-PRS-002",
@@ -3632,7 +3633,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Jenis presensi terkonfirmasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-supervisor"
     },
     {
       "id": "RN-PRS-003",
@@ -3648,7 +3651,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Verifikasi biometrik terkonfirmasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-supervisor"
     },
     {
       "id": "RN-PRS-004",
@@ -3664,7 +3669,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Kehadiran terverifikasi",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-supervisor"
     },
     {
       "id": "RN-PRS-005",
@@ -3680,7 +3687,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Status lokasi: Dalam Areal Bibitan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-supervisor"
     },
     {
       "id": "RN-PRS-006",
@@ -3696,7 +3705,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Presensi supervisor aktif; modul operasional dibuka.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-supervisor"
     },
     {
       "id": "RN-PRS-007",
@@ -3712,7 +3723,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Dashboard operasional aktif.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-supervisor"
     },
     {
       "id": "RN-PWP-001",
@@ -3728,7 +3741,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Daftar pekerja siap diverifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-pekerja"
     },
     {
       "id": "RN-PWP-002",
@@ -3744,7 +3759,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Daftar pekerja hadir tersaring.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-pekerja"
     },
     {
       "id": "RN-PWP-003",
@@ -3760,7 +3777,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Pekerja tambahan masuk daftar hadir.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-pekerja"
     },
     {
       "id": "RN-PWP-004",
@@ -3776,7 +3795,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Presensi pekerja terverifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-pekerja"
     },
     {
       "id": "RN-PWP-005",
@@ -3792,7 +3813,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Pool pekerja siap digunakan hari ini.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "01-presensi",
+      "featureId": "presensi-pekerja"
     },
     {
       "id": "RN-RCV-001",
@@ -3808,7 +3831,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Nomor dokumen teridentifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-benih"
     },
     {
       "id": "RN-RCV-002",
@@ -3824,7 +3849,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Rincian dokumen terbuka di form penerimaan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-benih"
     },
     {
       "id": "RN-RCV-003",
@@ -3840,7 +3867,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Kuantitas aktual tercatat.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-benih"
     },
     {
       "id": "RN-RCV-004",
@@ -3856,7 +3885,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Foto audit tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-benih"
     },
     {
       "id": "RN-RCV-005",
@@ -3872,7 +3903,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Dokumen penerimaan terverifikasi di database produksi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-benih"
     },
     {
       "id": "RN-RCV-006",
@@ -3888,7 +3921,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Dokumen penerimaan aktif di sistem.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-benih"
     },
     {
       "id": "RN-RCV-KS01",
@@ -3904,7 +3939,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Dokumen Permintaan Bibit diajukan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sendiri"
     },
     {
       "id": "RN-RCV-KS02",
@@ -3920,7 +3957,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Keputusan ketersediaan stok.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sendiri"
     },
     {
       "id": "RN-RCV-KS03",
@@ -3936,7 +3975,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Arah alur proses ditentukan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sendiri"
     },
     {
       "id": "RN-RCV-KS04",
@@ -3952,7 +3993,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Surat jalan pengiriman bibit terbit.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sendiri"
     },
     {
       "id": "RN-RCV-KS05",
@@ -3968,7 +4011,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Transaksi penerimaan selesai dan tercatat di buku kebun divisi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sendiri"
     },
     {
       "id": "RN-RCV-KS06",
@@ -3984,7 +4029,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Data mutasi produksi tersinkron penuh.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sendiri"
     },
     {
       "id": "RN-SEM-001",
@@ -4000,7 +4047,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Penyemaian multi-bedengan",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "semai-bedengan"
     },
     {
       "id": "RN-SEM-002",
@@ -4016,7 +4065,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Identitas bedengan tervalidasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "semai-bedengan"
     },
     {
       "id": "RN-SEM-003",
@@ -4032,7 +4083,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Kuantitas semai dan reject tercatat.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "semai-bedengan"
     },
     {
       "id": "RN-SEM-004",
@@ -4048,7 +4101,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Foto bukti reject tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "semai-bedengan"
     },
     {
       "id": "RN-SEM-005",
@@ -4064,7 +4119,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Kecambah siap transplanting ke polybag.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "semai-bedengan"
     },
     {
       "id": "RN-SEM-006",
@@ -4080,7 +4137,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Polybag terisi 2 bibit",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "semai-bedengan"
     },
     {
       "id": "RN-SEM-007",
@@ -4096,7 +4155,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batch resmi terbentuk",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "semai-bedengan"
     },
     {
       "id": "RN-SEM-008",
@@ -4112,7 +4173,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batch siap diokulasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "semai-bedengan"
     },
     {
       "id": "RN-OKL-000",
@@ -4128,7 +4191,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Halaman pemilihan batch terbuka.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-001",
@@ -4144,7 +4209,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batch terpilih",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-002",
@@ -4160,7 +4227,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batch terkonfirmasi",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-003",
@@ -4176,7 +4245,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Populasi acuan tampil",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-004",
@@ -4192,7 +4263,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Alokasi pekerja tersimpan",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-005",
@@ -4208,7 +4281,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Plot entres valid",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-006",
@@ -4224,7 +4299,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Angka estimasi mata entres",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-007",
@@ -4240,7 +4317,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Stok mata entres terpotong",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-008",
@@ -4256,7 +4335,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Nilai jumlah cabang tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-009",
@@ -4272,7 +4353,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Tampilan estimasi mata entres terlihat di antarmuka.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-010",
@@ -4288,7 +4371,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Data kuantitas mata entres aktual tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-011",
@@ -4304,7 +4389,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Berkas gambar terkompresi dengan metadata audit tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-012",
@@ -4320,7 +4407,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Nomor transaksi diterbitkan berstatus Menunggu Verifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-013",
@@ -4336,7 +4425,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Status transaksi berubah menjadi Terverifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-014",
@@ -4352,7 +4443,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Saldo stok terpotong, tercatat dalam ledger material.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-OKL-015",
@@ -4368,7 +4461,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Data tersinkron penuh ke server production.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "grafting"
     },
     {
       "id": "RN-REG-000",
@@ -4384,7 +4479,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Formulir regrafting aktif.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-001",
@@ -4400,7 +4497,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batch dan kuota bibit siap regrafting terpilih.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-002",
@@ -4416,7 +4515,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batch terverifikasi fisik.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-003",
@@ -4432,7 +4533,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batas maksimum regrafting divalidasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-004",
@@ -4448,7 +4551,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Rincian regrafting per pekerja tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-005",
@@ -4464,7 +4569,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Plot entres terverifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-006",
@@ -4480,7 +4587,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Nilai mata entres aktual tersimpan di form.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-007",
@@ -4496,7 +4605,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Foto bukti audit tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-008",
@@ -4512,7 +4623,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Transaksi terkirim berstatus Menunggu Verifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-009",
@@ -4528,7 +4641,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Transaksi regrafting sah.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-010",
@@ -4544,7 +4659,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Saldo mata entres terpotong.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-REG-011",
@@ -4560,7 +4677,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Data tersinkron penuh ke server production.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "04-okulasi",
+      "featureId": "regrafting"
     },
     {
       "id": "RN-CHK-001",
@@ -4576,7 +4695,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Hasil berhasil vs gagal",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-grafting"
     },
     {
       "id": "RN-CHK-002",
@@ -4592,7 +4713,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Tindak lanjut terdaftar",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-grafting"
     },
     {
       "id": "RN-CHK-003",
@@ -4608,7 +4731,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batch tervalidasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-grafting"
     },
     {
       "id": "RN-CHK-004",
@@ -4624,7 +4749,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Sisa pemeriksaan tetap tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-grafting"
     },
     {
       "id": "RN-CHK-005",
@@ -4640,7 +4767,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Data perolehan berhasil & gagal tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-grafting"
     },
     {
       "id": "RN-CHK-006",
@@ -4656,7 +4785,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Kuota regrafting atau reject tercatat.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-grafting"
     },
     {
       "id": "RN-CHK-007",
@@ -4672,7 +4803,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Foto audit tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-grafting"
     },
     {
       "id": "RN-CHK-008",
@@ -4688,7 +4821,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Status: Terverifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-grafting"
     },
     {
       "id": "RN-CHK-009",
@@ -4704,7 +4839,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Data siap untuk siklus selanjutnya.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-grafting"
     },
     {
       "id": "RN-SEL-001",
@@ -4720,7 +4857,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Pengurangan populasi batch resmi",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-002",
@@ -4736,7 +4875,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Dokumen sumber terpilih.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-003",
@@ -4752,7 +4893,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batch terverifikasi fisik.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-004",
@@ -4768,7 +4911,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Populasi acuan tampil.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-005",
@@ -4784,7 +4929,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Nilai seleksi Mantri tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-006",
@@ -4800,7 +4947,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Foto audit tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-007",
@@ -4816,7 +4965,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Status: Menunggu Verifikasi Asisten.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-008",
@@ -4832,7 +4983,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Hasil verifikasi lapangan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-009",
@@ -4848,7 +5001,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Angka seleksi disepakati.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-010",
@@ -4864,7 +5019,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Populasi Batch terpotong resmi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-SEL-011",
@@ -4880,7 +5037,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Populasi batch terbarui.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "06-penyeleksian",
+      "featureId": "seleksi-batch"
     },
     {
       "id": "RN-ENT-001",
@@ -4896,7 +5055,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Rasio kualitas entres",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-menunas"
     },
     {
       "id": "RN-ENT-002",
@@ -4912,7 +5073,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Identitas plot terverifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-menunas"
     },
     {
       "id": "RN-ENT-003",
@@ -4928,7 +5091,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Data clone & pokok tampil.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-menunas"
     },
     {
       "id": "RN-ENT-004",
@@ -4944,7 +5109,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Data variabel tersimpan di form.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-menunas"
     },
     {
       "id": "RN-ENT-005",
@@ -4960,7 +5127,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Indeks rata-rata tampil di layar.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-menunas"
     },
     {
       "id": "RN-ENT-006",
@@ -4976,7 +5145,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Status: Terverifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-menunas"
     },
     {
       "id": "RN-ENT-007",
@@ -4992,7 +5163,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Plot siap panen entres berikutnya.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-menunas"
     },
     {
       "id": "RN-HAR-001",
@@ -5008,7 +5181,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "+ Stok Mata Entres",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "08-panen-mata-entres",
+      "featureId": "panen-entres"
     },
     {
       "id": "RN-HAR-002",
@@ -5024,7 +5199,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Plot entres dan clone terkonfirmasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "08-panen-mata-entres",
+      "featureId": "panen-entres"
     },
     {
       "id": "RN-HAR-003",
@@ -5040,7 +5217,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Variabel perhitungan tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "08-panen-mata-entres",
+      "featureId": "panen-entres"
     },
     {
       "id": "RN-HAR-004",
@@ -5056,7 +5235,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Estimasi ditampilkan di antarmuka.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "08-panen-mata-entres",
+      "featureId": "panen-entres"
     },
     {
       "id": "RN-HAR-005",
@@ -5072,7 +5253,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Nilai aktual tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "08-panen-mata-entres",
+      "featureId": "panen-entres"
     },
     {
       "id": "RN-HAR-006",
@@ -5088,7 +5271,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Foto audit tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "08-panen-mata-entres",
+      "featureId": "panen-entres"
     },
     {
       "id": "RN-HAR-007",
@@ -5104,7 +5289,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Saldo stok mata entres resmi bertambah (+ STOCK).",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "08-panen-mata-entres",
+      "featureId": "panen-entres"
     },
     {
       "id": "RN-HAR-008",
@@ -5120,7 +5307,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Saldo entres siap dipakai.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "08-panen-mata-entres",
+      "featureId": "panen-entres"
     },
     {
       "id": "RN-MAT-001",
@@ -5136,7 +5325,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Material melekat ke rekam pemeliharaan",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "monitoring-stok-entres"
     },
     {
       "id": "RN-MAT-002",
@@ -5152,7 +5343,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Buku mutasi klon terpilih.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "monitoring-stok-entres"
     },
     {
       "id": "RN-MAT-003",
@@ -5168,7 +5361,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Rincian audit mutasi ditampilkan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "monitoring-stok-entres"
     },
     {
       "id": "RN-MAT-004",
@@ -5184,7 +5379,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Dokumen material siap dicocokkan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "monitoring-stok-entres"
     },
     {
       "id": "RN-MAT-005",
@@ -5200,7 +5397,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Status kecocokan heading.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "monitoring-stok-entres"
     },
     {
       "id": "RN-MAT-006",
@@ -5216,7 +5415,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Material resmi terpakai.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "monitoring-stok-entres"
     },
     {
       "id": "RN-MAT-007",
@@ -5232,7 +5433,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Ledger material sah.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "monitoring-stok-entres"
     },
     {
       "id": "RN-MNT-001",
@@ -5248,7 +5451,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Form pemeliharaan terbuka.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "10-rekam-pemeliharaan",
+      "featureId": "pemeliharaan-heading"
     },
     {
       "id": "RN-MNT-002",
@@ -5264,7 +5469,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Heading kerja dan UOM terpasang.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "10-rekam-pemeliharaan",
+      "featureId": "pemeliharaan-heading"
     },
     {
       "id": "RN-MNT-003",
@@ -5280,7 +5487,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Objek pemeliharaan terverifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "10-rekam-pemeliharaan",
+      "featureId": "pemeliharaan-heading"
     },
     {
       "id": "RN-MNT-004",
@@ -5296,7 +5505,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Hasil kerja per pekerja tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "10-rekam-pemeliharaan",
+      "featureId": "pemeliharaan-heading"
     },
     {
       "id": "RN-MNT-005",
@@ -5312,7 +5523,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Foto audit tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "10-rekam-pemeliharaan",
+      "featureId": "pemeliharaan-heading"
     },
     {
       "id": "RN-MNT-006",
@@ -5328,7 +5541,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Material terikat pada aktivitas.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "10-rekam-pemeliharaan",
+      "featureId": "pemeliharaan-heading"
     },
     {
       "id": "RN-MNT-007",
@@ -5344,7 +5559,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Status: Terverifikasi Production.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "10-rekam-pemeliharaan",
+      "featureId": "pemeliharaan-heading"
     },
     {
       "id": "RN-MNT-008",
@@ -5360,7 +5577,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Riwayat pemeliharaan tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "10-rekam-pemeliharaan",
+      "featureId": "pemeliharaan-heading"
     },
     {
       "id": "RN-EXP-001",
@@ -5376,7 +5595,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Pengeluaran bibit terlaksana",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-bibit"
     },
     {
       "id": "RN-EXP-002",
@@ -5392,7 +5613,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Dokumen SPB dan kuota tampil.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-bibit"
     },
     {
       "id": "RN-EXP-003",
@@ -5408,7 +5631,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Batch terkonfirmasi sah.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-bibit"
     },
     {
       "id": "RN-EXP-004",
@@ -5424,7 +5649,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Kuantitas aktual muat tercatat.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-bibit"
     },
     {
       "id": "RN-EXP-005",
@@ -5440,7 +5667,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Foto bukti muat tersimpan.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-bibit"
     },
     {
       "id": "RN-EXP-006",
@@ -5456,7 +5685,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Populasi Batch resmi berkurang; Surat Jalan terbit.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-bibit"
     },
     {
       "id": "RN-EXP-007",
@@ -5472,7 +5703,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Transaksi Completed.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-bibit"
     },
     {
       "id": "RN-EXM-001",
@@ -5488,7 +5721,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Dokumen dan clone teridentifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-mata-entres"
     },
     {
       "id": "RN-EXM-002",
@@ -5504,7 +5739,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Plot entres terverifikasi.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-mata-entres"
     },
     {
       "id": "RN-EXM-003",
@@ -5520,7 +5757,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Kuantitas pengeluaran tercatat.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-mata-entres"
     },
     {
       "id": "RN-EXM-004",
@@ -5536,7 +5775,9 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Stok mata entres resmi berkurang (- STOCK).",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-mata-entres"
     },
     {
       "id": "RN-EXM-005",
@@ -5552,7 +5793,783 @@ export const PROCESS_MAPPING_BASELINE = {
       "output": "Surat jalan kirim terbit.",
       "version": 1,
       "isArchived": false,
-      "revisionOf": null
+      "revisionOf": null,
+      "moduleId": "11-pengeluaran",
+      "featureId": "pengeluaran-mata-entres"
+    },
+    {
+      "id": "RN-RCV-KSP016",
+      "title": "Pengurus Kebun Peminta mengajukan SPB bibit karet untuk penanaman di kebun.",
+      "role": "Pengurus Kebun Peminta",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Bibit - Kebun Sepupu",
+      "process": "Asisten Divisi Buat Permintaan Bibit",
+      "status": "Confirmed",
+      "input": "Rencana tanam, klon yang diminta, dan jumlah bibit.",
+      "validation": "Kebutuhan bibit sesuai luas areal tanam.",
+      "fallback": "Revisi permohonan.",
+      "output": "Dokumen Permintaan Bibit diajukan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sepupu"
+    },
+    {
+      "id": "RN-RCV-KSP017",
+      "title": "Asisten Kepala meninjau permintaan bibit dan memeriksa ketersediaan stok bibit siap salur.",
+      "role": "Asisten Kepala",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Bibit - Kebun Sepupu",
+      "process": "Asisten Kepala Review & Cek Stok",
+      "status": "Confirmed",
+      "input": "Dokumen permintaan bibit vs saldo bibit siap salur.",
+      "validation": "Klon dan umur bibit memenuhi syarat tanam.",
+      "fallback": "Negosiasi jumlah atau jadwal kirim.",
+      "output": "Keputusan ketersediaan stok.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sepupu"
+    },
+    {
+      "id": "RN-RCV-KSP018",
+      "title": "Stok cukup: Approve & teruskan ke Asisten Bibitan; Stok tidak cukup: Koreksi/Batalkan.",
+      "role": "Asisten Kepala",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Bibit - Kebun Sepupu",
+      "process": "Keputusan Stok Cukup?",
+      "status": "Confirmed",
+      "input": "Hasil audit ketersediaan batch.",
+      "validation": "Stok bibit siap salur >= kuantitas diminta.",
+      "fallback": "Jalur alternatif koreksi kuantitas.",
+      "output": "Arah alur proses ditentukan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sepupu"
+    },
+    {
+      "id": "RN-RCV-KSP019",
+      "title": "Asisten Bibitan menindaklanjuti; Mantri Bibitan mengeksekusi muat dan pengeluaran bibit.",
+      "role": "Mantri Bibitan",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Bibit - Kebun Sepupu",
+      "process": "Mantri Bibitan Pengeluaran Bibit",
+      "status": "Confirmed",
+      "input": "Dokumen SPB, armada angkut, dan fisik batch bibit.",
+      "validation": "Jumlah bibit sesuai dokumen SPB.",
+      "fallback": "Scan manual jika QR rusak.",
+      "output": "Surat jalan pengiriman bibit terbit.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sepupu"
+    },
+    {
+      "id": "RN-RCV-KSP020",
+      "title": "Pengurus Kebun Peminta menerima bibit di lokasi tanam, memeriksa fisik, dan mengonfirmasi penerimaan.",
+      "role": "Pengurus Kebun Peminta",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Bibit - Kebun Sepupu",
+      "process": "Asisten Divisi Verifikasi Penerimaan",
+      "status": "Confirmed",
+      "input": "Fisik bibit tiba di divisi dan surat jalan kirim.",
+      "validation": "Bibit diterima dalam kondisi hidup dan segar.",
+      "fallback": "Pencatatan bibit rusak di perjalanan.",
+      "output": "Transaksi penerimaan selesai dan tercatat di buku kebun divisi.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sepupu"
+    },
+    {
+      "id": "RN-RCV-KSP021",
+      "title": "Seluruh tahapan permohonan hingga penerimaan bibit kebun sepupu selesai terverifikasi.",
+      "role": "Pengurus Kebun Peminta",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Bibit - Kebun Sepupu",
+      "process": "Penerimaan Bibit Tuntas",
+      "status": "Confirmed",
+      "input": "Verifikasi sukses.",
+      "validation": "-",
+      "fallback": "-",
+      "output": "Data mutasi produksi tersinkron penuh.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-kebun-sepupu"
+    },
+    {
+      "id": "RN-RCV-ME022",
+      "title": "Pengurus Kebun Peminta mengajukan SPB mata entres karet untuk penanaman di kebun.",
+      "role": "Pengurus Kebun Peminta",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Mata Entres",
+      "process": "Asisten Divisi Buat Permintaan Bibit",
+      "status": "Confirmed",
+      "input": "Rencana tanam, klon yang diminta, dan jumlah bibit.",
+      "validation": "Kebutuhan bibit sesuai luas areal tanam.",
+      "fallback": "Revisi permohonan.",
+      "output": "Dokumen Permintaan Bibit diajukan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-mata-entres"
+    },
+    {
+      "id": "RN-RCV-ME023",
+      "title": "Asisten Kepala meninjau permintaan mata entres dan memeriksa ketersediaan stok mata entres siap salur.",
+      "role": "Asisten Kepala",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Mata Entres",
+      "process": "Asisten Kepala Review & Cek Stok",
+      "status": "Confirmed",
+      "input": "Dokumen permintaan bibit vs saldo bibit siap salur.",
+      "validation": "Klon dan umur bibit memenuhi syarat tanam.",
+      "fallback": "Negosiasi jumlah atau jadwal kirim.",
+      "output": "Keputusan ketersediaan stok.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-mata-entres"
+    },
+    {
+      "id": "RN-RCV-ME024",
+      "title": "Stok cukup: Approve & teruskan ke Asisten Bibitan; Stok tidak cukup: Koreksi/Batalkan.",
+      "role": "Asisten Kepala",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Mata Entres",
+      "process": "Keputusan Stok Cukup?",
+      "status": "Confirmed",
+      "input": "Hasil audit ketersediaan batch.",
+      "validation": "Stok bibit siap salur >= kuantitas diminta.",
+      "fallback": "Jalur alternatif koreksi kuantitas.",
+      "output": "Arah alur proses ditentukan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-mata-entres"
+    },
+    {
+      "id": "RN-RCV-ME025",
+      "title": "Asisten Bibitan menindaklanjuti; Mantri Bibitan mengeksekusi muat dan pengeluaran mata entres.",
+      "role": "Mantri Bibitan",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Mata Entres",
+      "process": "Mantri Bibitan Pengeluaran Bibit",
+      "status": "Confirmed",
+      "input": "Dokumen SPB, armada angkut, dan fisik batch bibit.",
+      "validation": "Jumlah bibit sesuai dokumen SPB.",
+      "fallback": "Scan manual jika QR rusak.",
+      "output": "Surat jalan pengiriman bibit terbit.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-mata-entres"
+    },
+    {
+      "id": "RN-RCV-ME026",
+      "title": "Pengurus Kebun Peminta menerima mata entres di lokasi tanam, memeriksa fisik, dan mengonfirmasi penerimaan.",
+      "role": "Pengurus Kebun Peminta",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Mata Entres",
+      "process": "Asisten Divisi Verifikasi Penerimaan",
+      "status": "Confirmed",
+      "input": "Fisik bibit tiba di divisi dan surat jalan kirim.",
+      "validation": "Bibit diterima dalam kondisi hidup dan segar.",
+      "fallback": "Pencatatan bibit rusak di perjalanan.",
+      "output": "Transaksi penerimaan selesai dan tercatat di buku kebun divisi.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-mata-entres"
+    },
+    {
+      "id": "RN-RCV-ME027",
+      "title": "Seluruh tahapan permohonan hingga penerimaan mata entres kebun sepupu selesai terverifikasi.",
+      "role": "Pengurus Kebun Peminta",
+      "module": "Penerimaan",
+      "feature": "Penerimaan Mata Entres",
+      "process": "Penerimaan Bibit Tuntas",
+      "status": "Confirmed",
+      "input": "Verifikasi sukses.",
+      "validation": "-",
+      "fallback": "-",
+      "output": "Data mutasi produksi tersinkron penuh.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "02-penerimaan",
+      "featureId": "terima-mata-entres"
+    },
+    {
+      "id": "RN-SEM-TP028",
+      "title": "Satu dokumen penerimaan benih dapat dialokasikan ke beberapa polybag.",
+      "role": "Mantri Bibitan",
+      "module": "Penyemaian",
+      "feature": "Transplanting ke Polybag (Batch)",
+      "process": "Pilih Dokumen Penerimaan Benih",
+      "status": "Confirmed",
+      "input": "Dokumen penerimaan benih",
+      "validation": "Sisa saldo benih > 0",
+      "fallback": "Alokasi bertahap",
+      "output": "Penyemaian multi-bedengan",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "transplanting-polybag"
+    },
+    {
+      "id": "RN-SEM-TP029",
+      "title": "Memindai QR Code fisik pada plang polybag pembibitan.",
+      "role": "Mantri Bibitan",
+      "module": "Penyemaian",
+      "feature": "Transplanting ke Polybag (Batch)",
+      "process": "Scan QR Bedengan",
+      "status": "Confirmed",
+      "input": "QR Code fisik pada plang nomor bedengan.",
+      "validation": "Bedengan terdaftar di master areal bibitan dan berstatus siap tabur.",
+      "fallback": "Jika QR rusak: Pilih Bedengan secara manual dari daftar.",
+      "output": "Identitas bedengan tervalidasi.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "transplanting-polybag"
+    },
+    {
+      "id": "RN-SEM-TP030",
+      "title": "Mantri menginput jumlah butir benih yang ditransplanting dan jumlah benih afkir/rusak.",
+      "role": "Mantri Bibitan",
+      "module": "Penyemaian",
+      "feature": "Transplanting ke Polybag (Batch)",
+      "process": "Input Jumlah Disemai & Reject",
+      "status": "Confirmed",
+      "input": "Jumlah disemai (butir) dan jumlah reject (butir).",
+      "validation": "Jumlah disemai + reject <= sisa benih pada dokumen penerimaan.",
+      "fallback": "Koreksi kuantitas sebelum disimpan.",
+      "output": "Kuantitas semai dan reject tercatat.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "transplanting-polybag"
+    },
+    {
+      "id": "RN-SEM-TP031",
+      "title": "Foto bukti fisik benih reject/rusak dengan watermark timestamp ISO dan GPS.",
+      "role": "Mantri Bibitan",
+      "module": "Penyemaian",
+      "feature": "Transplanting ke Polybag (Batch)",
+      "process": "Foto Benih Tidak Layak + Timestamp",
+      "status": "Confirmed",
+      "input": "Foto benih reject di atas nampan/karung.",
+      "validation": "Jika reject > 0, foto benih reject wajib diunggah.",
+      "fallback": "Ambil ulang foto.",
+      "output": "Foto bukti reject tersimpan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "transplanting-polybag"
+    },
+    {
+      "id": "RN-SEM-TP032",
+      "title": "Asisten menyetujui pemindahan benih kecambah dari bedengan ke polybag.",
+      "role": "Mantri Bibitan",
+      "module": "Penyemaian",
+      "feature": "Transplanting ke Polybag (Batch)",
+      "process": "Verifikasi Asisten & ±12–15 Hari Semai",
+      "status": "Confirmed",
+      "input": "Jadwal hari setelah semai (HSS).",
+      "validation": "Umur semai mencapai ±12–15 hari.",
+      "fallback": "Pemeriksaan manual jika perkecambahan lambat.",
+      "output": "Kecambah siap transplanting ke polybag.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "transplanting-polybag"
+    },
+    {
+      "id": "RN-SEM-TP033",
+      "title": "Transplanting ke polybag menggunakan rasio 1 Polybag = 2 Benih/Bibit.",
+      "role": "Mantri Bibitan",
+      "module": "Penyemaian",
+      "feature": "Transplanting ke Polybag (Batch)",
+      "process": "Transplanting ke Polybag (1 Polybag = 2 Benih)",
+      "status": "Confirmed",
+      "input": "Kecambah fase jarum",
+      "validation": "Tepat 2 kecambah per polybag",
+      "fallback": "Penyulaman manual",
+      "output": "Polybag terisi 2 bibit",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "transplanting-polybag"
+    },
+    {
+      "id": "RN-SEM-TP034",
+      "title": "Satu Batch bibitan dapat dikonsolidasi dari beberapa polybag.",
+      "role": "Mantri Bibitan",
+      "module": "Penyemaian",
+      "feature": "Transplanting ke Polybag (Batch)",
+      "process": "Konsolidasi Multi-Bedengan ke Batch",
+      "status": "Confirmed",
+      "input": "Kumpulan bedengan siap polybag",
+      "validation": "Clone dan petak seragam",
+      "fallback": "Pemisahan batch",
+      "output": "Batch resmi terbentuk",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "transplanting-polybag"
+    },
+    {
+      "id": "RN-SEM-TP035",
+      "title": "Batch polybag telah terdaftar dan siap dipelihara hingga mencapai ukuran okulasi.",
+      "role": "Mantri Bibitan",
+      "module": "Penyemaian",
+      "feature": "Transplanting ke Polybag (Batch)",
+      "process": "Batch Siap Masuk Siklus Okulasi",
+      "status": "Confirmed",
+      "input": "Batch terverifikasi Asisten Bibitan.",
+      "validation": "Status Batch: Aktif Siap Okulasi.",
+      "fallback": "-",
+      "output": "Batch siap diokulasi.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "03-penyemaian",
+      "featureId": "transplanting-polybag"
+    },
+    {
+      "id": "RN-CHK-RG036",
+      "title": "Pemeriksaan bersifat dinamis dan dapat dilakukan bertahap.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "process": "Buka Pemeriksaan",
+      "status": "Confirmed",
+      "input": "Dokumen berkewajiban periksa",
+      "validation": "Jumlah periksa <= sisa periksa",
+      "fallback": "Sisa tetap muncul di antrean",
+      "output": "Hasil berhasil vs gagal",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-regrafting"
+    },
+    {
+      "id": "RN-CHK-RG037",
+      "title": "Bibit gagal dapat ditentukan untuk Regrafting kembali atau Reject.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "process": "Pilih Dokumen Okulasi",
+      "status": "Confirmed",
+      "input": "Kuantitas bibit gagal",
+      "validation": "Pilihan Mantri: Regrafting vs Reject",
+      "fallback": "Tidak dibatasi 1x regrafting",
+      "output": "Tindak lanjut terdaftar",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-regrafting"
+    },
+    {
+      "id": "RN-CHK-RG038",
+      "title": "Validasi fisik QR Code Batch yang diperiksa.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "process": "Scan QR Batch",
+      "status": "Confirmed",
+      "input": "QR Code Batch fisik.",
+      "validation": "Batch cocok dengan dokumen okulasi.",
+      "fallback": "Pilih manual jika QR rusak.",
+      "output": "Batch tervalidasi.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-regrafting"
+    },
+    {
+      "id": "RN-CHK-RG039",
+      "title": "Menginput jumlah batang yang diperiksa pada sesi ini (misal 600 dari 1.000).",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "process": "Input Bibit Diperiksa Bertahap",
+      "status": "Confirmed",
+      "input": "Jumlah bibit diperiksa.",
+      "validation": "Jumlah diperiksa <= sisa belum periksa.",
+      "fallback": "-",
+      "output": "Sisa pemeriksaan tetap tersimpan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-regrafting"
+    },
+    {
+      "id": "RN-CHK-RG040",
+      "title": "Mencatat jumlah mata tempelan yang hijau (berhasil) vs hitam/mati (gagal).",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "process": "Input Berhasil & Gagal",
+      "status": "Confirmed",
+      "input": "Jumlah berhasil dan jumlah gagal.",
+      "validation": "Total Berhasil + Gagal = Jumlah Diperiksa.",
+      "fallback": "Hitung ulang jika ada selisih.",
+      "output": "Data perolehan berhasil & gagal tersimpan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-regrafting"
+    },
+    {
+      "id": "RN-CHK-RG041",
+      "title": "Mantri menentukan tindak lanjut bibit yang gagal: Regrafting kembali atau Reject.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "process": "Tindak Lanjut Bibit Gagal",
+      "status": "Confirmed",
+      "input": "Kuantitas bibit gagal dan kondisi visual batang.",
+      "validation": "Keputusan ditentukan sepenuhnya oleh Mantri Bibitan.",
+      "fallback": "Konsultasi Asisten jika ragu.",
+      "output": "Kuota regrafting atau reject tercatat.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-regrafting"
+    },
+    {
+      "id": "RN-CHK-RG042",
+      "title": "Foto bukti fisik mata tempelan berhasil dan gagal beserta watermark.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "process": "Dokumentasi Foto + Timestamp",
+      "status": "Confirmed",
+      "input": "Foto mata tunas okulasi.",
+      "validation": "Foto wajib diunggah.",
+      "fallback": "Ambil ulang foto.",
+      "output": "Foto audit tersimpan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-regrafting"
+    },
+    {
+      "id": "RN-CHK-RG043",
+      "title": "Mengirim hasil pemeriksaan ke Asisten Bibitan untuk disetujui.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "process": "Submit & Verifikasi Asisten",
+      "status": "Confirmed",
+      "input": "Data pemeriksaan lengkap.",
+      "validation": "Jika disetujui, data masuk server production.",
+      "fallback": "Koreksi jika ada selisih hitung.",
+      "output": "Status: Terverifikasi.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-regrafting"
+    },
+    {
+      "id": "RN-CHK-RG044",
+      "title": "Pemeriksaan tuntas; bibit berhasil lanjut tumbuh, bibit gagal siap di-Regrafting kembali atau di-Reject.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "process": "Selesai Pemeriksaan",
+      "status": "Confirmed",
+      "input": "Status verified.",
+      "validation": "-",
+      "fallback": "-",
+      "output": "Data siap untuk siklus selanjutnya.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "05-pemeriksaan",
+      "featureId": "periksa-regrafting"
+    },
+    {
+      "id": "RN-ENT-TOP045",
+      "title": "Aktivitas topping menghitung rasio Perisai/Kayu dan Perisai/Meter.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "feature": "Topping Plot Entres",
+      "process": "Buka Menunas Entres",
+      "status": "Confirmed",
+      "input": "Perisai, cabang, panjang meter",
+      "validation": "Perhitungan matematis otomatis",
+      "fallback": "Koreksi input",
+      "output": "Rasio kualitas entres",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-topping"
+    },
+    {
+      "id": "RN-ENT-TOP046",
+      "title": "Validasi QR Code plang fisik plot entres yang dirawat.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "feature": "Topping Plot Entres",
+      "process": "Scan QR Plot Entres",
+      "status": "Confirmed",
+      "input": "QR Code Plot Entres.",
+      "validation": "QR plot entres valid.",
+      "fallback": "Pilih manual plot jika QR rusak.",
+      "output": "Identitas plot terverifikasi.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-topping"
+    },
+    {
+      "id": "RN-ENT-TOP047",
+      "title": "Sistem menyajikan data clone dan jumlah pokok tanaman induk per plot.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "feature": "Topping Plot Entres",
+      "process": "Tampilkan Clone & Pokok",
+      "status": "Confirmed",
+      "input": "Master data plot entres.",
+      "validation": "Populasi pokok terdefinisi.",
+      "fallback": "-",
+      "output": "Data clone & pokok tampil.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-topping"
+    },
+    {
+      "id": "RN-ENT-TOP048",
+      "title": "Mantri menginput Tanggal, Jumlah Kayu Okulasi, Total Panjang Meter, dan Jumlah Perisai.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "feature": "Topping Plot Entres",
+      "process": "Input Variabel Menunas",
+      "status": "Confirmed",
+      "input": "Tanggal, Perisai, Cabang, Panjang Meter.",
+      "validation": "Seluruh angka > 0.",
+      "fallback": "Koreksi input.",
+      "output": "Data variabel tersimpan di form.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-topping"
+    },
+    {
+      "id": "RN-ENT-TOP049",
+      "title": "Sistem menghitung Rata-rata Perisai/Kayu dan Rata-rata Perisai/Meter.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "feature": "Topping Plot Entres",
+      "process": "Hitung Rata-rata Otomatis",
+      "status": "Confirmed",
+      "input": "Perisai / Cabang dan Perisai / Panjang Meter.",
+      "validation": "Perhitungan matematis otomatis valid.",
+      "fallback": "-",
+      "output": "Indeks rata-rata tampil di layar.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-topping"
+    },
+    {
+      "id": "RN-ENT-TOP050",
+      "title": "Foto dokumentasi plot setelah ditopping beserta timestamp, diteruskan ke Asisten Bibitan.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "feature": "Topping Plot Entres",
+      "process": "Foto + Timestamp & Verifikasi",
+      "status": "Confirmed",
+      "input": "Foto pokok entres bersih tunas air.",
+      "validation": "Foto wajib diunggah.",
+      "fallback": "Ambil ulang jika buram.",
+      "output": "Status: Terverifikasi.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-topping"
+    },
+    {
+      "id": "RN-ENT-TOP051",
+      "title": "Plot entres terawat optimal dan siap menghasilkan kayu entres berkualitas.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "feature": "Topping Plot Entres",
+      "process": "Menunas Selesai",
+      "status": "Confirmed",
+      "input": "Approval sukses.",
+      "validation": "-",
+      "fallback": "-",
+      "output": "Plot siap panen entres berikutnya.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "07-kebun-entres",
+      "featureId": "entres-topping"
+    },
+    {
+      "id": "RN-MAT-MMG052",
+      "title": "Dokumen gudang material wajib matching 1 Heading Kerja pemeliharaan.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "process": "Buka Monitoring Material",
+      "status": "Confirmed",
+      "input": "Dokumen pengeluaran gudang",
+      "validation": "1 Dokumen Gudang = 1 Heading Kerja",
+      "fallback": "Dokumen tidak dapat digunakan jika beda heading",
+      "output": "Material melekat ke rekam pemeliharaan",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "material-gudang-matching"
+    },
+    {
+      "id": "RN-MAT-MMG053",
+      "title": "Memilih rentang waktu dan jenis material gudang untuk ditinjau rekonsiliasinya.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "process": "Pilih Plot Entres + Clone",
+      "status": "Confirmed",
+      "input": "Daftar plot entres + clone.",
+      "validation": "Plot entres terdaftar.",
+      "fallback": "-",
+      "output": "Buku mutasi klon terpilih.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "material-gudang-matching"
+    },
+    {
+      "id": "RN-MAT-MMG054",
+      "title": "Validasi/pencocokan dokumen pengeluaran gudang (BKB/SPB sesuai dokumen yang berlaku) terhadap realisasi pemeliharaan berdasarkan Heading Kerja.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "process": "Audit Mutasi Masuk & Keluar",
+      "status": "Confirmed",
+      "input": "Log mutasi sistem.",
+      "validation": "Tidak boleh ada pengurangan stok manual tanpa transaksi.",
+      "fallback": "Investigasi jika selisih.",
+      "output": "Rincian audit mutasi ditampilkan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "material-gudang-matching"
+    },
+    {
+      "id": "RN-MAT-MMG055",
+      "title": "Menarik dokumen pengeluaran gudang untuk pupuk, pestisida, dan plastik okulasi.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "process": "Tarik Dokumen Gudang Material",
+      "status": "Confirmed",
+      "input": "Nomor dokumen pengeluaran gudang.",
+      "validation": "Dokumen gudang berstatus APPROVED.",
+      "fallback": "-",
+      "output": "Dokumen material siap dicocokkan.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "material-gudang-matching"
+    },
+    {
+      "id": "RN-MAT-MMG056",
+      "title": "Sistem memverifikasi kecocokan Heading Kerja dokumen gudang dengan rekam pemeliharaan.",
+      "role": "Sistem",
+      "module": "Material & Bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "process": "Matching Heading Kerja?",
+      "status": "Confirmed",
+      "input": "Heading dokumen gudang vs Heading aktivitas pemeliharaan.",
+      "validation": "Heading harus persis sama.",
+      "fallback": "Jika tidak matching: Dokumen ditolak sistem.",
+      "output": "Status kecocokan heading.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "material-gudang-matching"
+    },
+    {
+      "id": "RN-MAT-MMG057",
+      "title": "Notifikasi Mantri berhasil; dokumen material melekat pada rekam pemeliharaan.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "process": "Lekatkan Dokumen & Verifikasi",
+      "status": "Confirmed",
+      "input": "Dokumen matching.",
+      "validation": "Asisten Bibitan memverifikasi pemakaian material.",
+      "fallback": "-",
+      "output": "Material resmi terpakai.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "material-gudang-matching"
+    },
+    {
+      "id": "RN-MAT-MMG058",
+      "title": "Seluruh material dan mutasi stok tercatat rapi dan dapat dipertanggungjawabkan.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "process": "Material & Saldo Sah",
+      "status": "Confirmed",
+      "input": "Data tersinkron.",
+      "validation": "-",
+      "fallback": "-",
+      "output": "Ledger material sah.",
+      "version": 1,
+      "isArchived": false,
+      "revisionOf": null,
+      "moduleId": "09-material-bahan",
+      "featureId": "material-gudang-matching"
     }
   ],
   "businessRules": [
