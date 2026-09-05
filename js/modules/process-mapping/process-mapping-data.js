@@ -3,16 +3,18 @@
  * Single Source of Truth Loader & Adapter for Process Mapping.
  * 
  * Architecture:
- * - SINGLE SOURCE OF TRUTH: `data/process-mapping-data.json`
- * - LocalStorage / SessionStorage used ONLY for temporary drafts & unsaved changes
- * - No duplicate hardcoded data
+ * - RUNTIME SOURCE: `js/data/process-mapping-baseline.js` (JS Module import)
+ * - EXPORT/IMPORT: `data/process-mapping-data.json` (file download/upload only)
+ * - LocalStorage used ONLY for temporary drafts & unsaved changes
+ * - No runtime dependency on static JSON fetch (no 404 risk in production)
  * - Strict integrity validations before save/export
  * - Protected Confirmed Revisions (Creates Revision v2, v3... without overwrite)
  * - Safe Archiving (isArchived: true, no permanent delete)
  * - Structured Visual Node management (no raw Mermaid syntax)
  */
 
-const SOURCE_JSON_URL = 'data/process-mapping-data.json';
+import { PROCESS_MAPPING_BASELINE } from '../../data/process-mapping-baseline.js';
+
 const DRAFT_STORAGE_KEY = 'PM_DRAFT_PROJECT_DATA_V2';
 
 // In-Memory Active Data Store
@@ -125,18 +127,14 @@ export function validateProjectData(data) {
 }
 
 /**
- * Fetches the official source data from data/process-mapping-data.json.
+ * Loads the official baseline data from the imported JS module.
+ * No network fetch required — data is bundled as a native ES module.
  */
-export async function fetchOfficialSourceData() {
-  const url = `${SOURCE_JSON_URL}?t=${Date.now()}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Gagal memuat source data resmi (${response.status} ${response.statusText})`);
-  }
-  const data = await response.json();
+export function fetchOfficialSourceData() {
+  const data = JSON.parse(JSON.stringify(PROCESS_MAPPING_BASELINE));
   const validation = validateProjectData(data);
   if (!validation.valid) {
-    console.warn('[ProcessMapping] Validasi source JSON menemukan catatan:', validation.errors);
+    console.warn('[ProcessMapping] Validasi baseline menemukan catatan:', validation.errors);
   }
   officialBaselineStore = JSON.parse(JSON.stringify(data));
   return data;
@@ -144,12 +142,12 @@ export async function fetchOfficialSourceData() {
 
 /**
  * Initializes the project data store.
- * Checks for temporary unsaved draft in localStorage, or loads official source JSON.
- * @param {boolean} forceOfficial If true, bypasses draft and forces official source JSON
+ * Checks for temporary unsaved draft in localStorage, or loads baseline JS module.
+ * @param {boolean} forceOfficial If true, bypasses draft and forces official baseline
  */
-export async function initProjectDataStore(forceOfficial = false) {
-  // Always fetch official baseline first
-  const official = await fetchOfficialSourceData();
+export function initProjectDataStore(forceOfficial = false) {
+  // Load official baseline from JS module (synchronous, no fetch)
+  const official = fetchOfficialSourceData();
 
   if (!forceOfficial) {
     try {
@@ -212,11 +210,11 @@ export function saveDraftToStorage() {
 }
 
 /**
- * Resets any local draft and reloads the official baseline from process-mapping-data.json.
+ * Resets any local draft and reloads the official baseline from the JS module.
  */
-export async function resetDraftToOfficial() {
+export function resetDraftToOfficial() {
   localStorage.removeItem(DRAFT_STORAGE_KEY);
-  activeStore = await fetchOfficialSourceData();
+  activeStore = fetchOfficialSourceData();
   return activeStore;
 }
 
