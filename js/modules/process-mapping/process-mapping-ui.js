@@ -1291,7 +1291,7 @@ function renderModals(store) {
 
                 <div class="pm-form-group">
                   <label class="pm-form-label">Diperbarui Oleh (Updated By)</label>
-                  <input type="text" name="updatedBy" class="pm-form-input" value="${escapeHtml(store.metadata.updatedBy || 'Ikhsan Prastia')}" required />
+                  <input type="text" name="updatedBy" class="pm-form-input" value="${escapeHtml(store.metadata.updatedBy || 'Business Analyst')}" required />
                 </div>
               </div>
 
@@ -2105,7 +2105,7 @@ function attachPortalEvents(container, store) {
         showToast(`Requirement ${fields.id} berhasil ditambahkan`);
       } else {
         // Edit or revision
-        const res = editRequirement(modalData.id, fields, 'Ikhsan Prastia');
+        const res = editRequirement(modalData.id, fields, 'Business Analyst');
         if (res.isRevision) {
           showToast(`Revisi baru ${res.requirement.id} v${res.requirement.version} berhasil dibuat (Draft)`);
         } else {
@@ -2151,12 +2151,12 @@ function attachPortalEvents(container, store) {
     try {
       if (!modalData?.node?.id) {
         // Add node
-        const createdNode = addFlowNode(modId, featId, fields, 'Ikhsan Prastia');
+        const createdNode = addFlowNode(modId, featId, fields, 'Business Analyst');
         if (createdNode && createdNode.id) selectedNodeId = createdNode.id;
         showToast('Langkah alur baru berhasil ditambahkan (Draft)');
       } else {
         // Edit node
-        const res = editFlowNode(modId, featId, modalData.node.id, fields, 'Ikhsan Prastia');
+        const res = editFlowNode(modId, featId, modalData.node.id, fields, 'Business Analyst');
         selectedNodeId = modalData.node.id;
         selectedModuleId = modId;
         currentFeatureId = featId;
