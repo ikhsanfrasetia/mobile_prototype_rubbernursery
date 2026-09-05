@@ -1291,7 +1291,7 @@ function renderModals(store) {
 
                 <div class="pm-form-group">
                   <label class="pm-form-label">Diperbarui Oleh (Updated By)</label>
-                  <input type="text" name="updatedBy" class="pm-form-input" value="${escapeHtml(store.metadata.updatedBy || 'Project Manager')}" required />
+                  <input type="text" name="updatedBy" class="pm-form-input" value="${escapeHtml(store.metadata.updatedBy || 'Ikhsan Prastia')}" required />
                 </div>
               </div>
 
@@ -2105,7 +2105,7 @@ function attachPortalEvents(container, store) {
         showToast(`Requirement ${fields.id} berhasil ditambahkan`);
       } else {
         // Edit or revision
-        const res = editRequirement(modalData.id, fields, 'Project Manager');
+        const res = editRequirement(modalData.id, fields, 'Ikhsan Prastia');
         if (res.isRevision) {
           showToast(`Revisi baru ${res.requirement.id} v${res.requirement.version} berhasil dibuat (Draft)`);
         } else {
@@ -2151,12 +2151,12 @@ function attachPortalEvents(container, store) {
     try {
       if (!modalData?.node?.id) {
         // Add node
-        const createdNode = addFlowNode(modId, featId, fields, 'Project Manager');
+        const createdNode = addFlowNode(modId, featId, fields, 'Ikhsan Prastia');
         if (createdNode && createdNode.id) selectedNodeId = createdNode.id;
         showToast('Langkah alur baru berhasil ditambahkan (Draft)');
       } else {
         // Edit node
-        const res = editFlowNode(modId, featId, modalData.node.id, fields, 'Project Manager');
+        const res = editFlowNode(modId, featId, modalData.node.id, fields, 'Ikhsan Prastia');
         selectedNodeId = modalData.node.id;
         selectedModuleId = modId;
         currentFeatureId = featId;
@@ -2384,7 +2384,7 @@ function renderDashboardView(store) {
       <div class="pm-dashboard-header">
         <div>
           <h1 class="pm-dashboard-title">Dashboard Kesiapan Proses Bisnis &amp; Sistem</h1>
-          <p class="pm-dashboard-desc">Ringkasan status baseline, modul operasional, dan kepatuhan kebutuhan sistem pembibitan karet.</p>
+          <p class="pm-dashboard-desc">Ringkasan status baseline, modul operasional, dan kebutuhan sistem pembibitan karet.</p>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
           <span class="pm-meta-chip">📦 Dataset v${escapeHtml(store.metadata?.version || '1.0.0')}</span>

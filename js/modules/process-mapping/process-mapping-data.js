@@ -268,7 +268,7 @@ export function createRequirement(reqData) {
  * Edits an existing requirement or creates a new revision if Confirmed.
  * Rule: CONFIRMED requirement cannot be overwritten; creates a new revision (e.g. v2 Draft).
  */
-export function editRequirement(reqId, updatedFields, author = 'Project Manager') {
+export function editRequirement(reqId, updatedFields, author = 'Ikhsan Prastia') {
   const store = getActiveStore();
   const existingIndex = store.requirements.findIndex((r) => r.id === reqId && !r.isArchived);
 
@@ -319,7 +319,7 @@ export function editRequirement(reqId, updatedFields, author = 'Project Manager'
 /**
  * Approves a draft revision to Confirmed.
  */
-export function approveRequirementRevision(reqId, version, author = 'Project Manager') {
+export function approveRequirementRevision(reqId, version, author = 'Ikhsan Prastia') {
   const store = getActiveStore();
   const req = store.requirements.find((r) => r.id === reqId && (r.version || 1) === version);
   if (!req) throw new Error(`Requirement ${reqId} v${version} tidak ditemukan`);
@@ -343,7 +343,7 @@ export function archiveRequirement(reqId, version = null) {
   if (!req) throw new Error(`Requirement ${reqId} tidak ditemukan`);
   req.isArchived = true;
   req.archivedAt = new Date().toISOString();
-  updateMetadata({ updatedBy: 'Project Manager' });
+  updateMetadata({ updatedBy: 'Ikhsan Prastia' });
   return req;
 }
 
@@ -354,7 +354,7 @@ export function archiveRequirement(reqId, version = null) {
 /**
  * Adds a structured flow node to a module feature.
  */
-export function addFlowNode(moduleId, featureId, nodeData, author = 'Project Manager') {
+export function addFlowNode(moduleId, featureId, nodeData, author = 'Ikhsan Prastia') {
   const store = getActiveStore();
   if (!store.flows[moduleId]) store.flows[moduleId] = {};
   if (!store.flows[moduleId][featureId]) {
@@ -396,7 +396,7 @@ export function addFlowNode(moduleId, featureId, nodeData, author = 'Project Man
 /**
  * Edits a flow node. If node is Confirmed, creates revision.
  */
-export function editFlowNode(moduleId, featureId, nodeId, updatedFields, author = 'Project Manager') {
+export function editFlowNode(moduleId, featureId, nodeId, updatedFields, author = 'Ikhsan Prastia') {
   const store = getActiveStore();
   const flow = store.flows[moduleId]?.[featureId];
   if (!flow) throw new Error(`Flow ${moduleId}/${featureId} tidak ditemukan`);
@@ -472,7 +472,7 @@ export function reorderFlowNode(moduleId, featureId, nodeId, direction) {
   });
 
   regenerateFlowEdges(flow);
-  updateMetadata({ updatedBy: 'Project Manager' });
+  updateMetadata({ updatedBy: 'Ikhsan Prastia' });
   return true;
 }
 
@@ -489,7 +489,7 @@ export function archiveFlowNode(moduleId, featureId, nodeId) {
 
   node.isArchived = true;
   regenerateFlowEdges(flow);
-  updateMetadata({ updatedBy: 'Project Manager' });
+  updateMetadata({ updatedBy: 'Ikhsan Prastia' });
   return node;
 }
 
@@ -523,7 +523,7 @@ export function exportProjectDataFile(customMetadata = {}) {
     metadata: {
       version: customMetadata.version || store.metadata.version || '0.2.0',
       lastUpdated: new Date().toISOString().split('T')[0],
-      updatedBy: customMetadata.updatedBy || store.metadata.updatedBy || 'Project Manager'
+      updatedBy: customMetadata.updatedBy || store.metadata.updatedBy || 'Ikhsan Prastia'
     }
   };
 

@@ -14,7 +14,7 @@ export const PROCESS_MAPPING_BASELINE = {
   "metadata": {
     "version": "0.2.0",
     "lastUpdated": "2026-09-05",
-    "updatedBy": "Project Manager"
+    "updatedBy": "Ikhsan Prastia"
   },
   "roles": [
     {
