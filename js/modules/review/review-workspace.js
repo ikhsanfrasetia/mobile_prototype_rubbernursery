@@ -20,6 +20,7 @@ import {
   syncQueueRepository
 } from '../../db/repositories.js';
 import { resetDatabase } from '../../db/indexeddb.js';
+import { renderProcessMappingPortal } from '../process-mapping/process-mapping-ui.js';
 
 const STORAGE_KEY = 'sigma_feedback_notes';
 const API_URL = '/api/notes';
@@ -334,7 +335,7 @@ const INITIAL_NOTES = [
 ];
 
 let notes = [];
-let activeWorkspaceTab = 'notes'; // 'notes' | 'flow' | 'transactions'
+let activeWorkspaceTab = 'notes'; // 'notes' | 'flow' | 'transactions' | 'process-mapping'
 let activeTxTab = 'reception'; // 'attendance' | 'reception' | 'seeding' | 'budding' | 'inspection' | 'regrafting' | 'selection' | 'syncQueue'
 let txSearchQuery = '';
 let txStatusFilter = 'ALL';
@@ -560,8 +561,25 @@ function saveNotesLocally() {
   }
 }
 
+function setWorkspaceTab(tab) {
+  activeWorkspaceTab = tab;
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url);
+  } catch (_) {}
+}
+
 /** Inisialisasi Review Workspace */
 export function initReviewWorkspace() {
+  const params = new URLSearchParams(window.location.search);
+  const tabParam = params.get('tab');
+  if (tabParam && ['notes', 'transactions', 'process-mapping'].includes(tabParam)) {
+    activeWorkspaceTab = tabParam;
+  } else if (tabParam === 'flow') {
+    activeWorkspaceTab = 'notes';
+  }
+
   loadNotes();
   setupMarkerLayer();
   setupMobileWorkspaceSwitcher();
@@ -705,6 +723,9 @@ function selectNote(noteId, openDetail = false) {
 
 /** Render Panel Review (Desktop Table & Mobile Cards) */
 export function renderReviewPanel() {
+  if (activeWorkspaceTab === 'flow') {
+    activeWorkspaceTab = 'notes';
+  }
   updateMobileTabBadge();
   const container = document.getElementById('review-panel-container');
   if (!container) return;
@@ -750,15 +771,21 @@ export function renderReviewPanel() {
         <span>Catatan Perbaikan</span>
         <span class="tab-badge">${notes.length}</span>
       </button>
+      <!-- [TEMPORARILY DISABLED / COMMENTED OUT] Tab Flow Proses
       <button class="workspace-main-tab-btn ${activeWorkspaceTab === 'flow' ? 'is-active' : ''}" id="tab-main-flow" type="button">
         <span>🔄</span>
         <span>Flow Proses</span>
         <span class="tab-badge-pulse">${PROCESS_STEPS.length} Tahapan</span>
       </button>
+      -->
       <button class="workspace-main-tab-btn ${activeWorkspaceTab === 'transactions' ? 'is-active' : ''}" id="tab-main-transactions" type="button">
         <span>📊</span>
         <span>Data Transaksi</span>
         <span class="tab-badge-pulse" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd;">8 Modul (CRUD)</span>
+      </button>
+      <button class="workspace-main-tab-btn ${activeWorkspaceTab === 'process-mapping' ? 'is-active' : ''}" id="tab-main-process-mapping" type="button">
+        <span>🗺️</span>
+        <span>Pemetaan Alur Proses Aplikasi</span>
       </button>
     </div>
   `;
@@ -1084,6 +1111,10 @@ export function renderReviewPanel() {
     `;
   } else if (activeWorkspaceTab === 'transactions') {
     html += renderTransactionsWorkspaceTab();
+  } else if (activeWorkspaceTab === 'process-mapping') {
+    html += `
+      <div class="process-mapping-container" id="process-mapping-container"></div>
+    `;
   }
 
   container.innerHTML = html;
@@ -1092,19 +1123,32 @@ export function renderReviewPanel() {
 
   // Main Tabs switching
   container.querySelector('#tab-main-notes')?.addEventListener('click', () => {
-    activeWorkspaceTab = 'notes';
+    setWorkspaceTab('notes');
     renderReviewPanel();
   });
 
   container.querySelector('#tab-main-flow')?.addEventListener('click', () => {
-    activeWorkspaceTab = 'flow';
+    setWorkspaceTab('flow');
     renderReviewPanel();
   });
 
   container.querySelector('#tab-main-transactions')?.addEventListener('click', () => {
-    activeWorkspaceTab = 'transactions';
+    setWorkspaceTab('transactions');
     renderReviewPanel();
   });
+
+  container.querySelector('#tab-main-process-mapping')?.addEventListener('click', () => {
+    setWorkspaceTab('process-mapping');
+    renderReviewPanel();
+  });
+
+  if (activeWorkspaceTab === 'process-mapping') {
+    const pmContainer = container.querySelector('#process-mapping-container');
+    if (pmContainer) {
+      renderProcessMappingPortal(pmContainer);
+    }
+    return;
+  }
 
   if (activeWorkspaceTab === 'transactions') {
     attachTransactionsWorkspaceEvents(container);
