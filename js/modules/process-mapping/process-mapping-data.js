@@ -535,6 +535,13 @@ export function addFlowNode(moduleId, featureId, nodeData, author = 'Business An
   const code = nodeData.code?.trim() || generateNextNodeCode(flow, nodeData.type || 'process');
   const nodeTitle = (nodeData.label || nodeData.title || '').trim();
 
+  // Sanitize ruleIds if provided
+  let sanitizedRuleIds = undefined;
+  if (Array.isArray(nodeData.ruleIds)) {
+    const validRuleIdSet = new Set((store.businessRules || []).map(br => br.id || br.code));
+    sanitizedRuleIds = Array.from(new Set(nodeData.ruleIds.map(id => typeof id === 'string' ? id.trim() : '').filter(id => id && validRuleIdSet.has(id))));
+  }
+
   const newNode = {
     id: nodeId,
     code,
@@ -556,6 +563,13 @@ export function addFlowNode(moduleId, featureId, nodeData, author = 'Business An
     revisionOf: null,
     createdAt: new Date().toISOString()
   };
+
+  if (sanitizedRuleIds !== undefined) {
+    newNode.ruleIds = sanitizedRuleIds;
+  }
+  if (nodeData.businessRule) {
+    newNode.businessRule = String(nodeData.businessRule).trim();
+  }
 
   flow.nodes.push(newNode);
   regenerateFlowEdges(flow);
@@ -585,6 +599,13 @@ export function editFlowNode(moduleId, featureId, nodeId, updatedFields, author 
   const existingNode = flow.nodes[nodeIdx];
   const nodeTitle = (updatedFields.label || updatedFields.title || existingNode.label || existingNode.title).trim();
 
+  // Sanitize ruleIds if explicitly provided
+  let sanitizedRuleIds = undefined;
+  if (Array.isArray(updatedFields.ruleIds)) {
+    const validRuleIdSet = new Set((store.businessRules || []).map(br => br.id || br.code));
+    sanitizedRuleIds = Array.from(new Set(updatedFields.ruleIds.map(id => typeof id === 'string' ? id.trim() : '').filter(id => id && validRuleIdSet.has(id))));
+  }
+
   if (existingNode.status === 'Confirmed') {
     // Create new revision without overwriting baseline
     const currentVersion = existingNode.version || 1;
@@ -605,6 +626,10 @@ export function editFlowNode(moduleId, featureId, nodeId, updatedFields, author 
       revisedBy: author
     };
 
+    if (sanitizedRuleIds !== undefined) {
+      revisedNode.ruleIds = sanitizedRuleIds;
+    }
+
     // Mark previous confirmed version as superseded in history
     existingNode.isSuperseded = true;
     existingNode.supersededBy = `v${nextVersion}`;
@@ -624,6 +649,11 @@ export function editFlowNode(moduleId, featureId, nodeId, updatedFields, author 
       reviewNote: null,
       lastModified: new Date().toISOString()
     };
+
+    if (sanitizedRuleIds !== undefined) {
+      updatedNode.ruleIds = sanitizedRuleIds;
+    }
+
     flow.nodes[nodeIdx] = updatedNode;
     regenerateFlowEdges(flow);
     updateMetadata({ updatedBy: author });
@@ -1517,4 +1547,593 @@ export function discardEntityDraft(entityType, params, author = 'Business Analys
   updateMetadata({ updatedBy: author });
   return true;
 }
+
+// =============================================================================
+// PHASE 4A: TRACEABILITY FOUNDATION & COVERAGE ENGINE
+// =============================================================================
+
+const MANAGEMENT_ROLES = [
+  'pengurus',
+  'pengurus kebun',
+  'pengurus kebun peminta',
+  'asisten kepala',
+  'askep',
+  'asisten divisi',
+  'ktu',
+  'kepala kebun',
+  'manager',
+  'auditor',
+  'finance',
+  'tekniker i',
+  'tekniker 1'
+];
+
+/**
+ * 1. Canonical Criteria Resolver
+ * Retrieves requirement acceptance criteria without mutating or creating new DB fields.
+ * Priority: req.criteria -> req.acceptanceCriteria -> linkedNode.validation -> req.validation -> req.description/title fallback
+ * @param {Object} req
+ * @returns {string}
+ */
+export function getRequirementCriteria(req) {
+  if (!req || typeof req !== 'object') return '';
+
+  if (typeof req.criteria === 'string' && req.criteria.trim().length > 0) {
+    return req.criteria.trim();
+  }
+
+  if (typeof req.acceptanceCriteria === 'string' && req.acceptanceCriteria.trim().length > 0) {
+    return req.acceptanceCriteria.trim();
+  }
+
+  // Check linked node validation if available
+  const store = getActiveStore();
+  let nodeValidation = '';
+  if (req.linkedNode || req.id || req.reqId) {
+    const targetReqId = req.reqId || req.id;
+    if (store && store.flows) {
+      for (const features of Object.values(store.flows)) {
+        if (!features || typeof features !== 'object') continue;
+        for (const flowObj of Object.values(features)) {
+          if (!flowObj || !Array.isArray(flowObj.nodes)) continue;
+          const matched = flowObj.nodes.find(n => 
+            !n.isSuperseded && !n.isArchived && 
+            (n.id === req.linkedNode || n.reqId === targetReqId)
+          );
+          if (matched && typeof matched.validation === 'string' && matched.validation.trim().length > 0 && matched.validation.trim() !== '-') {
+            nodeValidation = matched.validation.trim();
+            break;
+          }
+        }
+        if (nodeValidation) break;
+      }
+    }
+  }
+
+  if (nodeValidation) return nodeValidation;
+  if (typeof req.validation === 'string' && req.validation.trim().length > 0 && req.validation.trim() !== '-') {
+    return req.validation.trim();
+  }
+
+  if (typeof req.description === 'string' && req.description.trim().length > 0) {
+    return req.description.trim();
+  }
+
+  return (req.title || '').trim();
+}
+
+/**
+ * 2. Trace Classification Logic
+ * Categorizes a requirement trace into 'covered', 'management', or 'gap' deterministically.
+ * @param {Object} req
+ * @param {Array<Object>} linkedNodes
+ * @returns {{ classification: 'covered'|'management'|'gap', label: string, isFlowRequired: boolean, isGap: boolean }}
+ */
+export function classifyRequirementTrace(req, linkedNodes = []) {
+  if (Array.isArray(linkedNodes) && linkedNodes.length > 0) {
+    return {
+      classification: 'covered',
+      label: 'Covered',
+      isFlowRequired: true,
+      isGap: false
+    };
+  }
+
+  if (!req) {
+    return {
+      classification: 'gap',
+      label: 'True Gap',
+      isFlowRequired: true,
+      isGap: true
+    };
+  }
+
+  // Check explicit scope or management role
+  const roleStr = (req.role || '').toLowerCase().trim();
+  const isMgmtRole = MANAGEMENT_ROLES.some(r => roleStr.includes(r));
+  const isExplicitMgmt = req.flowScope === 'management' || req.flowScope === 'system' || req.type === 'non-functional' || req.type === 'KNF';
+
+  if (isExplicitMgmt || isMgmtRole) {
+    return {
+      classification: 'management',
+      label: 'Business / Management',
+      isFlowRequired: false,
+      isGap: false
+    };
+  }
+
+  return {
+    classification: 'gap',
+    label: 'True Gap',
+    isFlowRequired: true,
+    isGap: true
+  };
+}
+
+/**
+ * 3. Requirement Trace Resolver
+ * Resolves full end-to-end trace from Requirement -> Module -> Feature -> Nodes -> Business Rules.
+ * @param {string} reqId
+ * @returns {Object|null}
+ */
+export function getRequirementTrace(reqId) {
+  const store = getActiveStore();
+  if (!store) return null;
+
+  const allReqs = [
+    ...(store.requirements || []),
+    ...(store.functionalRequirements || []),
+    ...(store.nonFunctionalRequirements || [])
+  ];
+
+  const req = allReqs.find(r => 
+    !r.isSuperseded && !r.isArchived && (r.id === reqId || r.reqId === reqId)
+  ) || allReqs.find(r => r.id === reqId || r.reqId === reqId);
+
+  if (!req) return null;
+
+  // Resolve Module & Feature
+  let moduleObj = null;
+  let featureObj = null;
+
+  if (Array.isArray(store.modules)) {
+    moduleObj = store.modules.find(m => m.id === req.moduleId) || null;
+    if (moduleObj && Array.isArray(moduleObj.features)) {
+      featureObj = moduleObj.features.find(f => f.id === req.featureId) || null;
+    }
+  }
+
+  // Resolve linked flow nodes strictly by ID relation
+  const linkedNodes = [];
+  const targetReqId = req.reqId || req.id;
+
+  if (store.flows && typeof store.flows === 'object') {
+    for (const [mId, features] of Object.entries(store.flows)) {
+      if (!features || typeof features !== 'object') continue;
+      for (const [fId, flowObj] of Object.entries(features)) {
+        if (!flowObj || !Array.isArray(flowObj.nodes)) continue;
+        for (const node of flowObj.nodes) {
+          if (!node.isSuperseded && !node.isArchived) {
+            if (node.reqId === targetReqId || (req.linkedNode && node.id === req.linkedNode)) {
+              linkedNodes.push({
+                ...node,
+                moduleId: mId,
+                featureId: fId
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Resolve Business Rules
+  const matchedRules = [];
+  const ruleIdSet = new Set();
+
+  // From req.ruleIds (array of strings)
+  if (Array.isArray(req.ruleIds)) {
+    req.ruleIds.forEach(id => ruleIdSet.add(id));
+  }
+
+  // From linked nodes' ruleIds
+  linkedNodes.forEach(node => {
+    if (Array.isArray(node.ruleIds)) {
+      node.ruleIds.forEach(id => ruleIdSet.add(id));
+    }
+    if (typeof node.businessRule === 'string') {
+      const matches = node.businessRule.match(/BR-[A-Z]+-[0-9]+/g);
+      if (matches) matches.forEach(m => ruleIdSet.add(m));
+    }
+  });
+
+  if (typeof req.businessRule === 'string') {
+    const matches = req.businessRule.match(/BR-[A-Z]+-[0-9]+/g);
+    if (matches) matches.forEach(m => ruleIdSet.add(m));
+  }
+
+  if (Array.isArray(store.businessRules)) {
+    store.businessRules.forEach(br => {
+      if (ruleIdSet.has(br.id) || ruleIdSet.has(br.code)) {
+        matchedRules.push(br);
+      }
+    });
+  }
+
+  const classificationResult = classifyRequirementTrace(req, linkedNodes);
+  const criteriaText = getRequirementCriteria(req);
+
+  return {
+    requirement: req,
+    module: moduleObj,
+    feature: featureObj,
+    nodes: linkedNodes,
+    businessRules: matchedRules,
+    hasFlowNodeGap: linkedNodes.length === 0,
+    hasRuleGap: matchedRules.length === 0,
+    classification: classificationResult.classification,
+    isFlowRequired: classificationResult.isFlowRequired,
+    isGap: classificationResult.isGap,
+    criteria: criteriaText
+  };
+}
+
+/**
+ * 4. All Trace Records
+ * Generates trace records for all active operational requirements.
+ * Archived and superseded requirements are excluded from active coverage.
+ * @returns {Array<Object>}
+ */
+export function getAllTraceabilityRecords() {
+  const store = getActiveStore();
+  if (!store || !Array.isArray(store.requirements)) return [];
+
+  const activeReqs = store.requirements.filter(
+    r => !r.isArchived && !r.isSuperseded && r.status !== 'Archived' && r.status !== 'archived'
+  );
+
+  return activeReqs.map(r => getRequirementTrace(r.id)).filter(Boolean);
+}
+
+/**
+ * 5. Business Rule Link Validation & Sanitization
+ * Safely associates valid rule IDs to a requirement without duplicate entries or runtime crashes.
+ * @param {string} reqId
+ * @param {Array<string>} ruleIds
+ * @param {string} author
+ * @returns {{ success: boolean, reqId: string, ruleIds: Array<string> }}
+ */
+export function validateAndLinkBusinessRules(reqId, ruleIds = [], author = 'Business Analyst') {
+  const store = getActiveStore();
+  if (!store) throw new Error('Store belum diinisialisasi');
+
+  const req = (store.requirements || []).find(
+    r => !r.isArchived && !r.isSuperseded && (r.id === reqId || r.reqId === reqId)
+  );
+
+  if (!req) {
+    throw new Error(`Requirement ${reqId} tidak ditemukan`);
+  }
+
+  if (!Array.isArray(ruleIds)) {
+    ruleIds = [];
+  }
+
+  // Validate strictly against existing businessRules in store
+  const validRuleIdSet = new Set((store.businessRules || []).map(br => br.id || br.code));
+  const sanitized = Array.from(
+    new Set(
+      ruleIds
+        .map(id => (typeof id === 'string' ? id.trim() : ''))
+        .filter(id => id && validRuleIdSet.has(id))
+    )
+  );
+
+  req.ruleIds = sanitized;
+  req.lastModified = new Date().toISOString();
+  updateMetadata({ updatedBy: author });
+
+  return {
+    success: true,
+    reqId: req.id,
+    ruleIds: sanitized
+  };
+}
+
+/**
+ * 6. Deterministic Coverage Metrics Calculator
+ * Calculates accurate runtime metrics based strictly on active data.
+ * Protects against division by zero (returns 0 instead of NaN/Infinity).
+ * @returns {Object}
+ */
+export function getCoverageMetrics() {
+  const traces = getAllTraceabilityRecords();
+  const store = getActiveStore();
+
+  const totalActiveRequirements = traces.length;
+
+  let flowRequired = 0;
+  let flowCovered = 0;
+  let flowGap = 0;
+  let managementRequirements = 0;
+  let requirementsWithBusinessRules = 0;
+
+  traces.forEach(t => {
+    if (t.isFlowRequired) flowRequired++;
+    if (t.classification === 'covered') flowCovered++;
+    if (t.classification === 'gap') flowGap++;
+    if (t.classification === 'management') managementRequirements++;
+    if (t.businessRules && t.businessRules.length > 0) requirementsWithBusinessRules++;
+  });
+
+  // Feature and module flow completeness
+  let totalFeatures = 0;
+  let featuresWithFlows = 0;
+  let totalModules = 0;
+  let modulesWithFlows = 0;
+
+  if (store && Array.isArray(store.modules)) {
+    totalModules = store.modules.length;
+    store.modules.forEach(m => {
+      let moduleHasNodes = false;
+      if (Array.isArray(m.features)) {
+        totalFeatures += m.features.length;
+        m.features.forEach(f => {
+          const flowObj = store.flows?.[m.id]?.[f.id];
+          const activeNodes = (flowObj?.nodes || []).filter(n => !n.isSuperseded && !n.isArchived);
+          if (activeNodes.length > 0) {
+            featuresWithFlows++;
+            moduleHasNodes = true;
+          }
+        });
+      }
+      if (moduleHasNodes) modulesWithFlows++;
+    });
+  }
+
+  // Deterministic rates
+  const flowCoverageRate = flowRequired > 0 
+    ? Number(((flowCovered / flowRequired) * 100).toFixed(2))
+    : 0;
+
+  const totalTraceabilityHealth = totalActiveRequirements > 0
+    ? Number((((flowCovered + managementRequirements) / totalActiveRequirements) * 100).toFixed(2))
+    : 0;
+
+  const businessRuleCoverage = totalActiveRequirements > 0
+    ? Number(((requirementsWithBusinessRules / totalActiveRequirements) * 100).toFixed(2))
+    : 0;
+
+  const featureFlowCompleteness = totalFeatures > 0
+    ? Number(((featuresWithFlows / totalFeatures) * 100).toFixed(2))
+    : 0;
+
+  const moduleFlowCompleteness = totalModules > 0
+    ? Number(((modulesWithFlows / totalModules) * 100).toFixed(2))
+    : 0;
+
+  return {
+    totalActiveRequirements,
+    flowRequired,
+    flowCovered,
+    flowGap,
+    managementRequirements,
+    requirementsWithBusinessRules,
+    totalModules,
+    modulesWithFlows,
+    totalFeatures,
+    featuresWithFlows,
+    flowCoverageRate,
+    totalTraceabilityHealth,
+    businessRuleCoverage,
+    featureFlowCompleteness,
+    moduleFlowCompleteness
+  };
+}
+
+/**
+ * 7. Flow Node Trace Resolver
+ * Resolves full trace for a single flow node: Node -> Module -> Feature -> Requirement -> Business Rules.
+ * @param {string} moduleId
+ * @param {string} featureId
+ * @param {string} nodeId
+ * @returns {Object|null}
+ */
+export function getNodeTrace(moduleId, featureId, nodeId) {
+  const store = getActiveStore();
+  if (!store || !store.flows) return null;
+
+  let foundNode = null;
+  let effectiveModId = moduleId;
+  let effectiveFeatId = featureId;
+
+  if (moduleId && featureId && store.flows[moduleId]?.[featureId]) {
+    foundNode = (store.flows[moduleId][featureId].nodes || []).find(n => !n.isSuperseded && !n.isArchived && n.id === nodeId);
+  }
+
+  if (!foundNode) {
+    for (const [mId, feats] of Object.entries(store.flows || {})) {
+      for (const [fId, flowObj] of Object.entries(feats || {})) {
+        const match = (flowObj.nodes || []).find(n => !n.isSuperseded && !n.isArchived && n.id === nodeId);
+        if (match) {
+          foundNode = match;
+          effectiveModId = mId;
+          effectiveFeatId = fId;
+          break;
+        }
+      }
+      if (foundNode) break;
+    }
+  }
+
+  if (!foundNode) return null;
+
+  const moduleObj = store.modules?.find(m => m.id === effectiveModId) || null;
+  const featureObj = moduleObj?.features?.find(f => f.id === effectiveFeatId) || null;
+
+  // Linked Requirement
+  let linkedReq = null;
+  if (foundNode.reqId) {
+    linkedReq = getRequirementByReqId(foundNode.reqId) || null;
+  }
+
+  // Business Rules resolution (from node.ruleIds, node.businessRule text, and linkedReq)
+  const matchedRules = [];
+  const ruleIdSet = new Set();
+
+  if (Array.isArray(foundNode.ruleIds)) {
+    foundNode.ruleIds.forEach(id => ruleIdSet.add(id));
+  }
+
+  if (typeof foundNode.businessRule === 'string') {
+    const matches = foundNode.businessRule.match(/BR-[A-Z]+-[0-9]+/g);
+    if (matches) matches.forEach(m => ruleIdSet.add(m));
+  }
+
+  if (linkedReq) {
+    if (Array.isArray(linkedReq.ruleIds)) {
+      linkedReq.ruleIds.forEach(id => ruleIdSet.add(id));
+    }
+    if (typeof linkedReq.businessRule === 'string') {
+      const matches = linkedReq.businessRule.match(/BR-[A-Z]+-[0-9]+/g);
+      if (matches) matches.forEach(m => ruleIdSet.add(m));
+    }
+  }
+
+  if (Array.isArray(store.businessRules)) {
+    store.businessRules.forEach(br => {
+      if (ruleIdSet.has(br.id) || ruleIdSet.has(br.code)) {
+        matchedRules.push(br);
+      }
+    });
+  }
+
+  // Deterministic sorting of rules
+  matchedRules.sort((a, b) => (a.id || a.code || '').localeCompare(b.id || b.code || ''));
+
+  const criteriaText = linkedReq ? getRequirementCriteria(linkedReq) : (foundNode.validation || '');
+
+  return {
+    node: foundNode,
+    moduleId: effectiveModId,
+    featureId: effectiveFeatId,
+    module: moduleObj,
+    feature: featureObj,
+    requirement: linkedReq,
+    businessRules: matchedRules,
+    criteria: criteriaText,
+    hasReqLink: Boolean(linkedReq),
+    hasRuleLink: matchedRules.length > 0
+  };
+}
+
+/**
+ * 8. Flow Node Business Rule Link Validation & Sanitization
+ * Safely associates valid rule IDs to a flow node without duplicate entries or runtime crashes.
+ * @param {string} moduleId
+ * @param {string} featureId
+ * @param {string} nodeId
+ * @param {Array<string>} ruleIds
+ * @param {string} author
+ * @returns {{ success: boolean, nodeId: string, ruleIds: Array<string> }}
+ */
+export function validateAndLinkNodeBusinessRules(moduleId, featureId, nodeId, ruleIds = [], author = 'Business Analyst') {
+  const store = getActiveStore();
+  if (!store || !store.flows) throw new Error('Store belum diinisialisasi');
+
+  let targetNode = null;
+  let flow = store.flows[moduleId]?.[featureId];
+
+  if (flow && Array.isArray(flow.nodes)) {
+    targetNode = flow.nodes.find(n => !n.isSuperseded && !n.isArchived && n.id === nodeId);
+  }
+
+  if (!targetNode) {
+    for (const [mId, feats] of Object.entries(store.flows || {})) {
+      for (const [fId, fObj] of Object.entries(feats || {})) {
+        const match = (fObj.nodes || []).find(n => !n.isSuperseded && !n.isArchived && n.id === nodeId);
+        if (match) {
+          targetNode = match;
+          break;
+        }
+      }
+      if (targetNode) break;
+    }
+  }
+
+  if (!targetNode) throw new Error(`Node ${nodeId} tidak ditemukan`);
+
+  if (!Array.isArray(ruleIds)) ruleIds = [];
+
+  const validRuleIdSet = new Set((store.businessRules || []).map(br => br.id || br.code));
+  const sanitized = Array.from(
+    new Set(
+      ruleIds
+        .map(id => (typeof id === 'string' ? id.trim() : ''))
+        .filter(id => id && validRuleIdSet.has(id))
+    )
+  );
+
+  targetNode.ruleIds = sanitized;
+  targetNode.lastModified = new Date().toISOString();
+  updateMetadata({ updatedBy: author });
+
+  return {
+    success: true,
+    nodeId: targetNode.id,
+    ruleIds: sanitized
+  };
+}
+
+/**
+ * 9. Comprehensive Gap Analysis Report Generator
+ * Extracts all active requirements that have classification === 'gap' (True Gap).
+ * Aggregates gaps by module and provides detailed trace insights for audit.
+ * @returns {Object}
+ */
+export function getGapAnalysisReport() {
+  const allTraces = getAllTraceabilityRecords();
+  const store = getActiveStore();
+  const gapRecords = allTraces.filter(t => t.classification === 'gap');
+
+  const gapsByModule = {};
+  if (store && Array.isArray(store.modules)) {
+    store.modules.forEach(m => {
+      gapsByModule[m.id] = {
+        moduleId: m.id,
+        moduleName: m.name,
+        moduleOrder: m.order,
+        totalGaps: 0,
+        requirements: []
+      };
+    });
+  }
+
+  gapRecords.forEach(rec => {
+    const modId = rec.module?.id || rec.requirement?.module || 'other';
+    if (!gapsByModule[modId]) {
+      gapsByModule[modId] = {
+        moduleId: modId,
+        moduleName: rec.module?.name || rec.requirement?.module || 'Lainnya',
+        moduleOrder: 99,
+        totalGaps: 0,
+        requirements: []
+      };
+    }
+    gapsByModule[modId].totalGaps++;
+    gapsByModule[modId].requirements.push(rec);
+  });
+
+  const moduleSummary = Object.values(gapsByModule).sort(
+    (a, b) => (a.moduleOrder || 99) - (b.moduleOrder || 99)
+  );
+
+  return {
+    totalGaps: gapRecords.length,
+    gapRecords,
+    moduleSummary,
+    generatedAt: new Date().toISOString()
+  };
+}
+
 

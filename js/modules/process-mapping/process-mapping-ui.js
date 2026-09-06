@@ -48,7 +48,15 @@ import {
   exportProjectDataFile,
   previewImportProjectData,
   applyImportedProjectData,
-  updateMetadata
+  updateMetadata,
+  getRequirementCriteria,
+  getRequirementTrace,
+  getAllTraceabilityRecords,
+  getNodeTrace,
+  validateAndLinkBusinessRules,
+  validateAndLinkNodeBusinessRules,
+  getCoverageMetrics,
+  getGapAnalysisReport
 } from './process-mapping-data.js';
 
 // Global UI State
@@ -97,9 +105,27 @@ let refFilterStatus = 'ALL';
 let refSearchQuery = '';
 
 // Reports Tab Filter State
-let reportSubTab = 'SRS'; // 'SRS' | 'BPD' | 'RTM'
+let reportSubTab = 'req-matrix'; // 'req-doc' | 'bp-doc' | 'req-matrix' | 'gap-analysis'
 let reportFilterModule = 'ALL';
 let reportFilterRole = 'ALL';
+
+// RTM Filter & Pagination State
+let rtmSearchQuery = '';
+let rtmFilterModule = 'ALL';
+let rtmFilterRole = 'ALL';
+let rtmFilterClassification = 'ALL'; // 'ALL' | 'Covered' | 'Business / Management' | 'True Gap'
+let rtmFilterRuleLink = 'ALL'; // 'ALL' | 'Linked' | 'Not Linked'
+let rtmFilterReqStatus = 'ALL'; // 'ALL' | 'Confirmed' | 'Draft' | 'In Review'
+let rtmCurrentPage = 1;
+let rtmPageSize = 5;
+
+// Gap Analysis State
+let gapSearchQuery = '';
+let gapFilterModule = 'ALL';
+let gapFilterRole = 'ALL';
+let gapFilterStatus = 'ALL';
+let gapCurrentPage = 1;
+let gapPageSize = 10;
 
 /**
  * Helper to expose click callback for Mermaid nodes to window
@@ -1701,14 +1727,13 @@ function renderDetailPanel(store) {
         <div class="pm-detail-section">
           <span class="pm-section-heading">Requirement Terkait</span>
           ${(() => {
-            if (!foundNode.reqId) {
-              return `<p class="pm-section-body" style="color:#94a3b8; font-style:italic; font-size:0.8rem;">Langkah ini belum terhubung ke requirement spesifik.</p>`;
-            }
-            const linkedReq = getRequirementByReqId(foundNode.reqId);
+            const trace = getNodeTrace(effectiveModId, effectiveFeatId, foundNode.id);
+            const linkedReq = trace?.requirement || (foundNode.reqId ? getRequirementByReqId(foundNode.reqId) : null);
             if (!linkedReq) {
               return `
-                <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:6px; padding:8px 12px; font-size:0.8rem; color:#64748b;">
-                  <code>${escapeHtml(foundNode.reqId)}</code> (Belum terdaftar di master requirement)
+                <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:6px; padding:8px 12px; font-size:0.8rem; color:#64748b; display:flex; justify-content:space-between; align-items:center;">
+                  <span>${foundNode.reqId ? `<code>${escapeHtml(foundNode.reqId)}</code> (Belum terdaftar di master requirement)` : `<span style="font-style:italic; color:#94a3b8;">Belum Terhubung</span>`}</span>
+                  <span class="pm-badge-draft" style="font-size:0.68rem;">No Link</span>
                 </div>
               `;
             }
@@ -1724,12 +1749,49 @@ function renderDetailPanel(store) {
                   </div>
                 </div>
                 <div style="font-weight:600; font-size:0.82rem; color:#0f172a;">${escapeHtml(linkedReq.title)}</div>
-                <div style="font-size:0.78rem; color:#475569; line-height:1.4;">${escapeHtml(linkedReq.acceptanceCriteria || linkedReq.process || '-')}</div>
-                <div style="display:flex; gap:8px; font-size:0.72rem; color:#64748b; margin-top:2px;">
-                  <span>Kategori: <strong>${escapeHtml(linkedReq.type || 'KF')}</strong></span>
-                  <span>&bull;</span>
-                  <span>Modul: <strong>${escapeHtml(linkedReq.module || '-')}</strong></span>
+                <div style="font-size:0.78rem; color:#475569; line-height:1.4;">${escapeHtml(getRequirementCriteria(linkedReq) || linkedReq.process || '-')}</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                  <div style="display:flex; gap:8px; font-size:0.72rem; color:#64748b;">
+                    <span>Kategori: <strong>${escapeHtml(linkedReq.type || 'KF')}</strong></span>
+                    <span>&bull;</span>
+                    <span>Modul: <strong>${escapeHtml(linkedReq.module || '-')}</strong></span>
+                  </div>
+                  <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-jump-req" data-req-id="${escapeHtml(linkedReq.id)}" style="padding:2px 8px; font-size:0.72rem;">
+                    Buka Req &rarr;
+                  </button>
                 </div>
+              </div>
+            `;
+          })()}
+        </div>
+
+        <!-- Linked Business Rules Section -->
+        <div class="pm-detail-section">
+          <span class="pm-section-heading">Aturan Bisnis Terkait</span>
+          ${(() => {
+            const trace = getNodeTrace(effectiveModId, effectiveFeatId, foundNode.id);
+            const rules = trace?.businessRules || [];
+            if (rules.length === 0) {
+              return `
+                <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:6px; padding:8px 12px; font-size:0.8rem; color:#94a3b8; font-style:italic;">
+                  Belum Terhubung ke aturan bisnis spesifik.
+                </div>
+              `;
+            }
+            return `
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                ${rules.map(br => `
+                  <div class="pm-node-link-card" style="display:flex; justify-content:space-between; align-items:center; background:#fffbeb; border-color:#fde68a;">
+                    <div>
+                      <span style="font-weight:700; color:#92400e;">[${escapeHtml(br.id || br.code)}]</span>
+                      <span style="font-size:0.8rem; color:#78350f; margin-left:4px; font-weight:600;">${escapeHtml(br.title || br.name || '')}</span>
+                      <div style="font-size:0.72rem; color:#a16207; margin-top:2px;">${escapeHtml((br.desc || br.description || '').slice(0, 80))}${((br.desc || br.description || '').length > 80 ? '...' : '')}</div>
+                    </div>
+                    <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-jump-rule" data-rule-id="${escapeHtml(br.id || br.code)}" style="padding:2px 8px; font-size:0.72rem; white-space:nowrap; margin-left:8px;">
+                      Detail &rarr;
+                    </button>
+                  </div>
+                `).join('')}
               </div>
             `;
           })()}
@@ -2121,39 +2183,68 @@ function renderModals(store) {
                 <div class="pm-detail-value">${escapeHtml(previewReq.output || '-')}</div>
               </div>
 
-              ${previewReq.businessRule
-        ? `
-                <div class="pm-detail-item is-full">
-                  <span class="pm-detail-label">Aturan Bisnis (Business Rule)</span>
-                  <div class="pm-detail-value" style="background:#fffbeb; border-color:#fef3c7; color:#92400e;">
-                    ${escapeHtml(previewReq.businessRule)}
-                  </div>
-                </div>
-              `
-        : ''
-      }
-
-              <!-- Process / Linked Node Section -->
+              <!-- Linked Business Rules Section -->
               <div class="pm-detail-item is-full" style="margin-top:6px;">
-                <span class="pm-detail-label">Process / Linked Flow Node</span>
-                ${nodeUsage.isUsed
-        ? `
+                <span class="pm-detail-label">Aturan Bisnis Terkait (Business Rules)</span>
+                ${(() => {
+                  const trace = getRequirementTrace(reqId);
+                  const rules = trace?.businessRules || [];
+                  if (rules.length === 0) {
+                    return `
+                      <div class="pm-detail-value" style="color:#64748b; font-style:italic;">
+                        Belum terhubung ke aturan bisnis spesifik.
+                      </div>
+                    `;
+                  }
+                  return `
                     <div style="display:flex; flex-direction:column; gap:6px;">
-                      ${nodeUsage.nodes.map((n) => `
-                        <div class="pm-node-link-card">
-                          <span style="font-weight:700; color:#0284c7;">[${escapeHtml(n.code)}]</span>
-                          <span><strong>${escapeHtml(n.title)}</strong></span>
-                          <span style="color:#64748b; font-size:0.75rem;">(Modul: ${escapeHtml(n.moduleId)} / ${escapeHtml(n.featureId)})</span>
+                      ${rules.map(br => `
+                        <div class="pm-node-link-card" style="display:flex; justify-content:space-between; align-items:center; background:#fffbeb; border-color:#fde68a;">
+                          <div>
+                            <span style="font-weight:700; color:#92400e;">[${escapeHtml(br.id || br.code)}]</span>
+                            <span style="font-size:0.82rem; color:#78350f; font-weight:600; margin-left:4px;">${escapeHtml(br.title || br.name || '')}</span>
+                            <div style="font-size:0.72rem; color:#a16207; margin-top:2px;">${escapeHtml((br.desc || br.description || '').slice(0, 85))}${((br.desc || br.description || '').length > 85 ? '...' : '')}</div>
+                          </div>
+                          <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-jump-rule" data-rule-id="${escapeHtml(br.id || br.code)}" style="padding:2px 8px; font-size:0.72rem; white-space:nowrap; margin-left:8px;">
+                            Detail &rarr;
+                          </button>
                         </div>
                       `).join('')}
                     </div>
-                  `
-        : `
-                    <div class="pm-detail-value" style="color:#64748b; font-style:italic;">
-                      Belum ada langkah alur visual yang mereferensikan requirement ini.
+                  `;
+                })()}
+              </div>
+
+              <!-- Process / Linked Node Section -->
+              <div class="pm-detail-item is-full" style="margin-top:6px;">
+                <span class="pm-detail-label">Process / Linked Flow Nodes</span>
+                ${(() => {
+                  const trace = getRequirementTrace(reqId);
+                  const nodes = trace?.nodes || [];
+                  if (nodes.length === 0) {
+                    return `
+                      <div class="pm-detail-value" style="color:#64748b; font-style:italic;">
+                        Belum ada langkah alur visual yang mereferensikan requirement ini.
+                      </div>
+                    `;
+                  }
+                  return `
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                      ${nodes.map((n) => `
+                        <div class="pm-node-link-card" style="display:flex; justify-content:space-between; align-items:center;">
+                          <div>
+                            <span style="font-weight:700; color:#0284c7;">[${escapeHtml(n.code || n.id)}]</span>
+                            <span style="font-weight:600; font-size:0.82rem; color:#0f172a; margin-left:4px;">${escapeHtml(n.label || n.title)}</span>
+                            <span style="color:#64748b; font-size:0.75rem; display:block;">(Modul: ${escapeHtml(n.moduleId)} / ${escapeHtml(n.featureId)})</span>
+                          </div>
+                          <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-jump-node" data-node-id="${escapeHtml(n.id)}" data-mod-id="${escapeHtml(n.moduleId)}" data-feat-id="${escapeHtml(n.featureId)}" style="padding:2px 8px; font-size:0.72rem; white-space:nowrap; margin-left:8px;">
+                            Buka di Alur &rarr;
+                          </button>
+                        </div>
+                      `).join('')}
                     </div>
-                  `
-      }
+                  `;
+                })()}
               </div>
 
               <!-- Revision History Timeline Section -->
@@ -2196,6 +2287,121 @@ function renderModals(store) {
               `
         : ''
       }
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'detail-rule') {
+    const rule = modalData;
+    const ruleId = rule?.id || rule?.code;
+    const allActiveReqs = (store.requirements || []).filter(r => !r.isArchived && !r.isSuperseded);
+    const linkedReqs = allActiveReqs.filter(r => {
+      const trace = getRequirementTrace(r.id);
+      return trace && trace.businessRules.some(br => br.id === ruleId || br.code === ruleId);
+    });
+
+    const linkedNodes = [];
+    for (const [mId, feats] of Object.entries(store.flows || {})) {
+      for (const [fId, fObj] of Object.entries(feats || {})) {
+        (fObj.nodes || []).forEach(n => {
+          if (!n.isSuperseded && !n.isArchived) {
+            const nTrace = getNodeTrace(mId, fId, n.id);
+            if (nTrace && nTrace.businessRules.some(br => br.id === ruleId || br.code === ruleId)) {
+              linkedNodes.push({ ...n, moduleId: mId, featureId: fId });
+            }
+          }
+        });
+      }
+    }
+
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 720px;">
+          <div class="pm-modal-header">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <h3 class="pm-modal-title">Detail Aturan Bisnis: ${escapeHtml(ruleId)}</h3>
+              <span class="pm-badge-rule-pill">${escapeHtml(rule.category || 'Aturan Operasional')}</span>
+            </div>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <div class="pm-modal-body">
+            <div class="pm-detail-grid">
+              <div class="pm-detail-item is-full">
+                <span class="pm-detail-label">Judul / Ketentuan Aturan</span>
+                <div class="pm-detail-value is-accent" style="font-size:0.98rem; font-weight:600;">
+                  ${escapeHtml(rule.title || rule.name || ruleId)}
+                </div>
+              </div>
+
+              <div class="pm-detail-item is-full">
+                <span class="pm-detail-label">Deskripsi Kebijakan Standar</span>
+                <div class="pm-detail-value" style="line-height:1.45; color:#1e293b;">
+                  ${escapeHtml(rule.desc || rule.description || '-')}
+                </div>
+              </div>
+
+              ${rule.impact ? `
+                <div class="pm-detail-item is-full">
+                  <span class="pm-detail-label">Dampak Operasional &amp; Integritas Data</span>
+                  <div class="pm-detail-value" style="background:#fffbeb; border-color:#fde68a; color:#92400e;">
+                    ${escapeHtml(rule.impact)}
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- Trace Hub: Linked Requirements -->
+              <div class="pm-detail-item is-full" style="margin-top:6px;">
+                <span class="pm-detail-label">Requirement Terkait (${linkedReqs.length})</span>
+                ${linkedReqs.length > 0 ? `
+                  <div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;">
+                    ${linkedReqs.map(r => `
+                      <div class="pm-node-link-card" style="display:flex; align-items:center; justify-content:space-between;">
+                        <div>
+                          <span style="font-weight:700; color:#0369a1;">[${escapeHtml(r.id)}]</span>
+                          <span style="font-size:0.8rem; color:#0f172a; margin-left:4px; font-weight:600;">${escapeHtml(r.title)}</span>
+                          <span style="color:#64748b; font-size:0.72rem; display:block;">(${escapeHtml(r.module)} &rsaquo; ${escapeHtml(r.role)})</span>
+                        </div>
+                        <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-jump-req" data-req-id="${escapeHtml(r.id)}" style="padding:2px 8px; font-size:0.72rem; white-space:nowrap; margin-left:8px;">
+                          Buka Req &rarr;
+                        </button>
+                      </div>
+                    `).join('')}
+                  </div>
+                ` : `
+                  <div style="color:#94a3b8; font-size:0.8rem; font-style:italic;">Belum ada requirement yang terhubung ke aturan ini.</div>
+                `}
+              </div>
+
+              <!-- Trace Hub: Linked Flow Nodes -->
+              <div class="pm-detail-item is-full" style="margin-top:6px;">
+                <span class="pm-detail-label">Flow Nodes Penegak Aturan (${linkedNodes.length})</span>
+                ${linkedNodes.length > 0 ? `
+                  <div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;">
+                    ${linkedNodes.map(n => `
+                      <div class="pm-node-link-card" style="display:flex; align-items:center; justify-content:space-between;">
+                        <div>
+                          <span style="font-weight:700; color:#059669;">[${escapeHtml(n.code || n.id)}]</span>
+                          <span style="font-size:0.8rem; color:#0f172a; margin-left:4px; font-weight:600;">${escapeHtml(n.label || n.title)}</span>
+                          <span style="color:#64748b; font-size:0.72rem; display:block;">(Modul: ${escapeHtml(n.moduleId)} / ${escapeHtml(n.featureId)})</span>
+                        </div>
+                        <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-jump-node" data-node-id="${escapeHtml(n.id)}" data-mod-id="${escapeHtml(n.moduleId)}" data-feat-id="${escapeHtml(n.featureId)}" style="padding:2px 8px; font-size:0.72rem; white-space:nowrap; margin-left:8px;">
+                          Buka Alur &rarr;
+                        </button>
+                      </div>
+                    `).join('')}
+                  </div>
+                ` : `
+                  <div style="color:#94a3b8; font-size:0.8rem; font-style:italic;">Belum ada flow node yang terhubung ke aturan ini.</div>
+                `}
+              </div>
+            </div>
+          </div>
+
+          <div class="pm-modal-footer">
+            <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Tutup</button>
           </div>
         </div>
       </div>
@@ -2309,6 +2515,26 @@ function renderModals(store) {
                     `).join('')}
                   </select>
                   <span style="font-size:0.72rem; color:#64748b; margin-top:2px; display:block;">Requirement relevan dengan modul terpilih. Kosongkan bila belum ada relasi.</span>
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Aturan Bisnis Terkait (Business Rules)</label>
+                  <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:6px; max-height:140px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:6px; padding:8px; background:#f8fafc;">
+                    ${(store.businessRules || []).map(br => {
+                      const isChecked = Array.isArray(modalData?.node?.ruleIds)
+                        ? modalData.node.ruleIds.includes(br.id)
+                        : (modalData?.node?.businessRule && modalData.node.businessRule.includes(br.id));
+                      return `
+                        <label style="display:flex; align-items:flex-start; gap:6px; font-size:0.76rem; color:#1e293b; cursor:pointer;">
+                          <input type="checkbox" name="ruleIds" value="${escapeHtml(br.id)}" ${isChecked ? 'checked' : ''} style="margin-top:2px;" />
+                          <div>
+                            <strong>${escapeHtml(br.id)}</strong> - <span style="color:#475569;">${escapeHtml(br.title || br.name || '')}</span>
+                          </div>
+                        </label>
+                      `;
+                    }).join('')}
+                  </div>
+                  <span style="font-size:0.72rem; color:#64748b; margin-top:2px; display:block;">Pilih aturan bisnis yang ditegakkan pada langkah proses ini.</span>
                 </div>
 
                 <div class="pm-form-group">
@@ -3031,6 +3257,65 @@ function attachCanvasPan(stage) {
   });
 }
 
+// -----------------------------------------------------------------------------
+// Phase 4B Cross-Navigation Helpers
+// -----------------------------------------------------------------------------
+function jumpToFlowNode(moduleId, featureId, nodeId) {
+  currentNavTab = 'mapping';
+  currentViewTab = 'flow';
+  if (moduleId) {
+    currentModuleId = moduleId;
+    selectedModuleId = moduleId;
+  }
+  if (featureId) {
+    currentFeatureId = featureId;
+  }
+  if (nodeId) {
+    selectedNodeId = nodeId;
+  }
+  isDetailOpen = true;
+  closeModal();
+
+  const container = document.getElementById('pm-portal-container') || document.querySelector('.pm-container');
+  if (container) {
+    const store = getActiveStore();
+    renderProcessMappingPortal(container);
+    setTimeout(() => {
+      const nodeEl = container.querySelector(`[data-node-id="${nodeId}"]`);
+      if (nodeEl) {
+        nodeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        nodeEl.classList.add('is-pulse-highlight');
+        setTimeout(() => nodeEl.classList.remove('is-pulse-highlight'), 2500);
+      }
+    }, 150);
+  }
+}
+
+function jumpToRequirement(reqId) {
+  currentNavTab = 'mapping';
+  currentViewTab = 'requirement';
+  reqSearchQuery = reqId;
+  closeModal();
+
+  const container = document.getElementById('pm-portal-container') || document.querySelector('.pm-container');
+  if (container) {
+    renderProcessMappingPortal(container);
+  }
+}
+
+function openBusinessRuleDetailModal(ruleId) {
+  const store = getActiveStore();
+  const rule = (store.businessRules || []).find(r => r.id === ruleId || r.code === ruleId);
+  if (rule) {
+    modalData = JSON.parse(JSON.stringify(rule));
+    activeModal = 'detail-rule';
+    const container = document.getElementById('pm-portal-container') || document.querySelector('.pm-container');
+    if (container) {
+      renderProcessMappingPortal(container);
+    }
+  }
+}
+
 function selectNode(nodeId, modId, featId, container, store) {
   selectedNodeId = nodeId;
   if (modId) selectedModuleId = modId;
@@ -3237,9 +3522,59 @@ function attachDetailPanelEvents(container, store) {
       }
     });
   });
+
+  // Jump to Requirement button in Detail Panel
+  container.querySelectorAll('#pm-detail-panel .pm-btn-jump-req').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const reqId = btn.dataset.reqId;
+      if (reqId) jumpToRequirement(reqId);
+    });
+  });
+
+  // Jump to Business Rule button in Detail Panel
+  container.querySelectorAll('#pm-detail-panel .pm-btn-jump-rule').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ruleId = btn.dataset.ruleId;
+      if (ruleId) openBusinessRuleDetailModal(ruleId);
+    });
+  });
 }
 
 function attachPortalEvents(container, store) {
+  // Global Cross-Navigation Click Delegation
+  container.addEventListener('click', (e) => {
+    const jumpNodeBtn = e.target.closest('.pm-btn-jump-node, .pm-badge-node-jump');
+    if (jumpNodeBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const nodeId = jumpNodeBtn.dataset.nodeId;
+      const modId = jumpNodeBtn.dataset.modId;
+      const featId = jumpNodeBtn.dataset.featId;
+      jumpToFlowNode(modId, featId, nodeId);
+      return;
+    }
+
+    const jumpReqBtn = e.target.closest('.pm-btn-jump-req, .pm-rtm-jump-req-btn');
+    if (jumpReqBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const reqId = jumpReqBtn.dataset.reqId;
+      if (reqId) jumpToRequirement(reqId);
+      return;
+    }
+
+    const jumpRuleBtn = e.target.closest('.pm-btn-jump-rule, .pm-badge-rule-pill');
+    if (jumpRuleBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const ruleId = jumpRuleBtn.dataset.ruleId;
+      if (ruleId) openBusinessRuleDetailModal(ruleId);
+      return;
+    }
+  });
+
   // Portal Navigation Tabs in Header
   container.querySelector('#pm-nav-dashboard')?.addEventListener('click', () => {
     currentNavTab = 'dashboard';
@@ -3348,6 +3683,235 @@ function attachPortalEvents(container, store) {
 
   container.querySelector('#pm-btn-export-pdf')?.addEventListener('click', () => {
     exportReportDocument(store);
+  });
+
+  // RTM Search & Filter Events
+  const rtmSearchInput = container.querySelector('#pm-rtm-search-input');
+  if (rtmSearchInput) {
+    rtmSearchInput.addEventListener('input', (e) => {
+      rtmSearchQuery = e.target.value;
+      rtmCurrentPage = 1;
+      renderProcessMappingPortal(container);
+      const newInput = container.querySelector('#pm-rtm-search-input');
+      if (newInput) {
+        newInput.focus();
+        newInput.setSelectionRange(newInput.value.length, newInput.value.length);
+      }
+    });
+  }
+
+  container.querySelector('#pm-rtm-module-filter')?.addEventListener('change', (e) => {
+    rtmFilterModule = e.target.value;
+    rtmCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelector('#pm-rtm-role-filter')?.addEventListener('change', (e) => {
+    rtmFilterRole = e.target.value;
+    rtmCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelector('#pm-rtm-class-filter')?.addEventListener('change', (e) => {
+    rtmFilterClassification = e.target.value;
+    rtmCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelector('#pm-rtm-rule-filter')?.addEventListener('change', (e) => {
+    rtmFilterRuleLink = e.target.value;
+    rtmCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelector('#pm-rtm-status-filter')?.addEventListener('change', (e) => {
+    rtmFilterReqStatus = e.target.value;
+    rtmCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  function resetRtmFilterState() {
+    rtmSearchQuery = '';
+    rtmFilterModule = 'ALL';
+    rtmFilterRole = 'ALL';
+    rtmFilterClassification = 'ALL';
+    rtmFilterRuleLink = 'ALL';
+    rtmFilterReqStatus = 'ALL';
+    rtmCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  }
+
+  container.querySelector('#pm-rtm-reset-filters')?.addEventListener('click', resetRtmFilterState);
+  container.querySelector('#pm-rtm-empty-reset-btn')?.addEventListener('click', resetRtmFilterState);
+
+  // RTM Pagination Events
+  container.querySelector('#pm-rtm-page-size-select')?.addEventListener('change', (e) => {
+    rtmPageSize = parseInt(e.target.value, 10) || 5;
+    rtmCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelector('#pm-rtm-prev-page-btn')?.addEventListener('click', () => {
+    if (rtmCurrentPage > 1) {
+      rtmCurrentPage--;
+      renderProcessMappingPortal(container);
+    }
+  });
+
+  container.querySelector('#pm-rtm-next-page-btn')?.addEventListener('click', () => {
+    rtmCurrentPage++;
+    renderProcessMappingPortal(container);
+  });
+
+  // RTM Row Drilldown Button
+  container.querySelectorAll('.pm-rtm-drilldown-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const reqId = btn.dataset.reqId;
+      const req = getRequirementByReqId(reqId);
+      if (req) {
+        modalData = JSON.parse(JSON.stringify(req));
+        selectedReqDetailVersion = null;
+        activeModal = 'detail-req';
+        renderProcessMappingPortal(container);
+      }
+    });
+  });
+
+  // Gap Analysis Search & Filter Events
+  const gapSearchInput = container.querySelector('#pm-gap-search-input');
+  if (gapSearchInput) {
+    gapSearchInput.addEventListener('input', (e) => {
+      gapSearchQuery = e.target.value;
+      gapCurrentPage = 1;
+      renderProcessMappingPortal(container);
+      const newInput = container.querySelector('#pm-gap-search-input');
+      if (newInput) {
+        newInput.focus();
+        newInput.setSelectionRange(newInput.value.length, newInput.value.length);
+      }
+    });
+  }
+
+  container.querySelector('#pm-gap-module-filter')?.addEventListener('change', (e) => {
+    gapFilterModule = e.target.value;
+    gapCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelector('#pm-gap-role-filter')?.addEventListener('change', (e) => {
+    gapFilterRole = e.target.value;
+    gapCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelector('#pm-gap-status-filter')?.addEventListener('change', (e) => {
+    gapFilterStatus = e.target.value;
+    gapCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  function resetGapFilterState() {
+    gapSearchQuery = '';
+    gapFilterModule = 'ALL';
+    gapFilterRole = 'ALL';
+    gapFilterStatus = 'ALL';
+    gapCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  }
+
+  container.querySelector('#pm-gap-reset-filters')?.addEventListener('click', resetGapFilterState);
+  container.querySelector('#pm-gap-empty-reset-btn')?.addEventListener('click', resetGapFilterState);
+
+  // Module Breakdown Card Quick-Filter
+  container.querySelectorAll('.pm-module-gap-card[data-mod-id]').forEach((card) => {
+    card.addEventListener('click', () => {
+      const modId = card.dataset.modId;
+      if (gapFilterModule === modId) {
+        gapFilterModule = 'ALL';
+      } else {
+        gapFilterModule = modId;
+      }
+      gapCurrentPage = 1;
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  // Gap Analysis CSV Export Button
+  container.querySelector('#pm-gap-export-csv')?.addEventListener('click', () => {
+    const gapReport = getGapAnalysisReport();
+    const filteredGaps = (gapReport.gapRecords || []).filter((rec) => {
+      const req = rec.requirement || {};
+      const reqId = (req.id || req.reqId || '').toLowerCase();
+      const title = (req.title || '').toLowerCase();
+      const role = (req.role || '').toLowerCase();
+      const modName = (rec.module?.name || req.module || '').toLowerCase();
+      const modId = (rec.module?.id || req.module || '').toLowerCase();
+      const featName = (rec.feature?.name || req.feature || '').toLowerCase();
+
+      if (gapSearchQuery && gapSearchQuery.trim()) {
+        const q = gapSearchQuery.trim().toLowerCase();
+        const rulesMatch = (rec.businessRules || []).some((r) =>
+          (r.id || '').toLowerCase().includes(q) ||
+          (r.code || '').toLowerCase().includes(q) ||
+          (r.title || '').toLowerCase().includes(q) ||
+          (r.name || '').toLowerCase().includes(q)
+        );
+
+        const matches =
+          reqId.includes(q) ||
+          title.includes(q) ||
+          role.includes(q) ||
+          modName.includes(q) ||
+          modId.includes(q) ||
+          featName.includes(q) ||
+          rulesMatch;
+
+        if (!matches) return false;
+      }
+
+      if (gapFilterModule !== 'ALL') {
+        const currentModId = rec.module?.id || req.module;
+        if (currentModId !== gapFilterModule && req.module !== gapFilterModule) {
+          return false;
+        }
+      }
+
+      if (gapFilterRole !== 'ALL') {
+        const matchedRoleObj = store.roles?.find((r) => r.id === gapFilterRole);
+        const roleName = matchedRoleObj ? matchedRoleObj.name : gapFilterRole;
+        if (req.role !== gapFilterRole && req.role !== roleName) {
+          return false;
+        }
+      }
+
+      if (gapFilterStatus !== 'ALL') {
+        if (req.status !== gapFilterStatus) return false;
+      }
+
+      return true;
+    });
+
+    exportGapAnalysisCsv(filteredGaps);
+  });
+
+  // Gap Pagination Events
+  container.querySelector('#pm-gap-page-size-select')?.addEventListener('change', (e) => {
+    gapPageSize = parseInt(e.target.value, 10) || 10;
+    gapCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelector('#pm-gap-prev-page-btn')?.addEventListener('click', () => {
+    if (gapCurrentPage > 1) {
+      gapCurrentPage--;
+      renderProcessMappingPortal(container);
+    }
+  });
+
+  container.querySelector('#pm-gap-next-page-btn')?.addEventListener('click', () => {
+    gapCurrentPage++;
+    renderProcessMappingPortal(container);
   });
 
   // Wire detail panel events initially
@@ -3980,6 +4544,7 @@ function attachPortalEvents(container, store) {
       fallback: (formData.get('fallback') || '-').trim(),
       stockImpact: (formData.get('stockImpact') || 'NO STOCK CHANGE').trim(),
       reqId: (formData.get('reqId') || '').trim(),
+      ruleIds: formData.getAll('ruleIds'),
       relatedRole: (formData.get('relatedRole') || 'Asisten Bibitan (Verifikasi)').trim(),
       status: 'Draft'
     };
@@ -4974,7 +5539,7 @@ function renderReferenceView(store) {
 }
 
 // =============================================================================
-// 3. REPORTS VIEW (Strictly READ-ONLY Formal Documentation & Print Preview)
+// 3. REPORTS VIEW (Strictly READ-ONLY Formal Documentation & Interactive RTM)
 // =============================================================================
 
 function renderReportsView(store) {
@@ -4987,18 +5552,21 @@ function renderReportsView(store) {
       <div class="pm-reports-header">
         <div class="pm-report-tabs">
           <button type="button" class="pm-report-tab-btn ${reportSubTab === 'req-doc' ? 'is-active' : ''}" data-report-subtab="req-doc">
-            1. Dokumen Analisa Kebutuhan Sistem (DAK)
+            1. Ringkasan Eksekutif
           </button>
           <button type="button" class="pm-report-tab-btn ${reportSubTab === 'bp-doc' ? 'is-active' : ''}" data-report-subtab="bp-doc">
-            2. Dokumen Proses Bisnis (BPD)
+            2. Berdasarkan Role
           </button>
           <button type="button" class="pm-report-tab-btn ${reportSubTab === 'req-matrix' ? 'is-active' : ''}" data-report-subtab="req-matrix">
-            3. Matriks Ketertelusuran (RTM)
+            3. Traceability Matrix
+          </button>
+          <button type="button" class="pm-report-tab-btn ${reportSubTab === 'gap-analysis' ? 'is-active' : ''}" data-report-subtab="gap-analysis">
+            4. Gap Analysis
           </button>
         </div>
 
         <div class="pm-report-controls">
-          ${reportSubTab === 'bp-doc' || reportSubTab === 'req-matrix'
+          ${reportSubTab === 'bp-doc'
       ? `
               <select id="pm-report-module-filter" class="pm-ref-select">
                 <option value="all">Semua Modul (${modules.length})</option>
@@ -5029,20 +5597,506 @@ function renderReportsView(store) {
       : ''
     }
 
-          <button type="button" class="pm-btn-export-pdf" id="pm-btn-export-pdf">
-            Cetak / Export PDF
-          </button>
+          ${reportSubTab === 'req-doc' || reportSubTab === 'bp-doc'
+      ? `
+              <button type="button" class="pm-btn-export-pdf" id="pm-btn-export-pdf">
+                Cetak / Export PDF
+              </button>
+            `
+      : ''
+    }
         </div>
       </div>
 
-      <!-- Document Sheet Preview Container -->
-      <div class="pm-report-document" id="pm-printable-report">
+      <!-- Document Sheet Preview / Interactive Matrix Container -->
+      <div class="${reportSubTab === 'req-matrix' ? 'pm-rtm-view-wrapper' : 'pm-report-document'}" id="pm-printable-report">
         ${reportSubTab === 'req-doc'
       ? renderReportReqDoc(store)
       : reportSubTab === 'bp-doc'
         ? renderReportBpDoc(store)
-        : renderReportMatrix(store)
+        : reportSubTab === 'req-matrix'
+          ? renderReportMatrix(store)
+          : renderReportGapAnalysis(store)
     }
+      </div>
+    </div>
+  `;
+}
+
+function exportGapAnalysisCsv(records) {
+  if (!records || records.length === 0) {
+    showToast('Tidak ada data gap untuk diekspor');
+    return;
+  }
+
+  const headers = [
+    'Requirement ID',
+    'Judul Requirement',
+    'Role Pelaksana',
+    'Modul',
+    'Fitur',
+    'Status Alur',
+    'Kriteria Penerimaan',
+    'Status Baseline',
+    'Aturan Bisnis Terkait'
+  ];
+
+  const csvRows = [headers.map((h) => `"${h.replace(/"/g, '""')}"`).join(',')];
+
+  records.forEach((rec) => {
+    const req = rec.requirement || {};
+    const reqId = req.id || req.reqId || '';
+    const title = req.title || '';
+    const role = req.role || '';
+    const mod = rec.module?.name || req.module || '';
+    const feat = rec.feature?.name || req.feature || '';
+    const statusAlur = 'Belum Memiliki Flow Node';
+    const criteria = rec.criteria || req.criteria || req.acceptanceCriteria || '';
+    const status = req.status || 'Confirmed';
+    const rules =
+      (rec.businessRules || []).map((r) => r.id || r.code).join('; ') || 'Belum Terhubung';
+
+    const row = [reqId, title, role, mod, feat, statusAlur, criteria, status, rules];
+    csvRows.push(row.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(','));
+  });
+
+  const csvContent = '\uFEFF' + csvRows.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const timestamp = new Date().toISOString().split('T')[0];
+  link.setAttribute('href', url);
+  link.setAttribute('download', `SIGMA_Gap_Analysis_Report_${timestamp}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast('Laporan Gap Analysis CSV berhasil diunduh');
+}
+
+function renderReportGapAnalysis(store) {
+  const metrics = getCoverageMetrics();
+  const gapReport = getGapAnalysisReport();
+  const modules = store.modules || [];
+  const roles = store.roles || [];
+
+  // Filter Gap Records strictly where classification === 'gap'
+  const filteredGaps = (gapReport.gapRecords || []).filter((rec) => {
+    const req = rec.requirement || {};
+    const reqId = (req.id || req.reqId || '').toLowerCase();
+    const title = (req.title || '').toLowerCase();
+    const role = (req.role || '').toLowerCase();
+    const modName = (rec.module?.name || req.module || '').toLowerCase();
+    const modId = (rec.module?.id || req.module || '').toLowerCase();
+    const featName = (rec.feature?.name || req.feature || '').toLowerCase();
+
+    // Search matching
+    if (gapSearchQuery && gapSearchQuery.trim()) {
+      const q = gapSearchQuery.trim().toLowerCase();
+      const rulesMatch = (rec.businessRules || []).some((r) =>
+        (r.id || '').toLowerCase().includes(q) ||
+        (r.code || '').toLowerCase().includes(q) ||
+        (r.title || '').toLowerCase().includes(q) ||
+        (r.name || '').toLowerCase().includes(q)
+      );
+
+      const matches =
+        reqId.includes(q) ||
+        title.includes(q) ||
+        role.includes(q) ||
+        modName.includes(q) ||
+        modId.includes(q) ||
+        featName.includes(q) ||
+        rulesMatch;
+
+      if (!matches) return false;
+    }
+
+    // Module Filter
+    if (gapFilterModule !== 'ALL') {
+      const currentModId = rec.module?.id || req.module;
+      if (currentModId !== gapFilterModule && req.module !== gapFilterModule) {
+        return false;
+      }
+    }
+
+    // Role Filter
+    if (gapFilterRole !== 'ALL') {
+      const matchedRoleObj = roles.find((r) => r.id === gapFilterRole);
+      const roleName = matchedRoleObj ? matchedRoleObj.name : gapFilterRole;
+      if (req.role !== gapFilterRole && req.role !== roleName) {
+        return false;
+      }
+    }
+
+    // Status Filter
+    if (gapFilterStatus !== 'ALL') {
+      if (req.status !== gapFilterStatus) return false;
+    }
+
+    return true;
+  });
+
+  // Pagination calculations for Gap table
+  const totalGapRecords = filteredGaps.length;
+  const totalPages = Math.ceil(totalGapRecords / gapPageSize) || 1;
+  if (gapCurrentPage > totalPages) gapCurrentPage = totalPages;
+  if (gapCurrentPage < 1) gapCurrentPage = 1;
+
+  const startIndex = totalGapRecords === 0 ? 0 : (gapCurrentPage - 1) * gapPageSize;
+  const endIndex = Math.min(startIndex + gapPageSize, totalGapRecords);
+  const pagedGaps = filteredGaps.slice(startIndex, endIndex);
+
+  return `
+    <div class="pm-rtm-container">
+      <!-- Section 1: Executive Coverage Metric Strip -->
+      <div class="pm-rtm-toolbar" style="padding: 16px 18px;">
+        <div class="pm-rtm-title-area" style="margin-bottom: 12px; justify-content: space-between; width: 100%;">
+          <div>
+            <h2 class="pm-rtm-main-title">Coverage &amp; Traceability Health Dashboard</h2>
+            <div class="pm-rtm-metrics-summary" style="margin-top: 2px;">
+              Analisis Kepatuhan Ketertelusuran Alur Proses Lapangan &bull; Perhitungan Realtime
+            </div>
+          </div>
+          <span class="pm-badge-draft" style="font-size: 0.75rem; font-weight: 700; background: #f8fafc; border: 1px solid #cbd5e1;">
+            Runtime Data: ${metrics.totalActiveRequirements} Requirements
+          </span>
+        </div>
+
+        <div class="pm-coverage-grid">
+          <div class="pm-coverage-card is-primary">
+            <span class="pm-cov-label">Total Requirements</span>
+            <div class="pm-cov-val-row">
+              <span class="pm-cov-value">${metrics.totalActiveRequirements}</span>
+              <span class="pm-cov-sub">Aktif</span>
+            </div>
+            <span class="pm-cov-sub">${metrics.flowRequired} Membutuhkan Alur</span>
+          </div>
+
+          <div class="pm-coverage-card is-success">
+            <span class="pm-cov-label">Flow Covered</span>
+            <div class="pm-cov-val-row">
+              <span class="pm-cov-value" style="color:#166534;">${metrics.flowCovered}</span>
+              <span class="pm-cov-pct">${metrics.flowCoverageRate}%</span>
+            </div>
+            <span class="pm-cov-sub">Dari ${metrics.flowRequired} Flow Required</span>
+          </div>
+
+          <div class="pm-coverage-card is-danger">
+            <span class="pm-cov-label">True Gap</span>
+            <div class="pm-cov-val-row">
+              <span class="pm-cov-value" style="color:#991b1b;">${metrics.flowGap}</span>
+              <span class="pm-cov-pct" style="color:#991b1b;">
+                ${metrics.flowRequired > 0 ? ((metrics.flowGap / metrics.flowRequired) * 100).toFixed(1) : 0}%
+              </span>
+            </div>
+            <span class="pm-cov-sub">Belum memiliki flow node</span>
+          </div>
+
+          <div class="pm-coverage-card is-info">
+            <span class="pm-cov-label">Business / Management</span>
+            <div class="pm-cov-val-row">
+              <span class="pm-cov-value" style="color:#1e40af;">${metrics.managementRequirements}</span>
+              <span class="pm-cov-sub">Reqs</span>
+            </div>
+            <span class="pm-cov-sub">Non-Flow / Governance Scope</span>
+          </div>
+
+          <div class="pm-coverage-card is-warning">
+            <span class="pm-cov-label">Business Rules Linked</span>
+            <div class="pm-cov-val-row">
+              <span class="pm-cov-value" style="color:#92400e;">${metrics.requirementsWithBusinessRules}</span>
+              <span class="pm-cov-pct" style="color:#92400e;">${metrics.businessRuleCoverage}%</span>
+            </div>
+            <span class="pm-cov-sub">Terhubung aturan bisnis</span>
+          </div>
+
+          <div class="pm-coverage-card is-success">
+            <span class="pm-cov-label">Traceability Health</span>
+            <div class="pm-cov-val-row">
+              <span class="pm-cov-value" style="color:#166534;">${metrics.totalTraceabilityHealth}%</span>
+            </div>
+            <span class="pm-cov-sub">Covered + Management Ratio</span>
+          </div>
+
+          <div class="pm-coverage-card is-info">
+            <span class="pm-cov-label">Feature Completeness</span>
+            <div class="pm-cov-val-row">
+              <span class="pm-cov-value" style="color:#0369a1;">${metrics.featureFlowCompleteness}%</span>
+            </div>
+            <span class="pm-cov-sub">${metrics.featuresWithFlows} dari ${metrics.totalFeatures} Fitur</span>
+          </div>
+
+          <div class="pm-coverage-card is-primary">
+            <span class="pm-cov-label">Module Completeness</span>
+            <div class="pm-cov-val-row">
+              <span class="pm-cov-value">${metrics.moduleFlowCompleteness}%</span>
+            </div>
+            <span class="pm-cov-sub">${metrics.modulesWithFlows} dari ${metrics.totalModules} Modul Terpetakan</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 2: Module Gap Breakdown Grid -->
+      <div class="pm-rtm-toolbar" style="padding: 14px 18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; font-size:0.95rem; font-weight:700; color:#0f172a;">
+            Distribusi Gap per Modul Operasional (${metrics.flowGap} Total Gap)
+          </h3>
+          <span style="font-size:0.75rem; color:#64748b;">
+            Klik kartu modul untuk memfilter tabel
+          </span>
+        </div>
+
+        <div class="pm-module-gap-grid">
+          ${(gapReport.moduleSummary || []).map((m) => `
+            <div class="pm-module-gap-card ${gapFilterModule === m.moduleId ? 'is-active' : ''}" data-mod-id="${escapeHtml(m.moduleId)}" title="Filter gap modul ${escapeHtml(m.moduleName)}">
+              <div>
+                <div style="font-weight:600; font-size:0.8rem; color:#1e293b;">
+                  ${escapeHtml(m.moduleOrder ? `${m.moduleOrder}. ${m.moduleName}` : m.moduleName)}
+                </div>
+                <div style="font-size:0.7rem; color:#64748b; margin-top:2px;">
+                  Modul ID: ${escapeHtml(m.moduleId)}
+                </div>
+              </div>
+              <span class="pm-gap-badge-count ${m.totalGaps > 0 ? 'has-gaps' : 'no-gaps'}">
+                ${m.totalGaps}
+              </span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Section 3: Filter Toolbar & CSV Export -->
+      <div class="pm-rtm-toolbar">
+        <div class="pm-rtm-toolbar-top">
+          <div class="pm-rtm-title-area">
+            <h3 style="margin:0; font-size:1rem; font-weight:700; color:#0f172a;">
+              Daftar Kebutuhan yang Belum Memiliki Alur (True Gap)
+            </h3>
+            <span class="pm-rtm-metrics-summary">
+              ${totalGapRecords} dari ${metrics.flowGap} Gap terfilter
+            </span>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="pm-btn-sm pm-btn-primary" id="pm-gap-export-csv" title="Ekspor daftar gap terfilter saat ini ke format CSV">
+              Ekspor Gap CSV
+            </button>
+            <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-gap-reset-filters" title="Reset filter gap">
+              Reset Filter
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Controls Bar -->
+        <div class="pm-rtm-filters-grid">
+          <div class="pm-rtm-search-box">
+            <input type="text"
+                   id="pm-gap-search-input"
+                   class="pm-rtm-search-input"
+                   placeholder="Cari Gap ID, Judul, Modul, Fitur, Role, Aturan..."
+                   value="${escapeHtml(gapSearchQuery)}" />
+          </div>
+
+          <!-- Module Filter -->
+          <select id="pm-gap-module-filter" class="pm-rtm-select">
+            <option value="ALL">Semua Modul (${modules.length})</option>
+            ${modules.map((m) => `
+              <option value="${m.id}" ${gapFilterModule === m.id ? 'selected' : ''}>
+                ${escapeHtml(m.order ? `${m.order}. ${m.name}` : m.name)}
+              </option>
+            `).join('')}
+          </select>
+
+          <!-- Role Filter -->
+          <select id="pm-gap-role-filter" class="pm-rtm-select">
+            <option value="ALL">Semua Role (${roles.length})</option>
+            ${roles.map((r) => `
+              <option value="${r.id}" ${gapFilterRole === r.id || gapFilterRole === r.name ? 'selected' : ''}>
+                ${escapeHtml(r.name)}
+              </option>
+            `).join('')}
+          </select>
+
+          <!-- Status Filter -->
+          <select id="pm-gap-status-filter" class="pm-rtm-select">
+            <option value="ALL" ${gapFilterStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
+            <option value="Confirmed" ${gapFilterStatus === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+            <option value="Draft" ${gapFilterStatus === 'Draft' ? 'selected' : ''}>Draft</option>
+            <option value="In Review" ${gapFilterStatus === 'In Review' ? 'selected' : ''}>In Review</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Section 4: Gap Requirements Table -->
+      <div class="pm-rtm-table-wrap">
+        <table class="pm-table-rtm" id="pm-gap-table">
+          <thead>
+            <tr>
+              <th class="pm-col-rtm-id">Requirement ID</th>
+              <th class="pm-col-rtm-title">Title / Summary</th>
+              <th class="pm-col-rtm-role">Role</th>
+              <th class="pm-col-rtm-mod">Module</th>
+              <th class="pm-col-rtm-feat">Feature</th>
+              <th style="width: 140px; text-align:center;">Status Alur</th>
+              <th class="pm-col-rtm-rule">Business Rule</th>
+              <th class="pm-col-rtm-status">Req Status</th>
+              <th class="pm-col-rtm-action">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${totalGapRecords === 0
+        ? `
+                <tr>
+                  <td colspan="9" class="pm-rtm-empty-cell">
+                    <div style="padding: 36px 16px; text-align: center; color: #64748b;">
+                      <div style="font-weight: 600; font-size: 0.92rem; color: #334155; margin-bottom: 4px;">
+                        Tidak ada requirement gap yang sesuai filter atau pencarian
+                      </div>
+                      <div style="font-size: 0.8rem; margin-bottom: 12px;">
+                        Coba sesuaikan kata kunci pencarian atau reset filter.
+                      </div>
+                      <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-gap-empty-reset-btn">
+                        Reset Filter
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `
+        : pagedGaps.map((rec) => {
+            const req = rec.requirement || {};
+            const reqId = req.id || req.reqId;
+            const rules = rec.businessRules || [];
+
+            let statusBadge = `<span class="pm-status-badge pm-status-confirmed">${escapeHtml(req.status || 'Confirmed')}</span>`;
+            if (req.status === 'Draft') {
+              statusBadge = `<span class="pm-status-badge pm-status-draft">Draft</span>`;
+            } else if (req.status === 'In Review') {
+              statusBadge = `<span class="pm-status-badge pm-status-review">In Review</span>`;
+            }
+
+            return `
+              <tr class="pm-rtm-row" data-req-id="${escapeHtml(reqId)}">
+                <td class="pm-col-rtm-id">
+                  <button type="button" class="pm-ref-id-badge pm-rtm-drilldown-btn" data-req-id="${escapeHtml(reqId)}" title="Klik untuk lihat detail trace" style="cursor:pointer; border:none; background:#fef2f2; font-weight:700; color:#991b1b;">
+                    ${escapeHtml(reqId)}
+                  </button>
+                </td>
+                <td class="pm-col-rtm-title">
+                  <div style="font-weight:600; color:#0f172a; line-height:1.35; margin-bottom:2px;">
+                    ${escapeHtml(req.title || '-')}
+                  </div>
+                  <div style="font-size:0.74rem; color:#64748b;">
+                    v${req.version || 1} &bull; ${escapeHtml(req.category || 'Operasional')}
+                  </div>
+                </td>
+                <td class="pm-col-rtm-role">
+                  <span style="font-size:0.78rem; font-weight:500; color:#334155;">
+                    ${escapeHtml(req.role || '-')}
+                  </span>
+                </td>
+                <td class="pm-col-rtm-mod">
+                  <span style="font-size:0.78rem; color:#475569;">
+                    ${escapeHtml(rec.module?.name || req.module || '-')}
+                  </span>
+                </td>
+                <td class="pm-col-rtm-feat">
+                  <span style="font-size:0.78rem; color:#475569;">
+                    ${escapeHtml(rec.feature?.name || req.feature || '-')}
+                  </span>
+                </td>
+                <td style="text-align:center;">
+                  <span class="pm-badge-rtm pm-badge-gap">Belum Memiliki Flow Node</span>
+                </td>
+                <td class="pm-col-rtm-rule">
+                  ${rules.length === 0
+                    ? `<span style="color:#94a3b8; font-size:0.75rem;">Belum Terhubung</span>`
+                    : `<div style="display:flex; flex-wrap:wrap; gap:3px;">
+                        ${rules.map((br) => `
+                          <button type="button"
+                                  class="pm-badge-rule-pill"
+                                  data-rule-id="${escapeHtml(br.id || br.code)}"
+                                  title="${escapeHtml(br.title || br.name || '')}">
+                            ${escapeHtml(br.id || br.code)}
+                          </button>
+                        `).join('')}
+                      </div>`
+                  }
+                </td>
+                <td class="pm-col-rtm-status">
+                  ${statusBadge}
+                </td>
+                <td class="pm-col-rtm-action">
+                  <div class="pm-action-menu-wrap">
+                    <button
+                      type="button"
+                      class="pm-action-trigger-btn pm-btn-gap-action-toggle"
+                      data-target="pm-gap-menu-${escapeHtml(reqId)}"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                      title="Aksi baris"
+                    >
+                      &hellip;
+                    </button>
+                    <div id="pm-gap-menu-${escapeHtml(reqId)}" class="pm-action-dropdown-menu">
+                      <button
+                        type="button"
+                        class="pm-dropdown-item pm-rtm-drilldown-btn"
+                        data-req-id="${escapeHtml(reqId)}"
+                      >
+                        Detail Trace
+                      </button>
+                      <button
+                        type="button"
+                        class="pm-dropdown-item pm-rtm-jump-req-btn"
+                        data-req-id="${escapeHtml(reqId)}"
+                      >
+                        Buka Requirement
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')
+      }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Section 5: Pagination Footer -->
+      <div class="pm-rtm-pagination">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:0.8rem; color:#64748b;">Baris per halaman:</span>
+          <select id="pm-gap-page-size-select" class="pm-rtm-select" style="width:70px; padding:4px 6px;">
+            <option value="5" ${gapPageSize === 5 ? 'selected' : ''}>5</option>
+            <option value="10" ${gapPageSize === 10 ? 'selected' : ''}>10</option>
+            <option value="25" ${gapPageSize === 25 ? 'selected' : ''}>25</option>
+            <option value="50" ${gapPageSize === 50 ? 'selected' : ''}>50</option>
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span id="pm-gap-page-info" style="font-size:0.82rem; font-weight:600; color:#475569;">
+            ${totalGapRecords === 0 ? '0 of 0' : `${startIndex + 1}–${endIndex} of ${totalGapRecords}`}
+          </span>
+
+          <div style="display:flex; gap:4px;">
+            <button type="button"
+                    class="pm-row-btn"
+                    id="pm-gap-prev-page-btn"
+                    ${gapCurrentPage <= 1 ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>
+              &lsaquo; Prev
+            </button>
+            <button type="button"
+                    class="pm-row-btn"
+                    id="pm-gap-next-page-btn"
+                    ${gapCurrentPage >= totalPages ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>
+              Next &rsaquo;
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -5293,92 +6347,407 @@ function renderReportBpDoc(store) {
   `;
 }
 
-// Subtab 3: Traceability Matrix Document
+// Subtab 3: Traceability Matrix Document & Interactive RTM
 function renderReportMatrix(store) {
-  let targetModules = store.modules || [];
-  if (reportFilterModule && reportFilterModule !== 'all') {
-    targetModules = targetModules.filter((m) => m.id === reportFilterModule);
-  }
+  const allRecords = getAllTraceabilityRecords(); // Gets all active trace records (165 active baseline)
+  const modules = store.modules || [];
+  const roles = store.roles || [];
 
-  // Build rows from flows
-  const rows = [];
-  targetModules.forEach((m) => {
-    (m.features || []).forEach((f) => {
-      const flow = store.flows?.[m.id]?.[f.id];
-      if (flow && flow.nodes) {
-        flow.nodes.forEach((node) => {
-          rows.push({
-            module: m.name,
-            moduleOrder: m.order,
-            feature: f.name,
-            nodeCode: node.code || node.id,
-            nodeLabel: node.label || node.title || '',
-            reqId: node.reqId || '-',
-            primaryRole: m.primaryRole || 'Mantri Bibitan',
-            relatedRole: node.relatedRole || m.relatedRole || 'Asisten Bibitan',
-            stockImpact: node.stockImpact || '-',
-            status: node.status || 'Confirmed'
-          });
-        });
+  // 1. Filter & Search Logic
+  const filtered = allRecords.filter((rec) => {
+    const req = rec.requirement || {};
+    const reqId = (req.id || req.reqId || '').toLowerCase();
+    const title = (req.title || '').toLowerCase();
+    const role = (req.role || '').toLowerCase();
+    const modName = (rec.module?.name || req.module || '').toLowerCase();
+    const modId = (rec.module?.id || req.module || '').toLowerCase();
+    const featName = (rec.feature?.name || req.feature || '').toLowerCase();
+    const featId = (rec.feature?.id || req.feature || '').toLowerCase();
+    const classif = (rec.classification || '').toLowerCase();
+
+    // Search query matching
+    if (rtmSearchQuery && rtmSearchQuery.trim()) {
+      const q = rtmSearchQuery.trim().toLowerCase();
+      const nodesMatch = (rec.nodes || []).some((n) =>
+        (n.id || '').toLowerCase().includes(q) ||
+        (n.nodeId || '').toLowerCase().includes(q) ||
+        (n.code || '').toLowerCase().includes(q) ||
+        (n.nodeCode || '').toLowerCase().includes(q) ||
+        (n.label || '').toLowerCase().includes(q) ||
+        (n.title || '').toLowerCase().includes(q)
+      );
+      const rulesMatch = (rec.businessRules || []).some((r) =>
+        (r.id || '').toLowerCase().includes(q) ||
+        (r.code || '').toLowerCase().includes(q) ||
+        (r.title || '').toLowerCase().includes(q) ||
+        (r.name || '').toLowerCase().includes(q)
+      );
+
+      const matches =
+        reqId.includes(q) ||
+        title.includes(q) ||
+        role.includes(q) ||
+        modName.includes(q) ||
+        modId.includes(q) ||
+        featName.includes(q) ||
+        featId.includes(q) ||
+        classif.includes(q) ||
+        nodesMatch ||
+        rulesMatch;
+
+      if (!matches) return false;
+    }
+
+    // Filter Module
+    if (rtmFilterModule !== 'ALL') {
+      const currentModId = rec.module?.id || req.module;
+      if (currentModId !== rtmFilterModule && req.module !== rtmFilterModule) {
+        return false;
       }
-    });
+    }
+
+    // Filter Role
+    if (rtmFilterRole !== 'ALL') {
+      const matchedRoleObj = roles.find((r) => r.id === rtmFilterRole);
+      const roleName = matchedRoleObj ? matchedRoleObj.name : rtmFilterRole;
+      if (req.role !== rtmFilterRole && req.role !== roleName) {
+        return false;
+      }
+    }
+
+    // Filter Classification
+    if (rtmFilterClassification !== 'ALL') {
+      const c = (rec.classification || '').toLowerCase();
+      const l = (rec.classificationLabel || '').toLowerCase();
+      const target = rtmFilterClassification.toLowerCase();
+      const match =
+        (target.includes('cover') && c === 'covered') ||
+        (target.includes('manage') && (c === 'management' || l.includes('management'))) ||
+        (target.includes('gap') && (c === 'gap' || l.includes('gap'))) ||
+        c === target ||
+        l === target;
+      if (!match) {
+        return false;
+      }
+    }
+
+    // Filter Business Rule Link
+    if (rtmFilterRuleLink === 'Linked') {
+      if (!rec.businessRules || rec.businessRules.length === 0) return false;
+    } else if (rtmFilterRuleLink === 'Not Linked') {
+      if (rec.businessRules && rec.businessRules.length > 0) return false;
+    }
+
+    // Filter Requirement Status
+    if (rtmFilterReqStatus !== 'ALL') {
+      if (req.status !== rtmFilterReqStatus) return false;
+    }
+
+    return true;
   });
 
+  // 2. Pagination calculation
+  const totalRecords = filtered.length;
+  const totalPages = Math.ceil(totalRecords / rtmPageSize) || 1;
+  if (rtmCurrentPage > totalPages) rtmCurrentPage = totalPages;
+  if (rtmCurrentPage < 1) rtmCurrentPage = 1;
+
+  const startIndex = totalRecords === 0 ? 0 : (rtmCurrentPage - 1) * rtmPageSize;
+  const endIndex = Math.min(startIndex + rtmPageSize, totalRecords);
+  const pagedRecords = filtered.slice(startIndex, endIndex);
+
   return `
-    <div class="pm-doc-header">
-      <div class="pm-doc-company">PT SOCFIN INDONESIA — PROJECT SIGMA</div>
-      <h1 class="pm-doc-title">Matriks Ketertelusuran Kebutuhan (RTM)</h1>
-      <div style="font-size: 0.9rem; color: #475569;">Traceability Matrix antara Modul Operasional, Fitur, Alur Proses, &amp; Dokumen Kebutuhan</div>
+    <div class="pm-rtm-container">
+      <!-- RTM Header & Light Summary Bar -->
+      <div class="pm-rtm-toolbar">
+        <div class="pm-rtm-toolbar-top">
+          <div class="pm-rtm-title-area">
+            <h2 class="pm-rtm-main-title">Requirement Traceability Matrix (RTM)</h2>
+            <span class="pm-rtm-metrics-summary">
+              ${totalRecords} Requirements &bull; ${allRecords.length} Active Total
+            </span>
+          </div>
 
-      <div class="pm-doc-meta-grid">
-        <div class="pm-doc-meta-item"><strong>Nomor Dokumen:</strong> RTM-SIGMA-NURSERY-01</div>
-        <div class="pm-doc-meta-item"><strong>Versi Baseline:</strong> v${escapeHtml(store.metadata?.version || '1.0.0')}</div>
-        <div class="pm-doc-meta-item"><strong>Total Relasi Terpetakan:</strong> ${rows.length} Langkah Alur</div>
-        <div class="pm-doc-meta-item"><strong>Status:</strong> <span style="color:#116834; font-weight:700;">CONFIRMED BASELINE</span></div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-rtm-reset-filters" title="Reset semua filter dan pencarian">
+              Reset Filter
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Controls Bar -->
+        <div class="pm-rtm-filters-grid">
+          <!-- Search Input -->
+          <div class="pm-rtm-search-box">
+            <input type="text"
+                   id="pm-rtm-search-input"
+                   class="pm-rtm-search-input"
+                   placeholder="Cari ID, Judul, Modul, Fitur, Role, Node, Rule..."
+                   value="${escapeHtml(rtmSearchQuery)}" />
+          </div>
+
+          <!-- Module Filter -->
+          <select id="pm-rtm-module-filter" class="pm-rtm-select">
+            <option value="ALL">Semua Modul (${modules.length})</option>
+            ${modules.map((m) => `
+              <option value="${m.id}" ${rtmFilterModule === m.id ? 'selected' : ''}>
+                ${escapeHtml(m.order ? `${m.order}. ${m.name}` : m.name)}
+              </option>
+            `).join('')}
+          </select>
+
+          <!-- Role Filter -->
+          <select id="pm-rtm-role-filter" class="pm-rtm-select">
+            <option value="ALL">Semua Role (${roles.length})</option>
+            ${roles.map((r) => `
+              <option value="${r.id}" ${rtmFilterRole === r.id || rtmFilterRole === r.name ? 'selected' : ''}>
+                ${escapeHtml(r.name)}
+              </option>
+            `).join('')}
+          </select>
+
+          <!-- Classification Filter -->
+          <select id="pm-rtm-class-filter" class="pm-rtm-select">
+            <option value="ALL" ${rtmFilterClassification === 'ALL' ? 'selected' : ''}>Semua Klasifikasi</option>
+            <option value="Covered" ${rtmFilterClassification === 'Covered' ? 'selected' : ''}>Covered</option>
+            <option value="Business / Management" ${rtmFilterClassification === 'Business / Management' ? 'selected' : ''}>Business / Management</option>
+            <option value="True Gap" ${rtmFilterClassification === 'True Gap' ? 'selected' : ''}>True Gap</option>
+          </select>
+
+          <!-- Business Rule Filter -->
+          <select id="pm-rtm-rule-filter" class="pm-rtm-select">
+            <option value="ALL" ${rtmFilterRuleLink === 'ALL' ? 'selected' : ''}>Semua Business Rule</option>
+            <option value="Linked" ${rtmFilterRuleLink === 'Linked' ? 'selected' : ''}>Linked (Terhubung)</option>
+            <option value="Not Linked" ${rtmFilterRuleLink === 'Not Linked' ? 'selected' : ''}>Not Linked (Belum Terhubung)</option>
+          </select>
+
+          <!-- Status Filter -->
+          <select id="pm-rtm-status-filter" class="pm-rtm-select">
+            <option value="ALL" ${rtmFilterReqStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
+            <option value="Confirmed" ${rtmFilterReqStatus === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+            <option value="Draft" ${rtmFilterReqStatus === 'Draft' ? 'selected' : ''}>Draft</option>
+            <option value="In Review" ${rtmFilterReqStatus === 'In Review' ? 'selected' : ''}>In Review</option>
+          </select>
+        </div>
       </div>
-    </div>
 
-    <div class="pm-doc-section">
-      <h2 class="pm-doc-section-title">1.0 Matriks Ketertelusuran Alur Proses ke Kebutuhan Sistem</h2>
-      <table class="pm-doc-table">
-        <thead>
-          <tr>
-            <th style="width: 120px;">Modul</th>
-            <th style="width: 140px;">Fitur</th>
-            <th style="width: 75px;">Kode Alur</th>
-            <th>Langkah Alur Proses</th>
-            <th style="width: 90px; text-align:center;">Req ID Terkait</th>
-            <th style="width: 110px;">PIC Utama</th>
-            <th style="width: 110px;">Role Verifikator</th>
-            <th style="width: 80px; text-align:center;">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.length === 0
-      ? '<tr><td colspan="8" style="text-align:center; padding:24px; color:#94a3b8;">Tidak ada data matriks yang sesuai filter.</td></tr>'
-      : rows
-        .map(
-          (row) => `
-              <tr>
-                <td style="font-weight:600; color:#1e293b;">${escapeHtml(row.module)}</td>
-                <td style="font-size:0.8rem; color:#475569;">${escapeHtml(row.feature)}</td>
-                <td style="font-weight:700; color:#116834;">${escapeHtml(row.nodeCode)}</td>
-                <td style="font-weight:600; color:#0f172a;">${escapeHtml(row.nodeLabel)}</td>
-                <td style="text-align:center;">
-                  <span class="pm-ref-id-badge">${escapeHtml(row.reqId)}</span>
+      <!-- RTM Table Container -->
+      <div class="pm-rtm-table-wrap">
+        <table class="pm-table-rtm" id="pm-rtm-table">
+          <thead>
+            <tr>
+              <th class="pm-col-rtm-id">Requirement ID</th>
+              <th class="pm-col-rtm-title">Title / Summary</th>
+              <th class="pm-col-rtm-role">Role</th>
+              <th class="pm-col-rtm-mod">Module</th>
+              <th class="pm-col-rtm-feat">Feature</th>
+              <th class="pm-col-rtm-fstatus">Flow Status</th>
+              <th class="pm-col-rtm-fnode">Flow Node</th>
+              <th class="pm-col-rtm-rule">Business Rule</th>
+              <th class="pm-col-rtm-status">Req Status</th>
+              <th class="pm-col-rtm-class">Trace Classification</th>
+              <th class="pm-col-rtm-action">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${totalRecords === 0
+        ? `
+                <tr>
+                  <td colspan="11" class="pm-rtm-empty-cell">
+                    <div style="padding: 36px 16px; text-align: center; color: #64748b;">
+                      <div style="font-weight: 600; font-size: 0.92rem; color: #334155; margin-bottom: 4px;">
+                        Tidak ada requirement yang sesuai filter atau pencarian
+                      </div>
+                      <div style="font-size: 0.8rem; margin-bottom: 12px;">
+                        Coba sesuaikan kata kunci pencarian atau ubah kriteria filter.
+                      </div>
+                      <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-rtm-empty-reset-btn">
+                        Reset Filter
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `
+        : pagedRecords.map((rec) => {
+            const req = rec.requirement || {};
+            const reqId = req.id || req.reqId;
+            const nodes = rec.nodes || [];
+            const rules = rec.businessRules || [];
+            const firstNode = nodes[0];
+
+            let classBadge = '<span class="pm-badge-rtm pm-badge-covered">Covered</span>';
+            if (rec.classification === 'management' || rec.classification === 'Business / Management' || rec.classificationLabel === 'Business / Management') {
+              classBadge = '<span class="pm-badge-rtm pm-badge-management">Business / Management</span>';
+            } else if (rec.classification === 'gap' || rec.classification === 'True Gap' || rec.classificationLabel === 'True Gap') {
+              classBadge = '<span class="pm-badge-rtm pm-badge-gap">True Gap</span>';
+            }
+
+            let statusBadge = `<span class="pm-status-badge pm-status-confirmed">${escapeHtml(req.status || 'Confirmed')}</span>`;
+            if (req.status === 'Draft') {
+              statusBadge = `<span class="pm-status-badge pm-status-draft">Draft</span>`;
+            } else if (req.status === 'In Review') {
+              statusBadge = `<span class="pm-status-badge pm-status-review">In Review</span>`;
+            }
+
+            return `
+              <tr class="pm-rtm-row" data-req-id="${escapeHtml(reqId)}">
+                <td class="pm-col-rtm-id">
+                  <button type="button" class="pm-ref-id-badge pm-rtm-drilldown-btn" data-req-id="${escapeHtml(reqId)}" title="Klik untuk lihat detail trace" style="cursor:pointer; border:none; background:#e8f5e9; font-weight:700; color:#116834;">
+                    ${escapeHtml(reqId)}
+                  </button>
                 </td>
-                <td style="font-size:0.78rem; color:#475569;">${escapeHtml(row.primaryRole)}</td>
-                <td style="font-size:0.78rem; color:#64748b;">${escapeHtml(row.relatedRole)}</td>
-                <td style="text-align:center;">
-                  <span class="pm-status-badge pm-status-confirmed">${escapeHtml(row.status)}</span>
+                <td class="pm-col-rtm-title">
+                  <div style="font-weight:600; color:#0f172a; line-height:1.35; margin-bottom:2px;">
+                    ${escapeHtml(req.title || '-')}
+                  </div>
+                  <div style="font-size:0.74rem; color:#64748b;">
+                    v${req.version || 1} &bull; ${escapeHtml(req.category || 'Operasional')}
+                  </div>
+                </td>
+                <td class="pm-col-rtm-role">
+                  <span style="font-size:0.78rem; font-weight:500; color:#334155;">
+                    ${escapeHtml(req.role || '-')}
+                  </span>
+                </td>
+                <td class="pm-col-rtm-mod">
+                  <span style="font-size:0.78rem; color:#475569;">
+                    ${escapeHtml(rec.module?.name || req.module || '-')}
+                  </span>
+                </td>
+                <td class="pm-col-rtm-feat">
+                  <span style="font-size:0.78rem; color:#475569;">
+                    ${escapeHtml(rec.feature?.name || req.feature || '-')}
+                  </span>
+                </td>
+                <td class="pm-col-rtm-fstatus">
+                  ${nodes.length > 0
+                    ? `<span class="pm-status-badge pm-status-confirmed">Linked (${nodes.length})</span>`
+                    : `<span class="pm-status-badge pm-status-draft">No Flow</span>`
+                  }
+                </td>
+                <td class="pm-col-rtm-fnode">
+                  ${nodes.length === 0
+                    ? `<span style="color:#94a3b8; font-size:0.78rem;">-</span>`
+                    : `<div style="display:flex; flex-wrap:wrap; gap:3px;">
+                        ${nodes.map((n) => `
+                          <button type="button"
+                                  class="pm-badge-node-jump"
+                                  data-mod-id="${escapeHtml(n.moduleId)}"
+                                  data-feat-id="${escapeHtml(n.featureId)}"
+                                  data-node-id="${escapeHtml(n.id || n.nodeId)}"
+                                  title="${escapeHtml(n.label || n.title || 'Buka Alur')}">
+                            ${escapeHtml(n.code || n.nodeCode || n.id || n.nodeId)}
+                          </button>
+                        `).join('')}
+                      </div>`
+                  }
+                </td>
+                <td class="pm-col-rtm-rule">
+                  ${rules.length === 0
+                    ? `<span style="color:#94a3b8; font-size:0.75rem;">Belum Terhubung</span>`
+                    : `<div style="display:flex; flex-wrap:wrap; gap:3px;">
+                        ${rules.map((br) => `
+                          <button type="button"
+                                  class="pm-badge-rule-pill"
+                                  data-rule-id="${escapeHtml(br.id || br.code)}"
+                                  title="${escapeHtml(br.title || br.name || '')}">
+                            ${escapeHtml(br.id || br.code)}
+                          </button>
+                        `).join('')}
+                      </div>`
+                  }
+                </td>
+                <td class="pm-col-rtm-status">
+                  ${statusBadge}
+                </td>
+                <td class="pm-col-rtm-class">
+                  ${classBadge}
+                </td>
+                <td class="pm-col-rtm-action">
+                  <div class="pm-action-menu-wrap">
+                    <button
+                      type="button"
+                      class="pm-action-trigger-btn pm-btn-rtm-action-toggle"
+                      data-target="pm-rtm-menu-${escapeHtml(reqId)}"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                      title="Aksi baris"
+                    >
+                      &hellip;
+                    </button>
+                    <div id="pm-rtm-menu-${escapeHtml(reqId)}" class="pm-action-dropdown-menu">
+                      <button
+                        type="button"
+                        class="pm-dropdown-item pm-rtm-drilldown-btn"
+                        data-req-id="${escapeHtml(reqId)}"
+                      >
+                        Detail Trace
+                      </button>
+                      <button
+                        type="button"
+                        class="pm-dropdown-item pm-rtm-jump-req-btn"
+                        data-req-id="${escapeHtml(reqId)}"
+                      >
+                        Buka Requirement
+                      </button>
+                      ${firstNode
+                        ? `
+                          <button
+                            type="button"
+                            class="pm-dropdown-item pm-btn-jump-node"
+                            data-mod-id="${escapeHtml(firstNode.moduleId)}"
+                            data-feat-id="${escapeHtml(firstNode.featureId)}"
+                            data-node-id="${escapeHtml(firstNode.id || firstNode.nodeId)}"
+                          >
+                            Buka Alur Proses
+                          </button>
+                        `
+                        : ''
+                      }
+                    </div>
+                  </div>
                 </td>
               </tr>
-            `
-        )
-        .join('')
-    }
-        </tbody>
-      </table>
+            `;
+          }).join('')
+      }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination Footer -->
+      <div class="pm-rtm-pagination">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:0.8rem; color:#64748b;">Baris per halaman:</span>
+          <select id="pm-rtm-page-size-select" class="pm-rtm-select" style="width:70px; padding:4px 6px;">
+            <option value="5" ${rtmPageSize === 5 ? 'selected' : ''}>5</option>
+            <option value="10" ${rtmPageSize === 10 ? 'selected' : ''}>10</option>
+            <option value="25" ${rtmPageSize === 25 ? 'selected' : ''}>25</option>
+            <option value="50" ${rtmPageSize === 50 ? 'selected' : ''}>50</option>
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span id="pm-rtm-page-info" style="font-size:0.82rem; font-weight:600; color:#475569;">
+            ${totalRecords === 0 ? '0 of 0' : `${startIndex + 1}–${endIndex} of ${totalRecords}`}
+          </span>
+
+          <div style="display:flex; gap:4px;">
+            <button type="button"
+                    class="pm-row-btn"
+                    id="pm-rtm-prev-page-btn"
+                    ${rtmCurrentPage <= 1 ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>
+              &lsaquo; Prev
+            </button>
+            <button type="button"
+                    class="pm-row-btn"
+                    id="pm-rtm-next-page-btn"
+                    ${rtmCurrentPage >= totalPages ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>
+              Next &rsaquo;
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 }
