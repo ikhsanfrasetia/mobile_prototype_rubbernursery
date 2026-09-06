@@ -407,12 +407,17 @@
 }
 
 /* ==========================================================================
+/* ==========================================================================
    11. CSS Paged Media & Print Rules (@media print)
    ========================================================================== */
 
+#pm-print-host {
+  display: none;
+}
+
 @page {
   size: A4 portrait;
-  margin: 15mm 12mm 15mm 12mm;
+  margin: 12mm 10mm 12mm 10mm;
 }
 
 @page :first {
@@ -428,6 +433,15 @@
     background: #ffffff !important;
     padding: 0 !important;
     margin: 0 !important;
+    position: static !important;
+  }
+
+  /* When printing with dedicated top-level print host, hide everything else under body */
+  body.pm-printing-active > *:not(#pm-print-host) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
   }
 
   /* Hide app chrome, sidebar, toolbar, and non-document elements */
@@ -484,48 +498,77 @@
     border: none !important;
   }
 
-  /* Hide everything in body if not inside document structure */
-  body > *:not(.workspace-layout):not(#pm-printable-root) {
+  /* Hide everything in body if not inside document structure (fallback) */
+  body:not(.pm-printing-active) > *:not(.workspace-layout):not(#pm-printable-root):not(#pm-print-host) {
     display: none !important;
   }
 
+  /* Top-Level & Nested Printable Roots */
+  #pm-print-host,
+  #pm-print-host #pm-printable-root,
   #pm-printable-root {
-    background: transparent !important;
+    background: #ffffff !important;
     width: 100% !important;
+    height: auto !important;
     min-height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
     display: block !important;
+    position: static !important;
     overflow: visible !important;
-  }
-
-  #pm-printable-root .pm-doc-sheet {
+    visibility: visible !important;
+    opacity: 1 !important;
     box-shadow: none !important;
     border: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-    min-height: auto !important;
-    overflow: visible !important;
-    page-break-after: always;
-    break-after: page;
+    transform: none !important;
+    contain: none !important;
+    content-visibility: visible !important;
   }
 
+  #pm-print-host .pm-doc-sheet,
+  #pm-printable-root .pm-doc-sheet {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+    padding: 15mm 12mm 15mm 12mm !important;
+    width: 100% !important;
+    max-width: 210mm !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
+  }
+
+  #pm-print-host .pm-doc-sheet.pm-cover-sheet,
+  #pm-printable-root .pm-doc-sheet.pm-cover-sheet {
+    padding: 20mm 15mm !important;
+    min-height: 260mm !important;
+  }
+
+  #pm-print-host .pm-doc-sheet:last-child,
   #pm-printable-root .pm-doc-sheet:last-child {
-    page-break-after: auto;
-    break-after: auto;
+    page-break-after: auto !important;
+    break-after: auto !important;
   }
 
   .pm-page-break {
-    page-break-before: always;
-    break-before: page;
+    page-break-before: always !important;
+    break-before: page !important;
   }
 
   .pm-avoid-break {
-    page-break-inside: avoid;
-    break-inside: avoid;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
+  #pm-print-host .pm-doc-table th,
   #pm-printable-root .pm-doc-table th {
     background-color: #1b365d !important;
     color: #ffffff !important;
@@ -533,16 +576,43 @@
     print-color-adjust: exact;
   }
 
+  #pm-print-host .pm-doc-table,
   #pm-printable-root .pm-doc-table {
-    page-break-inside: auto;
+    page-break-inside: auto !important;
+    width: 100% !important;
   }
 
+  #pm-print-host .pm-doc-table tr,
   #pm-printable-root .pm-doc-table tr {
-    page-break-inside: avoid;
-    break-inside: avoid;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
+  #pm-print-host thead,
   #pm-printable-root thead {
-    display: table-header-group;
+    display: table-header-group !important;
+  }
+
+  #pm-print-host .pm-approval-grid,
+  #pm-printable-root .pm-approval-grid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #pm-print-host .pm-doc-watermark,
+  #pm-printable-root .pm-doc-watermark {
+    position: absolute !important;
+    top: 45% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) rotate(-35deg) !important;
+    font-size: 48pt !important;
+    font-weight: 800 !important;
+    color: rgba(226, 232, 240, 0.65) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 6px !important;
+    pointer-events: none !important;
+    z-index: 0 !important;
+    white-space: nowrap !important;
   }
 }
+

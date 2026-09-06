@@ -226,6 +226,57 @@ function generateMermaidSyntax(activeNodes, currentFlow) {
 /**
  * Main Portal Render Entrypoint
  */
+/**
+ * Resolves active modules and requirements scoped strictly to a specific role.
+ * Single source of truth for Role -> Module scoping.
+ * @param {string} roleId
+ * @param {Object} store
+ * @returns {{ roleObj: Object, roleModules: Array<Object>, roleRequirements: Array<Object>, hasData: boolean }}
+ */
+function getRoleScopedData(roleId, store) {
+  const currentStore = store || getActiveStore();
+  const roleObj = (currentStore.roles || []).find((r) => r.id === roleId) || (currentStore.roles && currentStore.roles[0]) || { id: 'mantri-bibitan', name: 'Mantri Bibitan' };
+  const allReqs = (currentStore.requirements || []).filter((r) => !r.isArchived && !r.isSuperseded);
+
+  // Mantri Bibitan is the confirmed primary operational role across all 11 modules
+  if (roleObj.id === 'mantri-bibitan') {
+    return {
+      roleObj,
+      roleModules: currentStore.modules || [],
+      roleRequirements: allReqs,
+      hasData: true
+    };
+  }
+
+  // Other roles: filter requirements where r.role matches role name or role id
+  const roleReqs = allReqs.filter((r) => {
+    const rRole = (r.role || '').toLowerCase();
+    const roId = roleObj.id.toLowerCase();
+    const roName = (roleObj.name || '').toLowerCase();
+    return rRole === roId || rRole === roName || (roleObj.id === 'pengurus' && rRole.includes('pengurus'));
+  });
+
+  if (roleReqs.length === 0) {
+    return {
+      roleObj,
+      roleModules: [],
+      roleRequirements: [],
+      hasData: false
+    };
+  }
+
+  // Derive unique modules associated with this role's requirements
+  const moduleKeys = new Set(roleReqs.map((r) => r.moduleId || r.module));
+  const roleModules = (currentStore.modules || []).filter((m) => moduleKeys.has(m.id) || moduleKeys.has(m.name));
+
+  return {
+    roleObj,
+    roleModules,
+    roleRequirements: roleReqs,
+    hasData: roleModules.length > 0
+  };
+}
+
 export async function renderProcessMappingPortal(container) {
   if (!container) return;
 
@@ -245,13 +296,16 @@ export async function renderProcessMappingPortal(container) {
     isManageMode = false;
   }
 
-  const roleObj = store.roles.find((r) => r.id === currentRole) || store.roles[0];
-  const isMantri = currentRole === 'mantri-bibitan';
-  const currentMod = isMantri
-    ? currentModuleId === 'ALL'
-      ? null
-      : store.modules.find((m) => m.id === currentModuleId) || store.modules[3]
-    : null;
+  const { roleObj, roleModules, roleRequirements, hasData } = getRoleScopedData(currentRole, store);
+
+  // If currentModuleId is not in roleModules, reset to 'ALL'
+  if (currentModuleId !== 'ALL' && !roleModules.some((m) => m.id === currentModuleId)) {
+    currentModuleId = 'ALL';
+  }
+
+  const currentMod = currentModuleId === 'ALL'
+    ? null
+    : roleModules.find((m) => m.id === currentModuleId) || roleModules[0] || null;
 
   // Render Portal HTML
   container.innerHTML = `
@@ -267,20 +321,20 @@ export async function renderProcessMappingPortal(container) {
       ? `
             <div class="pm-layout">
               <!-- Left Sidebar -->
-              ${renderSidebar(roleObj, currentMod, store.roles, store.modules, store.commonFeatures)}
+              ${renderSidebar(roleObj, currentMod, store.roles, roleModules, store.commonFeatures, hasData)}
 
               <!-- Center Content / Canvas -->
               <main class="pm-content">
-                ${isMantri
-        ? currentModuleId === 'ALL'
-          ? renderAllModulesContent(store)
-          : renderSingleModuleContent(currentMod, store)
-        : renderInProgressRole(roleObj)
-      }
+                ${!hasData
+          ? renderInProgressRole(roleObj)
+          : currentModuleId === 'ALL'
+            ? renderAllModulesContent(store, roleObj, roleModules, roleRequirements)
+            : renderSingleModuleContent(currentMod, store, roleObj, roleRequirements)
+        }
               </main>
 
               <!-- Right Detail Panel -->
-              ${isMantri && isDetailOpen ? renderDetailPanel(store) : ''}
+              ${hasData && isDetailOpen ? renderDetailPanel(store) : ''}
             </div>
           `
       : currentNavTab === 'dashboard'
@@ -440,7 +494,7 @@ function renderHeader(metadata) {
   `;
 }
 
-function renderSidebar(roleObj, currentMod, roles, modules, commonFeatures) {
+function renderSidebar(roleObj, currentMod, roles, modules, commonFeatures, hasData) {
   return `
     <aside class="pm-sidebar">
       <!-- Role Selector -->
@@ -465,33 +519,33 @@ function renderSidebar(roleObj, currentMod, roles, modules, commonFeatures) {
       <div class="pm-sidebar-section">
         <span class="pm-section-label">Modul Operasional</span>
         <div class="pm-module-nav">
-          ${currentRole === 'mantri-bibitan'
-      ? `
-                <!-- Semua Modul Option -->
+          ${!hasData
+            ? `<div style="padding: 12px 14px; font-size: 0.8rem; color: #94a3b8; font-style: italic;">Requirement belum tersedia</div>`
+            : `
+              <!-- Semua Modul Option -->
+              <button
+                type="button"
+                class="pm-module-item ${currentModuleId === 'ALL' ? 'is-active' : ''}"
+                data-module-id="ALL"
+                title="Tampilkan seluruh flow ${modules.length} modul ${escapeHtml(roleObj.name)}"
+              >
+                <span class="pm-mod-num">&bull;</span>
+                <span class="pm-mod-text">Semua Modul (${modules.length})</span>
+              </button>
+              ${modules.map(
+            (m) => `
                 <button
                   type="button"
-                  class="pm-module-item ${currentModuleId === 'ALL' ? 'is-active' : ''}"
-                  data-module-id="ALL"
-                  title="Tampilkan seluruh flow 11 module Mantri Bibitan"
+                  class="pm-module-item ${currentModuleId === m.id ? 'is-active' : ''}"
+                  data-module-id="${m.id}"
                 >
-                  <span class="pm-mod-num">&bull;</span>
-                  <span class="pm-mod-text">Semua Modul (${modules.length})</span>
+                  <span class="pm-mod-num">${m.order}</span>
+                  <span class="pm-mod-text">${m.name}</span>
                 </button>
-                ${modules.map(
-        (m) => `
-                  <button
-                    type="button"
-                    class="pm-module-item ${currentModuleId === m.id ? 'is-active' : ''}"
-                    data-module-id="${m.id}"
-                  >
-                    <span class="pm-mod-num">${m.order}</span>
-                    <span class="pm-mod-text">${m.name}</span>
-                  </button>
-                `
-      ).join('')}
               `
-      : `<div style="font-size:0.8rem; color:#94a3b8; padding:8px 0;">Module belum tersedia</div>`
-    }
+          ).join('')}
+            `
+          }
         </div>
       </div>
 
@@ -513,24 +567,29 @@ function renderSidebar(roleObj, currentMod, roles, modules, commonFeatures) {
   `;
 }
 
-function renderAllModulesContent(store) {
+function renderAllModulesContent(store, roleObj, roleModules, roleRequirements) {
+  const activeRoleObj = roleObj || store.roles?.find((r) => r.id === currentRole) || store.roles?.[0] || { name: 'Mantri Bibitan' };
+  const scopedModules = roleModules || store.modules || [];
+  const scopedReqs = roleRequirements || (store.requirements || []).filter((r) => !r.isArchived && !r.isSuperseded);
+  const activeReqsCount = scopedReqs.length;
+
   return `
     <!-- Breadcrumb -->
     <div class="pm-breadcrumb">
-      <span class="pm-breadcrumb-link">Mantri Bibitan</span>
+      <span class="pm-breadcrumb-link">${escapeHtml(activeRoleObj.name)}</span>
       <span>&rsaquo;</span>
-      <span style="color:#1e293b; font-weight:600;">Semua Modul (11 Tahapan Alur Lengkap)</span>
+      <span style="color:#1e293b; font-weight:600;">Semua Modul (${scopedModules.length} Modul Terkait)</span>
     </div>
 
     <!-- Header Section -->
     <div class="pm-mod-header">
       <div class="pm-title-row">
         <h1 class="pm-mod-title">Alur Proses Seluruh Modul</h1>
-        <span class="pm-badge-confirmed">11 Modul Confirmed</span>
+        <span class="pm-badge-confirmed">${scopedModules.length} Modul Terkait</span>
       </div>
-      <div class="pm-mod-subtitle">Peta Alur Operasional Lengkap Mantri Bibitan dari Hulu ke Hilir</div>
+      <div class="pm-mod-subtitle">Peta Alur Operasional ${escapeHtml(activeRoleObj.name)} (${scopedModules.length} Modul, ${activeReqsCount} Requirement)</div>
       <p class="pm-mod-desc">
-        Menampilkan seluruh rangkaian proses bisnis pembibitan karet secara terorganisir per modul. Klik pada setiap proses untuk melihat rincian requirement, validasi, dan aturan bisnis pada panel detail.
+        Menampilkan seluruh rangkaian proses bisnis dan modul yang menjadi lingkup tugas <strong>${escapeHtml(activeRoleObj.name)}</strong>. Klik pada setiap proses untuk melihat rincian requirement, validasi, dan aturan bisnis pada panel detail.
       </p>
     </div>
 
@@ -538,7 +597,7 @@ function renderAllModulesContent(store) {
     <div class="pm-all-filter-bar">
       <div class="pm-sub-tabs">
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'flow' ? 'is-active' : ''}" data-view="flow">Flow Seluruh Modul</button>
-        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'requirement' ? 'is-active' : ''}" data-view="requirement">Requirement Master (${store.requirements.filter((r) => !r.isArchived).length})</button>
+        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'requirement' ? 'is-active' : ''}" data-view="requirement">Requirement Master (${activeReqsCount})</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'review' ? 'is-active' : ''}" data-view="review">Revision &amp; Review ${renderReviewBadge(store, 'ALL')}</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'business-rule' ? 'is-active' : ''}" data-view="business-rule">Business Rules</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'related-role' ? 'is-active' : ''}" data-view="related-role">Related Role</button>
@@ -549,20 +608,20 @@ function renderAllModulesContent(store) {
         <label for="pm-jump-module-select" style="font-size:0.82rem; color:#475569; font-weight:600;">Lompat ke:</label>
         <select id="pm-jump-module-select" class="pm-feature-select">
           <option value="">-- Pilih Modul --</option>
-          ${store.modules.map((m) => `<option value="${m.id}">[${m.order}] ${m.name}</option>`).join('')}
+          ${scopedModules.map((m) => `<option value="${m.id}">[${m.order}] ${m.name}</option>`).join('')}
         </select>
       </div>
     </div>
 
     <!-- View Switcher for All Modules -->
     ${currentViewTab === 'flow'
-      ? renderAllModulesFlowSections(store)
+      ? renderAllModulesFlowSections(store, scopedModules)
       : currentViewTab === 'requirement'
-        ? renderRequirementsView(store.requirements, store.modules, store)
+        ? renderRequirementsView(scopedReqs, scopedModules, store, activeRoleObj)
         : currentViewTab === 'review'
           ? renderRevisionReviewView(store, 'ALL')
           : currentViewTab === 'business-rule'
-            ? renderBusinessRuleView(store.businessRules)
+            ? renderBusinessRuleView(store.businessRules, scopedModules, scopedReqs)
             : currentViewTab === 'related-role'
               ? renderRelatedRoleView(null)
               : renderEndToEndView(store.endToEndPipeline)
@@ -570,10 +629,11 @@ function renderAllModulesContent(store) {
   `;
 }
 
-function renderAllModulesFlowSections(store) {
+function renderAllModulesFlowSections(store, roleModules) {
+  const modulesToRender = roleModules || store.modules || [];
   return `
     <div class="pm-all-modules-container" id="pm-all-modules-container">
-      ${store.modules
+      ${modulesToRender
       .map((mod) => {
         const modFlows = store.flows[mod.id] || {};
         const defaultFeatId = Object.keys(modFlows)[0] || 'main';
@@ -627,7 +687,26 @@ function renderAllModulesFlowSections(store) {
   `;
 }
 
-function renderSingleModuleContent(currentMod, store) {
+function renderSingleModuleContent(currentMod, store, roleObj, roleRequirements) {
+  const activeRoleObj = roleObj || store.roles?.find((r) => r.id === currentRole) || store.roles?.[0] || { name: 'Mantri Bibitan' };
+  const allScopedReqs = roleRequirements || (store.requirements || []).filter((r) => !r.isArchived && !r.isSuperseded);
+  const modReqs = allScopedReqs.filter((r) => r.moduleId === currentMod.id || r.module === currentMod.name);
+
+  // Available features for this module scoped to role if non-mantri
+  let availableFeatures = currentMod.features || [];
+  if (activeRoleObj.id !== 'mantri-bibitan' && modReqs.length > 0) {
+    const roleFeatNames = new Set(modReqs.map((r) => (r.feature || r.featureId || '').toLowerCase()));
+    const matchingFeats = (currentMod.features || []).filter((f) => roleFeatNames.has(f.name.toLowerCase()) || roleFeatNames.has(f.id.toLowerCase()));
+    if (matchingFeats.length > 0) {
+      availableFeatures = matchingFeats;
+    }
+  }
+
+  // Ensure currentFeatureId belongs to availableFeatures
+  if (!availableFeatures.some((f) => f.id === currentFeatureId)) {
+    currentFeatureId = availableFeatures[0]?.id || currentMod.features?.[0]?.id || 'main';
+  }
+
   const modFlows = store.flows[currentMod.id] || {};
   const currentFlow = modFlows[currentFeatureId] || Object.values(modFlows)[0] || { title: currentMod.name, nodes: [], edges: [] };
   const activeNodes = (currentFlow.nodes || []).filter((n) => !n.isArchived);
@@ -635,7 +714,7 @@ function renderSingleModuleContent(currentMod, store) {
   return `
     <!-- Breadcrumb -->
     <div class="pm-breadcrumb">
-      <span class="pm-breadcrumb-link">Mantri Bibitan</span>
+      <span class="pm-breadcrumb-link">${escapeHtml(activeRoleObj.name)}</span>
       <span>&rsaquo;</span>
       <span style="color:#1e293b; font-weight:600;">[${currentMod.order}] ${currentMod.name}</span>
     </div>
@@ -654,7 +733,7 @@ function renderSingleModuleContent(currentMod, store) {
     <div class="pm-tab-row">
       <div class="pm-sub-tabs">
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'flow' ? 'is-active' : ''}" data-view="flow">Flow</button>
-        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'requirement' ? 'is-active' : ''}" data-view="requirement">Requirement</button>
+        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'requirement' ? 'is-active' : ''}" data-view="requirement">Requirement (${modReqs.length})</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'review' ? 'is-active' : ''}" data-view="review">Revision &amp; Review ${renderReviewBadge(store, currentMod.id)}</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'business-rule' ? 'is-active' : ''}" data-view="business-rule">Business Rule</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'related-role' ? 'is-active' : ''}" data-view="related-role">Related Role</button>
@@ -662,12 +741,12 @@ function renderSingleModuleContent(currentMod, store) {
       </div>
 
       <!-- Feature Dropdown Selector -->
-      ${currentMod.features.length > 1
+      ${availableFeatures.length > 1
       ? `
         <div class="pm-feature-selector">
           <label for="pm-feature-select" class="pm-feature-label">Fitur:</label>
           <select id="pm-feature-select" class="pm-feature-select">
-            ${currentMod.features
+            ${availableFeatures
         .map(
           (f) => `
               <option value="${f.id}" ${f.id === currentFeatureId ? 'selected' : ''}>${f.name}</option>
@@ -685,11 +764,11 @@ function renderSingleModuleContent(currentMod, store) {
     ${currentViewTab === 'flow'
       ? renderFlowCanvas(currentMod, currentFlow, activeNodes)
       : currentViewTab === 'requirement'
-        ? renderRequirementsView(store.requirements, store.modules, store)
+        ? renderRequirementsView(modReqs, [currentMod], store, activeRoleObj)
         : currentViewTab === 'review'
           ? renderRevisionReviewView(store, currentMod.id)
           : currentViewTab === 'business-rule'
-            ? renderBusinessRuleView(store.businessRules)
+            ? renderBusinessRuleView(store.businessRules, [currentMod], modReqs)
             : currentViewTab === 'related-role'
               ? renderRelatedRoleView(currentMod)
               : renderEndToEndView(store.endToEndPipeline)
@@ -952,16 +1031,17 @@ function renderPagination(currentPage, pageSize, totalItems, type = 'req') {
   `;
 }
 
-function renderRequirementsView(reqs, modules, store) {
-  const allReqs = store?.requirements || reqs || [];
+function renderRequirementsView(reqs, modules, store, roleObj) {
+  const allReqs = reqs || store?.requirements || [];
   // Active requirements are those not archived and not superseded (superseded versions are in revision history)
   const activeReqs = allReqs.filter((r) => !r.isArchived && !r.isSuperseded);
 
   // Available roles for filter
-  const roles = store?.roles || [];
+  const roles = (roleObj && roleObj.id !== 'mantri-bibitan') ? [roleObj] : (store?.roles || []);
+  const availableModules = modules || store?.modules || [];
 
   // Filter Feature options based on current reqFilterModule
-  const selectedModObj = modules.find((m) => m.id === reqFilterModule || m.name === reqFilterModule);
+  const selectedModObj = availableModules.find((m) => m.id === reqFilterModule || m.name === reqFilterModule);
   const availableFeatures = selectedModObj ? (selectedModObj.features || []) : [];
 
   // Apply filters
@@ -1045,7 +1125,7 @@ function renderRequirementsView(reqs, modules, store) {
 
           <select id="pm-req-filter-module" class="pm-req-filter-select" title="Filter berdasarkan Modul">
             <option value="ALL" ${reqFilterModule === 'ALL' ? 'selected' : ''}>Semua Modul</option>
-            ${modules.map((m) => `<option value="${m.id}" ${reqFilterModule === m.id || reqFilterModule === m.name ? 'selected' : ''}>[${m.order}] ${m.name}</option>`).join('')}
+            ${availableModules.map((m) => `<option value="${m.id}" ${reqFilterModule === m.id || reqFilterModule === m.name ? 'selected' : ''}>[${m.order}] ${m.name}</option>`).join('')}
           </select>
 
           <select id="pm-req-filter-feature" class="pm-req-filter-select" title="Filter berdasarkan Fitur" ${availableFeatures.length === 0 ? 'disabled' : ''}>
@@ -1524,7 +1604,16 @@ function renderRevisionReviewView(store, filterModId = 'ALL') {
   `;
 }
 
-function renderBusinessRuleView(brs) {
+function renderBusinessRuleView(brs, modules, reqs) {
+  let displayedBrs = brs || [];
+  if (reqs && reqs.length > 0) {
+    const brKeys = new Set(reqs.map((r) => r.businessRule).filter(Boolean));
+    if (brKeys.size > 0) {
+      const filtered = (brs || []).filter((br) => brKeys.has(br.id) || brKeys.has(br.title));
+      if (filtered.length > 0) displayedBrs = filtered;
+    }
+  }
+
   return `
     <div>
       <div style="margin-bottom: 12px;">
@@ -1533,7 +1622,7 @@ function renderBusinessRuleView(brs) {
       </div>
 
       <div class="pm-br-list">
-        ${brs
+        ${displayedBrs
       .map(
         (br) => `
           <div class="pm-br-full-card">
@@ -3798,7 +3887,7 @@ function attachPortalEvents(container, store) {
   container.querySelectorAll('.pm-doc-print-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const docType = btn.dataset.docType || DOCUMENT_TYPES.RTM_REPORT;
-      triggerPrintOfficialDocument(docType, store, container);
+      executePrintOfficialDocument(docType, store);
     });
   });
 
@@ -3808,7 +3897,7 @@ function attachPortalEvents(container, store) {
   });
 
   container.querySelector('#pm-doc-preview-print-btn')?.addEventListener('click', () => {
-    window.print();
+    executePrintOfficialDocument(modalDocType, store);
   });
 
   // RTM Search & Filter Events
@@ -4088,6 +4177,7 @@ function attachPortalEvents(container, store) {
   // Role Selector
   container.querySelector('#pm-role-select')?.addEventListener('change', (e) => {
     currentRole = e.target.value;
+    currentModuleId = 'ALL';
     renderProcessMappingPortal(container);
   });
 
@@ -4248,6 +4338,7 @@ function attachPortalEvents(container, store) {
   // Back to Mantri Bibitan button
   container.querySelector('#pm-btn-back-mantri')?.addEventListener('click', () => {
     currentRole = 'mantri-bibitan';
+    currentModuleId = 'ALL';
     renderProcessMappingPortal(container);
   });
 
@@ -7214,6 +7305,81 @@ function exportReportDocument(store) {
 }
 
 /**
+ * Execute live print for Official Enterprise Documents (Phase 5C / 5D / 5E)
+ * Uses dedicated top-level print host attached directly to document.body
+ * Isolates pure A4 document from SPA workspace and fixed modals to prevent blank print preview in Chrome
+ * @param {string} docType
+ * @param {Object} store
+ */
+function executePrintOfficialDocument(docType, store) {
+  const currentStore = store || getActiveStore();
+  const type = docType || modalDocType || DOCUMENT_TYPES.RTM_REPORT;
+
+  try {
+    const docModel = buildDocumentModel(type, {}, currentStore);
+    const renderedHtml = renderDocument(docModel);
+
+    // Remove any lingering print host
+    const existingHost = document.getElementById('pm-print-host');
+    if (existingHost) {
+      existingHost.remove();
+    }
+
+    // Create top-level isolated print host directly on document.body
+    const printHost = document.createElement('div');
+    printHost.id = 'pm-print-host';
+    printHost.className = 'pm-print-host';
+    printHost.innerHTML = renderedHtml;
+    document.body.appendChild(printHost);
+
+    // Mark body active for print isolation styling
+    document.body.classList.add('pm-printing-active');
+
+    // Cleanup handler
+    let isCleanedUp = false;
+    const cleanup = () => {
+      if (isCleanedUp) return;
+      isCleanedUp = true;
+      document.body.classList.remove('pm-printing-active');
+      const host = document.getElementById('pm-print-host');
+      if (host && host.parentNode) {
+        host.remove();
+      }
+      window.removeEventListener('afterprint', cleanup);
+    };
+
+    window.addEventListener('afterprint', cleanup);
+
+    // Ensure DOM layout is ready and elements rendered before triggering print
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const sheets = printHost.querySelectorAll('.pm-doc-sheet');
+        const hasLayout = printHost.offsetWidth > 0 || printHost.offsetHeight > 0 || sheets.length > 0;
+        
+        if (hasLayout) {
+          try {
+            window.print();
+          } catch (err) {
+            console.error('Failed to trigger window.print():', err);
+            cleanup();
+          }
+        } else {
+          console.warn('Print layout not ready, attempting print anyway...');
+          try {
+            window.print();
+          } catch (err) {
+            console.error('Print trigger error:', err);
+            cleanup();
+          }
+        }
+      }, 100);
+    });
+  } catch (err) {
+    console.error('Error preparing official document for print:', err);
+  }
+}
+
+/**
  * Trigger Live Print / Save as PDF for Official Enterprise Documents (Phase 5C)
  * Opens Preview Viewport and Triggers window.print()
  * @param {string} docType
@@ -7223,23 +7389,15 @@ function exportReportDocument(store) {
 function triggerPrintOfficialDocument(docType, store, container) {
   const cont = container || getPortalContainer();
   modalDocType = docType || DOCUMENT_TYPES.RTM_REPORT;
-  activeModal = 'preview-doc';
-  if (cont) {
-    renderProcessMappingPortal(cont);
-    setTimeout(() => {
-      try {
-        window.print();
-      } catch (err) {
-        console.error('Failed to trigger window.print():', err);
-      }
-    }, 250);
-  }
+  executePrintOfficialDocument(modalDocType, store);
 }
 
 export {
   renderReportsView,
   renderReportOfficialDocs,
   renderModals,
-  triggerPrintOfficialDocument
+  triggerPrintOfficialDocument,
+  executePrintOfficialDocument
 };
+
 

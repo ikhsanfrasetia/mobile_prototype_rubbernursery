@@ -2411,6 +2411,10 @@
 }
 
 /* Print Stylesheet for Pure Document Export */
+#pm-print-host {
+  display: none;
+}
+
 @media print {
   html, body {
     width: 100% !important;
@@ -2420,6 +2424,15 @@
     background: #ffffff !important;
     padding: 0 !important;
     margin: 0 !important;
+    position: static !important;
+  }
+
+  /* When printing with dedicated top-level print host, hide everything else under body */
+  body.pm-printing-active > *:not(#pm-print-host) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
   }
 
   .workspace-preview-column,
@@ -2486,7 +2499,51 @@
     padding: 0 !important;
     margin: 0 !important;
   }
+
+  #pm-print-host,
+  #pm-print-host #pm-printable-root,
+  #pm-printable-root {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  #pm-print-host .pm-doc-sheet,
+  #pm-printable-root .pm-doc-sheet {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+    padding: 15mm 12mm !important;
+    width: 100% !important;
+    max-width: 210mm !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    background: #ffffff !important;
+  }
+
+  #pm-print-host .pm-doc-sheet:last-child,
+  #pm-printable-root .pm-doc-sheet:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
 }
+
 
 /* ============================================================
    Dashboard View — Container / Header / Stats Grid

@@ -97,6 +97,13 @@ async function runBrowserIntegrationTests() {
   assert(doc05Html.includes('id="pm-printable-root"'), '4.4 DOC-05 contains #pm-printable-root');
   assert(doc05Html.includes('class="pm-doc-sheet"'), '4.5 DOC-05 contains .pm-doc-sheet wrappers');
 
+  // Test 5: Dedicated Top-Level Print Host & Isolation
+  console.log('\n5. Dedicated Top-Level Print Host & Isolation Rules');
+  assert(printCss.includes('#pm-print-host'), '5.1 #pm-print-host is styled in process-mapping-print.css');
+  assert(printCss.includes('pm-printing-active'), '5.2 pm-printing-active class is configured in process-mapping-print.css');
+  assert(mappingCss.includes('#pm-print-host'), '5.3 #pm-print-host is styled in process-mapping.css');
+  assert(mappingCss.includes('pm-printing-active'), '5.4 pm-printing-active class is configured in process-mapping.css');
+
   console.log('\n====================================================');
   console.log('🎉 ALL PHASE 5E INTEGRATION TESTS PASSED!');
   console.log('====================================================\n');
