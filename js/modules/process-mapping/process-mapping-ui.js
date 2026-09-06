@@ -59,6 +59,19 @@ import {
   getGapAnalysisReport
 } from './process-mapping-data.js';
 
+import {
+  DOCUMENT_TYPES,
+  DOCUMENT_STATUS,
+  buildDocumentModel,
+  buildRtmDocumentModel,
+  buildGapDocumentModel,
+  resolveDocumentMetadata
+} from './process-mapping-doc.js';
+
+import {
+  renderDocument
+} from './process-mapping-doc-renderer.js';
+
 // Global UI State
 let isManageMode = false;
 let currentRole = 'mantri-bibitan';
@@ -90,8 +103,9 @@ let revCurrentPage = 1;
 let revPageSize = 10;
 
 // Modal / Dialog State
-let activeModal = null; // null | 'edit-req' | 'detail-req' | 'archive-req' | 'edit-node' | 'archive-node' | 'edit-edge' | 'archive-edge' | 'compare-rev' | 'reject-rev' | 'discard-rev' | 'export' | 'import' | 'reset-draft'
+let activeModal = null; // null | 'edit-req' | 'detail-req' | 'archive-req' | 'edit-node' | 'archive-node' | 'edit-edge' | 'archive-edge' | 'compare-rev' | 'reject-rev' | 'discard-rev' | 'export' | 'import' | 'reset-draft' | 'preview-doc'
 let modalData = null;
+let modalDocType = DOCUMENT_TYPES.RTM_REPORT;
 let toastMessage = null;
 let toastTimer = null;
 
@@ -105,7 +119,7 @@ let refFilterStatus = 'ALL';
 let refSearchQuery = '';
 
 // Reports Tab Filter State
-let reportSubTab = 'req-matrix'; // 'req-doc' | 'bp-doc' | 'req-matrix' | 'gap-analysis'
+let reportSubTab = 'req-matrix'; // 'req-doc' | 'bp-doc' | 'req-matrix' | 'gap-analysis' | 'official-docs'
 let reportFilterModule = 'ALL';
 let reportFilterRole = 'ALL';
 
@@ -130,10 +144,12 @@ let gapPageSize = 10;
 /**
  * Helper to expose click callback for Mermaid nodes to window
  */
-window.pmSelectMermaidNode = function (nodeId) {
-  const event = new CustomEvent('pm-mermaid-click', { detail: { nodeId } });
-  window.dispatchEvent(event);
-};
+if (typeof window !== 'undefined') {
+  window.pmSelectMermaidNode = function (nodeId) {
+    const event = new CustomEvent('pm-mermaid-click', { detail: { nodeId } });
+    window.dispatchEvent(event);
+  };
+}
 
 function generateMermaidSyntax(activeNodes, currentFlow) {
   let str = 'graph TD\n';
@@ -3188,6 +3204,53 @@ function renderModals(store) {
     `;
   }
 
+  if (activeModal === 'preview-doc') {
+    try {
+      const docModel = buildDocumentModel(modalDocType, {}, store);
+      const renderedHtml = renderDocument(docModel);
+
+      return `
+        <div class="pm-modal-backdrop pm-doc-preview-backdrop" id="pm-modal-backdrop">
+          <div class="pm-doc-preview-container">
+            <!-- Top Fixed Toolbar -->
+            <div class="pm-doc-preview-toolbar pm-no-print">
+              <div class="pm-doc-toolbar-info">
+                <span class="pm-doc-toolbar-code">${escapeHtml(docModel.metadata.docCode)}</span>
+                <span class="pm-doc-toolbar-title">${escapeHtml(docModel.metadata.title)}</span>
+                <span class="pm-tag ${docModel.metadata.documentStatus === DOCUMENT_STATUS.DRAFT ? 'pm-tag-gap' : 'pm-tag-covered'}">
+                  ${escapeHtml(docModel.metadata.documentStatus)}
+                </span>
+              </div>
+              <div class="pm-doc-toolbar-actions">
+                <button type="button" class="pm-btn pm-btn-secondary" id="pm-doc-preview-close-btn">Tutup</button>
+                <button type="button" class="pm-btn pm-btn-primary" id="pm-doc-preview-print-btn" data-doc-type="${modalDocType}">Cetak / Simpan PDF</button>
+              </div>
+            </div>
+
+            <!-- Scrollable Document Viewport -->
+            <div class="pm-doc-preview-viewport">
+              ${renderedHtml}
+            </div>
+          </div>
+        </div>
+      `;
+    } catch (err) {
+      return `
+        <div class="pm-modal-backdrop pm-doc-preview-backdrop" id="pm-modal-backdrop">
+          <div class="pm-doc-preview-container" style="background: #ffffff; padding: 40px; max-width: 600px; margin: 100px auto; border-radius: 4px;">
+            <div class="pm-empty-state">
+              <h3 class="pm-empty-title">Gagal Membuka Pratinjau Dokumen</h3>
+              <p class="pm-empty-desc">${escapeHtml(err.message)}</p>
+              <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                <button type="button" class="pm-btn pm-btn-secondary" id="pm-doc-preview-close-btn">Tutup</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
   return '';
 }
 
@@ -3683,6 +3746,31 @@ function attachPortalEvents(container, store) {
 
   container.querySelector('#pm-btn-export-pdf')?.addEventListener('click', () => {
     exportReportDocument(store);
+  });
+
+  // Official Document Hub & Preview Viewer Events (Phase 5C)
+  container.querySelectorAll('.pm-doc-preview-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      modalDocType = btn.dataset.docType || DOCUMENT_TYPES.RTM_REPORT;
+      activeModal = 'preview-doc';
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  container.querySelectorAll('.pm-doc-print-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const docType = btn.dataset.docType || DOCUMENT_TYPES.RTM_REPORT;
+      triggerPrintOfficialDocument(docType, store, container);
+    });
+  });
+
+  container.querySelector('#pm-doc-preview-close-btn')?.addEventListener('click', () => {
+    activeModal = null;
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelector('#pm-doc-preview-print-btn')?.addEventListener('click', () => {
+    window.print();
   });
 
   // RTM Search & Filter Events
@@ -5563,6 +5651,9 @@ function renderReportsView(store) {
           <button type="button" class="pm-report-tab-btn ${reportSubTab === 'gap-analysis' ? 'is-active' : ''}" data-report-subtab="gap-analysis">
             4. Gap Analysis
           </button>
+          <button type="button" class="pm-report-tab-btn ${reportSubTab === 'official-docs' ? 'is-active' : ''}" data-report-subtab="official-docs">
+            5. Dokumen Resmi
+          </button>
         </div>
 
         <div class="pm-report-controls">
@@ -5609,18 +5700,136 @@ function renderReportsView(store) {
       </div>
 
       <!-- Document Sheet Preview / Interactive Matrix Container -->
-      <div class="${reportSubTab === 'req-matrix' ? 'pm-rtm-view-wrapper' : 'pm-report-document'}" id="pm-printable-report">
+      <div class="${reportSubTab === 'req-matrix' || reportSubTab === 'official-docs' ? 'pm-rtm-view-wrapper' : 'pm-report-document'}" id="pm-printable-report">
         ${reportSubTab === 'req-doc'
       ? renderReportReqDoc(store)
       : reportSubTab === 'bp-doc'
         ? renderReportBpDoc(store)
         : reportSubTab === 'req-matrix'
           ? renderReportMatrix(store)
-          : renderReportGapAnalysis(store)
+          : reportSubTab === 'gap-analysis'
+            ? renderReportGapAnalysis(store)
+            : renderReportOfficialDocs(store)
     }
       </div>
     </div>
   `;
+}
+
+/**
+ * Render Official Document Hub (DOC-04, DOC-05) with Live Dynamic Metadata
+ * @param {Object} store
+ * @returns {string}
+ */
+function renderReportOfficialDocs(store) {
+  try {
+    const rtmMeta = resolveDocumentMetadata(DOCUMENT_TYPES.RTM_REPORT, {}, store);
+    const gapMeta = resolveDocumentMetadata(DOCUMENT_TYPES.GAP_REPORT, {}, store);
+    const metrics = getCoverageMetrics();
+
+    const docItems = [
+      {
+        type: DOCUMENT_TYPES.RTM_REPORT,
+        code: rtmMeta.docCode || 'DOC-04',
+        id: rtmMeta.documentId,
+        title: rtmMeta.title,
+        version: rtmMeta.documentVersion,
+        status: rtmMeta.documentStatus || DOCUMENT_STATUS.DRAFT,
+        desc: rtmMeta.description,
+        updated: rtmMeta.generatedDateFormatted || rtmMeta.generatedDate?.split('T')[0] || '-',
+        baseline: `v${rtmMeta.sourceBaseline?.dataVersion || '0.2.0'} (${rtmMeta.sourceBaseline?.gitCommit ? rtmMeta.sourceBaseline.gitCommit.substring(0, 7) : '1066f36'})`,
+        statsText: `${metrics.totalActiveRequirements} Requirements | ${metrics.flowCovered} Covered | Health ${metrics.totalTraceabilityHealth}%`
+      },
+      {
+        type: DOCUMENT_TYPES.GAP_REPORT,
+        code: gapMeta.docCode || 'DOC-05',
+        id: gapMeta.documentId,
+        title: gapMeta.title,
+        version: gapMeta.documentVersion,
+        status: gapMeta.documentStatus || DOCUMENT_STATUS.DRAFT,
+        desc: gapMeta.description,
+        updated: gapMeta.generatedDateFormatted || gapMeta.generatedDate?.split('T')[0] || '-',
+        baseline: `v${gapMeta.sourceBaseline?.dataVersion || '0.2.0'} (${gapMeta.sourceBaseline?.gitCommit ? gapMeta.sourceBaseline.gitCommit.substring(0, 7) : '1066f36'})`,
+        statsText: `${metrics.flowGap} True Gaps Teridentifikasi | 5 Modul Terdampak`
+      }
+    ];
+
+    return `
+      <div class="pm-doc-hub-container" id="pm-doc-hub-root">
+        <!-- Hub Banner Header -->
+        <div class="pm-doc-hub-header">
+          <div class="pm-doc-hub-header-main">
+            <h2 class="pm-doc-hub-title">Pusat Dokumen Resmi & Spesifikasi Sistem</h2>
+            <p class="pm-doc-hub-desc">
+              Koleksi dokumen formal berstandar A4 korporat yang digenerate secara langsung (real-time runtime) dari Single Source of Truth SIGMA Rubber Nursery.
+            </p>
+          </div>
+          <div class="pm-doc-hub-header-meta">
+            <span class="pm-tag pm-tag-covered">Enterprise A4 Paged Media</span>
+            <span class="pm-tag pm-tag-gap">DRAFT (Internal Review)</span>
+          </div>
+        </div>
+
+        <!-- Document Cards Grid -->
+        <div class="pm-doc-card-grid">
+          ${docItems.map(item => `
+            <div class="pm-doc-card" data-doc-card="${item.type}">
+              <div class="pm-doc-card-top">
+                <div class="pm-doc-card-code-badge">${escapeHtml(item.code)}</div>
+                <div class="pm-doc-card-status">
+                  <span class="pm-tag ${item.status === DOCUMENT_STATUS.DRAFT ? 'pm-tag-gap' : 'pm-tag-covered'}">
+                    ${escapeHtml(item.status)}
+                  </span>
+                </div>
+              </div>
+
+              <h3 class="pm-doc-card-title">${escapeHtml(item.title)}</h3>
+              <p class="pm-doc-card-desc">${escapeHtml(item.desc)}</p>
+
+              <div class="pm-doc-card-meta-grid">
+                <div class="pm-doc-card-meta-item">
+                  <span class="pm-doc-card-meta-label">Nomor Dokumen:</span>
+                  <span class="pm-doc-card-meta-val"><code>${escapeHtml(item.id)}</code></span>
+                </div>
+                <div class="pm-doc-card-meta-item">
+                  <span class="pm-doc-card-meta-label">Versi Dokumen:</span>
+                  <span class="pm-doc-card-meta-val">${escapeHtml(item.version)}</span>
+                </div>
+                <div class="pm-doc-card-meta-item">
+                  <span class="pm-doc-card-meta-label">Versi Data Acuan:</span>
+                  <span class="pm-doc-card-meta-val">${escapeHtml(item.baseline)}</span>
+                </div>
+                <div class="pm-doc-card-meta-item">
+                  <span class="pm-doc-card-meta-label">Waktu Generate:</span>
+                  <span class="pm-doc-card-meta-val">${escapeHtml(item.updated)}</span>
+                </div>
+                <div class="pm-doc-card-meta-item pm-doc-card-meta-full">
+                  <span class="pm-doc-card-meta-label">Cakupan Data:</span>
+                  <span class="pm-doc-card-meta-val"><strong>${escapeHtml(item.statsText)}</strong></span>
+                </div>
+              </div>
+
+              <div class="pm-doc-card-actions">
+                <button type="button" class="pm-btn pm-btn-outline pm-doc-preview-btn" data-doc-type="${item.type}">
+                  Pratinjau Dokumen
+                </button>
+                <button type="button" class="pm-btn pm-btn-primary pm-doc-print-btn" data-doc-type="${item.type}">
+                  Cetak / Simpan PDF
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    return `
+      <div class="pm-empty-state">
+        <h3 class="pm-empty-title">Gagal Memuat Daftar Dokumen Resmi</h3>
+        <p class="pm-empty-desc">${escapeHtml(err.message)}</p>
+      </div>
+    `;
+  }
 }
 
 function exportGapAnalysisCsv(records) {
@@ -6965,4 +7174,31 @@ function exportReportDocument(store) {
     }
   }, 250);
 }
+
+/**
+ * Trigger Live Print / Save as PDF for Official Enterprise Documents (Phase 5C)
+ * Opens Preview Viewport and Triggers window.print()
+ * @param {string} docType
+ * @param {Object} store
+ * @param {HTMLElement} container
+ */
+function triggerPrintOfficialDocument(docType, store, container) {
+  modalDocType = docType || DOCUMENT_TYPES.RTM_REPORT;
+  activeModal = 'preview-doc';
+  renderProcessMappingPortal(container);
+  setTimeout(() => {
+    try {
+      window.print();
+    } catch (err) {
+      console.error('Failed to trigger window.print():', err);
+    }
+  }, 100);
+}
+
+export {
+  renderReportsView,
+  renderReportOfficialDocs,
+  renderModals,
+  triggerPrintOfficialDocument
+};
 

@@ -426,8 +426,42 @@
     margin: 0 !important;
   }
 
-  /* Hide everything except the print root */
-  body > *:not(#pm-printable-root) {
+  /* Hide app chrome, sidebar, toolbar, and non-document elements */
+  .workspace-preview-column,
+  .pm-header,
+  .pm-nav-tabs,
+  .pm-reports-header,
+  .pm-doc-preview-toolbar,
+  .pm-no-print,
+  .device-stage,
+  .device-toolbar-container,
+  #pm-modal-backdrop:not(.pm-doc-preview-backdrop) {
+    display: none !important;
+  }
+
+  /* Reset workspace and modal hierarchy during print */
+  .workspace-layout,
+  .workspace-review-column,
+  #review-panel-container,
+  .pm-portal,
+  .pm-doc-preview-backdrop,
+  .pm-doc-preview-container,
+  .pm-doc-preview-viewport {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  /* Hide everything in body if not inside document structure */
+  body > *:not(.workspace-layout):not(#pm-printable-root) {
     display: none !important;
   }
 
@@ -436,6 +470,7 @@
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
+    display: block !important;
   }
 
   #pm-printable-root .pm-doc-sheet {
