@@ -1,0 +1,476 @@
+/**
+ * process-mapping-print.css
+ * Enterprise A4 Print & Formal Document Styling for SIGMA Rubber Nursery
+ * Scoped strictly under #pm-printable-root and @media print
+ */
+
+/* ==========================================================================
+   1. Screen Preview Styling (A4 Document Sheet Simulation)
+   ========================================================================== */
+
+#pm-printable-root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #1e293b;
+  background-color: #f1f5f9;
+  line-height: 1.5;
+  font-size: 11pt;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+#pm-printable-root .pm-doc-sheet {
+  background: #ffffff;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 20px auto;
+  padding: 20mm 15mm 20mm 15mm;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* ==========================================================================
+   2. Watermark for DRAFT Documents
+   ========================================================================== */
+
+#pm-printable-root .pm-doc-watermark {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-35deg);
+  font-size: 48pt;
+  font-weight: 800;
+  color: rgba(226, 232, 240, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 6px;
+  pointer-events: none;
+  z-index: 0;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* ==========================================================================
+   3. Cover Page Layout
+   ========================================================================== */
+
+#pm-printable-root .pm-doc-cover {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 257mm;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+}
+
+#pm-printable-root .pm-cover-header {
+  border-bottom: 2px solid #1b365d;
+  padding-bottom: 15px;
+}
+
+#pm-printable-root .pm-cover-company {
+  font-size: 16pt;
+  font-weight: 800;
+  color: #1b365d;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+#pm-printable-root .pm-cover-system {
+  font-size: 11pt;
+  color: #475569;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+#pm-printable-root .pm-cover-body {
+  margin: 40px 0;
+}
+
+#pm-printable-root .pm-cover-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  font-size: 9pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 2px;
+  margin-bottom: 16px;
+}
+
+#pm-printable-root .pm-badge-draft {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+#pm-printable-root .pm-badge-approved {
+  background-color: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+#pm-printable-root .pm-cover-code {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+
+#pm-printable-root .pm-cover-title {
+  font-size: 24pt;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.25;
+  margin: 0 0 16px 0;
+}
+
+#pm-printable-root .pm-cover-desc {
+  font-size: 11pt;
+  color: #475569;
+  line-height: 1.6;
+  max-width: 170mm;
+}
+
+#pm-printable-root .pm-cover-footer {
+  border-top: 1px solid #cbd5e1;
+  padding-top: 20px;
+}
+
+#pm-printable-root .pm-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+#pm-printable-root .pm-meta-item {
+  font-size: 9.5pt;
+}
+
+#pm-printable-root .pm-meta-label {
+  color: #64748b;
+  font-weight: 600;
+  display: inline-block;
+  width: 120px;
+}
+
+#pm-printable-root .pm-meta-value {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   4. Section & Chapter Headings
+   ========================================================================== */
+
+#pm-printable-root .pm-doc-section {
+  margin-bottom: 30px;
+  position: relative;
+  z-index: 1;
+}
+
+#pm-printable-root .pm-doc-h1 {
+  font-size: 15pt;
+  font-weight: 800;
+  color: #1b365d;
+  border-bottom: 1.5px solid #cbd5e1;
+  padding-bottom: 6px;
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+#pm-printable-root .pm-doc-h2 {
+  font-size: 12pt;
+  font-weight: 700;
+  color: #334155;
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+
+#pm-printable-root .pm-doc-p {
+  font-size: 10pt;
+  color: #334155;
+  line-height: 1.55;
+  margin: 0 0 10px 0;
+}
+
+/* ==========================================================================
+   5. Table of Contents (TOC)
+   ========================================================================== */
+
+#pm-printable-root .pm-toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#pm-printable-root .pm-toc-item {
+  margin-bottom: 8px;
+}
+
+#pm-printable-root .pm-toc-main {
+  font-weight: 700;
+  font-size: 10pt;
+  color: #1b365d;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dotted #cbd5e1;
+  padding-bottom: 3px;
+}
+
+#pm-printable-root .pm-toc-sublist {
+  list-style: none;
+  padding-left: 20px;
+  margin-top: 4px;
+}
+
+#pm-printable-root .pm-toc-subitem {
+  font-size: 9pt;
+  color: #475569;
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+/* ==========================================================================
+   6. Executive Summary & KPI Cards
+   ========================================================================== */
+
+#pm-printable-root .pm-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 14px 0;
+}
+
+#pm-printable-root .pm-kpi-card {
+  border: 1px solid #cbd5e1;
+  padding: 8px 10px;
+  background-color: #f8fafc;
+  border-radius: 2px;
+}
+
+#pm-printable-root .pm-kpi-title {
+  font-size: 7.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+#pm-printable-root .pm-kpi-num {
+  font-size: 14pt;
+  font-weight: 800;
+  color: #1b365d;
+}
+
+#pm-printable-root .pm-kpi-sub {
+  font-size: 7.5pt;
+  color: #475569;
+}
+
+/* ==========================================================================
+   7. Tables (RTM, Gap, Control)
+   ========================================================================== */
+
+#pm-printable-root .pm-doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8pt;
+  margin-top: 10px;
+  margin-bottom: 16px;
+  page-break-inside: auto;
+}
+
+#pm-printable-root .pm-doc-table th {
+  background-color: #1b365d;
+  color: #ffffff;
+  font-weight: 700;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid #1b365d;
+  white-space: nowrap;
+}
+
+#pm-printable-root .pm-doc-table td {
+  padding: 5px 8px;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  vertical-align: top;
+  line-height: 1.35;
+}
+
+#pm-printable-root .pm-doc-table tr:nth-child(even) td {
+  background-color: #f8fafc;
+}
+
+#pm-printable-root .pm-doc-table-compact td {
+  padding: 4px 6px;
+  font-size: 7.5pt;
+}
+
+/* ==========================================================================
+   8. Status Badges in Print
+   ========================================================================== */
+
+#pm-printable-root .pm-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 7pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+#pm-printable-root .pm-tag-covered {
+  background-color: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+#pm-printable-root .pm-tag-gap {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+#pm-printable-root .pm-tag-mgmt {
+  background-color: #e0f2fe;
+  color: #075985;
+  border: 1px solid #7dd3fc;
+}
+
+#pm-printable-root .pm-tag-rule {
+  background-color: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  margin-right: 2px;
+  margin-bottom: 2px;
+}
+
+/* ==========================================================================
+   9. Approval & Sign-Off Section
+   ========================================================================== */
+
+#pm-printable-root .pm-approval-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 20px;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+#pm-printable-root .pm-approval-box {
+  border: 1px solid #94a3b8;
+  padding: 12px;
+  background-color: #ffffff;
+  border-radius: 2px;
+}
+
+#pm-printable-root .pm-approval-role {
+  font-size: 8.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #1b365d;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 4px;
+  margin-bottom: 40px; /* Space for physical signature */
+}
+
+#pm-printable-root .pm-approval-line {
+  font-size: 8pt;
+  color: #334155;
+  margin-top: 4px;
+}
+
+/* ==========================================================================
+   10. Provenance Block
+   ========================================================================== */
+
+#pm-printable-root .pm-provenance-box {
+  border: 1px solid #cbd5e1;
+  background-color: #f8fafc;
+  padding: 12px;
+  font-size: 8.5pt;
+  margin-top: 14px;
+}
+
+#pm-printable-root .pm-provenance-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+/* ==========================================================================
+   11. CSS Paged Media & Print Rules (@media print)
+   ========================================================================== */
+
+@page {
+  size: A4 portrait;
+  margin: 15mm 12mm 15mm 12mm;
+}
+
+@page :first {
+  margin: 0;
+}
+
+@media print {
+  body {
+    background: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide everything except the print root */
+  body > *:not(#pm-printable-root) {
+    display: none !important;
+  }
+
+  #pm-printable-root {
+    background: transparent !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #pm-printable-root .pm-doc-sheet {
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: auto !important;
+  }
+
+  .pm-page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  .pm-avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  #pm-printable-root .pm-doc-table th {
+    background-color: #1b365d !important;
+    color: #ffffff !important;
+  }
+
+  #pm-printable-root .pm-doc-table {
+    page-break-inside: auto;
+  }
+
+  #pm-printable-root .pm-doc-table tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  #pm-printable-root thead {
+    display: table-header-group;
+  }
+}
