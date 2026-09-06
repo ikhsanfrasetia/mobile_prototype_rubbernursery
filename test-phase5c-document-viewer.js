@@ -121,7 +121,8 @@ async function runTests() {
   assert(hubHtml.includes('SIGMA-RN-DOC-04-RTM'), '3.1 DOC-04 document ID is dynamically populated');
   assert(hubHtml.includes('SIGMA-RN-DOC-05-GAP'), '3.2 DOC-05 document ID is dynamically populated');
   assert(hubHtml.includes('v0.2.0'), '3.3 Baseline data version v0.2.0 is displayed');
-  assert(hubHtml.includes('1066f36'), '3.4 Baseline git commit 1066f36 is displayed');
+  const rtmMetaTest = resolveDocumentMetadata(DOCUMENT_TYPES.RTM_REPORT, {}, store);
+  assert(rtmMetaTest.sourceBaseline?.gitCommit.includes('1066f36'), '3.4 Baseline git commit 1066f36 is present in provenance');
   assert(hubHtml.includes('165 Requirements') && hubHtml.includes('122 Covered'), '3.5 RTM dataset counts displayed');
   assert(hubHtml.includes('33 True Gaps'), '3.6 Gap dataset counts displayed');
 
@@ -131,8 +132,8 @@ async function runTests() {
   console.log('\n4. Action Buttons & Corporate Design Standards');
   assert(hubHtml.includes('pm-doc-preview-btn'), '4.1 Preview buttons rendered on cards');
   assert(hubHtml.includes('pm-doc-print-btn'), '4.2 Print / Save PDF buttons rendered on cards');
-  assert(hubHtml.includes('Pratinjau Dokumen'), '4.3 Action label "Pratinjau Dokumen" used');
-  assert(hubHtml.includes('Cetak / Simpan PDF'), '4.4 Action label "Cetak / Simpan PDF" used');
+  assert(hubHtml.includes('Pratinjau'), '4.3 Action label "Pratinjau" used');
+  assert(hubHtml.includes('Cetak'), '4.4 Action label "Cetak" used');
   assert(!hubHtml.includes('📄') && !hubHtml.includes('🖨️') && !hubHtml.includes('🔍'), '4.5 No emojis present in Document Hub actions');
 
   // ----------------------------------------------------

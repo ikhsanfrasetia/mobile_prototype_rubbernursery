@@ -420,21 +420,37 @@
 }
 
 @media print {
-  body {
-    background: none !important;
+  html, body {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    background: #ffffff !important;
     padding: 0 !important;
     margin: 0 !important;
   }
 
   /* Hide app chrome, sidebar, toolbar, and non-document elements */
   .workspace-preview-column,
-  .pm-header,
-  .pm-nav-tabs,
-  .pm-reports-header,
-  .pm-doc-preview-toolbar,
-  .pm-no-print,
   .device-stage,
   .device-toolbar-container,
+  .device-frame,
+  .review-header,
+  .review-nav,
+  .pm-header,
+  .pm-nav-tabs,
+  .pm-manage-bar,
+  .pm-footer,
+  .pm-reports-header,
+  .pm-report-controls,
+  .pm-doc-preview-toolbar,
+  .pm-no-print,
+  .pm-tooltip,
+  .pm-toast,
+  .sidebar,
+  .top-bar,
+  #app-header,
+  #pm-print-frame,
   #pm-modal-backdrop:not(.pm-doc-preview-backdrop) {
     display: none !important;
   }
@@ -443,12 +459,18 @@
   .workspace-layout,
   .workspace-review-column,
   #review-panel-container,
+  .process-mapping-container,
+  #process-mapping-container,
   .pm-portal,
+  #pm-portal-root,
+  .pm-modal-backdrop,
   .pm-doc-preview-backdrop,
+  #pm-modal-backdrop,
   .pm-doc-preview-container,
   .pm-doc-preview-viewport {
     display: block !important;
     position: static !important;
+    inset: auto !important;
     width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
@@ -458,6 +480,8 @@
     background: transparent !important;
     box-shadow: none !important;
     overflow: visible !important;
+    float: none !important;
+    border: none !important;
   }
 
   /* Hide everything in body if not inside document structure */
@@ -468,17 +492,28 @@
   #pm-printable-root {
     background: transparent !important;
     width: 100% !important;
+    min-height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
     display: block !important;
+    overflow: visible !important;
   }
 
   #pm-printable-root .pm-doc-sheet {
     box-shadow: none !important;
+    border: none !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
     min-height: auto !important;
+    overflow: visible !important;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  #pm-printable-root .pm-doc-sheet:last-child {
+    page-break-after: auto;
+    break-after: auto;
   }
 
   .pm-page-break {
@@ -494,6 +529,8 @@
   #pm-printable-root .pm-doc-table th {
     background-color: #1b365d !important;
     color: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   #pm-printable-root .pm-doc-table {

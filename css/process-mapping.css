@@ -2412,32 +2412,66 @@
 
 /* Print Stylesheet for Pure Document Export */
 @media print {
-  body {
+  html, body {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
     background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   .workspace-preview-column,
+  .device-stage,
   .device-toolbar-container,
   .device-frame,
   .review-header,
   .review-nav,
   .pm-header,
+  .pm-nav-tabs,
   .pm-manage-bar,
   .pm-footer,
   .pm-reports-header,
   .pm-report-controls,
+  .pm-doc-preview-toolbar,
+  .pm-no-print,
   .pm-tooltip,
   .pm-toast,
   .sidebar,
   .top-bar,
   #app-header,
-  #pm-print-frame {
+  #pm-print-frame,
+  #pm-modal-backdrop:not(.pm-doc-preview-backdrop) {
     display: none !important;
   }
 
-  .pm-portal {
-    padding: 0 !important;
+  .workspace-layout,
+  .workspace-review-column,
+  #review-panel-container,
+  .process-mapping-container,
+  #process-mapping-container,
+  .pm-portal,
+  #pm-portal-root,
+  .pm-modal-backdrop,
+  .pm-doc-preview-backdrop,
+  #pm-modal-backdrop,
+  .pm-doc-preview-container,
+  .pm-doc-preview-viewport {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    float: none !important;
+    border: none !important;
   }
 
   .pm-reports-container {

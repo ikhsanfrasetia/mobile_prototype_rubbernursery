@@ -3323,6 +3323,16 @@ function attachCanvasPan(stage) {
 // -----------------------------------------------------------------------------
 // Phase 4B Cross-Navigation Helpers
 // -----------------------------------------------------------------------------
+function getPortalContainer() {
+  return document.getElementById('process-mapping-container') ||
+         document.getElementById('pm-portal-container') ||
+         document.querySelector('.process-mapping-container') ||
+         document.getElementById('pm-portal-root')?.parentElement ||
+         document.querySelector('#pm-portal-root')?.parentElement ||
+         document.querySelector('.pm-container') ||
+         document.body;
+}
+
 function jumpToFlowNode(moduleId, featureId, nodeId) {
   currentNavTab = 'mapping';
   currentViewTab = 'flow';
@@ -3339,7 +3349,7 @@ function jumpToFlowNode(moduleId, featureId, nodeId) {
   isDetailOpen = true;
   closeModal();
 
-  const container = document.getElementById('pm-portal-container') || document.querySelector('.pm-container');
+  const container = getPortalContainer();
   if (container) {
     const store = getActiveStore();
     renderProcessMappingPortal(container);
@@ -3358,11 +3368,39 @@ function jumpToRequirement(reqId) {
   currentNavTab = 'mapping';
   currentViewTab = 'requirement';
   reqSearchQuery = reqId;
+
+  try {
+    const req = getRequirementByReqId(reqId);
+    if (req) {
+      if (req.moduleId) {
+        currentModuleId = req.moduleId;
+        selectedModuleId = req.moduleId;
+      } else if (req.module) {
+        const store = getActiveStore();
+        const mod = store.modules?.find(m => m.name === req.module || m.id === req.module);
+        if (mod) {
+          currentModuleId = mod.id;
+          selectedModuleId = mod.id;
+        }
+      }
+    }
+  } catch (e) {
+    // fallback if lookup is not available
+  }
+
   closeModal();
 
-  const container = document.getElementById('pm-portal-container') || document.querySelector('.pm-container');
+  const container = getPortalContainer();
   if (container) {
     renderProcessMappingPortal(container);
+    setTimeout(() => {
+      const reqEl = container.querySelector(`[data-req-id="${reqId}"]`);
+      if (reqEl) {
+        reqEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        reqEl.classList.add('is-pulse-highlight');
+        setTimeout(() => reqEl.classList.remove('is-pulse-highlight'), 2500);
+      }
+    }, 150);
   }
 }
 
@@ -3372,7 +3410,7 @@ function openBusinessRuleDetailModal(ruleId) {
   if (rule) {
     modalData = JSON.parse(JSON.stringify(rule));
     activeModal = 'detail-rule';
-    const container = document.getElementById('pm-portal-container') || document.querySelector('.pm-container');
+    const container = getPortalContainer();
     if (container) {
       renderProcessMappingPortal(container);
     }
@@ -5733,11 +5771,11 @@ function renderReportOfficialDocs(store) {
         code: rtmMeta.docCode || 'DOC-04',
         id: rtmMeta.documentId,
         title: rtmMeta.title,
-        version: rtmMeta.documentVersion,
+        version: rtmMeta.documentVersion || 'v1.0.0',
         status: rtmMeta.documentStatus || DOCUMENT_STATUS.DRAFT,
         desc: rtmMeta.description,
         updated: rtmMeta.generatedDateFormatted || rtmMeta.generatedDate?.split('T')[0] || '-',
-        baseline: `v${rtmMeta.sourceBaseline?.dataVersion || '0.2.0'} (${rtmMeta.sourceBaseline?.gitCommit ? rtmMeta.sourceBaseline.gitCommit.substring(0, 7) : '1066f36'})`,
+        dataVersion: `v${rtmMeta.sourceBaseline?.dataVersion || '0.2.0'}`,
         statsText: `${metrics.totalActiveRequirements} Requirements | ${metrics.flowCovered} Covered | Health ${metrics.totalTraceabilityHealth}%`
       },
       {
@@ -5745,11 +5783,11 @@ function renderReportOfficialDocs(store) {
         code: gapMeta.docCode || 'DOC-05',
         id: gapMeta.documentId,
         title: gapMeta.title,
-        version: gapMeta.documentVersion,
+        version: gapMeta.documentVersion || 'v1.0.0',
         status: gapMeta.documentStatus || DOCUMENT_STATUS.DRAFT,
         desc: gapMeta.description,
         updated: gapMeta.generatedDateFormatted || gapMeta.generatedDate?.split('T')[0] || '-',
-        baseline: `v${gapMeta.sourceBaseline?.dataVersion || '0.2.0'} (${gapMeta.sourceBaseline?.gitCommit ? gapMeta.sourceBaseline.gitCommit.substring(0, 7) : '1066f36'})`,
+        dataVersion: `v${gapMeta.sourceBaseline?.dataVersion || '0.2.0'}`,
         statsText: `${metrics.flowGap} True Gaps Teridentifikasi | 5 Modul Terdampak`
       }
     ];
@@ -5761,7 +5799,7 @@ function renderReportOfficialDocs(store) {
           <div class="pm-doc-hub-header-main">
             <h2 class="pm-doc-hub-title">Pusat Dokumen Resmi & Spesifikasi Sistem</h2>
             <p class="pm-doc-hub-desc">
-              Koleksi dokumen formal berstandar A4 korporat yang digenerate secara langsung (real-time runtime) dari Single Source of Truth SIGMA Rubber Nursery.
+              Dokumen formal A4 standar korporat yang digenerate langsung dari Single Source of Truth SIGMA Rubber Nursery.
             </p>
           </div>
           <div class="pm-doc-hub-header-meta">
@@ -5797,10 +5835,10 @@ function renderReportOfficialDocs(store) {
                 </div>
                 <div class="pm-doc-card-meta-item">
                   <span class="pm-doc-card-meta-label">Versi Data Acuan:</span>
-                  <span class="pm-doc-card-meta-val">${escapeHtml(item.baseline)}</span>
+                  <span class="pm-doc-card-meta-val">${escapeHtml(item.dataVersion)}</span>
                 </div>
                 <div class="pm-doc-card-meta-item">
-                  <span class="pm-doc-card-meta-label">Waktu Generate:</span>
+                  <span class="pm-doc-card-meta-label">Terakhir Dibuat:</span>
                   <span class="pm-doc-card-meta-val">${escapeHtml(item.updated)}</span>
                 </div>
                 <div class="pm-doc-card-meta-item pm-doc-card-meta-full">
@@ -5811,10 +5849,10 @@ function renderReportOfficialDocs(store) {
 
               <div class="pm-doc-card-actions">
                 <button type="button" class="pm-btn pm-btn-outline pm-doc-preview-btn" data-doc-type="${item.type}">
-                  Pratinjau Dokumen
+                  Pratinjau
                 </button>
                 <button type="button" class="pm-btn pm-btn-primary pm-doc-print-btn" data-doc-type="${item.type}">
-                  Cetak / Simpan PDF
+                  Cetak PDF
                 </button>
               </div>
             </div>
@@ -7183,16 +7221,19 @@ function exportReportDocument(store) {
  * @param {HTMLElement} container
  */
 function triggerPrintOfficialDocument(docType, store, container) {
+  const cont = container || getPortalContainer();
   modalDocType = docType || DOCUMENT_TYPES.RTM_REPORT;
   activeModal = 'preview-doc';
-  renderProcessMappingPortal(container);
-  setTimeout(() => {
-    try {
-      window.print();
-    } catch (err) {
-      console.error('Failed to trigger window.print():', err);
-    }
-  }, 100);
+  if (cont) {
+    renderProcessMappingPortal(cont);
+    setTimeout(() => {
+      try {
+        window.print();
+      } catch (err) {
+        console.error('Failed to trigger window.print():', err);
+      }
+    }, 250);
+  }
 }
 
 export {
