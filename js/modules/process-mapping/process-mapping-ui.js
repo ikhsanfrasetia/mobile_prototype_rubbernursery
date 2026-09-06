@@ -25,10 +25,26 @@ import {
   editRequirement,
   approveRequirementRevision,
   archiveRequirement,
+  generateUniqueReqId,
+  checkRequirementNodeUsage,
+  getRequirementRevisionHistory,
+  getNodeRevisionHistory,
+  getRequirementByReqId,
   addFlowNode,
   editFlowNode,
   reorderFlowNode,
   archiveFlowNode,
+  addFlowEdge,
+  editFlowEdge,
+  archiveFlowEdge,
+  getFlowEdgeRevisionHistory,
+  getAllPendingRevisions,
+  calculateEntityDiff,
+  submitEntityForReview,
+  confirmEntityRevision,
+  rejectEntityRevision,
+  discardEntityDraft,
+  verifyReviewerCredentials,
   exportProjectDataFile,
   previewImportProjectData,
   applyImportedProjectData,
@@ -40,42 +56,64 @@ let isManageMode = false;
 let currentRole = 'mantri-bibitan';
 let currentModuleId = 'ALL'; // 'ALL' | '01-presensi' | ... | '11-pengeluaran'
 let currentFeatureId = 'grafting';
-let currentViewTab = 'flow'; // 'flow' | 'requirement' | 'business-rule' | 'related-role' | 'end-to-end'
+let currentViewTab = 'flow'; // 'flow' | 'requirement' | 'review' | 'business-rule' | 'related-role' | 'end-to-end'
 let selectedNodeId = 'N_P002'; // default: Scan QR Batch
 let selectedModuleId = '04-okulasi'; // the module of selected node
 let isDetailOpen = true;
 let zoomScale = 1.0;
 let searchQuery = '';
 
-// Portal Navigation State ('dashboard' | 'mapping' | 'reference' | 'reports')
-let currentNavTab = 'mapping';
+// Requirement Manager State
+let reqSearchQuery = '';
+let reqFilterRole = 'ALL';
+let reqFilterModule = 'ALL';
+let reqFilterFeature = 'ALL';
+let reqFilterStatus = 'ALL';
+let reqCurrentPage = 1;
+let reqPageSize = 5;
+let selectedReqDetailVersion = null; // For previewing earlier revisions in detail modal
 
-// Reference Filter State
-let refFilterType = 'all'; // 'all' | 'functional' | 'non-functional'
-let refFilterCategory = 'all';
-let refFilterStatus = 'all';
-let refSearchQuery = '';
+// Revision & Review State
+let revSearchQuery = '';
+let revFilterEntityType = 'ALL'; // 'ALL' | 'Requirement' | 'Node' | 'Connection'
+let revFilterStatus = 'ALL'; // 'ALL' | 'Draft' | 'In Review' | 'Rejected' | 'Archived'
+let revFilterModule = 'ALL';
+let revCurrentPage = 1;
+let revPageSize = 10;
 
-// Reports State
-let reportSubTab = 'req-doc'; // 'req-doc' | 'bp-doc' | 'req-matrix'
-let reportFilterRole = 'all';
-let reportFilterModule = 'all';
-let reportFilterStatus = 'all';
-
-// Active Modals State
-let activeModal = null; // null | 'edit-req' | 'edit-node' | 'export' | 'import' | 'reset'
+// Modal / Dialog State
+let activeModal = null; // null | 'edit-req' | 'detail-req' | 'archive-req' | 'edit-node' | 'archive-node' | 'edit-edge' | 'archive-edge' | 'compare-rev' | 'reject-rev' | 'discard-rev' | 'export' | 'import' | 'reset-draft'
 let modalData = null;
 let toastMessage = null;
 let toastTimer = null;
 
-window.handleMermaidClick = function (nodeId) {
+// Portal Navigation State ('dashboard' | 'mapping' | 'reference' | 'reports')
+let currentNavTab = 'mapping';
+
+// Reference Tab Filter State
+let refFilterType = 'ALL'; // 'ALL' | 'KF' | 'KNF'
+let refFilterCategory = 'ALL';
+let refFilterStatus = 'ALL';
+let refSearchQuery = '';
+
+// Reports Tab Filter State
+let reportSubTab = 'SRS'; // 'SRS' | 'BPD' | 'RTM'
+let reportFilterModule = 'ALL';
+let reportFilterRole = 'ALL';
+
+/**
+ * Helper to expose click callback for Mermaid nodes to window
+ */
+window.pmSelectMermaidNode = function (nodeId) {
   const event = new CustomEvent('pm-mermaid-click', { detail: { nodeId } });
   window.dispatchEvent(event);
 };
 
-function generateMermaidSyntax(activeNodes) {
+function generateMermaidSyntax(activeNodes, currentFlow) {
   let str = 'graph TD\n';
   if (!activeNodes || activeNodes.length === 0) return 'graph TD\n  Empty["Belum ada node"]';
+
+  const activeNodeIds = new Set(activeNodes.map(n => n.id));
 
   activeNodes.forEach(node => {
     let shapeOpen = '["';
@@ -100,29 +138,44 @@ function generateMermaidSyntax(activeNodes) {
     str += `  style N_${node.id} ${style}\n`;
   });
 
-  for (let i = 0; i < activeNodes.length; i++) {
-    const node = activeNodes[i];
-    if (node.type === 'end') continue;
+  const explicitEdges = (currentFlow?.edges || []).filter(e => !e.isArchived && !e.isSuperseded && activeNodeIds.has(e.from) && activeNodeIds.has(e.to));
 
-    let nextNode = null;
-    let fallbackNode = null;
-    for (let j = i + 1; j < activeNodes.length; j++) {
-      const nextCandidate = activeNodes[j];
-      if (node.type === 'decision' && !fallbackNode && nextCandidate.code && nextCandidate.code.startsWith('FB-')) {
-        fallbackNode = nextCandidate;
-        continue;
+  if (explicitEdges.length > 0) {
+    // Render using explicit edges
+    explicitEdges.forEach(edge => {
+      const cond = (edge.condition || edge.label || '').trim().replace(/"/g, "'");
+      if (cond) {
+        str += `  N_${edge.from} -- "${cond}" --> N_${edge.to}\n`;
+      } else {
+        str += `  N_${edge.from} --> N_${edge.to}\n`;
       }
-      if (!nextCandidate.code || !nextCandidate.code.startsWith('FB-')) {
-        nextNode = nextCandidate;
-        break;
-      }
-    }
+    });
+  } else {
+    // Fallback sequential rendering for baseline flows with edges=[]
+    for (let i = 0; i < activeNodes.length; i++) {
+      const node = activeNodes[i];
+      if (node.type === 'end') continue;
 
-    if (node.type === 'decision') {
-      if (nextNode) str += `  N_${node.id} -- Sukses --> N_${nextNode.id}\n`;
-      if (fallbackNode) str += `  N_${node.id} -- Fallback --> N_${fallbackNode.id}\n`;
-    } else {
-      if (nextNode) str += `  N_${node.id} --> N_${nextNode.id}\n`;
+      let nextNode = null;
+      let fallbackNode = null;
+      for (let j = i + 1; j < activeNodes.length; j++) {
+        const nextCandidate = activeNodes[j];
+        if (node.type === 'decision' && !fallbackNode && nextCandidate.code && nextCandidate.code.startsWith('FB-')) {
+          fallbackNode = nextCandidate;
+          continue;
+        }
+        if (!nextCandidate.code || !nextCandidate.code.startsWith('FB-')) {
+          nextNode = nextCandidate;
+          break;
+        }
+      }
+
+      if (node.type === 'decision') {
+        if (nextNode) str += `  N_${node.id} -- Sukses --> N_${nextNode.id}\n`;
+        if (fallbackNode) str += `  N_${node.id} -- Fallback --> N_${fallbackNode.id}\n`;
+      } else {
+        if (nextNode) str += `  N_${node.id} --> N_${nextNode.id}\n`;
+      }
     }
   }
   return str;
@@ -139,7 +192,7 @@ export async function renderProcessMappingPortal(container) {
   try {
     store = getActiveStore();
   } catch (err) {
-    container.innerHTML = '<div style="padding: 48px; text-align: center; color: #64748b; font-size: 0.95rem;">🌿 Memuat data resmi proses bisnis pembibitan...</div>';
+    container.innerHTML = '<div style="padding: 48px; text-align: center; color: #64748b; font-size: 0.95rem;">Memuat data resmi proses bisnis pembibitan...</div>';
     store = await initProjectDataStore();
   }
 
@@ -251,15 +304,15 @@ function renderManageToolbar(metadata, isDraftActive) {
       <div class="pm-manage-left">
         <div class="pm-mode-segmented">
           <button type="button" class="pm-mode-seg-btn ${!isManageMode ? 'is-active' : ''}" id="pm-mode-view-btn">
-            👁️ View Mode
+            View Mode
           </button>
           <button type="button" class="pm-mode-seg-btn ${isManageMode ? 'is-active' : ''}" id="pm-mode-manage-btn">
-            ✏️ Manage Mode
+            Manage Mode
           </button>
         </div>
 
         <div class="pm-meta-chip">
-          <span>📦 v${escapeHtml(metadata.version)}</span>
+          <span>v${escapeHtml(metadata.version)}</span>
           <span>&bull;</span>
           <span>Diperbarui: ${escapeHtml(metadata.lastUpdated)}</span>
           <span>(${escapeHtml(metadata.updatedBy)})</span>
@@ -275,16 +328,16 @@ function renderManageToolbar(metadata, isDraftActive) {
       ? `
           <div class="pm-manage-actions">
             <button type="button" class="pm-btn-sm pm-btn-primary" id="pm-btn-save-draft" title="Simpan ke draf lokal dan perbarui pratinjau seketika">
-              💾 Simpan Draf
+              Simpan Draf
             </button>
             <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-btn-export-data" title="Ekspor file process-mapping-data.json untuk pembaruan source data">
-              📥 Export Project Data
+              Export Project Data
             </button>
             <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-btn-import-data" title="Impor file data JSON ke editor state">
-              📤 Import Data
+              Import Data
             </button>
             <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-reset-draft" title="Batalkan draf dan muat ulang data resmi dari process-mapping-data.json">
-              🔄 Reset Draf
+              Reset Draf
             </button>
           </div>
         `
@@ -334,7 +387,7 @@ function renderHeader(metadata) {
             autocomplete="off"
             spellcheck="false"
           />
-          <kbd class="pm-search-kbd">⌘K</kbd>
+          <kbd class="pm-search-kbd">Ctrl+K</kbd>
         </div>
 
         <div class="pm-header-meta">
@@ -379,7 +432,7 @@ function renderSidebar(roleObj, currentMod, roles, modules, commonFeatures) {
                   data-module-id="ALL"
                   title="Tampilkan seluruh flow 11 module Mantri Bibitan"
                 >
-                  <span class="pm-mod-num">★</span>
+                  <span class="pm-mod-num">&bull;</span>
                   <span class="pm-mod-text">Semua Modul (${modules.length})</span>
                 </button>
                 ${modules.map(
@@ -444,6 +497,7 @@ function renderAllModulesContent(store) {
       <div class="pm-sub-tabs">
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'flow' ? 'is-active' : ''}" data-view="flow">Flow Seluruh Modul</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'requirement' ? 'is-active' : ''}" data-view="requirement">Requirement Master (${store.requirements.filter((r) => !r.isArchived).length})</button>
+        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'review' ? 'is-active' : ''}" data-view="review">Revision &amp; Review ${renderReviewBadge(store, 'ALL')}</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'business-rule' ? 'is-active' : ''}" data-view="business-rule">Business Rules</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'related-role' ? 'is-active' : ''}" data-view="related-role">Related Role</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'end-to-end' ? 'is-active' : ''}" data-view="end-to-end">End-to-End Overview</button>
@@ -462,12 +516,14 @@ function renderAllModulesContent(store) {
     ${currentViewTab === 'flow'
       ? renderAllModulesFlowSections(store)
       : currentViewTab === 'requirement'
-        ? renderRequirementsView(store.requirements, store.modules)
-        : currentViewTab === 'business-rule'
-          ? renderBusinessRuleView(store.businessRules)
-          : currentViewTab === 'related-role'
-            ? renderRelatedRoleView(null)
-            : renderEndToEndView(store.endToEndPipeline)
+        ? renderRequirementsView(store.requirements, store.modules, store)
+        : currentViewTab === 'review'
+          ? renderRevisionReviewView(store, 'ALL')
+          : currentViewTab === 'business-rule'
+            ? renderBusinessRuleView(store.businessRules)
+            : currentViewTab === 'related-role'
+              ? renderRelatedRoleView(null)
+              : renderEndToEndView(store.endToEndPipeline)
     }
   `;
 }
@@ -500,7 +556,7 @@ function renderAllModulesFlowSections(store) {
                 ${isManageMode
             ? `
                     <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-add-node" data-mod-id="${mod.id}" data-feat-id="${defaultFeatId}">
-                      ➕ Tambah Node
+                      Tambah Node
                     </button>
                   `
             : ''
@@ -519,7 +575,7 @@ function renderAllModulesFlowSections(store) {
 
             <!-- Flow Nodes Stage -->
             <div class="pm-section-stage" style="display:flex; justify-content:center;">
-              <div class="mermaid-diagram" data-mermaid="${escapeHtml(generateMermaidSyntax(activeNodes))}" style="width:100%; text-align:center;"></div>
+              <div class="mermaid-diagram" data-mermaid="${escapeHtml(generateMermaidSyntax(activeNodes, flow))}" style="width:100%; text-align:center;"></div>
             </div>
           </section>
         `;
@@ -557,6 +613,7 @@ function renderSingleModuleContent(currentMod, store) {
       <div class="pm-sub-tabs">
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'flow' ? 'is-active' : ''}" data-view="flow">Flow</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'requirement' ? 'is-active' : ''}" data-view="requirement">Requirement</button>
+        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'review' ? 'is-active' : ''}" data-view="review">Revision &amp; Review ${renderReviewBadge(store, currentMod.id)}</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'business-rule' ? 'is-active' : ''}" data-view="business-rule">Business Rule</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'related-role' ? 'is-active' : ''}" data-view="related-role">Related Role</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'end-to-end' ? 'is-active' : ''}" data-view="end-to-end">End-to-End</button>
@@ -586,13 +643,89 @@ function renderSingleModuleContent(currentMod, store) {
     ${currentViewTab === 'flow'
       ? renderFlowCanvas(currentMod, currentFlow, activeNodes)
       : currentViewTab === 'requirement'
-        ? renderRequirementsView(store.requirements.filter((r) => r.module === currentMod.name), store.modules)
-        : currentViewTab === 'business-rule'
-          ? renderBusinessRuleView(store.businessRules)
-          : currentViewTab === 'related-role'
-            ? renderRelatedRoleView(currentMod)
-            : renderEndToEndView(store.endToEndPipeline)
+        ? renderRequirementsView(store.requirements, store.modules, store)
+        : currentViewTab === 'review'
+          ? renderRevisionReviewView(store, currentMod.id)
+          : currentViewTab === 'business-rule'
+            ? renderBusinessRuleView(store.businessRules)
+            : currentViewTab === 'related-role'
+              ? renderRelatedRoleView(currentMod)
+              : renderEndToEndView(store.endToEndPipeline)
     }
+  `;
+}
+
+function renderExplicitConnectionsSection(currentMod, currentFlow, activeNodes) {
+  const activeEdges = (currentFlow?.edges || []).filter(e => !e.isArchived && !e.isSuperseded);
+  const activeNodesMap = new Map((activeNodes || []).map(n => [n.id, n]));
+
+  return `
+    <div class="pm-connections-container" style="margin-top:20px; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #f1f5f9;">
+        <div>
+          <h4 style="margin:0; font-size:0.92rem; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
+            <span>Koneksi &amp; Percabangan Alur (Connections)</span>
+            <span class="pm-status-badge ${activeEdges.length > 0 ? 'pm-status-confirmed' : 'pm-status-draft'}" style="font-size:0.7rem; padding:1px 6px;">
+              ${activeEdges.length} ${activeEdges.length > 0 ? 'Eksplisit' : 'Sekuensial Otomatis'}
+            </span>
+          </h4>
+          <p style="margin:2px 0 0; font-size:0.75rem; color:#64748b;">
+            Hubungan eksplisit antar langkah dan kondisi percabangan (Decision branch) pada alur ini.
+          </p>
+        </div>
+        ${isManageMode ? `
+          <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-add-edge" data-mod-id="${currentMod.id}" data-feat-id="${currentFeatureId}">
+            Tambah Koneksi
+          </button>
+        ` : ''}
+      </div>
+
+      ${activeEdges.length === 0 ? `
+        <div style="padding:14px; text-align:center; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:6px; font-size:0.8rem; color:#64748b;">
+          Alur saat ini menggunakan <strong>hubungan sekuensial otomatis (Baseline)</strong>.
+          ${isManageMode ? '<br/><span style="margin-top:4px; display:inline-block;">Klik tombol <strong>Tambah Koneksi</strong> di atas untuk membuat hubungan eksplisit atau percabangan kondisi (Success / Fallback).</span>' : ''}
+        </div>
+      ` : `
+        <div class="pm-connections-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:10px;">
+          ${activeEdges.map(edge => {
+            const src = activeNodesMap.get(edge.from) || { code: edge.from, label: 'Node ' + edge.from };
+            const tgt = activeNodesMap.get(edge.to) || { code: edge.to, label: 'Node ' + edge.to };
+            const cond = (edge.condition || edge.label || '').trim();
+
+            return `
+              <div class="pm-edge-card" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px; display:flex; flex-direction:column; justify-content:space-between; gap:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <span style="font-size:0.75rem; font-weight:700; color:#1e293b; background:#e2e8f0; padding:2px 6px; border-radius:4px;">${escapeHtml(src.code || 'From')}</span>
+                    <span style="color:#64748b; font-size:0.8rem;">&rarr;</span>
+                    ${cond ? `
+                      <span class="pm-status-badge ${cond.toLowerCase().includes('fallback') || cond.toLowerCase().includes('gagal') || cond.toLowerCase().includes('tidak') ? 'pm-status-archived' : 'pm-status-confirmed'}" style="font-size:0.68rem; padding:1px 6px;">
+                        ${escapeHtml(cond)}
+                      </span>
+                      <span style="color:#64748b; font-size:0.8rem;">&rarr;</span>
+                    ` : ''}
+                    <span style="font-size:0.75rem; font-weight:700; color:#1e293b; background:#e2e8f0; padding:2px 6px; border-radius:4px;">${escapeHtml(tgt.code || 'To')}</span>
+                  </div>
+                  <div style="display:flex; gap:4px; align-items:center;">
+                    <span class="pm-status-badge ${edge.status === 'Confirmed' ? 'pm-status-confirmed' : 'pm-status-draft'}" style="font-size:0.65rem; padding:1px 5px;">v${edge.version || 1} ${edge.status || 'Draft'}</span>
+                    ${isManageMode ? `
+                      <button type="button" class="pm-row-btn pm-btn-edge-edit" title="Edit Koneksi" data-edge-id="${escapeHtml(edge.id)}" data-mod-id="${currentMod.id}" data-feat-id="${currentFeatureId}">Edit</button>
+                      <button type="button" class="pm-row-btn is-danger pm-btn-edge-archive" title="Arsipkan Koneksi" data-edge-id="${escapeHtml(edge.id)}" data-mod-id="${currentMod.id}" data-feat-id="${currentFeatureId}">Arsip</button>
+                    ` : ''}
+                  </div>
+                </div>
+
+                <div style="font-size:0.76rem; color:#475569; display:flex; flex-direction:column; gap:2px;">
+                  <div><strong>Dari:</strong> ${escapeHtml(src.label || src.title || src.code)}</div>
+                  <div><strong>Menuju:</strong> ${escapeHtml(tgt.label || tgt.title || tgt.code)}</div>
+                  ${edge.description ? `<div style="font-style:italic; color:#64748b; margin-top:2px;">"${escapeHtml(edge.description)}"</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `}
+    </div>
   `;
 }
 
@@ -601,12 +734,15 @@ function renderFlowCanvas(currentMod, currentFlow, activeNodes) {
     <div class="pm-canvas-container" id="pm-canvas-container">
       <!-- Toolbar Controls -->
       <div class="pm-canvas-toolbar">
-        <div class="pm-canvas-title">
+        <div class="pm-canvas-title" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span>${escapeHtml(currentFlow.title || currentMod.name)}</span>
           ${isManageMode
       ? `
               <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-add-node" data-mod-id="${currentMod.id}" data-feat-id="${currentFeatureId}">
-                ➕ Tambah Node
+                Tambah Node
+              </button>
+              <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-add-edge" data-mod-id="${currentMod.id}" data-feat-id="${currentFeatureId}">
+                Tambah Koneksi
               </button>
             `
       : ''
@@ -623,9 +759,12 @@ function renderFlowCanvas(currentMod, currentFlow, activeNodes) {
       <!-- Canvas Stage -->
       <div class="pm-canvas-stage" id="pm-canvas-stage">
         <div class="pm-canvas-pan-wrap" id="pm-pan-wrap" style="transform: scale(${zoomScale}); width:100%; display:flex; justify-content:center;">
-          <div class="mermaid-diagram" data-mermaid="${escapeHtml(generateMermaidSyntax(activeNodes))}" style="width:100%; text-align:center;"></div>
+          <div class="mermaid-diagram" data-mermaid="${escapeHtml(generateMermaidSyntax(activeNodes, currentFlow))}" style="width:100%; text-align:center;"></div>
         </div>
       </div>
+
+      <!-- Explicit Connections Section -->
+      ${renderExplicitConnectionsSection(currentMod, currentFlow, activeNodes)}
     </div>
   `;
 }
@@ -659,8 +798,8 @@ function renderFlowNodeBox(node, index, total, modId, featId) {
           <div class="pm-node-ctrl-btns">
             ${index > 0 ? `<button type="button" class="pm-node-btn-icon pm-btn-node-up" title="Geser ke Kiri (Naik)" data-node-id="${node.id}" data-mod-id="${modId}" data-feat-id="${featId}">↑</button>` : ''}
             ${index < total - 1 ? `<button type="button" class="pm-node-btn-icon pm-btn-node-down" title="Geser ke Kanan (Turun)" data-node-id="${node.id}" data-mod-id="${modId}" data-feat-id="${featId}">↓</button>` : ''}
-            <button type="button" class="pm-node-btn-icon pm-btn-node-edit" title="Edit Node / Buat Revisi" data-node-id="${node.id}" data-mod-id="${modId}" data-feat-id="${featId}">✏️</button>
-            <button type="button" class="pm-node-btn-icon is-danger pm-btn-node-archive" title="Arsipkan Node" data-node-id="${node.id}" data-mod-id="${modId}" data-feat-id="${featId}">📦</button>
+            <button type="button" class="pm-node-btn-icon pm-btn-node-edit" title="Edit Node / Buat Revisi" data-node-id="${node.id}" data-mod-id="${modId}" data-feat-id="${featId}">Edit</button>
+            <button type="button" class="pm-node-btn-icon is-danger pm-btn-node-archive" title="Arsipkan Node" data-node-id="${node.id}" data-mod-id="${modId}" data-feat-id="${featId}">Arsip</button>
           </div>
         </div>
       `
@@ -693,76 +832,651 @@ function renderFlowNodeBox(node, index, total, modId, featId) {
   `;
 }
 
-function renderRequirementsView(reqs, modules) {
-  const activeReqs = reqs.filter((r) => !r.isArchived);
+function renderPagination(currentPage, pageSize, totalItems, type = 'req') {
+  if (totalItems === 0) return '';
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const startItem = (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, totalItems);
+
+  // Generate page numbers with ellipsis
+  const pages = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (currentPage > 3) pages.push('...');
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    for (let i = start; i <= end; i++) {
+      if (!pages.includes(i)) pages.push(i);
+    }
+    if (currentPage < totalPages - 2) pages.push('...');
+    if (!pages.includes(totalPages)) pages.push(totalPages);
+  }
 
   return `
-    <div class="pm-req-table-card" style="margin-top: 0;">
-      <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between;">
-        <span class="pm-req-table-title">Daftar Lengkap Requirement (${activeReqs.length})</span>
-        ${isManageMode
+    <div class="pm-table-footer">
+      <div>
+        Menampilkan <strong>${startItem} - ${endItem}</strong> dari <strong>${totalItems}</strong> ${type === 'req' ? 'requirement' : 'revisi'}
+      </div>
+      <div class="pm-pagination-controls">
+        <button
+          type="button"
+          class="pm-page-btn"
+          data-page-nav="${type}"
+          data-page="${currentPage - 1}"
+          ${currentPage <= 1 ? 'disabled' : ''}
+          title="Halaman Sebelumnya"
+        >
+          &lt;
+        </button>
+
+        ${pages
+          .map((p) =>
+            p === '...'
+              ? `<span class="pm-page-ellipsis">&hellip;</span>`
+              : `
+              <button
+                type="button"
+                class="pm-page-btn ${p === currentPage ? 'is-active' : ''}"
+                data-page-nav="${type}"
+                data-page="${p}"
+              >
+                ${p}
+              </button>
+            `
+          )
+          .join('')}
+
+        <button
+          type="button"
+          class="pm-page-btn"
+          data-page-nav="${type}"
+          data-page="${currentPage + 1}"
+          ${currentPage >= totalPages ? 'disabled' : ''}
+          title="Halaman Berikutnya"
+        >
+          &gt;
+        </button>
+
+        <select class="pm-page-size-select" data-page-size-change="${type}" title="Jumlah baris per halaman">
+          <option value="5" ${pageSize === 5 ? 'selected' : ''}>5 / halaman</option>
+          <option value="10" ${pageSize === 10 ? 'selected' : ''}>10 / halaman</option>
+          <option value="25" ${pageSize === 25 ? 'selected' : ''}>25 / halaman</option>
+          <option value="50" ${pageSize === 50 ? 'selected' : ''}>50 / halaman</option>
+        </select>
+      </div>
+    </div>
+  `;
+}
+
+function renderRequirementsView(reqs, modules, store) {
+  const allReqs = store?.requirements || reqs || [];
+  // Active requirements are those not archived and not superseded (superseded versions are in revision history)
+  const activeReqs = allReqs.filter((r) => !r.isArchived && !r.isSuperseded);
+
+  // Available roles for filter
+  const roles = store?.roles || [];
+
+  // Filter Feature options based on current reqFilterModule
+  const selectedModObj = modules.find((m) => m.id === reqFilterModule || m.name === reqFilterModule);
+  const availableFeatures = selectedModObj ? (selectedModObj.features || []) : [];
+
+  // Apply filters
+  const filteredReqs = activeReqs.filter((r) => {
+    // Search query
+    const q = reqSearchQuery.toLowerCase().trim();
+    const matchSearch = !q ||
+      (r.id && r.id.toLowerCase().includes(q)) ||
+      (r.title && r.title.toLowerCase().includes(q)) ||
+      (r.process && r.process.toLowerCase().includes(q)) ||
+      (r.acceptanceCriteria && r.acceptanceCriteria.toLowerCase().includes(q)) ||
+      (r.role && r.role.toLowerCase().includes(q)) ||
+      (r.module && r.module.toLowerCase().includes(q)) ||
+      (r.feature && r.feature.toLowerCase().includes(q)) ||
+      (r.businessRule && r.businessRule.toLowerCase().includes(q));
+
+    // Role filter
+    const matchRole = reqFilterRole === 'ALL' || r.role === reqFilterRole;
+
+    // Module filter
+    const matchModule = reqFilterModule === 'ALL' || r.module === reqFilterModule || r.moduleId === reqFilterModule;
+
+    // Feature filter
+    const matchFeature = reqFilterFeature === 'ALL' || r.feature === reqFilterFeature || r.featureId === reqFilterFeature;
+
+    // Status filter
+    const matchStatus = reqFilterStatus === 'ALL' || r.status === reqFilterStatus;
+
+    return matchSearch && matchRole && matchModule && matchFeature && matchStatus;
+  });
+
+  const totalActive = activeReqs.length;
+  const confirmedCount = activeReqs.filter((r) => r.status === 'Confirmed').length;
+  const draftCount = activeReqs.filter((r) => r.status === 'Draft').length;
+  const hasFiltersActive = Boolean(reqSearchQuery || reqFilterRole !== 'ALL' || reqFilterModule !== 'ALL' || reqFilterFeature !== 'ALL' || reqFilterStatus !== 'ALL');
+
+  // Pagination calculation
+  const totalReqsCount = filteredReqs.length;
+  const totalReqPages = Math.ceil(totalReqsCount / reqPageSize) || 1;
+  if (reqCurrentPage > totalReqPages) reqCurrentPage = totalReqPages;
+  if (reqCurrentPage < 1) reqCurrentPage = 1;
+  const pagedReqs = filteredReqs.slice((reqCurrentPage - 1) * reqPageSize, reqCurrentPage * reqPageSize);
+
+  return `
+    <div class="pm-req-manager-container">
+      <div class="pm-req-table-card" style="margin-top: 0;">
+        <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span class="pm-req-table-title" style="font-size:1.05rem;">Requirement Manager</span>
+            <span class="pm-req-count-badge" title="Total active requirements">${totalActive} Total</span>
+            <span class="pm-req-count-badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;" title="Confirmed requirements">${confirmedCount} Confirmed</span>
+            <span class="pm-req-count-badge" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;" title="Draft / In Progress requirements">${draftCount} Draft</span>
+          </div>
+          ${isManageMode
       ? `
-          <button type="button" class="pm-btn-sm pm-btn-primary" id="pm-btn-add-req">
-            ➕ Tambah Requirement
-          </button>
-        `
+            <button type="button" class="pm-btn-sm pm-btn-primary" id="pm-btn-add-req" title="Tambah requirement baru">
+              + Tambah Requirement
+            </button>
+          `
+      : `
+            <div style="font-size:0.75rem; color:#64748b; font-style:italic;">
+              Mode Pratinjau (Read-Only). Aktifkan <strong>Manage Mode</strong> untuk menambah/mengedit requirement.
+            </div>
+          `
+    }
+        </div>
+
+        <div class="pm-req-filter-bar">
+          <input
+            type="text"
+            id="pm-req-search-input"
+            class="pm-req-search-input"
+            placeholder="Cari ID, requirement, proses, acceptance criteria..."
+            value="${escapeHtml(reqSearchQuery)}"
+          />
+
+          <select id="pm-req-filter-role" class="pm-req-filter-select" title="Filter berdasarkan Role">
+            <option value="ALL" ${reqFilterRole === 'ALL' ? 'selected' : ''}>Semua Role</option>
+            ${roles.map((ro) => `<option value="${ro.name}" ${reqFilterRole === ro.name ? 'selected' : ''}>${ro.name}</option>`).join('')}
+          </select>
+
+          <select id="pm-req-filter-module" class="pm-req-filter-select" title="Filter berdasarkan Modul">
+            <option value="ALL" ${reqFilterModule === 'ALL' ? 'selected' : ''}>Semua Modul</option>
+            ${modules.map((m) => `<option value="${m.id}" ${reqFilterModule === m.id || reqFilterModule === m.name ? 'selected' : ''}>[${m.order}] ${m.name}</option>`).join('')}
+          </select>
+
+          <select id="pm-req-filter-feature" class="pm-req-filter-select" title="Filter berdasarkan Fitur" ${availableFeatures.length === 0 ? 'disabled' : ''}>
+            <option value="ALL" ${reqFilterFeature === 'ALL' ? 'selected' : ''}>Semua Fitur</option>
+            ${availableFeatures.map((f) => `<option value="${f.id}" ${reqFilterFeature === f.id || reqFilterFeature === f.name ? 'selected' : ''}>${f.name}</option>`).join('')}
+          </select>
+
+          <select id="pm-req-filter-status" class="pm-req-filter-select" style="min-width:110px;" title="Filter Status">
+            <option value="ALL" ${reqFilterStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
+            <option value="Confirmed" ${reqFilterStatus === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+            <option value="Draft" ${reqFilterStatus === 'Draft' ? 'selected' : ''}>Draft</option>
+          </select>
+
+          ${hasFiltersActive
+      ? `
+              <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-btn-reset-req-filter" style="padding:6px 10px; font-size:0.75rem;" title="Reset seluruh filter">
+                Reset
+              </button>
+            `
       : ''
     }
-      </div>
+        </div>
 
-      <div style="overflow-x: auto;">
-        <table class="pm-table">
-          <thead>
-            <tr>
-              <th style="width: 130px;">ID</th>
-              <th>Requirement</th>
-              <th style="width: 110px;">Role</th>
-              <th style="width: 110px;">Modul</th>
-              <th style="width: 140px;">Proses</th>
-              <th style="width: 100px;">Status</th>
-              ${isManageMode ? '<th style="width: 130px; text-align:center;">Aksi</th>' : ''}
-            </tr>
-          </thead>
-          <tbody>
-            ${activeReqs
-      .map(
-        (r) => `
-              <tr class="pm-req-full-row" data-req-id="${r.id}" data-mod-name="${r.module}">
-                <td>
-                  <code>${r.id}</code>
-                  ${r.version && r.version > 1 ? `<span class="pm-badge-draft" style="font-size:0.65rem; margin-left:4px;">v${r.version}</span>` : ''}
-                  ${r.revisionOf ? `<div style="font-size:0.68rem; color:#64748b;">(Revisi dari ${r.revisionOf})</div>` : ''}
-                </td>
-                <td><strong>${escapeHtml(r.title)}</strong></td>
-                <td>${r.role}</td>
-                <td>${r.module}</td>
-                <td>${escapeHtml(r.process)}</td>
-                <td>
-                  <span class="${r.status === 'Confirmed' ? 'pm-badge-confirmed' : 'pm-badge-draft'}">
-                    ${r.status}
-                  </span>
-                </td>
-                ${isManageMode
-            ? `
-                  <td style="text-align:center;">
-                    <div style="display:inline-flex; gap:4px;">
-                      <button type="button" class="pm-row-btn pm-btn-edit-req" data-req-id="${r.id}" title="Edit / Buat Revisi">
-                        ✏️ Edit
-                      </button>
-                      <button type="button" class="pm-row-btn is-danger pm-btn-archive-req" data-req-id="${r.id}" title="Arsipkan Requirement">
-                        📦 Arsip
-                      </button>
-                    </div>
+        <div style="overflow-x: auto;">
+          <table class="pm-table pm-table-req">
+            <thead>
+              <tr>
+                <th class="pm-col-req-id">ID &amp; Versi</th>
+                <th class="pm-col-req-title">Judul Requirement &amp; Kriteria Penerimaan</th>
+                <th class="pm-col-req-role">Role</th>
+                <th class="pm-col-req-mod">Modul / Fitur</th>
+                <th class="pm-col-req-proc">Process / Linked Node</th>
+                <th class="pm-col-req-status">Status</th>
+                <th class="pm-col-req-action">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredReqs.length === 0
+      ? `
+                <tr>
+                  <td colspan="7" style="text-align:center; padding:36px; color:#64748b;">
+                    <div style="font-size:1.05rem; font-weight:600; margin-bottom:6px;">Tidak ada requirement yang cocok</div>
+                    <div style="font-size:0.82rem;">Coba sesuaikan kata kunci pencarian atau ubah filter di atas.</div>
                   </td>
-                `
+                </tr>
+              `
+      : pagedReqs
+        .map((r) => {
+          const nodeUsage = checkRequirementNodeUsage(r.id);
+          const isConfirmed = r.status === 'Confirmed';
+          const isDraftRevision = r.version && r.version > 1;
+
+          return `
+                  <tr class="pm-req-full-row" data-req-id="${r.id}" data-mod-name="${r.module}">
+                    <td>
+                      <code>${r.id}</code>
+                      <div>
+                        <span class="pm-version-tag">v${r.version || 1}</span>
+                      </div>
+                      ${r.revisionOf ? `<div class="pm-revision-sub">Revisi dari ${r.revisionOf}</div>` : ''}
+                    </td>
+                    <td>
+                      <div style="font-weight:600; color:#0f172a; line-height:1.35;">${escapeHtml(r.title)}</div>
+                      ${r.acceptanceCriteria ? `<div class="pm-req-acc-preview">${escapeHtml(r.acceptanceCriteria)}</div>` : ''}
+                    </td>
+                    <td>
+                      <div style="font-size:0.78rem; color:#475569; line-height:1.3;">${escapeHtml(r.role)}</div>
+                    </td>
+                    <td>
+                      <div style="font-weight:700; font-size:0.8rem; color:#0f172a;">${escapeHtml(r.module)}</div>
+                      <div class="pm-req-feat-sub">${escapeHtml(r.feature)}</div>
+                    </td>
+                    <td>
+                      <div style="font-size:0.78rem; color:#1e293b; line-height:1.3;">${escapeHtml(r.process || '-')}</div>
+                      ${nodeUsage.isUsed
+              ? `
+                          <div class="pm-linked-node-tag" title="Terhubung ke langkah alur: ${nodeUsage.nodes.map((n) => n.code + ' - ' + n.title).join(', ')}">
+                            ${nodeUsage.nodes.map((n) => n.code).join(', ')}
+                          </div>
+                        `
+              : `<div class="pm-linked-node-empty" title="Belum terhubung ke langkah alur visual">-</div>`
+            }
+                    </td>
+                    <td style="text-align:center;">
+                      <span class="${isConfirmed ? 'pm-badge-confirmed' : 'pm-badge-draft'}">
+                        ${r.status}
+                      </span>
+                    </td>
+                    <td style="text-align:center;">
+                      <div class="pm-action-menu-wrap">
+                        <button
+                          type="button"
+                          class="pm-action-trigger-btn pm-btn-req-action-toggle"
+                          data-target="pm-req-menu-${escapeHtml(r.id)}"
+                          aria-haspopup="true"
+                          aria-expanded="false"
+                          title="Aksi baris"
+                        >
+                          &hellip;
+                        </button>
+                        <div id="pm-req-menu-${escapeHtml(r.id)}" class="pm-action-dropdown-menu">
+                          <button
+                            type="button"
+                            class="pm-dropdown-item pm-btn-view-req"
+                            data-req-id="${r.id}"
+                            title="Lihat Detail Requirement & Riwayat"
+                          >
+                            Detail
+                          </button>
+                          ${isManageMode
+              ? `
+                            <button
+                              type="button"
+                              class="pm-dropdown-item pm-btn-edit-req"
+                              data-req-id="${r.id}"
+                              title="${isConfirmed ? 'Buat Revisi Baru (v' + ((r.version || 1) + 1) + ' Draft)' : 'Edit Draft'}"
+                            >
+                              Edit
+                            </button>
+                            <div class="pm-dropdown-divider"></div>
+                            <button
+                              type="button"
+                              class="pm-dropdown-item is-danger pm-btn-archive-req"
+                              data-req-id="${r.id}"
+                              title="Arsipkan Requirement"
+                            >
+                              Arsip
+                            </button>
+                          `
+              : ''
+            }
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+        })
+        .join('')
+    }
+            </tbody>
+          </table>
+        </div>
+
+        ${renderPagination(reqCurrentPage, reqPageSize, totalReqsCount, 'req')}
+      </div>
+    </div>
+  `;
+}
+
+function renderReviewBadge(store, modId = null) {
+  try {
+    const allRevs = getAllPendingRevisions(store);
+    const count = modId && modId !== 'ALL'
+      ? allRevs.filter((r) => r.moduleId === modId).length
+      : allRevs.length;
+
+    if (count === 0) {
+      return `<span class="pm-review-count-badge is-zero">0</span>`;
+    }
+    return `<span class="pm-review-count-badge">${count}</span>`;
+  } catch (err) {
+    return `<span class="pm-review-count-badge is-zero">0</span>`;
+  }
+}
+
+function renderRevisionReviewView(store, filterModId = 'ALL') {
+  const allRevs = getAllPendingRevisions(store);
+  const isSingleModule = filterModId && filterModId !== 'ALL';
+
+  // Apply filters
+  const filteredRevs = allRevs.filter((r) => {
+    // Search query
+    const q = revSearchQuery.toLowerCase().trim();
+    const matchSearch = !q ||
+      (r.code && r.code.toLowerCase().includes(q)) ||
+      (r.entityId && r.entityId.toLowerCase().includes(q)) ||
+      (r.title && r.title.toLowerCase().includes(q)) ||
+      (r.moduleName && r.moduleName.toLowerCase().includes(q)) ||
+      (r.featureName && r.featureName.toLowerCase().includes(q)) ||
+      (r.createdBy && r.createdBy.toLowerCase().includes(q));
+
+    // Entity type filter
+    const matchEntity = revFilterEntityType === 'ALL' || r.entityType === revFilterEntityType;
+
+    // Status filter
+    const matchStatus = revFilterStatus === 'ALL' ||
+      r.status === revFilterStatus ||
+      (revFilterStatus === 'Archived' && r.changeType === 'Archived');
+
+    // Module filter
+    const modTarget = isSingleModule ? filterModId : revFilterModule;
+    const matchMod = modTarget === 'ALL' || r.moduleId === modTarget;
+
+    return matchSearch && matchEntity && matchStatus && matchMod;
+  });
+
+  // KPI calculations
+  const totalCount = allRevs.length;
+  const draftCount = allRevs.filter((r) => r.status === 'Draft' && r.changeType !== 'Archived').length;
+  const inReviewCount = allRevs.filter((r) => r.status === 'In Review').length;
+  const rejectedCount = allRevs.filter((r) => r.status === 'Rejected').length;
+  const archivedCount = allRevs.filter((r) => r.changeType === 'Archived').length;
+  const hasFiltersActive = Boolean(revSearchQuery || revFilterEntityType !== 'ALL' || revFilterStatus !== 'ALL' || (!isSingleModule && revFilterModule !== 'ALL'));
+
+  // Pagination calculation
+  const totalRevsCount = filteredRevs.length;
+  const totalRevPages = Math.ceil(totalRevsCount / revPageSize) || 1;
+  if (revCurrentPage > totalRevPages) revCurrentPage = totalRevPages;
+  if (revCurrentPage < 1) revCurrentPage = 1;
+  const pagedRevs = filteredRevs.slice((revCurrentPage - 1) * revPageSize, revCurrentPage * revPageSize);
+
+  return `
+    <div class="pm-rev-review-container">
+      <!-- Revision & Review Header Card -->
+      <div class="pm-req-table-card" style="margin-top: 0;">
+        <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span class="pm-req-table-title" style="font-size:1.05rem;">Revision &amp; Review Workflow</span>
+            <span class="pm-req-count-badge" title="Total Perubahan Aktif">${totalCount} Draf/Revisi</span>
+            <span class="pm-req-count-badge" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;" title="Draft">${draftCount} Draft</span>
+            <span class="pm-req-count-badge" style="background:#fffbeb; color:#b45309; border-color:#fde68a;" title="In Review">${inReviewCount} In Review</span>
+            <span class="pm-req-count-badge" style="background:#fef2f2; color:#b91c1c; border-color:#fecaca;" title="Rejected">${rejectedCount} Rejected</span>
+            <span class="pm-req-count-badge" style="background:#f8fafc; color:#475569; border-color:#cbd5e1;" title="Archived">${archivedCount} Archived</span>
+          </div>
+          <div style="font-size:0.75rem; color:#64748b;">
+            Baseline Confirmed terlindungi. Perubahan memerlukan proses review dan konfirmasi resmi.
+          </div>
+        </div>
+
+        <!-- Filter & Search Bar -->
+        <div class="pm-req-filter-bar">
+          <input
+            type="text"
+            id="pm-rev-search-input"
+            class="pm-req-search-input"
+            placeholder="Cari ID, judul, entitas, PIC pembuat..."
+            value="${escapeHtml(revSearchQuery)}"
+          />
+
+          <select id="pm-rev-filter-entity" class="pm-req-filter-select" title="Filter Jenis Entitas">
+            <option value="ALL" ${revFilterEntityType === 'ALL' ? 'selected' : ''}>Semua Entitas (Req / Node / Edge)</option>
+            <option value="Requirement" ${revFilterEntityType === 'Requirement' ? 'selected' : ''}>Requirement</option>
+            <option value="Node" ${revFilterEntityType === 'Node' ? 'selected' : ''}>Flow Node</option>
+            <option value="Connection" ${revFilterEntityType === 'Connection' ? 'selected' : ''}>Connection</option>
+          </select>
+
+          <select id="pm-rev-filter-status" class="pm-req-filter-select" title="Filter Status Workflow">
+            <option value="ALL" ${revFilterStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
+            <option value="Draft" ${revFilterStatus === 'Draft' ? 'selected' : ''}>Draft</option>
+            <option value="In Review" ${revFilterStatus === 'In Review' ? 'selected' : ''}>In Review</option>
+            <option value="Rejected" ${revFilterStatus === 'Rejected' ? 'selected' : ''}>Rejected</option>
+            <option value="Archived" ${revFilterStatus === 'Archived' ? 'selected' : ''}>Archived</option>
+          </select>
+
+          ${!isSingleModule
+      ? `
+            <select id="pm-rev-filter-module" class="pm-req-filter-select" title="Filter Modul">
+              <option value="ALL" ${revFilterModule === 'ALL' ? 'selected' : ''}>Semua Modul</option>
+              ${store.modules.map((m) => `<option value="${m.id}" ${revFilterModule === m.id ? 'selected' : ''}>[${m.order}] ${m.name}</option>`).join('')}
+            </select>
+          `
+      : ''
+    }
+
+          ${hasFiltersActive
+      ? `
+            <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-btn-reset-rev-filter" style="padding:6px 10px; font-size:0.75rem;" title="Reset seluruh filter">
+              Reset
+            </button>
+          `
+      : ''
+    }
+        </div>
+
+        <!-- Revisions Table -->
+        <div style="overflow-x: auto;">
+          <table class="pm-table pm-table-rev">
+            <thead>
+              <tr>
+                <th class="pm-col-rev-entity">Entitas</th>
+                <th class="pm-col-rev-id">ID &amp; Versi</th>
+                <th class="pm-col-rev-title">Judul / Ringkasan Perubahan</th>
+                <th class="pm-col-rev-mod">Modul / Fitur</th>
+                <th class="pm-col-rev-change">Jenis Ubahan</th>
+                <th class="pm-col-rev-status">Status</th>
+                <th class="pm-col-rev-meta">Metadata</th>
+                <th class="pm-col-rev-action">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredRevs.length === 0
+      ? `
+                <tr>
+                  <td colspan="8" style="text-align:center; padding:36px; color:#64748b;">
+                    <div style="font-size:1.05rem; font-weight:600; margin-bottom:6px;">Tidak ada draf atau revisi yang pending</div>
+                    <div style="font-size:0.82rem;">Seluruh data Requirement, Node, dan Connection telah tersinkronisasi dengan baseline resmi.</div>
+                  </td>
+                </tr>
+              `
+      : pagedRevs.map((rev) => {
+        const isDraft = rev.status === 'Draft';
+        const isInReview = rev.status === 'In Review';
+        const isRejected = rev.status === 'Rejected';
+
+        return `
+                  <tr class="pm-rev-row" data-entity-type="${rev.entityType}" data-entity-id="${rev.entityId}">
+                    <td>
+                      <span class="pm-chip-type ${rev.entityType === 'Requirement' ? 'pm-chip-func' : rev.entityType === 'Node' ? 'pm-chip-nonfunc' : 'pm-badge-role'}" style="font-size:0.7rem;">
+                        ${rev.entityType === 'Requirement' ? 'Requirement' : rev.entityType === 'Node' ? 'Node' : 'Connection'}
+                      </span>
+                    </td>
+                    <td>
+                      <code>${escapeHtml(rev.code || rev.entityId)}</code>
+                      <div>
+                        <span class="pm-version-tag">v${rev.version}</span>
+                      </div>
+                      ${rev.revisionOf ? `<div class="pm-revision-sub">rev ${escapeHtml(rev.revisionOf)}</div>` : '<div style="font-size:0.68rem; color:#15803d; font-weight:600; margin-top:2px;">(baru)</div>'}
+                    </td>
+                    <td>
+                      <div style="font-weight:600; color:#0f172a; line-height:1.35;">${escapeHtml(rev.title)}</div>
+                      ${rev.diff && rev.diff.hasChanges
+            ? `
+                        <div style="font-size:0.72rem; color:#2563eb; margin-top:2px;">
+                          ${rev.diff.changedFieldsCount} field berubah (${rev.diff.fieldDiffs.map((d) => d.fieldName).slice(0, 2).join(', ')}${rev.diff.fieldDiffs.length > 2 ? '...' : ''})
+                        </div>
+                      `
             : ''
           }
-              </tr>
-            `
-      )
-      .join('')}
-          </tbody>
-        </table>
+                      ${isRejected && rev.reviewNote
+            ? `
+                        <div style="margin-top:4px; padding:4px 8px; background:#fef2f2; border:1px solid #fecaca; border-radius:4px; font-size:0.7rem; color:#991b1b;">
+                          <strong>Alasan:</strong> ${escapeHtml(rev.reviewNote)}
+                        </div>
+                      `
+            : ''
+          }
+                    </td>
+                    <td>
+                      <div style="font-weight:700; font-size:0.8rem; color:#0f172a;">${escapeHtml(rev.moduleName || '-')}</div>
+                      <div class="pm-req-feat-sub">${escapeHtml(rev.featureName || '-')}</div>
+                    </td>
+                    <td style="text-align:center;">
+                      ${rev.changeType === 'Added'
+            ? `
+                        <span class="pm-status-badge pm-status-confirmed" style="font-size:0.68rem; padding:2px 6px;">+ Added</span>
+                      `
+            : rev.changeType === 'Archived'
+              ? `
+                        <span class="pm-status-badge pm-status-archived" style="font-size:0.68rem; padding:2px 6px;">Archived</span>
+                      `
+              : `
+                        <span class="pm-status-badge pm-status-draft" style="font-size:0.68rem; padding:2px 6px;">Modified</span>
+                      `
+          }
+                    </td>
+                    <td style="text-align:center;">
+                      ${isInReview
+            ? `
+                        <span class="pm-status-badge pm-status-review" style="font-size:0.7rem; padding:2px 6px;">In Review</span>
+                      `
+            : isRejected
+              ? `
+                        <span class="pm-status-badge pm-status-rejected" style="font-size:0.7rem; padding:2px 6px;">Rejected</span>
+                      `
+              : `
+                        <span class="pm-status-badge pm-status-draft" style="font-size:0.7rem; padding:2px 6px;">Draft</span>
+                      `
+          }
+                    </td>
+                    <td>
+                      <div style="font-size:0.72rem; color:#334155; line-height:1.25;">
+                        <div style="font-weight:600;">${escapeHtml(rev.createdBy || 'BA')}</div>
+                        <div style="color:#64748b; font-size:0.68rem;">${escapeHtml(rev.createdAt || '-')}</div>
+                        ${rev.reviewedBy ? `<div style="color:#b45309; font-size:0.68rem; margin-top:2px;">Rev: ${escapeHtml(rev.reviewedBy)}</div>` : ''}
+                      </div>
+                    </td>
+                    <td style="text-align:center;">
+                      <div class="pm-action-menu-wrap">
+                        <button
+                          type="button"
+                          class="pm-action-trigger-btn pm-btn-rev-action-toggle"
+                          data-target="pm-rev-menu-${escapeHtml(rev.entityType)}-${escapeHtml(rev.entityId)}"
+                          aria-haspopup="true"
+                          aria-expanded="false"
+                          title="Aksi baris"
+                        >
+                          &hellip;
+                        </button>
+                        <div id="pm-rev-menu-${escapeHtml(rev.entityType)}-${escapeHtml(rev.entityId)}" class="pm-action-dropdown-menu">
+                          <button
+                            type="button"
+                            class="pm-dropdown-item pm-btn-compare-rev"
+                            data-entity-type="${escapeHtml(rev.entityType)}"
+                            data-entity-id="${escapeHtml(rev.entityId)}"
+                            data-mod-id="${escapeHtml(rev.moduleId || '')}"
+                            data-feat-id="${escapeHtml(rev.featureId || '')}"
+                            data-version="${rev.version || 1}"
+                            title="Bandingkan Draft vs Confirmed Baseline"
+                          >
+                            Compare
+                          </button>
+
+                          ${isDraft
+            ? `
+                            <button
+                              type="button"
+                              class="pm-dropdown-item pm-btn-submit-rev"
+                              data-entity-type="${escapeHtml(rev.entityType)}"
+                              data-entity-id="${escapeHtml(rev.entityId)}"
+                              data-mod-id="${escapeHtml(rev.moduleId || '')}"
+                              data-feat-id="${escapeHtml(rev.featureId || '')}"
+                              title="Ajukan Draft untuk Review"
+                            >
+                              Review / Submit
+                            </button>
+                          `
+            : ''
+          }
+
+                          ${isInReview
+            ? `
+                            <button
+                              type="button"
+                              class="pm-dropdown-item is-confirm pm-btn-confirm-rev"
+                              data-entity-type="${escapeHtml(rev.entityType)}"
+                              data-entity-id="${escapeHtml(rev.entityId)}"
+                              data-mod-id="${escapeHtml(rev.moduleId || '')}"
+                              data-feat-id="${escapeHtml(rev.featureId || '')}"
+                              data-version="${rev.version || 1}"
+                              title="Setujui Revisi (Confirm Review)"
+                            >
+                              Confirm Review
+                            </button>
+                            <button
+                              type="button"
+                              class="pm-dropdown-item is-danger pm-btn-reject-rev"
+                              data-entity-type="${escapeHtml(rev.entityType)}"
+                              data-entity-id="${escapeHtml(rev.entityId)}"
+                              data-mod-id="${escapeHtml(rev.moduleId || '')}"
+                              data-feat-id="${escapeHtml(rev.featureId || '')}"
+                              title="Tolak Draft dengan Catatan Review"
+                            >
+                              Reject
+                            </button>
+                          `
+            : ''
+          }
+
+                          <div class="pm-dropdown-divider"></div>
+
+                          <button
+                            type="button"
+                            class="pm-dropdown-item is-danger pm-btn-discard-rev"
+                            data-entity-type="${escapeHtml(rev.entityType)}"
+                            data-entity-id="${escapeHtml(rev.entityId)}"
+                            data-mod-id="${escapeHtml(rev.moduleId || '')}"
+                            data-feat-id="${escapeHtml(rev.featureId || '')}"
+                            title="Batalkan Draft dan Pulihkan Baseline Sebelumnya"
+                          >
+                            Discard
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+      }).join('')
+    }
+            </tbody>
+          </table>
+        </div>
+
+        ${renderPagination(revCurrentPage, revPageSize, totalRevsCount, 'rev')}
       </div>
     </div>
   `;
@@ -807,7 +1521,6 @@ function renderRelatedRoleView(mod) {
               <h4 style="margin:2px 0 0; font-size:1rem; color:#0f172a;">Mantri Bibitan</h4>
               <p style="margin:2px 0 0; font-size:0.8rem; color:#64748b;">Input Transaksi, Scan QR, Foto + Timestamp, Pengajuan Verifikasi</p>
             </div>
-            <span style="font-size:24px;">📝</span>
           </div>
 
           <div style="text-align:center; font-size:18px; color:#94a3b8; font-weight:bold;">&darr; Menunggu Verifikasi &darr;</div>
@@ -818,7 +1531,6 @@ function renderRelatedRoleView(mod) {
               <h4 style="margin:2px 0 0; font-size:1rem; color:#0f172a;">Asisten Bibitan</h4>
               <p style="margin:2px 0 0; font-size:0.8rem; color:#64748b;">Pemeriksaan Fisik Lapangan, Review Foto, Persetujuan / Penolakan Koreksi</p>
             </div>
-            <span style="font-size:24px;">✅</span>
           </div>
 
           <div style="text-align:center; font-size:18px; color:#94a3b8; font-weight:bold;">&darr; Setelah Disetujui &darr;</div>
@@ -829,7 +1541,6 @@ function renderRelatedRoleView(mod) {
               <h4 style="margin:2px 0 0; font-size:1rem; color:#0f172a;">Server Production</h4>
               <p style="margin:2px 0 0; font-size:0.8rem; color:#64748b;">Pemotongan Stok Mata Entres, Update Populasi Batch Resmi</p>
             </div>
-            <span style="font-size:24px;">🗄️</span>
           </div>
         </div>
       </div>
@@ -867,7 +1578,6 @@ function renderEndToEndView(pipeline) {
 function renderInProgressRole(roleObj) {
   return `
     <div class="pm-empty-state">
-      <div class="pm-empty-icon">📋</div>
       <h3 class="pm-empty-title">Requirement belum tersedia</h3>
       <p class="pm-empty-desc">
         Dokumentasi proses bisnis untuk role <strong>${escapeHtml(roleObj.name)}</strong> saat ini berstatus <em>In Progress</em> dan akan ditambahkan secara incremental sesuai jadwal.
@@ -913,7 +1623,7 @@ function renderDetailPanel(store) {
       <aside class="pm-detail-panel" id="pm-detail-panel">
         <div class="pm-detail-head">
           <span class="pm-detail-head-title">Detail Proses</span>
-          <button type="button" class="pm-detail-close-btn" id="pm-detail-close" title="Tutup Detail Panel">✖</button>
+          <button type="button" class="pm-detail-close-btn" id="pm-detail-close" title="Tutup Detail Panel">&times;</button>
         </div>
         <div class="pm-detail-body" style="padding: 24px; color: #64748b; text-align: center;">
           Pilih node alur untuk melihat detail.
@@ -930,7 +1640,7 @@ function renderDetailPanel(store) {
     <aside class="pm-detail-panel" id="pm-detail-panel">
       <div class="pm-detail-head">
         <span class="pm-detail-head-title">Detail Proses</span>
-        <button type="button" class="pm-detail-close-btn" id="pm-detail-close" title="Tutup Detail Panel">✖</button>
+        <button type="button" class="pm-detail-close-btn" id="pm-detail-close" title="Tutup Detail Panel">&times;</button>
       </div>
 
       <div class="pm-detail-body" style="display:flex; flex-direction:column; gap:20px;">
@@ -940,9 +1650,9 @@ function renderDetailPanel(store) {
         </div>
         
         <div class="pm-detail-action-bar" style="display:flex; gap:8px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 12px; margin-top:-8px;">
-          <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-node-edit" data-node-id="${escapeHtml(foundNode.id)}" data-mod-id="${escapeHtml(effectiveModId)}" data-feat-id="${escapeHtml(effectiveFeatId)}">✏️ Edit Node</button>
+          <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-node-edit" data-node-id="${escapeHtml(foundNode.id)}" data-mod-id="${escapeHtml(effectiveModId)}" data-feat-id="${escapeHtml(effectiveFeatId)}">Edit Node</button>
           ${isManageMode
-      ? `<button type="button" class="pm-btn-sm pm-btn-danger pm-btn-node-archive" data-node-id="${escapeHtml(foundNode.id)}" data-mod-id="${escapeHtml(effectiveModId)}" data-feat-id="${escapeHtml(effectiveFeatId)}">📦 Arsip</button>`
+      ? `<button type="button" class="pm-btn-sm pm-btn-danger pm-btn-node-archive" data-node-id="${escapeHtml(foundNode.id)}" data-mod-id="${escapeHtml(effectiveModId)}" data-feat-id="${escapeHtml(effectiveFeatId)}">Arsip</button>`
       : ''
     }
         </div>
@@ -985,6 +1695,127 @@ function renderDetailPanel(store) {
             <span class="pm-meta-label">Role</span>
             <span class="pm-meta-val">${escapeHtml(foundNode.role || 'Mantri Bibitan')}</span>
           </div>
+        </div>
+
+        <!-- Linked Requirement Section -->
+        <div class="pm-detail-section">
+          <span class="pm-section-heading">Requirement Terkait</span>
+          ${(() => {
+            if (!foundNode.reqId) {
+              return `<p class="pm-section-body" style="color:#94a3b8; font-style:italic; font-size:0.8rem;">Langkah ini belum terhubung ke requirement spesifik.</p>`;
+            }
+            const linkedReq = getRequirementByReqId(foundNode.reqId);
+            if (!linkedReq) {
+              return `
+                <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:6px; padding:8px 12px; font-size:0.8rem; color:#64748b;">
+                  <code>${escapeHtml(foundNode.reqId)}</code> (Belum terdaftar di master requirement)
+                </div>
+              `;
+            }
+            return `
+              <div class="pm-linked-req-card" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-weight:700; color:#1e293b; font-size:0.84rem;"><code>${escapeHtml(linkedReq.id)}</code></span>
+                  <div style="display:flex; gap:4px; align-items:center;">
+                    <span class="pm-status-badge ${linkedReq.isArchived ? 'pm-status-archived' : linkedReq.status === 'Confirmed' ? 'pm-status-confirmed' : 'pm-status-draft'}" style="font-size:0.68rem; padding:1px 6px;">
+                      ${linkedReq.isArchived ? 'Arsip' : linkedReq.status || 'Draft'}
+                    </span>
+                    <span class="pm-type-pill pm-type-process" style="font-size:0.68rem; padding:1px 6px;">v${linkedReq.version || 1}</span>
+                  </div>
+                </div>
+                <div style="font-weight:600; font-size:0.82rem; color:#0f172a;">${escapeHtml(linkedReq.title)}</div>
+                <div style="font-size:0.78rem; color:#475569; line-height:1.4;">${escapeHtml(linkedReq.acceptanceCriteria || linkedReq.process || '-')}</div>
+                <div style="display:flex; gap:8px; font-size:0.72rem; color:#64748b; margin-top:2px;">
+                  <span>Kategori: <strong>${escapeHtml(linkedReq.type || 'KF')}</strong></span>
+                  <span>&bull;</span>
+                  <span>Modul: <strong>${escapeHtml(linkedReq.module || '-')}</strong></span>
+                </div>
+              </div>
+            `;
+          })()}
+        </div>
+
+        <!-- Node Revision History -->
+        ${(() => {
+          const revs = getNodeRevisionHistory(effectiveModId, effectiveFeatId, foundNode.id);
+          if (revs.length <= 1 && !foundNode.isArchived && !foundNode.isSuperseded) {
+            return `
+              <div class="pm-detail-section">
+                <span class="pm-section-heading">Versi &amp; Status Node</span>
+                <div style="display:flex; align-items:center; justify-content:space-between; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:8px 12px; font-size:0.8rem;">
+                  <div>
+                    <strong>v${foundNode.version || 1}</strong> &bull; <span class="pm-status-badge ${foundNode.isArchived ? 'pm-status-archived' : foundNode.status === 'Confirmed' ? 'pm-status-confirmed' : 'pm-status-draft'}" style="font-size:0.68rem; padding:1px 6px;">${foundNode.isArchived ? 'Arsip' : foundNode.status || 'Draft'}</span>
+                  </div>
+                  <div style="color:#94a3b8; font-size:0.72rem;">${foundNode.status === 'Confirmed' ? 'Baseline Confirmed' : 'Draft Aktif'}</div>
+                </div>
+              </div>
+            `;
+          }
+          return `
+            <div class="pm-detail-section">
+              <span class="pm-section-heading">Riwayat Versi Node</span>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                ${revs.map((rev) => {
+                  const isCurrent = rev.id === foundNode.id && rev.version === foundNode.version && !rev.isSuperseded;
+                  return `
+                    <div style="padding:6px 10px; border-radius:4px; font-size:0.78rem; background:${isCurrent ? '#e2e8f0' : '#f8fafc'}; border:1px solid ${isCurrent ? '#94a3b8' : '#cbd5e1'}; display:flex; justify-content:space-between; align-items:center;">
+                      <div>
+                        <strong>v${rev.version || 1}</strong> &bull; <span class="pm-status-badge ${rev.isArchived ? 'pm-status-archived' : rev.isSuperseded ? 'pm-status-draft' : rev.status === 'Confirmed' ? 'pm-status-confirmed' : 'pm-status-draft'}" style="font-size:0.68rem; padding:1px 5px;">
+                          ${rev.isArchived ? 'Arsip' : rev.isSuperseded ? 'Superseded' : rev.status || 'Draft'}
+                        </span>
+                        <div style="color:#64748b; font-size:0.72rem; margin-top:2px;">${escapeHtml(rev.label || rev.title)}</div>
+                      </div>
+                      <div style="color:#94a3b8; font-size:0.7rem; text-align:right;">
+                        ${rev.lastRevisedAt ? rev.lastRevisedAt.split('T')[0] : (rev.createdAt ? rev.createdAt.split('T')[0] : 'Baseline')}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        })()}
+
+        <!-- Node Connections (Inbound / Outbound) Section -->
+        <div class="pm-detail-section">
+          <span class="pm-section-heading">Koneksi Alur Terkait (Edges)</span>
+          ${(() => {
+            const currentFlow = store.flows[effectiveModId]?.[effectiveFeatId] || { nodes: [], edges: [] };
+            const flowEdges = (currentFlow?.edges || []).filter(e => !e.isArchived && !e.isSuperseded);
+            const outgoing = flowEdges.filter(e => e.from === foundNode.id);
+            const incoming = flowEdges.filter(e => e.to === foundNode.id);
+
+            if (outgoing.length === 0 && incoming.length === 0) {
+              return `<p class="pm-section-body" style="color:#94a3b8; font-style:italic; font-size:0.8rem;">Belum ada koneksi eksplisit khusus (mengikuti alur sekuensial default).</p>`;
+            }
+
+            return `
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                ${outgoing.map(e => {
+                  const targetNode = (currentFlow?.nodes || []).find(n => n.id === e.to);
+                  return `
+                    <div style="padding:6px 10px; border-radius:4px; font-size:0.76rem; background:#f0fdf4; border:1px solid #bbf7d0; display:flex; justify-content:space-between; align-items:center;">
+                      <div>
+                        <span style="font-weight:700; color:#166534;">&rarr; Keluar Menuju:</span> <strong>${escapeHtml(targetNode?.code || e.to)}</strong> (${escapeHtml(targetNode?.label || targetNode?.title || '')})
+                        ${e.condition ? `<span class="pm-status-badge pm-status-confirmed" style="font-size:0.65rem; margin-left:4px;">${escapeHtml(e.condition)}</span>` : ''}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+                ${incoming.map(e => {
+                  const sourceNode = (currentFlow?.nodes || []).find(n => n.id === e.from);
+                  return `
+                    <div style="padding:6px 10px; border-radius:4px; font-size:0.76rem; background:#f8fafc; border:1px solid #cbd5e1; display:flex; justify-content:space-between; align-items:center;">
+                      <div>
+                        <span style="font-weight:700; color:#475569;">&larr; Masuk Dari:</span> <strong>${escapeHtml(sourceNode?.code || e.from)}</strong> (${escapeHtml(sourceNode?.label || sourceNode?.title || '')})
+                        ${e.condition ? `<span class="pm-status-badge pm-status-confirmed" style="font-size:0.65rem; margin-left:4px;">${escapeHtml(e.condition)}</span>` : ''}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `;
+          })()}
         </div>
 
         <!-- Description / Summary -->
@@ -1079,12 +1910,15 @@ function renderModals(store) {
   if (activeModal === 'edit-req') {
     const isNew = !modalData?.id;
     const isConfirmed = modalData?.status === 'Confirmed';
+    const currentModId = modalData?.moduleId || (store.modules.find(m => m.name === modalData?.module)?.id) || store.modules[0]?.id;
+    const currentModObj = store.modules.find(m => m.id === currentModId || m.name === modalData?.module) || store.modules[0];
+    const availableFeatures = currentModObj?.features || [];
 
     return `
       <div class="pm-modal-backdrop" id="pm-modal-backdrop">
-        <div class="pm-modal-dialog">
+        <div class="pm-modal-dialog" style="max-width: 680px;">
           <div class="pm-modal-header">
-            <h3 class="pm-modal-title">${isNew ? 'Tambah Requirement Baru' : isConfirmed ? `Buat Revisi: ${modalData.id}` : `Edit Requirement: ${modalData.id}`}</h3>
+            <h3 class="pm-modal-title">${isNew ? 'Tambah Requirement Baru' : isConfirmed ? `Buat Revisi Requirement: ${modalData.id}` : `Edit Requirement: ${modalData.id}`}</h3>
             <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
           </div>
 
@@ -1093,10 +1927,9 @@ function renderModals(store) {
               ${isConfirmed
         ? `
                 <div class="pm-revision-alert">
-                  <span>ℹ️</span>
                   <div>
-                    <strong>Requirement berstatus Confirmed.</strong><br/>
-                    Menyimpan perubahan akan otomatis menghasilkan <strong>Revisi Baru (v${(modalData.version || 1) + 1} Draft)</strong> tanpa menimpa baseline confirmed.
+                    <strong>Requirement berstatus Confirmed (Baseline Terkunci).</strong><br/>
+                    Menyimpan perubahan akan otomatis menghasilkan <strong>Revisi Baru (v${(modalData.version || 1) + 1} Draft)</strong> tanpa menimpa baseline resmi v${modalData.version || 1}.
                   </div>
                 </div>
               `
@@ -1105,62 +1938,311 @@ function renderModals(store) {
 
               <div class="pm-form-grid">
                 <div class="pm-form-group">
-                  <label class="pm-form-label">ID Requirement</label>
-                  <input type="text" name="reqId" class="pm-form-input" value="${escapeHtml(modalData?.id || '')}" ${!isNew ? 'readonly' : 'required'} placeholder="Contoh: RN-OKL-008" />
+                  <label class="pm-form-label">Tipe Requirement</label>
+                  <input type="text" class="pm-form-input" value="Operational Requirement" readonly style="background:#f1f5f9; color:#475569;" />
+                </div>
+
+                <div class="pm-form-group">
+                  <label class="pm-form-label">ID Requirement ${isNew ? '(Auto-generated jika kosong)' : ''}</label>
+                  <input type="text" name="reqId" class="pm-form-input" value="${escapeHtml(modalData?.id || '')}" ${!isNew ? 'readonly style="background:#f1f5f9;"' : ''} placeholder="Contoh: RN-OKL-008" />
+                </div>
+
+                <div class="pm-form-group">
+                  <label class="pm-form-label">Role <span style="color:#ef4444;">*</span></label>
+                  <select name="role" class="pm-form-select" required>
+                    ${store.roles.map((r) => `<option value="${r.name}" ${modalData?.role === r.name ? 'selected' : ''}>${r.name}</option>`).join('')}
+                  </select>
                 </div>
 
                 <div class="pm-form-group">
                   <label class="pm-form-label">Status</label>
-                  <select name="status" class="pm-form-select">
-                    <option value="Draft" ${modalData?.status === 'Draft' ? 'selected' : ''}>Draft</option>
-                    <option value="Confirmed" ${modalData?.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+                  <input type="text" class="pm-form-input" value="${isNew || isConfirmed ? 'Draft (Akan dibuat sebagai Draft)' : (modalData?.status || 'Draft')}" readonly style="background:#f1f5f9; color:#475569;" />
+                  <input type="hidden" name="status" value="${isNew || isConfirmed ? 'Draft' : (modalData?.status || 'Draft')}" />
+                </div>
+
+                <div class="pm-form-group">
+                  <label class="pm-form-label">Modul Terkait <span style="color:#ef4444;">*</span></label>
+                  <select name="module" id="pm-modal-req-module" class="pm-form-select" required>
+                    ${store.modules.map((m) => `<option value="${m.name}" data-mod-id="${m.id}" ${modalData?.module === m.name || modalData?.moduleId === m.id ? 'selected' : ''}>[${m.order}] ${m.name}</option>`).join('')}
+                  </select>
+                </div>
+
+                <div class="pm-form-group">
+                  <label class="pm-form-label">Fitur / Alur Terkait <span style="color:#ef4444;">*</span></label>
+                  <select name="feature" id="pm-modal-req-feature" class="pm-form-select" required>
+                    ${availableFeatures.map((f) => `<option value="${f.name}" data-feat-id="${f.id}" ${modalData?.feature === f.name || modalData?.featureId === f.id ? 'selected' : ''}>${f.name}</option>`).join('')}
                   </select>
                 </div>
 
                 <div class="pm-form-group is-full">
-                  <label class="pm-form-label">Judul Requirement</label>
-                  <input type="text" name="title" class="pm-form-input" value="${escapeHtml(modalData?.title || '')}" required />
+                  <label class="pm-form-label">Judul Requirement <span style="color:#ef4444;">*</span></label>
+                  <input type="text" name="title" class="pm-form-input" value="${escapeHtml(modalData?.title || '')}" placeholder="Masukkan pernyataan requirement operasional..." required />
                 </div>
 
-                <div class="pm-form-group">
-                  <label class="pm-form-label">Modul Terkait</label>
-                  <select name="module" class="pm-form-select">
-                    ${store.modules.map((m) => `<option value="${m.name}" ${modalData?.module === m.name ? 'selected' : ''}>${m.name}</option>`).join('')}
-                  </select>
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Kriteria Penerimaan (Acceptance Criteria) <span style="color:#ef4444;">*</span></label>
+                  <textarea name="acceptanceCriteria" class="pm-form-textarea" placeholder="Kondisi atau syarat mutlak agar requirement ini dianggap terpenuhi..." required>${escapeHtml(modalData?.acceptanceCriteria || modalData?.acceptance || '')}</textarea>
                 </div>
 
-                <div class="pm-form-group">
-                  <label class="pm-form-label">Proses / Langkah</label>
-                  <input type="text" name="process" class="pm-form-input" value="${escapeHtml(modalData?.process || '')}" required />
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Proses Lapangan / Langkah Operasional</label>
+                  <input type="text" name="process" class="pm-form-input" value="${escapeHtml(modalData?.process || '')}" placeholder="Contoh: Penempelan Mata Okulasi" />
                 </div>
 
                 <div class="pm-form-group is-full">
                   <label class="pm-form-label">Input Data</label>
-                  <textarea name="input" class="pm-form-textarea">${escapeHtml(modalData?.input || '')}</textarea>
+                  <textarea name="input" class="pm-form-textarea" placeholder="Data atau dokumen input...">${escapeHtml(modalData?.input || '')}</textarea>
                 </div>
 
                 <div class="pm-form-group is-full">
                   <label class="pm-form-label">Aturan Validasi</label>
-                  <textarea name="validation" class="pm-form-textarea">${escapeHtml(modalData?.validation || '')}</textarea>
+                  <textarea name="validation" class="pm-form-textarea" placeholder="Kaidah validasi sistem atau pengecekan fisik...">${escapeHtml(modalData?.validation || '')}</textarea>
                 </div>
 
                 <div class="pm-form-group is-full">
                   <label class="pm-form-label">Mekanisme Fallback</label>
-                  <textarea name="fallback" class="pm-form-textarea">${escapeHtml(modalData?.fallback || '')}</textarea>
+                  <textarea name="fallback" class="pm-form-textarea" placeholder="Prosedur alternatif jika validasi gagal...">${escapeHtml(modalData?.fallback || '')}</textarea>
                 </div>
 
                 <div class="pm-form-group is-full">
                   <label class="pm-form-label">Output / Hasil</label>
-                  <textarea name="output" class="pm-form-textarea">${escapeHtml(modalData?.output || '')}</textarea>
+                  <textarea name="output" class="pm-form-textarea" placeholder="Hasil akhir, dokumen terbit, atau mutasi status...">${escapeHtml(modalData?.output || '')}</textarea>
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Aturan Bisnis (Business Rule)</label>
+                  <input type="text" name="businessRule" class="pm-form-input" value="${escapeHtml(modalData?.businessRule || '')}" placeholder="Contoh: BR-OKL-001: Standar keberhasilan okulasi min 85%" />
                 </div>
               </div>
             </div>
 
             <div class="pm-modal-footer">
               <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
-              <button type="submit" class="pm-btn-sm pm-btn-primary">${isConfirmed ? '💾 Simpan sebagai Revisi Baru' : '💾 Simpan Perubahan'}</button>
+              <button type="submit" class="pm-btn-sm pm-btn-primary">
+                ${isNew ? 'Simpan Requirement Baru (Draft)' : isConfirmed ? `Simpan sebagai Revisi Baru (v${(modalData.version || 1) + 1} Draft)` : 'Simpan Perubahan (Draft)'}
+              </button>
             </div>
           </form>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'detail-req') {
+    const reqId = modalData?.id;
+    const history = getRequirementRevisionHistory(reqId);
+    // If user clicked snapshot version in timeline, preview that version, otherwise preview active modalData
+    const previewReq = (selectedReqDetailVersion && history.find(h => h.version === selectedReqDetailVersion)) || modalData;
+    const isHistorical = previewReq.isSuperseded || (modalData && previewReq.version !== modalData.version);
+    const nodeUsage = checkRequirementNodeUsage(reqId);
+
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 720px;">
+          <div class="pm-modal-header">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <h3 class="pm-modal-title">Detail Requirement: ${escapeHtml(reqId)}</h3>
+              <span class="pm-badge-draft" style="font-size:0.75rem;">v${previewReq.version || 1}</span>
+              <span class="${previewReq.status === 'Confirmed' ? 'pm-badge-confirmed' : 'pm-badge-draft'}">
+                ${previewReq.status}
+              </span>
+            </div>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <div class="pm-modal-body">
+            ${isHistorical
+        ? `
+              <div class="pm-revision-alert" style="background:#fef3c7; border-color:#fde68a; color:#92400e; margin-bottom:12px;">
+                <div>
+                  <strong>Snapshot Historis Versi v${previewReq.version}.</strong>
+                  (Versi ini telah digantikan oleh versi yang lebih baru).
+                  <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-view-latest-req" style="margin-left:8px; padding:2px 8px; font-size:0.75rem;">
+                    Kembali ke Versi Aktif
+                  </button>
+                </div>
+              </div>
+            `
+        : ''
+      }
+
+            <div class="pm-detail-grid">
+              <div class="pm-detail-item is-full">
+                <span class="pm-detail-label">Judul Requirement</span>
+                <div class="pm-detail-value is-accent" style="font-size:0.98rem; font-weight:600;">
+                  ${escapeHtml(previewReq.title)}
+                </div>
+              </div>
+
+              ${previewReq.acceptanceCriteria
+        ? `
+                <div class="pm-detail-item is-full">
+                  <span class="pm-detail-label">Kriteria Penerimaan (Acceptance Criteria)</span>
+                  <div class="pm-detail-value" style="background:#f0fdf4; border-color:#bbf7d0; color:#14532d; font-style:italic;">
+                    ${escapeHtml(previewReq.acceptanceCriteria)}
+                  </div>
+                </div>
+              `
+        : ''
+      }
+
+              <div class="pm-detail-item">
+                <span class="pm-detail-label">Role Pelaksana</span>
+                <div class="pm-detail-value">${escapeHtml(previewReq.role || '-')}</div>
+              </div>
+
+              <div class="pm-detail-item">
+                <span class="pm-detail-label">Modul &amp; Fitur</span>
+                <div class="pm-detail-value">${escapeHtml(previewReq.module || '-')} &rsaquo; ${escapeHtml(previewReq.feature || '-')}</div>
+              </div>
+
+              <div class="pm-detail-item is-full">
+                <span class="pm-detail-label">Proses Lapangan</span>
+                <div class="pm-detail-value">${escapeHtml(previewReq.process || '-')}</div>
+              </div>
+
+              <div class="pm-detail-item is-full">
+                <span class="pm-detail-label">Input Data</span>
+                <div class="pm-detail-value">${escapeHtml(previewReq.input || '-')}</div>
+              </div>
+
+              <div class="pm-detail-item is-full">
+                <span class="pm-detail-label">Aturan Validasi</span>
+                <div class="pm-detail-value">${escapeHtml(previewReq.validation || '-')}</div>
+              </div>
+
+              <div class="pm-detail-item is-full">
+                <span class="pm-detail-label">Mekanisme Fallback</span>
+                <div class="pm-detail-value">${escapeHtml(previewReq.fallback || '-')}</div>
+              </div>
+
+              <div class="pm-detail-item is-full">
+                <span class="pm-detail-label">Output / Hasil</span>
+                <div class="pm-detail-value">${escapeHtml(previewReq.output || '-')}</div>
+              </div>
+
+              ${previewReq.businessRule
+        ? `
+                <div class="pm-detail-item is-full">
+                  <span class="pm-detail-label">Aturan Bisnis (Business Rule)</span>
+                  <div class="pm-detail-value" style="background:#fffbeb; border-color:#fef3c7; color:#92400e;">
+                    ${escapeHtml(previewReq.businessRule)}
+                  </div>
+                </div>
+              `
+        : ''
+      }
+
+              <!-- Process / Linked Node Section -->
+              <div class="pm-detail-item is-full" style="margin-top:6px;">
+                <span class="pm-detail-label">Process / Linked Flow Node</span>
+                ${nodeUsage.isUsed
+        ? `
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                      ${nodeUsage.nodes.map((n) => `
+                        <div class="pm-node-link-card">
+                          <span style="font-weight:700; color:#0284c7;">[${escapeHtml(n.code)}]</span>
+                          <span><strong>${escapeHtml(n.title)}</strong></span>
+                          <span style="color:#64748b; font-size:0.75rem;">(Modul: ${escapeHtml(n.moduleId)} / ${escapeHtml(n.featureId)})</span>
+                        </div>
+                      `).join('')}
+                    </div>
+                  `
+        : `
+                    <div class="pm-detail-value" style="color:#64748b; font-style:italic;">
+                      Belum ada langkah alur visual yang mereferensikan requirement ini.
+                    </div>
+                  `
+      }
+              </div>
+
+              <!-- Revision History Timeline Section -->
+              <div class="pm-detail-item is-full" style="margin-top:6px;">
+                <span class="pm-detail-label">Riwayat Revisi (Revision History)</span>
+                <div class="pm-timeline-list">
+                  ${history.map((h) => {
+        const isCurrent = h.version === (previewReq.version || 1);
+        return `
+                      <div class="pm-timeline-card ${isCurrent ? 'is-active' : ''}">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                          <span class="pm-badge-draft" style="font-size:0.7rem; font-weight:700;">v${h.version || 1}</span>
+                          <span class="${h.status === 'Confirmed' ? 'pm-badge-confirmed' : 'pm-badge-draft'}" style="font-size:0.68rem;">
+                            ${h.status}
+                          </span>
+                          <span>${escapeHtml(h.title)}</span>
+                          ${h.revisionOf ? `<span style="font-size:0.72rem; color:#b45309;">(Revisi dari ${h.revisionOf})</span>` : '<span style="font-size:0.72rem; color:#16a34a;">(Baseline Awal)</span>'}
+                        </div>
+                        <div>
+                          ${isCurrent
+            ? '<span style="font-size:0.72rem; font-weight:700; color:#166534;">● Sedang Dilihat</span>'
+            : `<button type="button" class="pm-row-btn pm-btn-preview-revision" data-version="${h.version}">Pratinjau Snapshot</button>`
+          }
+                        </div>
+                      </div>
+                    `;
+      }).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pm-modal-footer">
+            <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Tutup</button>
+            ${isManageMode && !previewReq.isArchived
+        ? `
+                <button type="button" class="pm-btn-sm pm-btn-primary pm-btn-edit-from-detail" data-req-id="${escapeHtml(reqId)}">
+                  Edit Requirement / Buat Revisi
+                </button>
+              `
+        : ''
+      }
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'archive-req') {
+    const reqId = modalData?.id;
+    const nodeUsage = checkRequirementNodeUsage(reqId);
+
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 520px;">
+          <div class="pm-modal-header">
+            <h3 class="pm-modal-title">Arsipkan Requirement: ${escapeHtml(reqId)}</h3>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <div class="pm-modal-body">
+            <p style="margin:0; font-size:0.88rem; color:#1e293b;">
+              Apakah Anda yakin ingin mengarsipkan requirement <strong>"${escapeHtml(modalData?.title || reqId)}"</strong>?
+            </p>
+
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px; margin-top:12px; font-size:0.8rem; color:#475569; line-height:1.45;">
+              <div style="font-weight:700; color:#0f172a; margin-bottom:4px;">Ketentuan Pengarsipan (Archive Safety):</div>
+              <div>&bull; Requirement akan disembunyikan dari daftar aktif.</div>
+              <div>&bull; Seluruh riwayat dan data requirement tetap tersimpan utuh di database.</div>
+              <div>&bull; Langkah alur proses (node flow) yang terhubung <strong>TIDAK AKAN DIHAPUS</strong>.</div>
+            </div>
+
+            ${nodeUsage.isUsed
+        ? `
+                <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:10px; margin-top:10px; font-size:0.78rem; color:#92400e;">
+                  <strong>Informasi Keterhubungan Alur:</strong><br/>
+                  Requirement ini saat ini terhubung dengan langkah alur: <strong>${nodeUsage.nodes.map(n => n.code + ' (' + n.title + ')').join(', ')}</strong>. Relasi ini tetap tercatat di historis data.
+                </div>
+              `
+        : ''
+      }
+          </div>
+
+          <div class="pm-modal-footer">
+            <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
+            <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-confirm-archive">
+              Ya, Arsipkan Requirement
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -1169,10 +2251,15 @@ function renderModals(store) {
   if (activeModal === 'edit-node') {
     const isNew = !modalData?.node?.id;
     const isConfirmed = modalData?.node?.status === 'Confirmed';
+    const currentModId = modalData?.moduleId || (store.modules.find(m => m.name === modalData?.node?.module)?.id) || store.modules[0]?.id;
+    const currentModObj = store.modules.find(m => m.id === currentModId) || store.modules[0];
+    const availableFeatures = currentModObj?.features || [];
+    const currentFeatId = modalData?.featureId || availableFeatures[0]?.id;
+    const moduleRequirements = (store.requirements || []).filter(r => !r.isArchived && !r.isSuperseded && (r.moduleId === currentModId || r.module === currentModObj?.name));
 
     return `
       <div class="pm-modal-backdrop" id="pm-modal-backdrop">
-        <div class="pm-modal-dialog">
+        <div class="pm-modal-dialog" style="max-width: 680px;">
           <div class="pm-modal-header">
             <h3 class="pm-modal-title">${isNew ? 'Tambah Langkah Alur (Node)' : isConfirmed ? `Buat Revisi Node: ${modalData?.node?.label || modalData?.node?.title || ''}` : `Edit Node: ${modalData?.node?.label || modalData?.node?.title || ''}`}</h3>
             <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
@@ -1183,10 +2270,9 @@ function renderModals(store) {
               ${isConfirmed
         ? `
                 <div class="pm-revision-alert">
-                  <span>ℹ️</span>
                   <div>
-                    <strong>Langkah alur ini berstatus Confirmed.</strong><br/>
-                    Menyimpan draf akan menghasilkan <strong>versi revisi baru (v${(modalData.node.version || 1) + 1} Draft)</strong> tanpa langsung menimpa baseline confirmed resmi.
+                    <strong>Langkah alur ini berstatus Confirmed (Baseline Terkunci).</strong><br/>
+                    Menyimpan draf akan menghasilkan <strong>versi revisi baru (v${(modalData.node.version || 1) + 1} Draft)</strong> dengan <code>revisionOf: "v${modalData.node.version || 1}"</code> tanpa menimpa baseline resmi.
                   </div>
                 </div>
               `
@@ -1195,61 +2281,87 @@ function renderModals(store) {
 
               <div class="pm-form-grid">
                 <div class="pm-form-group">
+                  <label class="pm-form-label">Modul Terkait</label>
+                  <select name="moduleId" id="pm-node-form-module" class="pm-form-select" ${!isNew ? 'disabled' : ''}>
+                    ${store.modules.map(m => `
+                      <option value="${m.id}" ${m.id === currentModId ? 'selected' : ''}>${m.id.split('-')[0]} - ${escapeHtml(m.name)}</option>
+                    `).join('')}
+                  </select>
+                  ${!isNew ? `<input type="hidden" name="moduleId" value="${escapeHtml(currentModId)}" />` : ''}
+                </div>
+
+                <div class="pm-form-group">
+                  <label class="pm-form-label">Fitur / Alur Proses</label>
+                  <select name="featureId" id="pm-node-form-feature" class="pm-form-select" ${!isNew ? 'disabled' : ''}>
+                    ${availableFeatures.map(f => `
+                      <option value="${f.id}" ${f.id === currentFeatId ? 'selected' : ''}>${escapeHtml(f.name)}</option>
+                    `).join('')}
+                  </select>
+                  ${!isNew ? `<input type="hidden" name="featureId" value="${escapeHtml(currentFeatId)}" />` : ''}
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Requirement Terkait (reqId)</label>
+                  <select name="reqId" id="pm-node-form-req" class="pm-form-select">
+                    <option value="">-- Tanpa Terhubung Requirement (Opsional) --</option>
+                    ${moduleRequirements.map(r => `
+                      <option value="${r.id}" ${r.id === modalData?.node?.reqId ? 'selected' : ''}>[${r.id}] ${escapeHtml(r.title)} (${r.type || 'KF'})</option>
+                    `).join('')}
+                  </select>
+                  <span style="font-size:0.72rem; color:#64748b; margin-top:2px; display:block;">Requirement relevan dengan modul terpilih. Kosongkan bila belum ada relasi.</span>
+                </div>
+
+                <div class="pm-form-group">
                   <label class="pm-form-label">Kode Langkah</label>
-                  <input type="text" name="code" class="pm-form-input" value="${escapeHtml(modalData?.node?.code || '')}" placeholder="P-001" required />
+                  <input type="text" name="code" class="pm-form-input" value="${escapeHtml(modalData?.node?.code || '')}" placeholder="Contoh: P-001" required />
                 </div>
 
                 <div class="pm-form-group">
                   <label class="pm-form-label">Tipe Langkah</label>
                   <select name="type" class="pm-form-select">
-                    <option value="process" ${modalData?.node?.type === 'process' ? 'selected' : ''}>Process (Aktivitas)</option>
-                    <option value="decision" ${modalData?.node?.type === 'decision' ? 'selected' : ''}>Decision (Keputusan / Kondisi)</option>
-                    <option value="start" ${modalData?.node?.type === 'start' ? 'selected' : ''}>Start (Titik Awal)</option>
-                    <option value="end" ${modalData?.node?.type === 'end' ? 'selected' : ''}>End (Titik Akhir)</option>
+                    <option value="process" ${modalData?.node?.type === 'process' ? 'selected' : ''}>Process (Aktivitas / Transaksi)</option>
+                    <option value="decision" ${modalData?.node?.type === 'decision' ? 'selected' : ''}>Decision (Keputusan / Percabangan)</option>
+                    <option value="start" ${modalData?.node?.type === 'start' ? 'selected' : ''}>Start (Titik Awal Alur)</option>
+                    <option value="end" ${modalData?.node?.type === 'end' ? 'selected' : ''}>End (Titik Akhir Alur)</option>
                   </select>
                 </div>
 
                 <div class="pm-form-group is-full">
                   <label class="pm-form-label">Label / Nama Langkah</label>
-                  <input type="text" name="label" class="pm-form-input" value="${escapeHtml(modalData?.node?.label || modalData?.node?.title || '')}" required />
+                  <input type="text" name="label" class="pm-form-input" value="${escapeHtml(modalData?.node?.label || modalData?.node?.title || '')}" placeholder="Contoh: Input Form Transaksi" required />
                 </div>
 
                 <div class="pm-form-group is-full">
-                  <label class="pm-form-label">Tujuan Proses</label>
-                  <textarea name="purpose" class="pm-form-textarea">${escapeHtml(modalData?.node?.purpose || modalData?.node?.summary || '')}</textarea>
+                  <label class="pm-form-label">Tujuan / Ringkasan Proses</label>
+                  <textarea name="purpose" class="pm-form-textarea" placeholder="Jelaskan ringkasan atau tujuan proses ini...">${escapeHtml(modalData?.node?.purpose || modalData?.node?.summary || modalData?.node?.description || '')}</textarea>
                 </div>
 
                 <div class="pm-form-group">
                   <label class="pm-form-label">Input</label>
-                  <input type="text" name="input" class="pm-form-input" value="${escapeHtml(modalData?.node?.input || '')}" />
+                  <input type="text" name="input" class="pm-form-input" value="${escapeHtml(modalData?.node?.input || '')}" placeholder="Contoh: Data QR, Form Input" />
                 </div>
 
                 <div class="pm-form-group">
                   <label class="pm-form-label">Output</label>
-                  <input type="text" name="output" class="pm-form-input" value="${escapeHtml(modalData?.node?.output || '')}" />
+                  <input type="text" name="output" class="pm-form-input" value="${escapeHtml(modalData?.node?.output || '')}" placeholder="Contoh: Dokumen Bukti, Record DB" />
                 </div>
 
                 <div class="pm-form-group is-full">
                   <label class="pm-form-label">Validasi</label>
-                  <input type="text" name="validation" class="pm-form-input" value="${escapeHtml(modalData?.node?.validation || '')}" />
+                  <input type="text" name="validation" class="pm-form-input" value="${escapeHtml(modalData?.node?.validation || '')}" placeholder="Contoh: Format batch valid, stok mencukupi" />
                 </div>
 
                 <div class="pm-form-group">
                   <label class="pm-form-label">Fallback</label>
-                  <input type="text" name="fallback" class="pm-form-input" value="${escapeHtml(modalData?.node?.fallback || '')}" />
+                  <input type="text" name="fallback" class="pm-form-input" value="${escapeHtml(modalData?.node?.fallback || '')}" placeholder="Contoh: Simpan Draf Offline / Hubungi IT" />
                 </div>
 
                 <div class="pm-form-group">
                   <label class="pm-form-label">Dampak Stok</label>
-                  <input type="text" name="stockImpact" class="pm-form-input" value="${escapeHtml(modalData?.node?.stockImpact || '')}" placeholder="Contoh: - Stok Mata Entres" />
+                  <input type="text" name="stockImpact" class="pm-form-input" value="${escapeHtml(modalData?.node?.stockImpact || '')}" placeholder="Contoh: - Stok Batang Bawah (+/-)" />
                 </div>
 
-                <div class="pm-form-group">
-                  <label class="pm-form-label">ID Requirement Terkait</label>
-                  <input type="text" name="reqId" class="pm-form-input" value="${escapeHtml(modalData?.node?.reqId || '')}" placeholder="Contoh: RN-PRS-001" />
-                </div>
-
-                <div class="pm-form-group">
+                <div class="pm-form-group is-full">
                   <label class="pm-form-label">Role Terkait (Verifikator)</label>
                   <input type="text" name="relatedRole" class="pm-form-input" value="${escapeHtml(modalData?.node?.relatedRole || 'Asisten Bibitan (Verifikasi)')}" />
                 </div>
@@ -1258,9 +2370,166 @@ function renderModals(store) {
 
             <div class="pm-modal-footer">
               <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
-              <button type="submit" class="pm-btn-sm pm-btn-primary" id="pm-btn-submit-node">💾 Simpan Draf</button>
+              <button type="submit" class="pm-btn-sm pm-btn-primary" id="pm-btn-submit-node">Simpan Draf</button>
             </div>
           </form>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'archive-node') {
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 480px;">
+          <div class="pm-modal-header">
+            <h3 class="pm-modal-title">Konfirmasi Arsip Node</h3>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <div class="pm-modal-body">
+            <p style="margin:0; font-size:0.88rem; color:#334155;">
+              Apakah Anda yakin ingin mengarsipkan langkah alur <strong>${escapeHtml(modalData?.node?.label || modalData?.node?.title || modalData?.node?.id)}</strong> (<code>${escapeHtml(modalData?.node?.code || '-')}</code>)?
+            </p>
+
+            <div style="margin-top:12px; padding:10px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem; color:#475569;">
+              <div><strong>Perilaku Arsip (Soft Delete):</strong></div>
+              <ul style="margin:6px 0 0 16px; padding:0; line-height:1.5;">
+                <li>Node tidak akan tampil pada diagram flow aktif.</li>
+                <li>Relasi <code>reqId</code> ke Requirement tetap terjaga dan tidak terputus.</li>
+                <li>Node tetap tersimpan secara aman dalam riwayat/history sistem.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="pm-modal-footer">
+            <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
+            <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-confirm-archive-node">
+              Ya, Arsipkan Node
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'edit-edge') {
+    const isNew = !modalData?.edge?.id;
+    const isConfirmed = modalData?.edge?.status === 'Confirmed';
+    const modId = modalData?.moduleId || currentModuleId;
+    const featId = modalData?.featureId || currentFeatureId;
+    const flow = store.flows[modId]?.[featId] || { nodes: [], edges: [] };
+    const activeNodes = (flow.nodes || []).filter(n => !n.isArchived && !n.isSuperseded);
+    const selectedSource = modalData?.edge?.from || activeNodes[0]?.id || '';
+    const selectedTarget = modalData?.edge?.to || (activeNodes[1] ? activeNodes[1].id : '');
+
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 580px;">
+          <div class="pm-modal-header">
+            <h3 class="pm-modal-title">${isNew ? 'Tambah Koneksi Alur (Connection)' : isConfirmed ? `Buat Revisi Koneksi: ${modalData?.edge?.from} → ${modalData?.edge?.to}` : `Edit Koneksi Alur`}</h3>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <form id="pm-form-edge">
+            <div class="pm-modal-body">
+              ${isConfirmed
+        ? `
+                <div class="pm-revision-alert">
+                  <div>
+                    <strong>Koneksi ini berstatus Confirmed (Baseline Terkunci).</strong><br/>
+                    Menyimpan perubahan akan menghasilkan <strong>revisi baru (v${(modalData.edge.version || 1) + 1} Draft)</strong> dengan <code>revisionOf: "v${modalData.edge.version || 1}"</code> tanpa menimpa baseline resmi.
+                  </div>
+                </div>
+              `
+        : ''
+      }
+
+              <div class="pm-form-grid">
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Source Node (Langkah Asal)</label>
+                  <select name="from" id="pm-edge-form-source" class="pm-form-select" required>
+                    <option value="">-- Pilih Langkah Asal --</option>
+                    ${activeNodes.map(n => `
+                      <option value="${n.id}" ${n.id === selectedSource ? 'selected' : ''}>[${n.code || n.type}] ${escapeHtml(n.label || n.title)} (${n.type})</option>
+                    `).join('')}
+                  </select>
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Target Node (Langkah Tujuan)</label>
+                  <select name="to" id="pm-edge-form-target" class="pm-form-select" required>
+                    <option value="">-- Pilih Langkah Tujuan --</option>
+                    ${activeNodes.map(n => `
+                      <option value="${n.id}" ${n.id === selectedTarget ? 'selected' : ''}>[${n.code || n.type}] ${escapeHtml(n.label || n.title)} (${n.type})</option>
+                    `).join('')}
+                  </select>
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Kondisi Percabangan / Label (Opsional)</label>
+                  <input type="text" name="condition" id="pm-edge-form-cond" class="pm-form-input" value="${escapeHtml(modalData?.edge?.condition || modalData?.edge?.label || '')}" placeholder="Contoh: Sukses, Fallback, Ya, Tidak, Lolos QC" />
+                  <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+                    <span style="font-size:0.72rem; color:#64748b; align-self:center;">Preset Cepat:</span>
+                    <button type="button" class="pm-row-btn pm-btn-cond-preset" data-val="Sukses">Sukses</button>
+                    <button type="button" class="pm-row-btn pm-btn-cond-preset" data-val="Fallback">Fallback</button>
+                    <button type="button" class="pm-row-btn pm-btn-cond-preset" data-val="Ya">Ya</button>
+                    <button type="button" class="pm-row-btn pm-btn-cond-preset" data-val="Tidak">Tidak</button>
+                    <button type="button" class="pm-row-btn pm-btn-cond-preset" data-val="Lolos QC">Lolos QC</button>
+                    <button type="button" class="pm-row-btn pm-btn-cond-preset" data-val="Gagal QC">Gagal QC</button>
+                  </div>
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Keterangan / Catatan Alur</label>
+                  <textarea name="description" class="pm-form-textarea" placeholder="Catatan tambahan mengenai kondisi transisi alur ini...">${escapeHtml(modalData?.edge?.description || '')}</textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="pm-modal-footer">
+              <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
+              <button type="submit" class="pm-btn-sm pm-btn-primary" id="pm-btn-submit-edge">Simpan Draf</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'archive-edge') {
+    const fromNode = store.flows[modalData?.moduleId]?.[modalData?.featureId]?.nodes?.find(n => n.id === modalData?.edge?.from);
+    const toNode = store.flows[modalData?.moduleId]?.[modalData?.featureId]?.nodes?.find(n => n.id === modalData?.edge?.to);
+
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 480px;">
+          <div class="pm-modal-header">
+            <h3 class="pm-modal-title">Konfirmasi Arsip Koneksi</h3>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <div class="pm-modal-body">
+            <p style="margin:0; font-size:0.88rem; color:#334155;">
+              Apakah Anda yakin ingin mengarsipkan koneksi alur dari <strong>${escapeHtml(fromNode?.code || modalData?.edge?.from)}</strong> ke <strong>${escapeHtml(toNode?.code || modalData?.edge?.to)}</strong>${modalData?.edge?.condition ? ` (<code>${escapeHtml(modalData?.edge?.condition)}</code>)` : ''}?
+            </p>
+
+            <div style="margin-top:12px; padding:10px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem; color:#475569;">
+              <div><strong>Perilaku Arsip (Soft Delete):</strong></div>
+              <ul style="margin:6px 0 0 16px; padding:0; line-height:1.5;">
+                <li>Koneksi tidak akan tampil pada diagram alur aktif.</li>
+                <li>Node terkait <strong>TIDAK</strong> akan dihapus.</li>
+                <li>Koneksi tetap tersimpan di riwayat data.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="pm-modal-footer">
+            <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
+            <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-confirm-archive-edge">
+              Ya, Arsipkan Koneksi
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -1298,8 +2567,8 @@ function renderModals(store) {
               <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:12px; margin-top:8px;">
                 <div style="font-weight:600; font-size:0.8rem; color:#0f172a; margin-bottom:4px;">Status Validasi Integritas Data:</div>
                 ${validation.valid
-        ? '<div style="color:#16a34a; font-size:0.78rem;">✅ Data lengkap dan tervalidasi (0 error). Siap untuk diekspor.</div>'
-        : `<div style="color:#dc2626; font-size:0.78rem;">⚠️ Ditemukan kesalahan:<br/>${validation.errors.join('<br/>')}</div>`
+        ? '<div style="color:#16a34a; font-size:0.78rem;">Data lengkap dan tervalidasi (0 error). Siap untuk diekspor.</div>'
+        : `<div style="color:#dc2626; font-size:0.78rem;">Ditemukan kesalahan:<br/>${validation.errors.join('<br/>')}</div>`
       }
               </div>
             </div>
@@ -1307,7 +2576,7 @@ function renderModals(store) {
             <div class="pm-modal-footer">
               <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Tutup</button>
               <button type="submit" class="pm-btn-sm pm-btn-primary" ${!validation.valid ? 'disabled' : ''}>
-                📥 Unduh process-mapping-data.json
+                Unduh process-mapping-data.json
               </button>
             </div>
           </form>
@@ -1341,7 +2610,7 @@ function renderModals(store) {
           <div class="pm-modal-footer">
             <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
             <button type="button" class="pm-btn-sm pm-btn-primary" id="pm-btn-confirm-import" style="display:none;">
-              ✅ Konfirmasi &amp; Muat Data
+              Konfirmasi &amp; Muat Data
             </button>
           </div>
         </div>
@@ -1349,28 +2618,343 @@ function renderModals(store) {
     `;
   }
 
-  if (activeModal === 'reset') {
+  if (activeModal === 'compare-rev') {
+    const { entityType, entityId, moduleId, featureId } = modalData || {};
+    let baseline = null;
+    let draft = null;
+
+    if (entityType === 'Requirement') {
+      draft = store.requirements.find((r) => r.id === entityId && !r.isSuperseded);
+      if (draft && draft.revisionOf) {
+        const revVer = parseInt(draft.revisionOf.replace('v', ''), 10);
+        baseline = store.requirements.find((r) => r.id === entityId && r.version === revVer);
+      }
+    } else if (entityType === 'Node') {
+      const nodes = store.flows[moduleId]?.[featureId]?.nodes || [];
+      draft = nodes.find((n) => n.id === entityId && !n.isSuperseded);
+      if (draft && draft.revisionOf) {
+        const revVer = parseInt(draft.revisionOf.replace('v', ''), 10);
+        baseline = nodes.find((n) => n.id === entityId && n.version === revVer);
+      }
+    } else if (entityType === 'Connection') {
+      const edges = store.flows[moduleId]?.[featureId]?.edges || [];
+      draft = edges.find((e) => e.id === entityId && !e.isSuperseded);
+      if (draft && draft.revisionOf) {
+        const revVer = parseInt(draft.revisionOf.replace('v', ''), 10);
+        baseline = edges.find((e) => e.id === entityId && e.version === revVer);
+      }
+    }
+
+    const diff = calculateEntityDiff(entityType, baseline, draft);
+    const isDraft = draft?.status === 'Draft';
+    const isInReview = draft?.status === 'In Review';
+    const isRejected = draft?.status === 'Rejected';
+
     return `
       <div class="pm-modal-backdrop" id="pm-modal-backdrop">
-        <div class="pm-modal-dialog" style="max-width:480px;">
+        <div class="pm-modal-dialog" style="max-width: 900px; width: 100%;">
           <div class="pm-modal-header">
-            <h3 class="pm-modal-title">Konfirmasi Reset Draf</h3>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <h3 class="pm-modal-title">Perbandingan Versi: ${escapeHtml(entityType)}</h3>
+              <span class="pm-status-badge pm-status-draft" style="font-size:0.75rem;">${escapeHtml(draft?.code || draft?.id || entityId)}</span>
+            </div>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <div class="pm-modal-body">
+            <!-- Top Summary Card -->
+            <div class="pm-diff-summary-card">
+              <div>
+                <div style="font-size:0.92rem; font-weight:700; color:#0f172a;">
+                  ${escapeHtml(draft?.title || draft?.label || entityId)}
+                </div>
+                <div style="font-size:0.75rem; color:#64748b; margin-top:3px;">
+                  Status: <strong>${escapeHtml(draft?.status || 'Draft')}</strong> &bull;
+                  Jenis Perubahan: <strong>${escapeHtml(diff.changeType)}</strong> &bull;
+                  <strong>${diff.changedFieldsCount}</strong> field mengalami perubahan
+                </div>
+              </div>
+
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="pm-status-badge pm-status-confirmed" style="font-size:0.75rem;">
+                  Baseline: ${baseline ? `v${baseline.version}` : 'None (Baru)'}
+                </span>
+                <span style="color:#94a3b8; font-weight:700;">&rarr;</span>
+                <span class="pm-status-badge ${isInReview ? 'pm-status-review' : isRejected ? 'pm-status-rejected' : 'pm-status-draft'}" style="font-size:0.75rem;">
+                  Draft: v${draft?.version || 1}
+                </span>
+              </div>
+            </div>
+
+            <!-- Review Note Alert if Rejected -->
+            ${isRejected && draft?.reviewNote
+        ? `
+              <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:10px 14px; font-size:0.8rem; color:#991b1b;">
+                <strong>Catatan Penolakan Review (${escapeHtml(draft.reviewedBy || 'Reviewer')} - ${escapeHtml(draft.reviewedAt || '')}):</strong><br/>
+                ${escapeHtml(draft.reviewNote)}
+              </div>
+            `
+        : ''
+      }
+
+            <!-- Diff Table -->
+            <div class="pm-diff-table-wrap">
+              <table class="pm-diff-table">
+                <thead>
+                  <tr>
+                    <th style="width: 140px;">Field</th>
+                    <th style="width: 35%;">Baseline Confirmed (${baseline ? 'v' + baseline.version : 'Belum ada'})</th>
+                    <th style="width: 35%;">Draft Revisi (v${draft?.version || 1})</th>
+                    <th style="width: 95px; text-align:center;">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${diff.fieldDiffs.map((field) => {
+        const isChanged = field.isChanged;
+        const rowClass = field.status === 'Added' ? 'pm-diff-row-added' :
+          field.status === 'Archived' ? 'pm-diff-row-archived' :
+            isChanged ? 'pm-diff-row-modified' : '';
+
+        return `
+                      <tr class="${rowClass}">
+                        <td class="pm-diff-field-name">${escapeHtml(field.fieldLabel || field.fieldName)}</td>
+                        <td>
+                          <div class="pm-diff-old-val ${isChanged ? 'is-deleted' : ''}">
+                            ${escapeHtml(field.oldValue != null && field.oldValue !== '' ? String(field.oldValue) : '-')}
+                          </div>
+                        </td>
+                        <td>
+                          <div class="pm-diff-new-val ${isChanged ? 'is-changed' : ''}">
+                            ${escapeHtml(field.newValue != null && field.newValue !== '' ? String(field.newValue) : '-')}
+                          </div>
+                        </td>
+                        <td class="pm-diff-status-cell">
+                          ${field.status === 'Added' ? '<span class="pm-diff-status-badge pm-diff-status-added">+ Added</span>' :
+            field.status === 'Archived' ? '<span class="pm-diff-status-badge pm-diff-status-archived">Archived</span>' :
+              isChanged ? '<span class="pm-diff-status-badge pm-diff-status-modified">Modified</span>' :
+                '<span class="pm-diff-status-badge pm-diff-status-same">Sama</span>'}
+                        </td>
+                      </tr>
+                    `;
+      }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="pm-modal-footer" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+              <button
+                type="button"
+                class="pm-btn-sm pm-btn-outline-danger pm-btn-discard-rev"
+                data-entity-type="${entityType}"
+                data-entity-id="${entityId}"
+                data-mod-id="${moduleId}"
+                data-feat-id="${featureId}"
+                title="Batalkan draf ini"
+              >
+                Batalkan Draf (Discard)
+              </button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Tutup</button>
+
+              ${isDraft
+        ? `
+                <button
+                  type="button"
+                  class="pm-btn-sm pm-btn-primary pm-btn-submit-rev"
+                  data-entity-type="${entityType}"
+                  data-entity-id="${entityId}"
+                  data-mod-id="${moduleId}"
+                  data-feat-id="${featureId}"
+                >
+                  Ajukan untuk Review
+                </button>
+              `
+        : ''
+      }
+
+              ${isInReview
+        ? `
+                <button
+                  type="button"
+                  class="pm-btn-sm pm-btn-danger pm-btn-reject-rev"
+                  data-entity-type="${entityType}"
+                  data-entity-id="${entityId}"
+                  data-mod-id="${moduleId}"
+                  data-feat-id="${featureId}"
+                >
+                  Tolak (Reject)
+                </button>
+                <button
+                  type="button"
+                  class="pm-btn-sm pm-btn-primary pm-btn-confirm-rev"
+                  data-entity-type="${entityType}"
+                  data-entity-id="${entityId}"
+                  data-mod-id="${moduleId}"
+                  data-feat-id="${featureId}"
+                  data-version="${draft?.version || 1}"
+                  style="background:#16a34a; border-color:#15803d;"
+                >
+                  Confirm Review
+                </button>
+              `
+        : ''
+      }
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'confirm-rev') {
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 520px;">
+          <div class="pm-modal-header">
+            <h3 class="pm-modal-title">Confirm Review: ${escapeHtml(modalData?.entityType || '')} [${escapeHtml(modalData?.entityId || '')}]</h3>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <form id="pm-form-confirm-rev">
+            <div class="pm-modal-body">
+              <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:12px; margin-bottom:14px; font-size:0.82rem; color:#166534; line-height:1.5;">
+                <div style="font-weight:700; display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                  <span>Pemisahan Status: Confirmed vs Published</span>
+                </div>
+                <div><strong>Confirmed</strong> berarti revisi telah disetujui. Data belum dipublish ke baseline sampai proses ekspor/publikasi dilakukan.</div>
+              </div>
+
+              <div class="pm-form-grid">
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Username Reviewer <span style="color:#ef4444;">*</span></label>
+                  <input
+                    type="text"
+                    name="reviewerUsername"
+                    id="pm-confirm-username-input"
+                    class="pm-form-input"
+                    placeholder="Masukkan username reviewer (contoh: ikhsan)"
+                    value="ikhsan"
+                    required
+                  />
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Password Reviewer <span style="color:#ef4444;">*</span></label>
+                  <input
+                    type="password"
+                    name="reviewerPassword"
+                    id="pm-confirm-password-input"
+                    class="pm-form-input"
+                    placeholder="Masukkan kata sandi reviewer"
+                    autocomplete="off"
+                    required
+                  />
+                  <div style="font-size:0.72rem; color:#64748b; margin-top:4px;">
+                    <strong>Reviewer Confirmation Gate:</strong> Verifikasi otorisasi reviewer sebelum status revisi ditetapkan menjadi Confirmed.
+                  </div>
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Catatan Persetujuan (Review Note / Opsional)</label>
+                  <input
+                    type="text"
+                    name="reviewNote"
+                    id="pm-confirm-note-input"
+                    class="pm-form-input"
+                    placeholder="Contoh: Disetujui sesuai spesifikasi operasional 2026"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="pm-modal-footer">
+              <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
+              <button type="submit" class="pm-btn-sm pm-btn-primary" id="pm-btn-submit-confirm-rev" style="background:#16a34a; border-color:#15803d;">
+                Confirm Review
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'reject-rev') {
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 500px;">
+          <div class="pm-modal-header">
+            <h3 class="pm-modal-title">Tolak Revisi (Reject Draft)</h3>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <form id="pm-form-reject-rev">
+            <div class="pm-modal-body">
+              <p style="margin:0; font-size:0.86rem; color:#334155;">
+                Anda akan menolak draf <strong>${escapeHtml(modalData?.entityType || '')}</strong> [<code>${escapeHtml(modalData?.entityId || '')}</code>].
+              </p>
+
+              <div class="pm-form-group is-full" style="margin-top:12px;">
+                <label class="pm-form-label">Alasan Penolakan / Catatan Perbaikan <span style="color:#ef4444;">*</span></label>
+                <textarea
+                  name="reviewNote"
+                  id="pm-reject-note-input"
+                  class="pm-form-textarea"
+                  rows="4"
+                  placeholder="Jelaskan alasan penolakan dan instruksi perbaikan untuk Business Analyst..."
+                  required
+                ></textarea>
+              </div>
+
+              <div style="font-size:0.75rem; color:#64748b; margin-top:6px;">
+                Draf yang ditolak akan berstatus <strong>Rejected</strong> dan dapat diperbaiki kembali oleh author sebelum diajukan ulang.
+              </div>
+            </div>
+
+            <div class="pm-modal-footer">
+              <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
+              <button type="submit" class="pm-btn-sm pm-btn-danger" id="pm-btn-submit-reject-rev">
+                Konfirmasi Penolakan
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'discard-rev') {
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 480px;">
+          <div class="pm-modal-header">
+            <h3 class="pm-modal-title">Konfirmasi Batalkan Draf</h3>
             <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
           </div>
 
           <div class="pm-modal-body">
             <p style="margin:0; font-size:0.88rem; color:#334155;">
-              Apakah Anda yakin ingin membatalkan semua perubahan draf lokal dan memuat ulang data resmi dari <strong>process-mapping-data.json</strong>?
+              Apakah Anda yakin ingin membatalkan draf <strong>${escapeHtml(modalData?.entityType || '')}</strong> [<code>${escapeHtml(modalData?.entityId || '')}</code>]?
             </p>
-            <p style="margin:8px 0 0; font-size:0.8rem; color:#64748b;">
-              ⚠️ <em>Catatan: Tindakan ini tidak akan pernah menghapus atau mengubah baseline Confirmed.</em>
-            </p>
+
+            <div style="margin-top:12px; padding:10px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem; color:#475569;">
+              <div><strong>Perilaku Pembatalan (Discard):</strong></div>
+              <ul style="margin:6px 0 0 16px; padding:0; line-height:1.5;">
+                <li>Jika ini revisi dari data Confirmed, versi resmi sebelumnya akan dipulihkan secara utuh.</li>
+                <li>Jika ini adalah draf baru, data draf akan dihapus dari sesi.</li>
+                <li>Baseline resmi Confirmed tidak akan pernah rusak.</li>
+              </ul>
+            </div>
           </div>
 
           <div class="pm-modal-footer">
             <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
-            <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-confirm-reset">
-              🔄 Ya, Reset ke Data Resmi
+            <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-confirm-discard-rev">
+              Ya, Batalkan Draf
             </button>
           </div>
         </div>
@@ -1621,13 +3205,34 @@ function attachDetailPanelEvents(container, store) {
   // Archive Node button in Detail Panel
   container.querySelectorAll('#pm-detail-panel .pm-btn-node-archive').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const modId = btn.dataset.modId;
-      const featId = btn.dataset.featId;
-      const nodeId = btn.dataset.nodeId;
-      if (confirm('Arsipkan langkah alur ini? Node akan tetap tersimpan di riwayat data.')) {
-        archiveFlowNode(modId, featId, nodeId);
-        saveDraftToStorage();
-        showToast('📦 Node berhasil diarsipkan (Draft)');
+      const modId = btn.dataset.modId || selectedModuleId;
+      const featId = btn.dataset.featId || currentFeatureId;
+      const nodeId = btn.dataset.nodeId || selectedNodeId;
+
+      let targetNode = null;
+      if (modId && featId) {
+        targetNode = store.flows[modId]?.[featId]?.nodes?.find((n) => n.id === nodeId && !n.isArchived && !n.isSuperseded);
+      }
+      if (!targetNode) {
+        for (const [mId, feats] of Object.entries(store.flows)) {
+          for (const [fId, flowObj] of Object.entries(feats)) {
+            const match = (flowObj.nodes || []).find((n) => n.id === nodeId && !n.isArchived && !n.isSuperseded);
+            if (match) {
+              targetNode = match;
+              break;
+            }
+          }
+          if (targetNode) break;
+        }
+      }
+
+      if (targetNode) {
+        modalData = {
+          moduleId: modId,
+          featureId: featId,
+          node: JSON.parse(JSON.stringify(targetNode))
+        };
+        activeModal = 'archive-node';
         renderProcessMappingPortal(container);
       }
     });
@@ -1679,6 +3284,14 @@ function attachPortalEvents(container, store) {
     renderProcessMappingPortal(container);
   });
 
+  container.querySelector('#pm-ref-reset-filters-btn')?.addEventListener('click', () => {
+    refFilterType = 'ALL';
+    refFilterCategory = 'ALL';
+    refFilterStatus = 'ALL';
+    refSearchQuery = '';
+    renderProcessMappingPortal(container);
+  });
+
   const refSearch = container.querySelector('#pm-ref-search');
   if (refSearch) {
     refSearch.addEventListener('input', (e) => {
@@ -1688,6 +3301,30 @@ function attachPortalEvents(container, store) {
       const countEl = container.querySelector('#pm-ref-count-text');
       if (tbody) tbody.innerHTML = renderReferenceTableRows(filtered);
       if (countEl) countEl.textContent = `Menampilkan ${filtered.length} dari ${(store.functionalRequirements || []).length + (store.nonFunctionalRequirements || []).length} requirement`;
+    });
+  }
+
+  // Delegated click for Reference requirement detail
+  const refTbody = container.querySelector('#pm-ref-table-body');
+  if (refTbody) {
+    refTbody.addEventListener('click', (e) => {
+      const viewBtn = e.target.closest('.pm-btn-view-ref-req, .pm-btn-view-req');
+      if (viewBtn) {
+        e.stopPropagation();
+        const reqId = viewBtn.dataset.reqId;
+        const allGeneral = [
+          ...(store.functionalRequirements || []),
+          ...(store.nonFunctionalRequirements || []),
+          ...(store.requirements || [])
+        ];
+        const req = allGeneral.find((r) => r.id === reqId);
+        if (req) {
+          modalData = JSON.parse(JSON.stringify(req));
+          selectedReqDetailVersion = null;
+          activeModal = 'detail-req';
+          renderProcessMappingPortal(container);
+        }
+      }
     });
   }
 
@@ -1733,7 +3370,7 @@ function attachPortalEvents(container, store) {
   container.querySelector('#pm-btn-save-draft')?.addEventListener('click', () => {
     try {
       saveDraftToStorage();
-      showToast('💾 Draf berhasil disimpan ke sesi lokal');
+      showToast('Draf berhasil disimpan ke sesi lokal');
       renderProcessMappingPortal(container);
     } catch (err) {
       alert('Gagal menyimpan draf: ' + err.message);
@@ -1850,7 +3487,7 @@ function attachPortalEvents(container, store) {
   // Requirement row click to open detail
   container.querySelectorAll('.pm-req-full-row[data-req-id]').forEach((row) => {
     row.addEventListener('click', (e) => {
-      if (e.target.closest('.pm-row-btn')) return; // ignore edit/archive buttons
+      if (e.target.closest('.pm-action-menu-wrap') || e.target.closest('.pm-row-btn')) return; // ignore edit/archive buttons
 
       const reqId = row.dataset.reqId;
       // Find node corresponding to this requirement
@@ -1925,29 +3562,141 @@ function attachPortalEvents(container, store) {
   });
 
   // ---------------------------------------------------------------------------
-  // Manage Mode Events: Requirements (Add, Edit, Archive)
+  // Requirement Manager Events (Search, Filters, Add, View Detail, Edit, Archive)
   // ---------------------------------------------------------------------------
+  
+  // Search input in Requirement Manager
+  const reqSearchInput = container.querySelector('#pm-req-search-input');
+  if (reqSearchInput) {
+    reqSearchInput.addEventListener('input', (e) => {
+      reqSearchQuery = e.target.value;
+      reqCurrentPage = 1;
+      renderProcessMappingPortal(container);
+      // Keep focus on input after re-render
+      setTimeout(() => {
+        const inp = document.getElementById('pm-req-search-input');
+        if (inp) {
+          inp.focus();
+          inp.setSelectionRange(inp.value.length, inp.value.length);
+        }
+      }, 0);
+    });
+  }
+
+  // Filter Role
+  container.querySelector('#pm-req-filter-role')?.addEventListener('change', (e) => {
+    reqFilterRole = e.target.value;
+    reqCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  // Filter Module
+  container.querySelector('#pm-req-filter-module')?.addEventListener('change', (e) => {
+    reqFilterModule = e.target.value;
+    reqFilterFeature = 'ALL'; // reset feature filter when module changes
+    reqCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  // Filter Feature
+  container.querySelector('#pm-req-filter-feature')?.addEventListener('change', (e) => {
+    reqFilterFeature = e.target.value;
+    reqCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  // Filter Status
+  container.querySelector('#pm-req-filter-status')?.addEventListener('change', (e) => {
+    reqFilterStatus = e.target.value;
+    reqCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  // Reset Filters Button
+  container.querySelector('#pm-btn-reset-req-filter')?.addEventListener('click', () => {
+    reqSearchQuery = '';
+    reqFilterRole = 'ALL';
+    reqFilterModule = 'ALL';
+    reqFilterFeature = 'ALL';
+    reqFilterStatus = 'ALL';
+    reqCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  // Add Requirement Button
   container.querySelector('#pm-btn-add-req')?.addEventListener('click', () => {
+    const firstMod = store.modules[0];
+    const firstFeat = firstMod?.features[0];
     modalData = {
       id: '',
       title: '',
-      module: store.modules[0]?.name || 'Okulasi',
       role: 'Mantri Bibitan',
-      process: '',
+      module: firstMod?.name || 'Presensi',
+      moduleId: firstMod?.id || '01-presensi',
+      feature: firstFeat?.name || 'Presensi Supervisor',
+      featureId: firstFeat?.id || 'presensi-supervisor',
       status: 'Draft',
+      acceptanceCriteria: '',
+      process: '',
       input: '',
       validation: '',
       fallback: '',
-      output: ''
+      output: '',
+      businessRule: ''
     };
     activeModal = 'edit-req';
     renderProcessMappingPortal(container);
   });
 
-  container.querySelectorAll('.pm-btn-edit-req[data-req-id]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+  // View Requirement Detail Button
+  container.querySelectorAll('.pm-btn-view-req[data-req-id]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const reqId = btn.dataset.reqId;
-      const req = store.requirements.find((r) => r.id === reqId && !r.isArchived);
+      const req = store.requirements.find((r) => r.id === reqId && !r.isArchived && !r.isSuperseded) ||
+                  store.requirements.find((r) => r.id === reqId);
+      if (req) {
+        modalData = JSON.parse(JSON.stringify(req));
+        selectedReqDetailVersion = null;
+        activeModal = 'detail-req';
+        renderProcessMappingPortal(container);
+      }
+    });
+  });
+
+  // Edit Requirement from Detail Modal
+  container.querySelector('.pm-btn-edit-from-detail')?.addEventListener('click', (e) => {
+    const reqId = e.currentTarget.dataset.reqId;
+    const req = store.requirements.find((r) => r.id === reqId && !r.isArchived && !r.isSuperseded) ||
+                store.requirements.find((r) => r.id === reqId);
+    if (req) {
+      modalData = JSON.parse(JSON.stringify(req));
+      activeModal = 'edit-req';
+      renderProcessMappingPortal(container);
+    }
+  });
+
+  // Preview earlier revision snapshot in Detail Modal
+  container.querySelectorAll('.pm-btn-preview-revision[data-version]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selectedReqDetailVersion = parseInt(btn.dataset.version, 10);
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  // Return to latest version preview in Detail Modal
+  container.querySelector('.pm-btn-view-latest-req')?.addEventListener('click', () => {
+    selectedReqDetailVersion = null;
+    renderProcessMappingPortal(container);
+  });
+
+  // Edit Requirement Button (from table row)
+  container.querySelectorAll('.pm-btn-edit-req[data-req-id]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const reqId = btn.dataset.reqId;
+      const req = store.requirements.find((r) => r.id === reqId && !r.isArchived && !r.isSuperseded) ||
+                  store.requirements.find((r) => r.id === reqId && !r.isArchived);
       if (req) {
         modalData = JSON.parse(JSON.stringify(req));
         activeModal = 'edit-req';
@@ -1956,17 +3705,48 @@ function attachPortalEvents(container, store) {
     });
   });
 
+  // Archive Requirement Button (opens Archive Confirmation Modal)
   container.querySelectorAll('.pm-btn-archive-req[data-req-id]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const reqId = btn.dataset.reqId;
-      if (confirm(`Apakah Anda yakin ingin mengarsipkan requirement ${reqId}? Data akan tetap tersimpan dalam riwayat.`)) {
-        archiveRequirement(reqId);
-        saveDraftToStorage();
-        showToast(`📦 Requirement ${reqId} berhasil diarsipkan`);
+      const req = store.requirements.find((r) => r.id === reqId && !r.isArchived && !r.isSuperseded) ||
+                  store.requirements.find((r) => r.id === reqId && !r.isArchived);
+      if (req) {
+        modalData = JSON.parse(JSON.stringify(req));
+        activeModal = 'archive-req';
         renderProcessMappingPortal(container);
       }
     });
   });
+
+  // Confirm Archive in Archive Modal
+  container.querySelector('#pm-btn-confirm-archive')?.addEventListener('click', () => {
+    if (!modalData?.id) return;
+    const reqId = modalData.id;
+    try {
+      archiveRequirement(reqId);
+      saveDraftToStorage();
+      showToast(`Requirement ${reqId} berhasil diarsipkan`);
+      closeModal();
+      renderProcessMappingPortal(container);
+    } catch (err) {
+      alert('Gagal mengarsipkan requirement: ' + err.message);
+    }
+  });
+
+  // Reactive Module -> Feature Dropdown in Requirement Modal Form
+  const modalModSelect = container.querySelector('#pm-modal-req-module');
+  const modalFeatSelect = container.querySelector('#pm-modal-req-feature');
+  if (modalModSelect && modalFeatSelect) {
+    modalModSelect.addEventListener('change', (e) => {
+      const selectedModName = e.target.value;
+      const modObj = store.modules.find(m => m.name === selectedModName);
+      if (modObj && Array.isArray(modObj.features)) {
+        modalFeatSelect.innerHTML = modObj.features.map(f => `<option value="${f.name}" data-feat-id="${f.id}">${f.name}</option>`).join('');
+      }
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Manage Mode Events: Nodes (Add, Edit, Reorder, Archive)
@@ -1981,17 +3761,16 @@ function attachPortalEvents(container, store) {
         node: {
           id: '',
           code: '',
-          label: '',
           type: 'process',
+          label: '',
           purpose: '',
           input: '',
           output: '',
           validation: '',
           fallback: '',
-          stockImpact: '',
+          stockImpact: 'NO STOCK CHANGE',
           reqId: '',
-          relatedRole: 'Asisten Bibitan (Verifikasi)',
-          status: 'Draft'
+          relatedRole: 'Asisten Bibitan (Verifikasi)'
         }
       };
       activeModal = 'edit-node';
@@ -2001,11 +3780,11 @@ function attachPortalEvents(container, store) {
 
   container.querySelectorAll('.pm-btn-node-edit').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const modId = btn.dataset.modId;
-      const featId = btn.dataset.featId;
       const nodeId = btn.dataset.nodeId;
+      const modId = btn.dataset.modId || selectedModuleId;
+      const featId = btn.dataset.featId || currentFeatureId;
       const flow = store.flows[modId]?.[featId];
-      const node = flow?.nodes.find((n) => n.id === nodeId);
+      const node = flow?.nodes?.find((n) => n.id === nodeId && !n.isArchived && !n.isSuperseded);
       if (node) {
         modalData = {
           moduleId: modId,
@@ -2039,41 +3818,71 @@ function attachPortalEvents(container, store) {
 
   container.querySelectorAll('.pm-btn-node-up').forEach((btn) => {
     btn.addEventListener('click', () => {
+      const nodeId = btn.dataset.nodeId;
       const modId = btn.dataset.modId;
       const featId = btn.dataset.featId;
-      const nodeId = btn.dataset.nodeId;
-      reorderFlowNode(modId, featId, nodeId, 'up');
+      reorderFlowNode(modId, featId, nodeId, -1);
       saveDraftToStorage();
-      showToast('↑ Urutan langkah berhasil dinaikkan');
       renderProcessMappingPortal(container);
     });
   });
 
   container.querySelectorAll('.pm-btn-node-down').forEach((btn) => {
     btn.addEventListener('click', () => {
+      const nodeId = btn.dataset.nodeId;
       const modId = btn.dataset.modId;
       const featId = btn.dataset.featId;
-      const nodeId = btn.dataset.nodeId;
-      reorderFlowNode(modId, featId, nodeId, 'down');
+      reorderFlowNode(modId, featId, nodeId, 1);
       saveDraftToStorage();
-      showToast('↓ Urutan langkah berhasil diturunkan');
       renderProcessMappingPortal(container);
     });
   });
 
   container.querySelectorAll('.pm-btn-node-archive').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const modId = btn.dataset.modId;
-      const featId = btn.dataset.featId;
       const nodeId = btn.dataset.nodeId;
-      if (confirm('Arsipkan langkah alur ini? Node akan tetap tersimpan di riwayat data.')) {
-        archiveFlowNode(modId, featId, nodeId);
-        saveDraftToStorage();
-        showToast('📦 Node berhasil diarsipkan');
+      const modId = btn.dataset.modId || selectedModuleId;
+      const featId = btn.dataset.featId || currentFeatureId;
+      const flow = store.flows[modId]?.[featId];
+      const node = flow?.nodes?.find((n) => n.id === nodeId && !n.isArchived && !n.isSuperseded);
+      if (node) {
+        modalData = {
+          moduleId: modId,
+          featureId: featId,
+          node: JSON.parse(JSON.stringify(node))
+        };
+        activeModal = 'archive-node';
         renderProcessMappingPortal(container);
       }
     });
   });
+
+  // Dynamic Module -> Feature -> Requirement selector inside Node Form
+  const nodeModuleSelect = container.querySelector('#pm-node-form-module');
+  if (nodeModuleSelect) {
+    nodeModuleSelect.addEventListener('change', (e) => {
+      const selectedModId = e.target.value;
+      const modObj = store.modules.find(m => m.id === selectedModId);
+      const featSelect = container.querySelector('#pm-node-form-feature');
+      const reqSelect = container.querySelector('#pm-node-form-req');
+
+      if (featSelect && modObj) {
+        featSelect.innerHTML = (modObj.features || []).map(f => `
+          <option value="${f.id}">${escapeHtml(f.name)}</option>
+        `).join('');
+      }
+
+      if (reqSelect && modObj) {
+        const moduleRequirements = (store.requirements || []).filter(r => !r.isArchived && !r.isSuperseded && (r.moduleId === selectedModId || r.module === modObj.name));
+        reqSelect.innerHTML = `
+          <option value="">-- Tanpa Terhubung Requirement (Opsional) --</option>
+          ${moduleRequirements.map(r => `
+            <option value="${r.id}">[${r.id}] ${escapeHtml(r.title)} (${r.type || 'KF'})</option>
+          `).join('')}
+        `;
+      }
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Modal Actions: Submit & Cancel Handlers
@@ -2085,35 +3894,45 @@ function attachPortalEvents(container, store) {
   container.querySelector('#pm-form-requirement')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
-    const reqId = formData.get('reqId');
+    const selectedModName = formData.get('module');
+    const selectedMod = store.modules.find((m) => m.name === selectedModName);
+    const selectedFeatName = formData.get('feature');
+    const selectedFeat = selectedMod?.features.find((f) => f.name === selectedFeatName);
+
     const fields = {
-      id: reqId,
       title: formData.get('title'),
-      status: formData.get('status'),
-      module: formData.get('module'),
-      process: formData.get('process'),
-      input: formData.get('input'),
-      validation: formData.get('validation'),
-      fallback: formData.get('fallback'),
-      output: formData.get('output')
+      role: formData.get('role'),
+      module: selectedModName,
+      moduleId: selectedMod?.id || '01-presensi',
+      feature: selectedFeatName || selectedMod?.features[0]?.name,
+      featureId: selectedFeat?.id || selectedMod?.features[0]?.id,
+      acceptanceCriteria: formData.get('acceptanceCriteria'),
+      process: formData.get('process') || '',
+      input: formData.get('input') || '',
+      validation: formData.get('validation') || '',
+      fallback: formData.get('fallback') || '',
+      output: formData.get('output') || '',
+      businessRule: formData.get('businessRule') || '',
+      status: formData.get('status') || 'Draft'
     };
 
     try {
       if (!modalData?.id) {
-        // Create new
-        createRequirement(fields);
-        showToast(`Requirement ${fields.id} berhasil ditambahkan`);
+        // Create new requirement (Draft)
+        const created = createRequirement(fields);
+        saveDraftToStorage();
+        showToast(`Requirement ${created.id} berhasil ditambahkan (Draft)`);
       } else {
         // Edit or revision
         const res = editRequirement(modalData.id, fields, 'Business Analyst');
+        saveDraftToStorage();
         if (res.isRevision) {
           showToast(`Revisi baru ${res.requirement.id} v${res.requirement.version} berhasil dibuat (Draft)`);
         } else {
-          showToast(`Requirement ${res.requirement.id} berhasil diperbarui`);
+          showToast(`Requirement ${res.requirement.id} berhasil diperbarui (Draft)`);
         }
       }
 
-      saveDraftToStorage();
       closeModal();
       renderProcessMappingPortal(container);
     } catch (err) {
@@ -2121,30 +3940,47 @@ function attachPortalEvents(container, store) {
     }
   });
 
+  // Confirm Archive Node
+  container.querySelector('#pm-btn-confirm-archive-node')?.addEventListener('click', () => {
+    if (modalData?.moduleId && modalData?.featureId && modalData?.node?.id) {
+      archiveFlowNode(modalData.moduleId, modalData.featureId, modalData.node.id);
+      saveDraftToStorage();
+      showToast(`Node ${modalData.node.code || modalData.node.label || ''} berhasil diarsipkan (Draft)`);
+      closeModal();
+      renderProcessMappingPortal(container);
+    }
+  });
+
   // Form Submit: Node
   container.querySelector('#pm-form-node')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
-    const modId = modalData.moduleId;
-    const featId = modalData.featureId;
-    const newLabel = formData.get('label');
-    const newPurpose = formData.get('purpose');
+    const modId = formData.get('moduleId') || modalData.moduleId || selectedModuleId;
+    const featId = formData.get('featureId') || modalData.featureId || currentFeatureId;
+    const newLabel = (formData.get('label') || '').trim();
+    const newPurpose = (formData.get('purpose') || '').trim();
+    const newCode = (formData.get('code') || '').trim();
+
+    if (!newLabel) {
+      alert('Label / Nama Langkah wajib diisi.');
+      return;
+    }
 
     const fields = {
-      code: formData.get('code'),
-      type: formData.get('type'),
+      code: newCode,
+      type: formData.get('type') || 'process',
       label: newLabel,
       title: newLabel,
       purpose: newPurpose,
       summary: newPurpose,
       description: newPurpose,
-      input: formData.get('input'),
-      output: formData.get('output'),
-      validation: formData.get('validation'),
-      fallback: formData.get('fallback'),
-      stockImpact: formData.get('stockImpact'),
-      reqId: formData.get('reqId'),
-      relatedRole: formData.get('relatedRole'),
+      input: (formData.get('input') || '-').trim(),
+      output: (formData.get('output') || '-').trim(),
+      validation: (formData.get('validation') || '-').trim(),
+      fallback: (formData.get('fallback') || '-').trim(),
+      stockImpact: (formData.get('stockImpact') || 'NO STOCK CHANGE').trim(),
+      reqId: (formData.get('reqId') || '').trim(),
+      relatedRole: (formData.get('relatedRole') || 'Asisten Bibitan (Verifikasi)').trim(),
       status: 'Draft'
     };
 
@@ -2152,8 +3988,12 @@ function attachPortalEvents(container, store) {
       if (!modalData?.node?.id) {
         // Add node
         const createdNode = addFlowNode(modId, featId, fields, 'Business Analyst');
-        if (createdNode && createdNode.id) selectedNodeId = createdNode.id;
-        showToast('Langkah alur baru berhasil ditambahkan (Draft)');
+        if (createdNode && createdNode.id) {
+          selectedNodeId = createdNode.id;
+          selectedModuleId = modId;
+          currentFeatureId = featId;
+        }
+        showToast(`Langkah alur ${createdNode.code || ''} berhasil ditambahkan (Draft)`);
       } else {
         // Edit node
         const res = editFlowNode(modId, featId, modalData.node.id, fields, 'Business Analyst');
@@ -2163,7 +4003,7 @@ function attachPortalEvents(container, store) {
         if (res.isRevision) {
           showToast(`Revisi langkah v${res.node.version} berhasil dibuat (Draft)`);
         } else {
-          showToast('Langkah alur berhasil diperbarui (Draft)');
+          showToast(`Langkah alur ${res.node.code || ''} berhasil diperbarui (Draft)`);
         }
       }
 
@@ -2172,6 +4012,142 @@ function attachPortalEvents(container, store) {
       renderProcessMappingPortal(container);
     } catch (err) {
       alert('Gagal menyimpan langkah: ' + err.message);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Manage Mode Events: Connections / Edges (Add, Edit, Archive)
+  // ---------------------------------------------------------------------------
+  container.querySelectorAll('.pm-btn-add-edge').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const modId = btn.dataset.modId || selectedModuleId;
+      const featId = btn.dataset.featId || currentFeatureId;
+      modalData = {
+        moduleId: modId,
+        featureId: featId,
+        edge: {
+          id: '',
+          from: '',
+          to: '',
+          condition: '',
+          label: '',
+          description: '',
+          status: 'Draft'
+        }
+      };
+      activeModal = 'edit-edge';
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  container.querySelectorAll('.pm-btn-edge-edit').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const modId = btn.dataset.modId || selectedModuleId;
+      const featId = btn.dataset.featId || currentFeatureId;
+      const edgeId = btn.dataset.edgeId;
+      const flow = store.flows[modId]?.[featId];
+      const edge = flow?.edges?.find(e => e.id === edgeId && !e.isArchived && !e.isSuperseded);
+      if (edge) {
+        modalData = {
+          moduleId: modId,
+          featureId: featId,
+          edge: JSON.parse(JSON.stringify(edge))
+        };
+        activeModal = 'edit-edge';
+        renderProcessMappingPortal(container);
+      }
+    });
+  });
+
+  container.querySelectorAll('.pm-btn-edge-archive').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const modId = btn.dataset.modId || selectedModuleId;
+      const featId = btn.dataset.featId || currentFeatureId;
+      const edgeId = btn.dataset.edgeId;
+      const flow = store.flows[modId]?.[featId];
+      const edge = flow?.edges?.find(e => e.id === edgeId && !e.isArchived && !e.isSuperseded);
+      if (edge) {
+        modalData = {
+          moduleId: modId,
+          featureId: featId,
+          edge: JSON.parse(JSON.stringify(edge))
+        };
+        activeModal = 'archive-edge';
+        renderProcessMappingPortal(container);
+      }
+    });
+  });
+
+  // Preset button click in Connection form
+  container.querySelectorAll('.pm-btn-cond-preset').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = container.querySelector('#pm-edge-form-cond');
+      if (input) {
+        input.value = btn.dataset.val || '';
+        input.focus();
+      }
+    });
+  });
+
+  // Confirm Archive Edge
+  container.querySelector('#pm-btn-confirm-archive-edge')?.addEventListener('click', () => {
+    if (modalData?.moduleId && modalData?.featureId && modalData?.edge?.id) {
+      archiveFlowEdge(modalData.moduleId, modalData.featureId, modalData.edge.id);
+      saveDraftToStorage();
+      showToast('Koneksi alur berhasil diarsipkan (Draft)');
+      closeModal();
+      renderProcessMappingPortal(container);
+    }
+  });
+
+  // Form Submit: Edge / Connection
+  container.querySelector('#pm-form-edge')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const modId = modalData.moduleId || selectedModuleId;
+    const featId = modalData.featureId || currentFeatureId;
+    const fromVal = (formData.get('from') || '').trim();
+    const toVal = (formData.get('to') || '').trim();
+    const condVal = (formData.get('condition') || '').trim();
+    const descVal = (formData.get('description') || '').trim();
+
+    if (!fromVal || !toVal) {
+      alert('Source Node dan Target Node wajib dipilih.');
+      return;
+    }
+
+    if (fromVal === toVal) {
+      alert('Koneksi tidak boleh menghubungkan node ke dirinya sendiri (Self-loop ditolak).');
+      return;
+    }
+
+    const fields = {
+      from: fromVal,
+      to: toVal,
+      condition: condVal,
+      label: condVal,
+      description: descVal,
+      status: 'Draft'
+    };
+
+    try {
+      if (!modalData?.edge?.id) {
+        addFlowEdge(modId, featId, fields, 'Business Analyst');
+        showToast('Koneksi alur baru berhasil ditambahkan (Draft)');
+      } else {
+        const res = editFlowEdge(modId, featId, modalData.edge.id, fields, 'Business Analyst');
+        if (res.isRevision) {
+          showToast(`Revisi koneksi v${res.edge.version} berhasil dibuat (Draft)`);
+        } else {
+          showToast('Koneksi alur berhasil diperbarui (Draft)');
+        }
+      }
+
+      saveDraftToStorage();
+      closeModal();
+      renderProcessMappingPortal(container);
+    } catch (err) {
+      alert('Gagal menyimpan koneksi: ' + err.message);
     }
   });
 
@@ -2184,7 +4160,7 @@ function attachPortalEvents(container, store) {
 
     try {
       exportProjectDataFile({ version, updatedBy });
-      showToast('📥 process-mapping-data.json berhasil diekspor');
+      showToast('process-mapping-data.json berhasil diekspor');
       closeModal();
       renderProcessMappingPortal(container);
     } catch (err) {
@@ -2222,7 +4198,7 @@ function attachPortalEvents(container, store) {
           confirmBtn.style.display = 'inline-flex';
           confirmBtn.onclick = () => {
             applyImportedProjectData(preview.candidateData);
-            showToast('✅ Data berhasil diimpor ke editor state');
+            showToast('Data berhasil diimpor ke editor state');
             closeModal();
             renderProcessMappingPortal(container);
           };
@@ -2238,11 +4214,287 @@ function attachPortalEvents(container, store) {
   container.querySelector('#pm-btn-confirm-reset')?.addEventListener('click', async () => {
     try {
       await resetDraftToOfficial();
-      showToast('🔄 Draf lokal dibatalkan. Memulihkan data resmi process-mapping-data.json');
+      showToast('Draf lokal dibatalkan. Memulihkan data resmi process-mapping-data.json');
       closeModal();
       renderProcessMappingPortal(container);
     } catch (err) {
       alert('Gagal mereset draf: ' + err.message);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Revision & Review Workflow Events (Phase 3)
+  // ---------------------------------------------------------------------------
+
+  // Search input in Revision & Review
+  const revSearchInput = container.querySelector('#pm-rev-search-input');
+  if (revSearchInput) {
+    revSearchInput.addEventListener('input', (e) => {
+      revSearchQuery = e.target.value;
+      revCurrentPage = 1;
+      renderProcessMappingPortal(container);
+      setTimeout(() => {
+        const inp = document.getElementById('pm-rev-search-input');
+        if (inp) {
+          inp.focus();
+          inp.setSelectionRange(inp.value.length, inp.value.length);
+        }
+      }, 0);
+    });
+  }
+
+  // Filter Entity Type
+  container.querySelector('#pm-rev-filter-entity')?.addEventListener('change', (e) => {
+    revFilterEntityType = e.target.value;
+    revCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  // Filter Status
+  container.querySelector('#pm-rev-filter-status')?.addEventListener('change', (e) => {
+    revFilterStatus = e.target.value;
+    revCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  // Filter Module
+  container.querySelector('#pm-rev-filter-module')?.addEventListener('change', (e) => {
+    revFilterModule = e.target.value;
+    revCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  // Reset Filters Button
+  container.querySelector('#pm-btn-reset-rev-filter')?.addEventListener('click', () => {
+    revSearchQuery = '';
+    revFilterEntityType = 'ALL';
+    revFilterStatus = 'ALL';
+    revFilterModule = 'ALL';
+    revCurrentPage = 1;
+    renderProcessMappingPortal(container);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Table Pagination Navigation & Page Size Handlers
+  // ---------------------------------------------------------------------------
+  container.querySelectorAll('.pm-page-btn[data-page-nav]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const type = btn.dataset.pageNav;
+      const targetPage = parseInt(btn.dataset.page, 10);
+      if (isNaN(targetPage) || targetPage < 1) return;
+      if (type === 'req') {
+        reqCurrentPage = targetPage;
+      } else if (type === 'rev') {
+        revCurrentPage = targetPage;
+      }
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  container.querySelectorAll('.pm-page-size-select[data-page-size-change]').forEach((sel) => {
+    sel.addEventListener('change', (e) => {
+      const type = sel.dataset.pageSizeChange;
+      const newSize = parseInt(e.target.value, 10) || 10;
+      if (type === 'req') {
+        reqPageSize = newSize;
+        reqCurrentPage = 1;
+      } else if (type === 'rev') {
+        revPageSize = newSize;
+        revCurrentPage = 1;
+      }
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  // Action Menu Toggle per row in Revision & Review & Requirement Manager
+  container.querySelectorAll('.pm-action-trigger-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const targetId = btn.dataset.target;
+      const targetMenu = container.querySelector(`#${CSS.escape(targetId)}`);
+      const wasOpen = targetMenu?.classList.contains('is-open');
+
+      // Close any other open dropdown menu
+      container.querySelectorAll('.pm-action-dropdown-menu.is-open').forEach((m) => {
+        m.classList.remove('is-open');
+      });
+      container.querySelectorAll('.pm-action-trigger-btn.is-active').forEach((b) => {
+        b.classList.remove('is-active');
+        b.setAttribute('aria-expanded', 'false');
+      });
+
+      if (!wasOpen && targetMenu) {
+        targetMenu.classList.add('is-open');
+        btn.classList.add('is-active');
+        btn.setAttribute('aria-expanded', 'true');
+
+        // Viewport overflow check (bottom boundary)
+        const rect = targetMenu.getBoundingClientRect();
+        if (rect.bottom > window.innerHeight) {
+          targetMenu.style.top = 'auto';
+          targetMenu.style.bottom = 'calc(100% + 4px)';
+        } else {
+          targetMenu.style.top = 'calc(100% + 4px)';
+          targetMenu.style.bottom = 'auto';
+        }
+      }
+    });
+  });
+
+  // Global click outside to close dropdowns
+  if (container._pmOutsideClickListener) {
+    document.removeEventListener('click', container._pmOutsideClickListener);
+  }
+  container._pmOutsideClickListener = (e) => {
+    if (!e.target.closest('.pm-action-menu-wrap')) {
+      container.querySelectorAll('.pm-action-dropdown-menu.is-open').forEach((m) => {
+        m.classList.remove('is-open');
+      });
+      container.querySelectorAll('.pm-action-trigger-btn.is-active').forEach((b) => {
+        b.classList.remove('is-active');
+        b.setAttribute('aria-expanded', 'false');
+      });
+    }
+  };
+  document.addEventListener('click', container._pmOutsideClickListener);
+
+  // Compare Revision Button (opens diff modal)
+  container.querySelectorAll('.pm-btn-compare-rev').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      modalData = {
+        entityType: btn.dataset.entityType,
+        entityId: btn.dataset.entityId,
+        moduleId: btn.dataset.modId,
+        featureId: btn.dataset.featId,
+        version: parseInt(btn.dataset.version || '1', 10)
+      };
+      activeModal = 'compare-rev';
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  // Submit Revision for Review
+  container.querySelectorAll('.pm-btn-submit-rev').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const entityType = btn.dataset.entityType;
+      const entityId = btn.dataset.entityId;
+      const moduleId = btn.dataset.modId;
+      const featureId = btn.dataset.featId;
+      try {
+        submitEntityForReview(entityType, { entityId, moduleId, featureId }, 'Business Analyst');
+        saveDraftToStorage();
+        showToast(`${entityType} ${entityId} berhasil diajukan untuk Review`);
+        if (activeModal === 'compare-rev') closeModal();
+        renderProcessMappingPortal(container);
+      } catch (err) {
+        alert('Gagal mengajukan review: ' + err.message);
+      }
+    });
+  });
+
+  // Confirm Revision Button (opens Reviewer Confirmation Gate modal)
+  container.querySelectorAll('.pm-btn-confirm-rev').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      modalData = {
+        entityType: btn.dataset.entityType,
+        entityId: btn.dataset.entityId,
+        moduleId: btn.dataset.modId,
+        featureId: btn.dataset.featId,
+        version: parseInt(btn.dataset.version || '1', 10)
+      };
+      activeModal = 'confirm-rev';
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  // Submit Confirm Review Form (Reviewer Confirmation Gate with username & password)
+  container.querySelector('#pm-form-confirm-rev')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const reviewerUsername = (formData.get('reviewerUsername') || '').trim();
+    const reviewerPassword = (formData.get('reviewerPassword') || '').trim();
+    const reviewNote = (formData.get('reviewNote') || '').trim();
+
+    if (!verifyReviewerCredentials(reviewerUsername, reviewerPassword)) {
+      alert('Kredensial reviewer salah (Username atau Password tidak cocok). Revisi tetap berstatus In Review.');
+      return;
+    }
+
+    try {
+      confirmEntityRevision(modalData.entityType, modalData, reviewerUsername, reviewNote);
+      saveDraftToStorage();
+      showToast(`${modalData.entityType} ${modalData.entityId} disetujui (Confirmed) oleh ${reviewerUsername}. Data siap diekspor via Export Project Data.`);
+      closeModal();
+      renderProcessMappingPortal(container);
+    } catch (err) {
+      alert('Gagal mengonfirmasi revisi: ' + err.message);
+    }
+  });
+
+  // Reject Revision Button (opens Reject Note Modal)
+  container.querySelectorAll('.pm-btn-reject-rev').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      modalData = {
+        entityType: btn.dataset.entityType,
+        entityId: btn.dataset.entityId,
+        moduleId: btn.dataset.modId,
+        featureId: btn.dataset.featId
+      };
+      activeModal = 'reject-rev';
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  // Submit Reject Note Form
+  container.querySelector('#pm-form-reject-rev')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const reviewNote = (formData.get('reviewNote') || '').trim();
+    if (!reviewNote) {
+      alert('Alasan penolakan / catatan perbaikan wajib diisi.');
+      return;
+    }
+    try {
+      rejectEntityRevision(modalData.entityType, modalData, reviewNote, 'Lead Reviewer');
+      saveDraftToStorage();
+      showToast(`Draf ${modalData.entityType} ${modalData.entityId} ditolak dengan catatan`);
+      closeModal();
+      renderProcessMappingPortal(container);
+    } catch (err) {
+      alert('Gagal menolak draf: ' + err.message);
+    }
+  });
+
+  // Discard Draft Button (opens confirmation modal)
+  container.querySelectorAll('.pm-btn-discard-rev').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      modalData = {
+        entityType: btn.dataset.entityType,
+        entityId: btn.dataset.entityId,
+        moduleId: btn.dataset.modId,
+        featureId: btn.dataset.featId
+      };
+      activeModal = 'discard-rev';
+      renderProcessMappingPortal(container);
+    });
+  });
+
+  // Confirm Discard in Discard Modal
+  container.querySelector('#pm-btn-confirm-discard-rev')?.addEventListener('click', () => {
+    if (!modalData?.entityType || !modalData?.entityId) return;
+    try {
+      discardEntityDraft(modalData.entityType, modalData, 'Business Analyst');
+      saveDraftToStorage();
+      showToast(`Draf ${modalData.entityType} ${modalData.entityId} berhasil dibatalkan`);
+      closeModal();
+      renderProcessMappingPortal(container);
+    } catch (err) {
+      alert('Gagal membatalkan draf: ' + err.message);
     }
   });
 }
@@ -2387,8 +4639,8 @@ function renderDashboardView(store) {
           <p class="pm-dashboard-desc">Ringkasan status baseline, modul operasional, dan kebutuhan sistem pembibitan karet.</p>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
-          <span class="pm-meta-chip">📦 Dataset v${escapeHtml(store.metadata?.version || '1.0.0')}</span>
-          <span class="pm-meta-chip">🗓️ ${escapeHtml(store.metadata?.lastUpdated || '-')}</span>
+          <span class="pm-meta-chip">Dataset v${escapeHtml(store.metadata?.version || '1.0.0')}</span>
+          <span class="pm-meta-chip">${escapeHtml(store.metadata?.lastUpdated || '-')}</span>
         </div>
       </div>
 
@@ -2431,7 +4683,7 @@ function renderDashboardView(store) {
         <!-- Card 1: Modul Operasional Readiness -->
         <div class="pm-dash-card">
           <h3 class="pm-dash-card-title">
-            <span>📋 Status Kesiapan Modul Operasional</span>
+            <span>Status Kesiapan Modul Operasional</span>
           </h3>
           <table class="pm-dash-table">
             <thead>
@@ -2468,7 +4720,7 @@ function renderDashboardView(store) {
         <!-- Card 2: Rekapitulasi Baseline Dokumen Sistem -->
         <div class="pm-dash-card">
           <h3 class="pm-dash-card-title">
-            <span>📑 Rekapitulasi Baseline Dokumen Sistem</span>
+            <span>Rekapitulasi Baseline Dokumen Sistem</span>
           </h3>
           <table class="pm-dash-table">
             <thead>
@@ -2512,13 +4764,13 @@ function renderDashboardView(store) {
             <div style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase;">Aksi Cepat Menu Portal:</div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
               <button type="button" class="pm-btn-sm pm-btn-secondary" data-dash-nav="reference">
-                📖 Buka Reference Requirement &rarr;
+                Buka Reference Requirement &rarr;
               </button>
               <button type="button" class="pm-btn-sm pm-btn-secondary" data-dash-nav="mapping">
-                🗺️ Buka Process Mapping Flow &rarr;
+                Buka Process Mapping Flow &rarr;
               </button>
               <button type="button" class="pm-btn-sm pm-btn-secondary" data-dash-nav="reports">
-                📄 Buka Reports &amp; Cetak Dokumen &rarr;
+                Buka Reports &amp; Cetak Dokumen &rarr;
               </button>
             </div>
           </div>
@@ -2537,18 +4789,19 @@ function getFilteredReferenceItems(store) {
   const nonFuncItems = (store.nonFunctionalRequirements || []).map((nf) => ({ ...nf, reqType: 'Non-Functional' }));
   let all = [...funcItems, ...nonFuncItems];
 
-  if (refFilterType === 'functional') {
-    all = all.filter((item) => item.reqType === 'Functional');
-  } else if (refFilterType === 'non-functional') {
-    all = all.filter((item) => item.reqType === 'Non-Functional');
+  const typeFilter = (refFilterType || 'ALL').toUpperCase();
+  if (typeFilter === 'FUNCTIONAL' || typeFilter === 'KF') {
+    all = all.filter((item) => (item.reqType || item.type || '').toUpperCase() === 'FUNCTIONAL' || (item.id || '').startsWith('KF-'));
+  } else if (typeFilter === 'NON-FUNCTIONAL' || typeFilter === 'KNF' || typeFilter === 'NONFUNCTIONAL') {
+    all = all.filter((item) => (item.reqType || item.type || '').toUpperCase().includes('NON') || (item.id || '').startsWith('KNF-'));
   }
 
-  if (refFilterCategory && refFilterCategory !== 'all') {
-    all = all.filter((item) => item.category === refFilterCategory);
+  if (refFilterCategory && refFilterCategory.toUpperCase() !== 'ALL') {
+    all = all.filter((item) => (item.category || '').toLowerCase() === refFilterCategory.toLowerCase());
   }
 
-  if (refFilterStatus && refFilterStatus !== 'all') {
-    all = all.filter((item) => (item.status || '').toUpperCase() === refFilterStatus.toUpperCase());
+  if (refFilterStatus && refFilterStatus.toUpperCase() !== 'ALL') {
+    all = all.filter((item) => (item.status || 'Confirmed').toUpperCase() === refFilterStatus.toUpperCase());
   }
 
   if (refSearchQuery && refSearchQuery.trim()) {
@@ -2559,7 +4812,10 @@ function getFilteredReferenceItems(store) {
         (item.title && item.title.toLowerCase().includes(q)) ||
         (item.category && item.category.toLowerCase().includes(q)) ||
         (item.description && item.description.toLowerCase().includes(q)) ||
-        (item.acceptance && item.acceptance.toLowerCase().includes(q))
+        (item.acceptance && item.acceptance.toLowerCase().includes(q)) ||
+        (item.acceptanceCriteria && item.acceptanceCriteria.toLowerCase().includes(q)) ||
+        (item.reqType && item.reqType.toLowerCase().includes(q)) ||
+        (item.type && item.type.toLowerCase().includes(q))
       );
     });
   }
@@ -2571,7 +4827,7 @@ function renderReferenceTableRows(items) {
   if (items.length === 0) {
     return `
       <tr>
-        <td colspan="5" style="text-align: center; padding: 32px; color: #64748b;">
+        <td colspan="6" style="text-align: center; padding: 32px; color: #64748b;">
           Tidak ada requirement yang sesuai dengan filter pencarian.
         </td>
       </tr>
@@ -2581,13 +4837,13 @@ function renderReferenceTableRows(items) {
   return items
     .map(
       (item) => `
-    <tr>
+    <tr class="pm-ref-row" data-req-id="${escapeHtml(item.id)}">
       <td style="white-space: nowrap;">
         <span class="pm-ref-id-badge">${escapeHtml(item.id)}</span>
       </td>
       <td style="white-space: nowrap;">
-        <span class="pm-chip-type ${item.reqType === 'Functional' ? 'pm-chip-func' : 'pm-chip-nonfunc'}">
-          ${escapeHtml(item.reqType)}
+        <span class="pm-chip-type ${(item.reqType === 'Functional' || item.type === 'Functional') ? 'pm-chip-func' : 'pm-chip-nonfunc'}">
+          ${escapeHtml(item.reqType || item.type || 'Requirement')}
         </span>
       </td>
       <td style="white-space: nowrap;">
@@ -2595,11 +4851,11 @@ function renderReferenceTableRows(items) {
       </td>
       <td>
         <div style="font-weight: 600; color: #0f172a; margin-bottom: 4px;">${escapeHtml(item.title || '')}</div>
-        <div style="color: #475569; font-size: 0.8rem; line-height: 1.45;">${escapeHtml(item.description || '')}</div>
-        ${item.acceptance
+        ${item.description ? `<div style="color: #475569; font-size: 0.8rem; line-height: 1.45; margin-bottom: 4px;">${escapeHtml(item.description)}</div>` : ''}
+        ${(item.acceptance || item.acceptanceCriteria)
           ? `
           <div style="margin-top: 6px; padding: 6px 10px; background: #f8fafc; border-left: 3px solid #116834; border-radius: 4px; font-size: 0.76rem; color: #334155;">
-            <strong>Kriteria Penerimaan:</strong> ${escapeHtml(item.acceptance)}
+            <strong>Kriteria Penerimaan:</strong> ${escapeHtml(item.acceptance || item.acceptanceCriteria)}
           </div>
         `
           : ''
@@ -2609,6 +4865,11 @@ function renderReferenceTableRows(items) {
         <span class="pm-status-badge pm-status-confirmed">
           ${escapeHtml(item.status || 'Confirmed')}
         </span>
+      </td>
+      <td style="white-space: nowrap; text-align: center;">
+        <button type="button" class="pm-row-btn pm-btn-view-ref-req" data-req-id="${escapeHtml(item.id)}" title="Lihat Detail Requirement">
+          Detail
+        </button>
       </td>
     </tr>
   `
@@ -2623,9 +4884,10 @@ function renderReferenceView(store) {
 
   const categories = Array.from(
     new Set([...funcItems, ...nonFuncItems].map((it) => it.category).filter(Boolean))
-  );
+  ).sort();
 
   const filteredItems = getFilteredReferenceItems(store);
+  const typeFilter = (refFilterType || 'ALL').toUpperCase();
 
   return `
     <div class="pm-reference-container">
@@ -2635,20 +4897,20 @@ function renderReferenceView(store) {
           <p class="pm-dashboard-desc">Spesifikasi kebutuhan umum sistem (Functional &amp; Non-Functional) yang menjadi standar acuan seluruh modul.</p>
         </div>
         <div>
-          <span class="pm-meta-chip">✅ Confirmed Baseline</span>
+          <span class="pm-meta-chip">Confirmed Baseline</span>
         </div>
       </div>
 
       <!-- Filter Bar -->
       <div class="pm-ref-filter-bar">
         <div class="pm-ref-pill-group">
-          <button type="button" class="pm-ref-pill-btn ${refFilterType === 'all' ? 'is-active' : ''}" data-ref-type="all">
+          <button type="button" class="pm-ref-pill-btn ${typeFilter === 'ALL' ? 'is-active' : ''}" data-ref-type="ALL">
             Semua (${totalGeneral})
           </button>
-          <button type="button" class="pm-ref-pill-btn ${refFilterType === 'functional' ? 'is-active' : ''}" data-ref-type="functional">
+          <button type="button" class="pm-ref-pill-btn ${(typeFilter === 'FUNCTIONAL' || typeFilter === 'KF') ? 'is-active' : ''}" data-ref-type="FUNCTIONAL">
             Functional (${funcItems.length})
           </button>
-          <button type="button" class="pm-ref-pill-btn ${refFilterType === 'non-functional' ? 'is-active' : ''}" data-ref-type="non-functional">
+          <button type="button" class="pm-ref-pill-btn ${(typeFilter === 'NON-FUNCTIONAL' || typeFilter === 'KNF' || typeFilter === 'NONFUNCTIONAL') ? 'is-active' : ''}" data-ref-type="NON-FUNCTIONAL">
             Non-Functional (${nonFuncItems.length})
           </button>
         </div>
@@ -2662,11 +4924,11 @@ function renderReferenceView(store) {
         />
 
         <select id="pm-ref-category-filter" class="pm-ref-select">
-          <option value="all">Semua Kategori (${categories.length})</option>
+          <option value="ALL" ${refFilterCategory.toUpperCase() === 'ALL' ? 'selected' : ''}>Semua Kategori (${categories.length})</option>
           ${categories
       .map(
         (cat) => `
-            <option value="${escapeHtml(cat)}" ${refFilterCategory === cat ? 'selected' : ''}>
+            <option value="${escapeHtml(cat)}" ${refFilterCategory.toLowerCase() === cat.toLowerCase() ? 'selected' : ''}>
               ${escapeHtml(cat)}
             </option>
           `
@@ -2675,9 +4937,13 @@ function renderReferenceView(store) {
         </select>
 
         <select id="pm-ref-status-filter" class="pm-ref-select">
-          <option value="all">Semua Status</option>
-          <option value="Confirmed" ${refFilterStatus === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+          <option value="ALL" ${refFilterStatus.toUpperCase() === 'ALL' ? 'selected' : ''}>Semua Status</option>
+          <option value="Confirmed" ${refFilterStatus.toUpperCase() === 'CONFIRMED' ? 'selected' : ''}>Confirmed</option>
         </select>
+
+        <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-ref-reset-filters-btn" title="Reset Semua Filter ke Default">
+          Reset Filter
+        </button>
       </div>
 
       <div style="font-size: 0.78rem; color: #64748b; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
@@ -2691,10 +4957,11 @@ function renderReferenceView(store) {
           <thead>
             <tr>
               <th style="width: 100px;">ID</th>
-              <th style="width: 120px;">Tipe</th>
+              <th style="width: 130px;">Tipe</th>
               <th style="width: 180px;">Kategori</th>
-              <th>Judul &amp; Deskripsi Kebutuhan</th>
+              <th>Judul &amp; Spesifikasi Kebutuhan</th>
               <th style="width: 110px; text-align: center;">Status</th>
+              <th style="width: 90px; text-align: center;">Aksi</th>
             </tr>
           </thead>
           <tbody id="pm-ref-table-body">
@@ -2720,13 +4987,13 @@ function renderReportsView(store) {
       <div class="pm-reports-header">
         <div class="pm-report-tabs">
           <button type="button" class="pm-report-tab-btn ${reportSubTab === 'req-doc' ? 'is-active' : ''}" data-report-subtab="req-doc">
-            📄 1. Dokumen Analisa Kebutuhan Sistem (DAK)
+            1. Dokumen Analisa Kebutuhan Sistem (DAK)
           </button>
           <button type="button" class="pm-report-tab-btn ${reportSubTab === 'bp-doc' ? 'is-active' : ''}" data-report-subtab="bp-doc">
-            🗺️ 2. Dokumen Proses Bisnis (BPD)
+            2. Dokumen Proses Bisnis (BPD)
           </button>
           <button type="button" class="pm-report-tab-btn ${reportSubTab === 'req-matrix' ? 'is-active' : ''}" data-report-subtab="req-matrix">
-            🔗 3. Matriks Ketertelusuran (RTM)
+            3. Matriks Ketertelusuran (RTM)
           </button>
         </div>
 
@@ -2763,7 +5030,7 @@ function renderReportsView(store) {
     }
 
           <button type="button" class="pm-btn-export-pdf" id="pm-btn-export-pdf">
-            🖨️ Cetak / Export PDF
+            Cetak / Export PDF
           </button>
         </div>
       </div>
@@ -2973,7 +5240,7 @@ function renderReportBpDoc(store) {
                 return `
               <div style="margin-bottom: 20px;">
                 <h4 style="font-size: 0.95rem; font-weight: 700; color: #1e293b; margin: 0 0 8px 0; display:flex; align-items:center; gap:6px;">
-                  <span>🔹 Fitur:</span> <span>${escapeHtml(feat.name)}</span>
+                  <span>Fitur:</span> <span>${escapeHtml(feat.name)}</span>
                 </h4>
                 <table class="pm-doc-table">
                   <thead>
@@ -3005,7 +5272,7 @@ function renderReportBpDoc(store) {
                           <td style="font-size:0.78rem; color:#b45309;">${escapeHtml(node.fallback || '-')}</td>
                           <td style="font-size:0.78rem; color:#15803d;">
                             <div>${escapeHtml(node.output || '-')}</div>
-                            ${node.stockImpact ? `<div style="font-size:0.72rem; color:#0369a1; margin-top:2px;">📦 ${escapeHtml(node.stockImpact)}</div>` : ''}
+                            ${node.stockImpact ? `<div style="font-size:0.72rem; color:#0369a1; margin-top:2px;">${escapeHtml(node.stockImpact)}</div>` : ''}
                           </td>
                         </tr>
                       `
