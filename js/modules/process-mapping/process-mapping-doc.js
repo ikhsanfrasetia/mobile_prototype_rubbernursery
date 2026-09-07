@@ -476,19 +476,29 @@ export function buildGapDocumentModel(options = {}, store = getActiveStore()) {
     },
     {
       id: 'sec-gap-by-module',
-      title: 'Rincian Kesenjangan Alur Berdasarkan Modul (True Gaps)',
-      subsections: activeGapModules.map(m => ({
-        id: `sub-gap-mod-${m.moduleId}`,
-        title: `Modul ${m.moduleName} (${m.totalGaps} True Gaps)`
-      }))
+      title: activeGapModules.length > 0 
+        ? 'Rincian Kesenjangan Alur Berdasarkan Modul (True Gaps)' 
+        : 'Status Kesenjangan Alur Kerja (0 True Gap)',
+      subsections: activeGapModules.length > 0
+        ? activeGapModules.map(m => ({
+            id: `sub-gap-mod-${m.moduleId}`,
+            title: `Modul ${m.moduleName} (${m.totalGaps} True Gaps)`
+          }))
+        : [{ id: 'sub-zero-gap-status', title: 'Status Kesenjangan Alur Kerja (0 True Gap)' }]
     },
     {
       id: 'sec-remediation-plan',
-      title: 'Rekomendasi & Rencana Tindak Lanjut (Action Plan)',
-      subsections: [
-        { id: 'sub-remediation-steps', title: 'Langkah Implementasi Node Alur Proses' },
-        { id: 'sub-priority-matrix', title: 'Matriks Prioritas Penutupan Gap' }
-      ]
+      title: activeGapModules.length > 0
+        ? 'Rekomendasi & Rencana Tindak Lanjut (Action Plan)'
+        : 'Status Verifikasi & Kesiapan Implementasi (Zero Gap)',
+      subsections: activeGapModules.length > 0
+        ? [
+            { id: 'sub-remediation-steps', title: 'Langkah Implementasi Node Alur Proses' },
+            { id: 'sub-priority-matrix', title: 'Matriks Prioritas Penutupan Gap' }
+          ]
+        : [
+            { id: 'sub-ready-status', title: 'Kesiapan Baseline untuk Implementasi Mobile' }
+          ]
     },
     {
       id: 'sec-provenance-appendix',

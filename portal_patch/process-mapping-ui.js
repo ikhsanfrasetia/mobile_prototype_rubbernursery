@@ -61,9 +61,7 @@ import {
   getFlowEdgeCoverageReport,
   getBusinessRuleTraceabilityReport,
   finalizeFlowAndBusinessRuleTraceability,
-  getReconciliationCatalog,
-  getRequirementClassification,
-  resolveNodeCanonicalContent
+  getReconciliationCatalog
 } from './process-mapping-data.js';
 
 import {
@@ -613,7 +611,7 @@ function renderAllModulesContent(store, roleObj, roleModules, roleRequirements) 
       <div class="pm-sub-tabs">
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'flow' ? 'is-active' : ''}" data-view="flow">Flow Seluruh Modul</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'requirement' ? 'is-active' : ''}" data-view="requirement">Requirement Master (${activeReqsCount})</button>
-        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'review' ? 'is-active' : ''}" data-view="review">Rekonsiliasi Baseline &amp; Riwayat ${renderReviewBadge(store, 'ALL')}</button>
+        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'review' ? 'is-active' : ''}" data-view="review">Revision &amp; Review ${renderReviewBadge(store, 'ALL')}</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'business-rule' ? 'is-active' : ''}" data-view="business-rule">Business Rules</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'related-role' ? 'is-active' : ''}" data-view="related-role">Related Role</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'end-to-end' ? 'is-active' : ''}" data-view="end-to-end">End-to-End Overview</button>
@@ -749,7 +747,7 @@ function renderSingleModuleContent(currentMod, store, roleObj, roleRequirements)
       <div class="pm-sub-tabs">
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'flow' ? 'is-active' : ''}" data-view="flow">Flow</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'requirement' ? 'is-active' : ''}" data-view="requirement">Requirement (${modReqs.length})</button>
-        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'review' ? 'is-active' : ''}" data-view="review">Rekonsiliasi Baseline &amp; Riwayat ${renderReviewBadge(store, currentMod.id)}</button>
+        <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'review' ? 'is-active' : ''}" data-view="review">Revision &amp; Review ${renderReviewBadge(store, currentMod.id)}</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'business-rule' ? 'is-active' : ''}" data-view="business-rule">Business Rule</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'related-role' ? 'is-active' : ''}" data-view="related-role">Related Role</button>
         <button type="button" class="pm-sub-tab-btn ${currentViewTab === 'end-to-end' ? 'is-active' : ''}" data-view="end-to-end">End-to-End</button>
@@ -1103,10 +1101,12 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
   return `
     <div class="pm-req-manager-container">
       <div class="pm-req-table-card" style="margin-top: 0;">
-        <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span class="pm-req-table-title" style="font-size:1.05rem;">Requirement Master</span>
-            <span class="pm-req-count-badge" title="Total active requirements">${totalActive} Active</span>
+        <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span class="pm-req-table-title" style="font-size:1.05rem;">Requirement Manager</span>
+            <span class="pm-req-count-badge" title="Total active requirements">${totalActive} Total</span>
             <span class="pm-req-count-badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;" title="Confirmed requirements">${confirmedCount} Confirmed</span>
+            <span class="pm-req-count-badge" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;" title="Draft / In Progress requirements">${draftCount} Draft</span>
           </div>
           ${isManageMode
       ? `
@@ -1146,10 +1146,11 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
             ${availableFeatures.map((f) => `<option value="${f.id}" ${reqFilterFeature === f.id || reqFilterFeature === f.name ? 'selected' : ''}>${f.name}</option>`).join('')}
           </select>
 
-          <select id="pm-req-filter-status" class="pm-req-filter-select" style="min-width:130px;" title="Filter Status">
+          <select id="pm-req-filter-status" class="pm-req-filter-select" style="min-width:110px;" title="Filter Status">
             <option value="ALL" ${reqFilterStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
-            <option value="Confirmed" ${reqFilterStatus === 'Confirmed' ? 'selected' : ''}>Confirmed (${confirmedCount})</option>
-          </select>elect>
+            <option value="Confirmed" ${reqFilterStatus === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+            <option value="Draft" ${reqFilterStatus === 'Draft' ? 'selected' : ''}>Draft</option>
+          </select>
 
           ${hasFiltersActive
       ? `
@@ -1222,23 +1223,9 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
             }
                     </td>
                     <td style="text-align:center;">
-                      <span class="pm-badge-confirmed" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:700;">
-                        CONFIRMED
+                      <span class="${isConfirmed ? 'pm-badge-confirmed' : 'pm-badge-draft'}">
+                        ${r.status}
                       </span>
-                      <div style="margin-top:3px;">
-                        ${(() => {
-                          const cls = getRequirementClassification(r.id);
-                          const map = {
-                            'Retained': { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', icon: '●' },
-                            'Revised': { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe', icon: '↻' },
-                            'New': { bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd', icon: '+' },
-                            'Deprecated': { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', icon: '✕' },
-                            'Merged': { bg: '#faf5ff', color: '#7c3aed', border: '#ddd6fe', icon: '⤵' }
-                          };
-                          const s = map[cls] || map['Retained'];
-                          return `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;font-size:0.68rem;font-weight:600;border-radius:4px;background:${s.bg};color:${s.color};border:1px solid ${s.border};">${s.icon} ${cls}</span>`;
-                        })()}
-                      </div>
                     </td>
                     <td style="text-align:center;">
                       <div class="pm-action-menu-wrap">
@@ -1309,11 +1296,11 @@ function renderReviewBadge(store, modId = null) {
       : allRevs.length;
 
     if (count === 0) {
-      return `<span class="pm-review-count-badge is-zero" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-size:0.65rem; padding:1px 5px; border-radius:8px;">✓</span>`;
+      return `<span class="pm-review-count-badge is-zero">0</span>`;
     }
     return `<span class="pm-review-count-badge">${count}</span>`;
   } catch (err) {
-    return `<span class="pm-review-count-badge is-zero" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-size:0.65rem; padding:1px 5px; border-radius:8px;">✓</span>`;
+    return `<span class="pm-review-count-badge is-zero">0</span>`;
   }
 }
 
@@ -1370,40 +1357,39 @@ function renderReconciliationCatalogSection(store) {
       <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <span class="pm-req-table-title" style="font-size:1.05rem;">Katalog Rekonsiliasi Baseline</span>
-          <span class="pm-badge-confirmed" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:700;">✅ BASELINE CONFIRMED</span>
-          <span class="pm-req-count-badge" title="Total Active Requirements">${activeCount} Active Confirmed</span>
+          <span class="pm-req-count-badge" title="Total Active Requirements">${activeCount} Active</span>
         </div>
         <div style="font-size:0.75rem; color:#64748b;">
-          172 Kebutuhan Aktif (130 Retained, 28 Revised, 14 New), 7 Deprecated (Archived), 3 Merged (Historical).
+          Baseline terkunci pada ${activeCount} Kebutuhan Aktif. Tampilkan evolusi dari 165 &rarr; ${activeCount}.
         </div>
       </div>
 
       <!-- KPI Cards -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px; padding:12px 16px;">
         <div style="padding:12px 14px; background:#f0fdf4; border:1.5px solid ${reconFilterClassification === 'Retained' ? '#16a34a' : '#bbf7d0'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="Retained">
-          <div style="font-size:0.72rem; color:#166534; font-weight:600; margin-bottom:2px;">● Retained (Confirmed)</div>
+          <div style="font-size:0.72rem; color:#166534; font-weight:600; margin-bottom:2px;">● Retained (Tetap)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#166534;">${retainedCount}</div>
-          <div style="font-size:0.65rem; color:#4ade80;">130 Kebutuhan eksisting valid &amp; terkonfirmasi</div>
+          <div style="font-size:0.65rem; color:#4ade80;">Kebutuhan eksisting valid tanpa perubahan</div>
         </div>
         <div style="padding:12px 14px; background:#eff6ff; border:1.5px solid ${reconFilterClassification === 'Revised' ? '#2563eb' : '#bfdbfe'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="Revised">
-          <div style="font-size:0.72rem; color:#1d4ed8; font-weight:600; margin-bottom:2px;">↻ Revised (Confirmed)</div>
+          <div style="font-size:0.72rem; color:#1d4ed8; font-weight:600; margin-bottom:2px;">↻ Revised (Revisi)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#1d4ed8;">${revisedCount}</div>
-          <div style="font-size:0.65rem; color:#93c5fd;">28 Penyempurnaan wording &amp; kewenangan peran</div>
+          <div style="font-size:0.65rem; color:#93c5fd;">Penyempurnaan wording &amp; kewenangan peran</div>
         </div>
         <div style="padding:12px 14px; background:#f0f9ff; border:1.5px solid ${reconFilterClassification === 'New' ? '#0369a1' : '#bae6fd'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="New">
-          <div style="font-size:0.72rem; color:#0369a1; font-weight:600; margin-bottom:2px;">+ New (Confirmed)</div>
+          <div style="font-size:0.72rem; color:#0369a1; font-weight:600; margin-bottom:2px;">+ New (Baru)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#0369a1;">${newCount}</div>
-          <div style="font-size:0.65rem; color:#7dd3fc;">14 Kebutuhan baru diadopsi resmi</div>
+          <div style="font-size:0.65rem; color:#7dd3fc;">Kebutuhan baru diadopsi resmi</div>
         </div>
         <div style="padding:12px 14px; background:#fef2f2; border:1.5px solid ${reconFilterClassification === 'Deprecated' ? '#dc2626' : '#fecaca'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="Deprecated">
-          <div style="font-size:0.72rem; color:#991b1b; font-weight:600; margin-bottom:2px;">✕ Deprecated (Archived)</div>
+          <div style="font-size:0.72rem; color:#991b1b; font-weight:600; margin-bottom:2px;">✕ Deprecated (Arsip)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#991b1b;">${deprecatedCount}</div>
-          <div style="font-size:0.65rem; color:#fca5a5;">7 Out-of-scope, diarsipkan</div>
+          <div style="font-size:0.65rem; color:#fca5a5;">Out-of-scope, diarsipkan</div>
         </div>
         <div style="padding:12px 14px; background:#faf5ff; border:1.5px solid ${reconFilterClassification === 'Merged' ? '#7c3aed' : '#ddd6fe'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="Merged">
-          <div style="font-size:0.72rem; color:#7c3aed; font-weight:600; margin-bottom:2px;">⤵ Merged (Historical)</div>
+          <div style="font-size:0.72rem; color:#7c3aed; font-weight:600; margin-bottom:2px;">⤵ Merged (Lebur)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#7c3aed;">${mergedCount}</div>
-          <div style="font-size:0.65rem; color:#c4b5fd;">3 Dileburkan ke requirement induk</div>
+          <div style="font-size:0.65rem; color:#c4b5fd;">Dileburkan ke requirement induk</div>
         </div>
       </div>
 
@@ -1563,7 +1549,7 @@ function renderRevisionReviewView(store, filterModId = 'ALL') {
           📋 Rekonsiliasi Baseline
         </button>
         <button type="button" class="pm-sub-tab-btn ${revSubTab === 'workflow' ? 'is-active' : ''}" data-rev-subtab="workflow" style="padding:8px 16px; font-size:0.82rem; font-weight:600; border:none; background:${revSubTab === 'workflow' ? '#ffffff' : 'transparent'}; color:${revSubTab === 'workflow' ? '#1d4ed8' : '#64748b'}; border-bottom:2px solid ${revSubTab === 'workflow' ? '#2563eb' : 'transparent'}; margin-bottom:-2px; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">
-          📜 Riwayat Perubahan &amp; Audit Trail ${totalCount > 0 ? `<span style="background:#fef2f2; color:#dc2626; font-size:0.65rem; padding:1px 5px; border-radius:8px; margin-left:4px;">${totalCount}</span>` : ''}
+          🔄 Revision Workflow ${totalCount > 0 ? `<span style="background:#fef2f2; color:#dc2626; font-size:0.65rem; padding:1px 5px; border-radius:8px; margin-left:4px;">${totalCount}</span>` : ''}
         </button>
       </div>
 
@@ -1574,19 +1560,15 @@ function renderRevisionReviewView(store, filterModId = 'ALL') {
       <div class="pm-req-table-card" style="margin-top: 0;">
         <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span class="pm-req-table-title" style="font-size:1.05rem;">Historical Revision History &amp; Audit Trail</span>
-            ${totalCount === 0
-              ? `<span class="pm-badge-confirmed" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:700;">✅ BASELINE CONFIRMED</span>
-                 <span class="pm-req-count-badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;" title="Status">0 Pending Draf</span>`
-              : `<span class="pm-req-count-badge" title="Total Perubahan Aktif">${totalCount} Draf/Revisi</span>
-                 <span class="pm-req-count-badge" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;" title="Draft">${draftCount} Draft</span>
-                 <span class="pm-req-count-badge" style="background:#fffbeb; color:#b45309; border-color:#fde68a;" title="In Review">${inReviewCount} In Review</span>
-                 <span class="pm-req-count-badge" style="background:#fef2f2; color:#b91c1c; border-color:#fecaca;" title="Rejected">${rejectedCount} Rejected</span>
-                 <span class="pm-req-count-badge" style="background:#f8fafc; color:#475569; border-color:#cbd5e1;" title="Archived">${archivedCount} Archived</span>`
-            }
+            <span class="pm-req-table-title" style="font-size:1.05rem;">Revision &amp; Review Workflow</span>
+            <span class="pm-req-count-badge" title="Total Perubahan Aktif">${totalCount} Draf/Revisi</span>
+            <span class="pm-req-count-badge" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;" title="Draft">${draftCount} Draft</span>
+            <span class="pm-req-count-badge" style="background:#fffbeb; color:#b45309; border-color:#fde68a;" title="In Review">${inReviewCount} In Review</span>
+            <span class="pm-req-count-badge" style="background:#fef2f2; color:#b91c1c; border-color:#fecaca;" title="Rejected">${rejectedCount} Rejected</span>
+            <span class="pm-req-count-badge" style="background:#f8fafc; color:#475569; border-color:#cbd5e1;" title="Archived">${archivedCount} Archived</span>
           </div>
           <div style="font-size:0.75rem; color:#64748b;">
-            Seluruh 172 Kebutuhan Aktif telah terkonfirmasi dan berstatus CONFIRMED BASELINE.
+            Baseline Confirmed terlindungi. Perubahan memerlukan proses review dan konfirmasi resmi.
           </div>
         </div>
 
@@ -1655,8 +1637,8 @@ function renderRevisionReviewView(store, filterModId = 'ALL') {
       ? `
                 <tr>
                   <td colspan="8" style="text-align:center; padding:36px; color:#64748b;">
-                    <div style="font-size:1.05rem; font-weight:600; margin-bottom:6px; color:#166534;">✅ Seluruh Entitas Berstatus CONFIRMED BASELINE</div>
-                    <div style="font-size:0.82rem; color:#475569;">172 Active Requirement, 175 Flow Node, dan 156 Flow Connection telah terkonfirmasi tanpa draf pending.</div>
+                    <div style="font-size:1.05rem; font-weight:600; margin-bottom:6px;">Tidak ada draf atau revisi yang pending</div>
+                    <div style="font-size:0.82rem;">Seluruh data Requirement, Node, dan Connection telah tersinkronisasi dengan baseline resmi.</div>
                   </td>
                 </tr>
               `
@@ -2002,7 +1984,6 @@ function renderDetailPanel(store) {
   const effectiveModId = foundModule ? foundModule.id : selectedModuleId;
   const effectiveFeatId = foundFeatId || currentFeatureId;
   const featureName = foundNode.feature || foundModule?.features?.find(f => f.id === effectiveFeatId)?.name || foundModule?.subtitle || '-';
-  const canonical = resolveNodeCanonicalContent(effectiveModId, effectiveFeatId, foundNode, store) || {};
 
   return `
     <aside class="pm-detail-panel" id="pm-detail-panel">
@@ -2225,71 +2206,57 @@ function renderDetailPanel(store) {
         <!-- Description / Summary -->
         <div class="pm-detail-section">
           <span class="pm-section-heading">Description / Ringkasan</span>
-          <p class="pm-section-body">${canonical.purpose ? escapeHtml(canonical.purpose) : '<span style="color:#94a3b8; font-style:italic;">Belum didefinisikan pada baseline.</span>'}</p>
+          <p class="pm-section-body">${escapeHtml(foundNode.summary || foundNode.description || foundNode.purpose || '-')}</p>
         </div>
 
         <!-- Sections -->
         <div class="pm-detail-section">
           <span class="pm-section-heading">Tujuan</span>
-          <p class="pm-section-body">${canonical.purpose ? escapeHtml(canonical.purpose) : '<span style="color:#94a3b8; font-style:italic;">Belum didefinisikan pada baseline.</span>'}</p>
+          <p class="pm-section-body">${escapeHtml(foundNode.purpose || '-')}</p>
         </div>
 
         <div class="pm-detail-section">
           <span class="pm-section-heading">Input</span>
-          <p class="pm-section-body">${canonical.input ? escapeHtml(canonical.input) : '<span style="color:#94a3b8; font-style:italic;">Belum didefinisikan pada baseline.</span>'}</p>
+          <p class="pm-section-body">${escapeHtml(foundNode.input || '-')}</p>
         </div>
 
         <div class="pm-detail-section">
           <span class="pm-section-heading">Proses</span>
-          <p class="pm-section-body">${canonical.process ? escapeHtml(canonical.process) : '<span style="color:#94a3b8; font-style:italic;">Belum didefinisikan pada baseline.</span>'}</p>
+          <p class="pm-section-body">${escapeHtml(foundNode.process || '-')}</p>
         </div>
 
         <div class="pm-detail-section">
           <span class="pm-section-heading">Validasi</span>
           <div class="pm-section-body">
-            ${canonical.validation
-              ? `<p style="margin:0 0 6px 0; color:#1e293b;">${escapeHtml(canonical.validation)}</p>`
-              : (canonical.matchedRules.length === 0 ? '<span style="color:#94a3b8; font-style:italic;">Belum didefinisikan pada baseline.</span>' : '')
-            }
-            ${canonical.matchedRules.length > 0
-              ? `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
-                  ${canonical.matchedRules.map(r => `<span class="pm-tag pm-tag-rule" style="font-size:0.7rem;" title="${escapeHtml(r.title || r.name || '')}">${escapeHtml(r.id || r.code)}: ${escapeHtml(r.title || r.name || '')}</span>`).join('')}
-                </div>`
-              : ''
-            }
+            <ul>
+              <li>${escapeHtml(foundNode.validation || 'Validasi format dan ketersediaan data')}</li>
+            </ul>
           </div>
         </div>
 
         <div class="pm-detail-section">
           <span class="pm-section-heading">Fallback</span>
-          <p class="pm-section-body">${canonical.fallback ? escapeHtml(canonical.fallback) : '<span style="color:#94a3b8; font-style:italic;">Belum didefinisikan pada baseline.</span>'}</p>
+          <p class="pm-section-body">${escapeHtml(foundNode.fallback || 'Tidak ada fallback manual')}</p>
         </div>
 
         <div class="pm-detail-section">
           <span class="pm-section-heading">Output</span>
-          <div class="pm-section-body">
-            ${canonical.output
-              ? `<p style="margin:0 0 4px 0; color:#15803d; font-weight:600;">${escapeHtml(canonical.output)}</p>`
-              : (!canonical.stockImpact && !canonical.populationImpact ? '<span style="color:#94a3b8; font-style:italic;">Belum didefinisikan pada baseline.</span>' : '')
-            }
-            ${canonical.stockImpact ? `<div style="margin-top:4px;"><span class="pm-tag pm-tag-mgmt">${escapeHtml(canonical.stockImpact)}</span></div>` : ''}
-            ${canonical.populationImpact ? `<div style="font-size:0.75rem; color:#b45309; margin-top:2px;">${escapeHtml(canonical.populationImpact)}</div>` : ''}
-          </div>
+          <p class="pm-section-body">${escapeHtml(foundNode.output || '-')}</p>
         </div>
 
         <div class="pm-detail-section">
           <span class="pm-section-heading">Related Role</span>
-          <p class="pm-section-body"><strong>${escapeHtml(canonical.relatedRole || 'Asisten Bibitan (Verifikasi)')}</strong></p>
+          <p class="pm-section-body"><strong>${escapeHtml(foundNode.relatedRole || 'Asisten Bibitan (Verifikasi)')}</strong></p>
         </div>
 
         <!-- Stock & Population Impact -->
-        ${canonical.stockImpact
+        ${foundNode.stockImpact
       ? `
           <div class="pm-detail-section">
             <span class="pm-section-heading">Dampak Stok</span>
             <div>
-              <span class="pm-stock-pill ${canonical.stockImpact.includes('-') ? 'is-minus' : canonical.stockImpact.includes('+') ? 'is-plus' : 'is-neutral'}">
-                ${escapeHtml(canonical.stockImpact)}
+              <span class="pm-stock-pill ${foundNode.stockImpact.includes('-') ? 'is-minus' : foundNode.stockImpact.includes('+') ? 'is-plus' : 'is-neutral'}">
+                ${escapeHtml(foundNode.stockImpact)}
               </span>
             </div>
           </div>
@@ -2453,28 +2420,16 @@ function renderModals(store) {
     const previewReq = (selectedReqDetailVersion && history.find(h => h.version === selectedReqDetailVersion)) || modalData;
     const isHistorical = previewReq.isSuperseded || (modalData && previewReq.version !== modalData.version);
     const nodeUsage = checkRequirementNodeUsage(reqId);
-    const classification = getRequirementClassification(reqId);
-    const isConfirmed = previewReq.status === 'Confirmed';
-    const statusLabel = isConfirmed ? 'CONFIRMED' : (previewReq.status || 'CONFIRMED');
 
     return `
       <div class="pm-modal-backdrop" id="pm-modal-backdrop">
         <div class="pm-modal-dialog" style="max-width: 720px;">
           <div class="pm-modal-header">
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:8px;">
               <h3 class="pm-modal-title">Detail Requirement: ${escapeHtml(reqId)}</h3>
               <span class="pm-badge-draft" style="font-size:0.75rem;">v${previewReq.version || 1}</span>
-              <span class="pm-badge-confirmed" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:700;">
-                ${statusLabel}
-              </span>
-              <span style="font-size:0.72rem; padding:2px 8px; border-radius:4px; font-weight:600; ${
-                classification === 'New' ? 'background:#f0f9ff; color:#0369a1; border:1px solid #bae6fd;' :
-                classification === 'Revised' ? 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;' :
-                classification === 'Deprecated' ? 'background:#fef2f2; color:#991b1b; border:1px solid #fecaca;' :
-                classification === 'Merged' ? 'background:#faf5ff; color:#7c3aed; border:1px solid #ddd6fe;' :
-                'background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;'
-              }">
-                ${classification}
+              <span class="${previewReq.status === 'Confirmed' ? 'pm-badge-confirmed' : 'pm-badge-draft'}">
+                ${previewReq.status}
               </span>
             </div>
             <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
@@ -2515,16 +2470,6 @@ function renderModals(store) {
               `
         : ''
       }
-
-              <div class="pm-detail-item">
-                <span class="pm-detail-label">Klasifikasi Baseline</span>
-                <div class="pm-detail-value" style="font-weight:600;">${classification}</div>
-              </div>
-
-              <div class="pm-detail-item">
-                <span class="pm-detail-label">Status Baseline</span>
-                <div class="pm-detail-value" style="font-weight:600; color:#166534;">${statusLabel}</div>
-              </div>
 
               <div class="pm-detail-item">
                 <span class="pm-detail-label">Role Pelaksana</span>
@@ -2627,7 +2572,7 @@ function renderModals(store) {
 
               <!-- Revision History Timeline Section -->
               <div class="pm-detail-item is-full" style="margin-top:6px;">
-                <span class="pm-detail-label">Historical Revision History (Riwayat Revisi Historis)</span>
+                <span class="pm-detail-label">Riwayat Revisi (Revision History)</span>
                 <div class="pm-timeline-list">
                   ${history.map((h) => {
         const isCurrent = h.version === (previewReq.version || 1);
@@ -7064,21 +7009,30 @@ function renderReportBpDoc(store) {
                     : nodes
                       .map(
                         (node, idx) => {
-                          const canonical = resolveNodeCanonicalContent(m.id, feat.id, node, store);
+                          const trace = getNodeTrace(m.id, feat.id, node.id);
+                          const linkedReq = trace?.requirement || (node.reqId ? getRequirementByReqId(node.reqId) : null);
+                          const matchedRules = trace?.businessRules || [];
 
                           // 1. Input Data
-                          const inputHtml = canonical.input ? escapeHtml(canonical.input) : '<span style="color:#94a3b8;">Belum didefinisikan pada baseline.</span>';
+                          const inputVal = (node.input && node.input.trim() && node.input.trim() !== '-')
+                            ? node.input.trim()
+                            : ((linkedReq?.input && linkedReq.input.trim() && linkedReq.input.trim() !== '-') ? linkedReq.input.trim() : '');
+                          const inputHtml = inputVal ? escapeHtml(inputVal) : '<span style="color:#94a3b8;">Belum didefinisikan pada baseline.</span>';
 
                           // 2. Validasi & Aturan
-                          const ruleBadgesHtml = canonical.matchedRules.length > 0
-                            ? canonical.matchedRules.map(r => `<span class="pm-tag pm-tag-rule" style="font-size:0.68rem; margin:1px 2px;" title="${escapeHtml(r.title || r.name || '')}">${escapeHtml(r.id || r.code)}</span>`).join(' ')
+                          const valText = (node.validation && node.validation.trim() && node.validation.trim() !== '-')
+                            ? node.validation.trim()
+                            : ((linkedReq?.validation && linkedReq.validation.trim() && linkedReq.validation.trim() !== '-') ? linkedReq.validation.trim() : '');
+                          
+                          const ruleBadgesHtml = matchedRules.length > 0
+                            ? matchedRules.map(r => `<span class="pm-tag pm-tag-rule" style="font-size:0.68rem; margin:1px 2px;" title="${escapeHtml(r.title || r.name || '')}">${escapeHtml(r.id || r.code)}</span>`).join(' ')
                             : '';
 
                           let validationHtml = '';
-                          if (canonical.validation && ruleBadgesHtml) {
-                            validationHtml = `<div>${escapeHtml(canonical.validation)}</div><div style="margin-top:4px;">${ruleBadgesHtml}</div>`;
-                          } else if (canonical.validation) {
-                            validationHtml = `<div>${escapeHtml(canonical.validation)}</div>`;
+                          if (valText && ruleBadgesHtml) {
+                            validationHtml = `<div>${escapeHtml(valText)}</div><div style="margin-top:4px;">${ruleBadgesHtml}</div>`;
+                          } else if (valText) {
+                            validationHtml = `<div>${escapeHtml(valText)}</div>`;
                           } else if (ruleBadgesHtml) {
                             validationHtml = `<div>${ruleBadgesHtml}</div>`;
                           } else {
@@ -7086,35 +7040,44 @@ function renderReportBpDoc(store) {
                           }
 
                           // 3. Fallback / Pengecualian
-                          const fallbackHtml = canonical.fallback ? escapeHtml(canonical.fallback) : '<span style="color:#94a3b8;">Belum didefinisikan pada baseline.</span>';
+                          const fbVal = (node.fallback && node.fallback.trim() && node.fallback.trim() !== '-')
+                            ? node.fallback.trim()
+                            : ((linkedReq?.fallback && linkedReq.fallback.trim() && linkedReq.fallback.trim() !== '-') ? linkedReq.fallback.trim() : '');
+                          const fallbackHtml = fbVal ? escapeHtml(fbVal) : '<span style="color:#94a3b8;">-</span>';
 
                           // 4. Output & Dampak Stok
+                          const outVal = (node.output && node.output.trim() && node.output.trim() !== '-')
+                            ? node.output.trim()
+                            : ((linkedReq?.output && linkedReq.output.trim() && linkedReq.output.trim() !== '-') ? linkedReq.output.trim() : '');
+                          const hasStock = node.stockImpact && node.stockImpact.trim() && node.stockImpact !== 'NO STOCK CHANGE';
+                          const hasPop = node.populationImpact && node.populationImpact.trim() && node.populationImpact !== 'NO POPULATION CHANGE';
+
                           let outputHtml = '';
-                          if (canonical.output || canonical.stockImpact || canonical.populationImpact) {
+                          if (outVal || hasStock || hasPop) {
                             outputHtml = `
-                              ${canonical.output ? `<div>${escapeHtml(canonical.output)}</div>` : ''}
-                              ${canonical.stockImpact ? `<div style="font-size:0.72rem; margin-top:3px;"><span class="pm-tag pm-tag-mgmt">${escapeHtml(canonical.stockImpact)}</span></div>` : ''}
-                              ${canonical.populationImpact ? `<div style="font-size:0.72rem; color:#b45309; margin-top:2px;">${escapeHtml(canonical.populationImpact)}</div>` : ''}
+                              ${outVal ? `<div>${escapeHtml(outVal)}</div>` : ''}
+                              ${hasStock ? `<div style="font-size:0.72rem; margin-top:3px;"><span class="pm-tag pm-tag-mgmt">${escapeHtml(node.stockImpact)}</span></div>` : ''}
+                              ${hasPop ? `<div style="font-size:0.72rem; color:#b45309; margin-top:2px;">${escapeHtml(node.populationImpact)}</div>` : ''}
                             `;
                           } else {
-                            outputHtml = '<span style="color:#94a3b8;">Belum didefinisikan pada baseline.</span>';
+                            outputHtml = '<span style="color:#94a3b8;">-</span>';
                           }
 
-                          const reqEvidenceBadge = canonical.reqId
-                            ? `<div style="margin-top:3px;"><span class="pm-tag pm-tag-covered" style="font-size:0.66rem; padding:1px 4px; font-weight:600;" title="Requirement Terkait: ${escapeHtml(canonical.linkedReq?.title || '')}">${escapeHtml(canonical.reqId)}</span></div>`
+                          const reqEvidenceBadge = (linkedReq?.id || node.reqId)
+                            ? `<div style="margin-top:3px;"><span class="pm-tag pm-tag-covered" style="font-size:0.66rem; padding:1px 4px; font-weight:600;" title="Requirement Terkait: ${escapeHtml(linkedReq?.title || '')}">${escapeHtml(linkedReq?.id || node.reqId)}</span></div>`
                             : '';
 
                           return `
                             <tr>
                               <td style="text-align:center; color:#64748b;">${idx + 1}</td>
                               <td>
-                                <div style="font-weight:700; color:#116834;">${escapeHtml(canonical.nodeCode)}</div>
+                                <div style="font-weight:700; color:#116834;">${escapeHtml(node.code || node.id)}</div>
                                 ${reqEvidenceBadge}
                               </td>
                               <td>
-                                <div style="font-weight:600; color:#0f172a;">${escapeHtml(canonical.nodeLabel)}</div>
-                                ${canonical.purpose ? `<div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${escapeHtml(canonical.purpose)}</div>` : ''}
-                                <div style="font-size:0.72rem; color:#475569; margin-top:2px;"><strong>Role:</strong> ${escapeHtml(canonical.role)}</div>
+                                <div style="font-weight:600; color:#0f172a;">${escapeHtml(node.label || node.title || linkedReq?.title || '')}</div>
+                                ${node.purpose ? `<div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${escapeHtml(node.purpose)}</div>` : ''}
+                                <div style="font-size:0.72rem; color:#475569; margin-top:2px;"><strong>Role:</strong> ${escapeHtml(node.role || linkedReq?.role || m.primaryRole || 'Mantri Bibitan')}</div>
                               </td>
                               <td style="font-size:0.78rem; color:#334155;">${inputHtml}</td>
                               <td style="font-size:0.78rem; color:#334155;">${validationHtml}</td>

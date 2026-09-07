@@ -1,0 +1,1876 @@
+{
+  "33 True Gaps": [
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-doc-renderer.js",
+      "matches": [
+        {
+          "lineNum": 379,
+          "text": "<h2 class=\"pm-doc-h1\">3.0 Rincian Kesenjangan Alur Kerja (33 True Gaps)</h2>"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 2813,
+          "text": "* Resolves all 33 True Gaps and ensures 167 active flow nodes across 21 features."
+        }
+      ]
+    },
+    {
+      "file": "test-phase4d-coverage-gap.js",
+      "matches": [
+        {
+          "lineNum": 211,
+          "text": "assert(resetMetrics.flowGap === 33, '11.3 Store reset restores baseline 33 true gaps');"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5-documentation.js",
+      "matches": [
+        {
+          "lineNum": 200,
+          "text": "assert(gapDoc.data.totalGaps === 33, `7.3 gapDoc data has exactly 33 true gaps (got: ${gapDoc.data.totalGaps})`);"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5b-document-templates.js",
+      "matches": [
+        {
+          "lineNum": 8,
+          "text": "* - DOC-05: Gap Analysis Report Render (33 true gaps, 5 modules)"
+        },
+        {
+          "lineNum": 126,
+          "text": "assert(controlHtml.includes('33 True Gaps'), '3.6 Control table includes 33 true gaps count');"
+        },
+        {
+          "lineNum": 176,
+          "text": "assert(gapSummaryHtml.includes('33 True Gaps'), '7.2 Gap summary mentions 33 True Gaps');"
+        },
+        {
+          "lineNum": 189,
+          "text": "assert(gapTableHtml.includes('3.0 Rincian Kesenjangan Alur Kerja (33 True Gaps)'), '8.1 Gap Table heading rendered');"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5c-document-viewer.js",
+      "matches": [
+        {
+          "lineNum": 127,
+          "text": "assert(hubHtml.includes('33 True Gaps'), '3.6 Gap dataset counts displayed');"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5d-simplified-management.js",
+      "matches": [
+        {
+          "lineNum": 119,
+          "text": "assert(hubHtml.includes('33 True Gaps') && hubHtml.includes('5 Modul'), '2.8 Gap summary rendered');"
+        },
+        {
+          "lineNum": 194,
+          "text": "assert(restoredGap.data.totalGaps === 33, '6.4 Restored Gap model cleanly returns to 33 true gaps');"
+        }
+      ]
+    }
+  ],
+  "33 True Gap": [
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-doc-renderer.js",
+      "matches": [
+        {
+          "lineNum": 379,
+          "text": "<h2 class=\"pm-doc-h1\">3.0 Rincian Kesenjangan Alur Kerja (33 True Gaps)</h2>"
+        },
+        {
+          "lineNum": 434,
+          "text": "<span>165 Active Reqs = 122 Covered + 33 True Gap + 10 Management (100% Balanced)</span>"
+        }
+      ]
+    },
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-ui.js",
+      "matches": [
+        {
+          "lineNum": 442,
+          "text": "<button type=\"button\" class=\"pm-btn-sm pm-btn-secondary\" id=\"pm-btn-apply-true-gaps\" style=\"font-weight:600;\" title=\"Terapkan alur resolusi 33 True Ga"
+        },
+        {
+          "lineNum": 443,
+          "text": "Terapkan 33 True Gap"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 2813,
+          "text": "* Resolves all 33 True Gaps and ensures 167 active flow nodes across 21 features."
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-ui.js",
+      "matches": [
+        {
+          "lineNum": 433,
+          "text": "<button type=\"button\" class=\"pm-btn-sm pm-btn-secondary\" id=\"pm-btn-apply-true-gaps\" style=\"font-weight:600;\" title=\"Terapkan alur resolusi 33 True Ga"
+        },
+        {
+          "lineNum": 434,
+          "text": "Terapkan 33 True Gap"
+        },
+        {
+          "lineNum": 4174,
+          "text": "showToast('33 True Gap berhasil diselesaikan (155/155 Flow Covered)');"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\process-mapping-ui.js",
+      "matches": [
+        {
+          "lineNum": 442,
+          "text": "<button type=\"button\" class=\"pm-btn-sm pm-btn-secondary\" id=\"pm-btn-apply-true-gaps\" style=\"font-weight:600;\" title=\"Terapkan alur resolusi 33 True Ga"
+        },
+        {
+          "lineNum": 443,
+          "text": "Terapkan 33 True Gap"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\README-INTEGRASI.md",
+      "matches": [
+        {
+          "lineNum": 10,
+          "text": "* **True Gap Resolution (Phase 4E):** Resolusi deterministik terhadap 33 True Gap kebutuhan fungsional lapangan melalui penambahan 45 node alur terver"
+        }
+      ]
+    },
+    {
+      "file": "test-phase4d-coverage-gap.js",
+      "matches": [
+        {
+          "lineNum": 211,
+          "text": "assert(resetMetrics.flowGap === 33, '11.3 Store reset restores baseline 33 true gaps');"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5-documentation.js",
+      "matches": [
+        {
+          "lineNum": 200,
+          "text": "assert(gapDoc.data.totalGaps === 33, `7.3 gapDoc data has exactly 33 true gaps (got: ${gapDoc.data.totalGaps})`);"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5b-document-templates.js",
+      "matches": [
+        {
+          "lineNum": 8,
+          "text": "* - DOC-05: Gap Analysis Report Render (33 true gaps, 5 modules)"
+        },
+        {
+          "lineNum": 126,
+          "text": "assert(controlHtml.includes('33 True Gaps'), '3.6 Control table includes 33 true gaps count');"
+        },
+        {
+          "lineNum": 176,
+          "text": "assert(gapSummaryHtml.includes('33 True Gaps'), '7.2 Gap summary mentions 33 True Gaps');"
+        },
+        {
+          "lineNum": 189,
+          "text": "assert(gapTableHtml.includes('3.0 Rincian Kesenjangan Alur Kerja (33 True Gaps)'), '8.1 Gap Table heading rendered');"
+        },
+        {
+          "lineNum": 203,
+          "text": "assert(provHtml.includes('165 Active Reqs = 122 Covered + 33 True Gap + 10 Management'), '9.2 Provenance balance formula rendered');"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5c-document-viewer.js",
+      "matches": [
+        {
+          "lineNum": 127,
+          "text": "assert(hubHtml.includes('33 True Gaps'), '3.6 Gap dataset counts displayed');"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5d-simplified-management.js",
+      "matches": [
+        {
+          "lineNum": 119,
+          "text": "assert(hubHtml.includes('33 True Gaps') && hubHtml.includes('5 Modul'), '2.8 Gap summary rendered');"
+        },
+        {
+          "lineNum": 194,
+          "text": "assert(restoredGap.data.totalGaps === 33, '6.4 Restored Gap model cleanly returns to 33 true gaps');"
+        }
+      ]
+    }
+  ],
+  "165 Requirements": [
+    {
+      "file": "docs\\final-release\\SIGMA-RUBBER-NURSERY-CHANGE-HISTORY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 33,
+          "text": "* **Baseline Awal (Task 8):** 165 Requirements"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\build_release_candidate.js",
+      "matches": [
+        {
+          "lineNum": 197,
+          "text": "* **Baseline Awal (Task 8):** 165 Requirements"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\cleanup_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 356,
+          "text": "doc += '* **Baseline Awal:** 165 Requirements (User Stories Lapangan)\\n';"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 354,
+          "text": "doc += '* **Baseline Awal:** 165 Requirements (User Stories Lapangan)\\n';"
+        }
+      ]
+    },
+    {
+      "file": "TASK-10-FLOW-TRACEABILITY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 232,
+          "text": "4. `test-phase4-traceability.js` — **47 PASSED, 5 Failed** (Root cause: Hardcoded assertion angka 165 requirements dan 16 rules)."
+        },
+        {
+          "lineNum": 233,
+          "text": "5. `test-phase4b-flow-trace.js` — **30 PASSED, 2 Failed** (Root cause: Hardcoded assertion angka 165 requirements dan 16 rules)."
+        },
+        {
+          "lineNum": 237,
+          "text": "9. `portal_patch/test-phase4e-gap-resolution.js` & `test-phase4f-finalization.js` — (Root cause: Hardcoded assertion angka lama 165 requirements dan 1"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13-DAK-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 783,
+          "text": "* **Baseline Awal:** 165 Requirements (User Stories Lapangan)"
+        }
+      ]
+    },
+    {
+      "file": "test-phase4d-coverage-gap.js",
+      "matches": [
+        {
+          "lineNum": 209,
+          "text": "assert(resetMetrics.totalActiveRequirements === 165, '11.1 Store reset restores baseline 165 requirements');"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5b-document-templates.js",
+      "matches": [
+        {
+          "lineNum": 125,
+          "text": "assert(controlHtml.includes('165 Requirements'), '3.5 Control table includes 165 requirements count');"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5c-document-viewer.js",
+      "matches": [
+        {
+          "lineNum": 126,
+          "text": "assert(hubHtml.includes('165 Requirements') && hubHtml.includes('122 Covered'), '3.5 RTM dataset counts displayed');"
+        },
+        {
+          "lineNum": 192,
+          "text": "assert(restoredRtmModel.data.totalRecords === 165, '7.5 Restored RTM model cleanly returns to 165 requirements');"
+        }
+      ]
+    },
+    {
+      "file": "test-phase5d-simplified-management.js",
+      "matches": [
+        {
+          "lineNum": 118,
+          "text": "assert(hubHtml.includes('165 Requirements') && hubHtml.includes('122 Covered'), '2.7 RTM coverage summary rendered');"
+        },
+        {
+          "lineNum": 166,
+          "text": "assert(restoredRtm.data.totalRecords === 165, '5.4 Restored RTM model cleanly returns to 165 requirements');"
+        },
+        {
+          "lineNum": 223,
+          "text": "assert(cleanStore.requirements.length === 165, '9.1 Baseline store has 165 requirements');"
+        }
+      ]
+    }
+  ],
+  "165 Kebutuhan": [
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-doc-renderer.js",
+      "matches": [
+        {
+          "lineNum": 289,
+          "text": "<p class=\"pm-doc-p\">Tabel rincian keterlacakan 165 kebutuhan fungsional terhadap alur kerja proses bisnis, peran operasional, dan aturan bisnis.</p>"
+        }
+      ]
+    }
+  ],
+  "163 Flow Required": [],
+  "156 Flow Covered": [],
+  "7 True Gap": [
+    {
+      "file": "test-phase5b-document-templates.js",
+      "matches": [
+        {
+          "lineNum": 163,
+          "text": "assert(rtmTableHtml.includes('pm-tag-gap'), '6.7 True Gap tag rendered');"
+        }
+      ]
+    }
+  ],
+  "7 True Gaps": [],
+  "16/18": [],
+  "16 Aturan Bisnis": [
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-ui.js",
+      "matches": [
+        {
+          "lineNum": 6199,
+          "text": "<span class=\"pm-cov-sub\">16 Aturan Bisnis Resmi (PASS)</span>"
+        }
+      ]
+    },
+    {
+      "file": "TASK-14.1-PORTAL-METRIC-FIX-AUDIT.md",
+      "matches": [
+        {
+          "lineNum": 19,
+          "text": "* Teks statis pada kartu *Canonical Rules Linked* masih memuat string lama `\"16 Aturan Bisnis Resmi (PASS)\"` alih-alih mengambil jumlah dinamis 18 atu"
+        },
+        {
+          "lineNum": 31,
+          "text": "| **Subtext Aturan Bisnis** | `16 Aturan Bisnis Resmi (PASS)` | **`18 Aturan Bisnis Resmi (PASS)`** | ✅ **FIXED** |"
+        },
+        {
+          "lineNum": 118,
+          "text": "| **Subtext Rules Card** | `16 Aturan Bisnis Resmi (PASS)` | `18 Aturan Bisnis Resmi (PASS)` |"
+        }
+      ]
+    }
+  ],
+  "Rules: 16": [
+    {
+      "file": "requirement.md",
+      "matches": [
+        {
+          "lineNum": 17,
+          "text": "- Business Rules: 16"
+        }
+      ]
+    }
+  ],
+  "RN-PRS-004": [
+    {
+      "file": "data\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 395,
+          "text": "\"reqId\": \"RN-PRS-004\","
+        },
+        {
+          "lineNum": 3648,
+          "text": "\"id\": \"RN-PRS-004\","
+        }
+      ]
+    },
+    {
+      "file": "docs\\final-release\\SIGMA-RUBBER-NURSERY-CHANGE-HISTORY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 37,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-006"
+        }
+      ]
+    },
+    {
+      "file": "js\\data\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 403,
+          "text": "\"reqId\": \"RN-PRS-004\","
+        },
+        {
+          "lineNum": 3656,
+          "text": "\"id\": \"RN-PRS-004\","
+        }
+      ]
+    },
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 2832,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 406,
+          "text": "\"reqId\": \"RN-PRS-004\","
+        },
+        {
+          "lineNum": 3659,
+          "text": "\"id\": \"RN-PRS-004\","
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 3296,
+          "text": "'RN-PRS-004': ['BR-PRS-003', 'BR-GLB-001'],"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 395,
+          "text": "\"reqId\": \"RN-PRS-004\","
+        },
+        {
+          "lineNum": 3648,
+          "text": "\"id\": \"RN-PRS-004\","
+        }
+      ]
+    },
+    {
+      "file": "requirement.md",
+      "matches": [
+        {
+          "lineNum": 604,
+          "text": "\"id\": \"RN-PRS-004\","
+        },
+        {
+          "lineNum": 605,
+          "text": "\"reqId\": \"RN-PRS-004\","
+        },
+        {
+          "lineNum": 5715,
+          "text": "\"reqId\": \"RN-PRS-004\","
+        }
+      ]
+    },
+    {
+      "file": "scratch\\audit_dak_13_1.js",
+      "matches": [
+        {
+          "lineNum": 37,
+          "text": "{ id: 'D', title: 'Scope (In/Out of Scope)', status: 'SUPPORTED', notes: '11 modul In-Scope dan 7 deprecated requirements (RN-PRS-004 s/d RN-EXP-006) "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\build_release_candidate.js",
+      "matches": [
+        {
+          "lineNum": 201,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (\\`RN-PRS-004\\`, \\`RN-RCV-001\\`, \\`RN-OKL-000\\`, \\`RN-SEL-002\\`, \\`RN-ENT-001\\`, \\`RN-EXP-005\\`,"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\cleanup_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 73,
+          "text": "doc += '1. `RN-PRS-004`: Presensi manual batch pekerja tanpa koordinat geolokasi GPS *(Deprecated — bertentangan dengan governance anti-fraud GPS)*.\\n"
+        },
+        {
+          "lineNum": 239,
+          "text": "doc += '| `RN-PRS-004` | Presensi Manual Batch Pekerja | *Deprecated* — Wajib menggunakan presensi terverifikasi koordinat GPS. |\\n';"
+        },
+        {
+          "lineNum": 360,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_audit_report.js",
+      "matches": [
+        {
+          "lineNum": 38,
+          "text": "doc += '| **D** | Scope (In/Out of Scope) | **SUPPORTED** | 11 Modul In-Scope dan 7 Deprecated Requirements (`RN-PRS-004` s/d `RN-EXP-006`) sesuai sta"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 78,
+          "text": "doc += '1. `RN-PRS-004`: Presensi manual batch pekerja tanpa koordinat geolokasi GPS *(Deprecated — bertentangan dengan governance anti-fraud GPS)*.\\n"
+        },
+        {
+          "lineNum": 244,
+          "text": "doc += '| `RN-PRS-004` | Presensi Manual Batch Pekerja | *Deprecated* — Wajib menggunakan presensi terverifikasi koordinat GPS. |\\n';"
+        },
+        {
+          "lineNum": 358,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\test_classification_categorization.js",
+      "matches": [
+        {
+          "lineNum": 12,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_catalog_helper.js",
+      "matches": [
+        {
+          "lineNum": 19,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_exact_reconciliation.js",
+      "matches": [
+        {
+          "lineNum": 21,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "TASK-10-FLOW-TRACEABILITY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 186,
+          "text": "1. `RN-PRS-004` — Presensi Manual Batch Tanpa Koordinat GPS"
+        }
+      ]
+    },
+    {
+      "file": "TASK-11-AUDIT-TASK10-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 99,
+          "text": "1. `RN-PRS-004` — Presensi Manual Batch Tanpa Koordinat GPS (`isArchived: true`)"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13-DAK-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 58,
+          "text": "1. `RN-PRS-004`: Presensi manual batch pekerja tanpa koordinat geolokasi GPS *(Deprecated — bertentangan dengan governance anti-fraud GPS)*."
+        },
+        {
+          "lineNum": 481,
+          "text": "| `RN-PRS-004` | Presensi Manual Batch Pekerja | *Deprecated* — Wajib menggunakan presensi terverifikasi koordinat GPS. |"
+        },
+        {
+          "lineNum": 787,
+          "text": "* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13.1-DAK-CONTENT-INTEGRITY-AUDIT.md",
+      "matches": [
+        {
+          "lineNum": 30,
+          "text": "| **D** | Scope (In/Out of Scope) | **SUPPORTED** | 11 Modul In-Scope dan 7 Deprecated Requirements (`RN-PRS-004` s/d `RN-EXP-006`) sesuai status `isA"
+        }
+      ]
+    }
+  ],
+  "RN-RCV-001": [
+    {
+      "file": "data\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 643,
+          "text": "\"reqId\": \"RN-RCV-001\","
+        },
+        {
+          "lineNum": 3811,
+          "text": "\"id\": \"RN-RCV-001\","
+        }
+      ]
+    },
+    {
+      "file": "docs\\final-release\\SIGMA-RUBBER-NURSERY-CHANGE-HISTORY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 37,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-006"
+        }
+      ]
+    },
+    {
+      "file": "js\\data\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 651,
+          "text": "\"reqId\": \"RN-RCV-001\","
+        },
+        {
+          "lineNum": 3819,
+          "text": "\"id\": \"RN-RCV-001\","
+        }
+      ]
+    },
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 2832,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 654,
+          "text": "\"reqId\": \"RN-RCV-001\","
+        },
+        {
+          "lineNum": 3821,
+          "text": "\"id\": \"RN-RCV-001\","
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 3305,
+          "text": "'RN-RCV-001': ['BR-GLB-001'],"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 643,
+          "text": "\"reqId\": \"RN-RCV-001\","
+        },
+        {
+          "lineNum": 3810,
+          "text": "\"id\": \"RN-RCV-001\","
+        }
+      ]
+    },
+    {
+      "file": "requirement.md",
+      "matches": [
+        {
+          "lineNum": 883,
+          "text": "\"id\": \"RN-RCV-001\","
+        },
+        {
+          "lineNum": 884,
+          "text": "\"reqId\": \"RN-RCV-001\","
+        },
+        {
+          "lineNum": 5963,
+          "text": "\"reqId\": \"RN-RCV-001\","
+        }
+      ]
+    },
+    {
+      "file": "scratch\\build_release_candidate.js",
+      "matches": [
+        {
+          "lineNum": 201,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (\\`RN-PRS-004\\`, \\`RN-RCV-001\\`, \\`RN-OKL-000\\`, \\`RN-SEL-002\\`, \\`RN-ENT-001\\`, \\`RN-EXP-005\\`,"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\cleanup_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 74,
+          "text": "doc += '2. `RN-RCV-001`: Pemindaian barcode non-standar vendor luar *(Deprecated — digantikan verifikasi BKB standar SIGMA)*.\\n';"
+        },
+        {
+          "lineNum": 240,
+          "text": "doc += '| `RN-RCV-001` | Scan Barcode Kotak Vendor SSPL | *Deprecated* — Standarisasi verifikasi dokumen BKB & nomor batch internal SIGMA. |\\n';"
+        },
+        {
+          "lineNum": 360,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 79,
+          "text": "doc += '2. `RN-RCV-001`: Pemindaian barcode non-standar vendor luar *(Deprecated — digantikan verifikasi BKB standar SIGMA)*.\\n';"
+        },
+        {
+          "lineNum": 245,
+          "text": "doc += '| `RN-RCV-001` | Scan Barcode Kotak Vendor SSPL | *Deprecated* — Standarisasi verifikasi dokumen BKB & nomor batch internal SIGMA. |\\n';"
+        },
+        {
+          "lineNum": 358,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\test_classification_categorization.js",
+      "matches": [
+        {
+          "lineNum": 12,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_catalog_helper.js",
+      "matches": [
+        {
+          "lineNum": 19,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_exact_reconciliation.js",
+      "matches": [
+        {
+          "lineNum": 21,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "TASK-10-FLOW-TRACEABILITY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 187,
+          "text": "2. `RN-RCV-001` — Scan Barcode Vendor Luar Tanpa Standar Internal SIGMA"
+        }
+      ]
+    },
+    {
+      "file": "TASK-11-AUDIT-TASK10-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 100,
+          "text": "2. `RN-RCV-001` — Scan Barcode Vendor Luar Tanpa Standar SIGMA (`isArchived: true`)"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13-DAK-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 59,
+          "text": "2. `RN-RCV-001`: Pemindaian barcode non-standar vendor luar *(Deprecated — digantikan verifikasi BKB standar SIGMA)*."
+        },
+        {
+          "lineNum": 482,
+          "text": "| `RN-RCV-001` | Scan Barcode Kotak Vendor SSPL | *Deprecated* — Standarisasi verifikasi dokumen BKB & nomor batch internal SIGMA. |"
+        },
+        {
+          "lineNum": 787,
+          "text": "* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-"
+        }
+      ]
+    }
+  ],
+  "RN-OKL-000": [
+    {
+      "file": "data\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 1185,
+          "text": "\"reqId\": \"RN-OKL-000\","
+        },
+        {
+          "lineNum": 4178,
+          "text": "\"id\": \"RN-OKL-000\","
+        }
+      ]
+    },
+    {
+      "file": "docs\\final-release\\SIGMA-RUBBER-NURSERY-CHANGE-HISTORY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 37,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-006"
+        }
+      ]
+    },
+    {
+      "file": "js\\data\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 1193,
+          "text": "\"reqId\": \"RN-OKL-000\","
+        },
+        {
+          "lineNum": 4186,
+          "text": "\"id\": \"RN-OKL-000\","
+        }
+      ]
+    },
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 2832,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 1196,
+          "text": "\"reqId\": \"RN-OKL-000\","
+        },
+        {
+          "lineNum": 4181,
+          "text": "\"id\": \"RN-OKL-000\","
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 3345,
+          "text": "'RN-OKL-000': ['BR-OKL-001', 'BR-PRS-001'],"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 1185,
+          "text": "\"reqId\": \"RN-OKL-000\","
+        },
+        {
+          "lineNum": 4170,
+          "text": "\"id\": \"RN-OKL-000\","
+        }
+      ]
+    },
+    {
+      "file": "requirement.md",
+      "matches": [
+        {
+          "lineNum": 1503,
+          "text": "\"id\": \"RN-OKL-000\","
+        },
+        {
+          "lineNum": 1504,
+          "text": "\"reqId\": \"RN-OKL-000\","
+        },
+        {
+          "lineNum": 6505,
+          "text": "\"reqId\": \"RN-OKL-000\","
+        }
+      ]
+    },
+    {
+      "file": "scratch\\build_release_candidate.js",
+      "matches": [
+        {
+          "lineNum": 201,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (\\`RN-PRS-004\\`, \\`RN-RCV-001\\`, \\`RN-OKL-000\\`, \\`RN-SEL-002\\`, \\`RN-ENT-001\\`, \\`RN-EXP-005\\`,"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\cleanup_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 75,
+          "text": "doc += '3. `RN-OKL-000`: Inisialisasi batch polybag campuran multi-klon *(Deprecated — klon wajib tunggal murni per batch)*.\\n';"
+        },
+        {
+          "lineNum": 241,
+          "text": "doc += '| `RN-OKL-000` | Entri Data Multi-clone dalam 1 Batch | *Deprecated* — 1 Batch polybag wajib homogen tunggal klon demi kemurnian genetik. |\\n'"
+        },
+        {
+          "lineNum": 360,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 80,
+          "text": "doc += '3. `RN-OKL-000`: Inisialisasi batch polybag campuran multi-klon *(Deprecated — klon wajib tunggal murni per batch)*.\\n';"
+        },
+        {
+          "lineNum": 246,
+          "text": "doc += '| `RN-OKL-000` | Entri Data Multi-clone dalam 1 Batch | *Deprecated* — 1 Batch polybag wajib homogen tunggal klon demi kemurnian genetik. |\\n'"
+        },
+        {
+          "lineNum": 358,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\test_classification_categorization.js",
+      "matches": [
+        {
+          "lineNum": 12,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_catalog_helper.js",
+      "matches": [
+        {
+          "lineNum": 19,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_exact_reconciliation.js",
+      "matches": [
+        {
+          "lineNum": 21,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "TASK-10-FLOW-TRACEABILITY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 188,
+          "text": "3. `RN-OKL-000` — Inisialisasi Batch Campuran Multi-Klon (Dilarang)"
+        }
+      ]
+    },
+    {
+      "file": "TASK-11-AUDIT-TASK10-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 101,
+          "text": "3. `RN-OKL-000` — Inisialisasi Batch Campuran Multi-Klon (`isArchived: true`)"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13-DAK-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 60,
+          "text": "3. `RN-OKL-000`: Inisialisasi batch polybag campuran multi-klon *(Deprecated — klon wajib tunggal murni per batch)*."
+        },
+        {
+          "lineNum": 483,
+          "text": "| `RN-OKL-000` | Entri Data Multi-clone dalam 1 Batch | *Deprecated* — 1 Batch polybag wajib homogen tunggal klon demi kemurnian genetik. |"
+        },
+        {
+          "lineNum": 787,
+          "text": "* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-"
+        }
+      ]
+    }
+  ],
+  "RN-SEL-002": [
+    {
+      "file": "data\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 2195,
+          "text": "\"reqId\": \"RN-SEL-002\","
+        },
+        {
+          "lineNum": 4863,
+          "text": "\"id\": \"RN-SEL-002\","
+        }
+      ]
+    },
+    {
+      "file": "docs\\final-release\\SIGMA-RUBBER-NURSERY-CHANGE-HISTORY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 37,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-006"
+        }
+      ]
+    },
+    {
+      "file": "js\\data\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 2203,
+          "text": "\"reqId\": \"RN-SEL-002\","
+        },
+        {
+          "lineNum": 4871,
+          "text": "\"id\": \"RN-SEL-002\","
+        }
+      ]
+    },
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 2832,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 2206,
+          "text": "\"reqId\": \"RN-SEL-002\","
+        },
+        {
+          "lineNum": 4865,
+          "text": "\"id\": \"RN-SEL-002\","
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 3392,
+          "text": "'RN-SEL-002': ['BR-GLB-001'],"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 2195,
+          "text": "\"reqId\": \"RN-SEL-002\","
+        },
+        {
+          "lineNum": 4854,
+          "text": "\"id\": \"RN-SEL-002\","
+        }
+      ]
+    },
+    {
+      "file": "requirement.md",
+      "matches": [
+        {
+          "lineNum": 2681,
+          "text": "\"id\": \"RN-SEL-002\","
+        },
+        {
+          "lineNum": 2682,
+          "text": "\"reqId\": \"RN-SEL-002\","
+        },
+        {
+          "lineNum": 7515,
+          "text": "\"reqId\": \"RN-SEL-002\","
+        }
+      ]
+    },
+    {
+      "file": "scratch\\build_release_candidate.js",
+      "matches": [
+        {
+          "lineNum": 201,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (\\`RN-PRS-004\\`, \\`RN-RCV-001\\`, \\`RN-OKL-000\\`, \\`RN-SEL-002\\`, \\`RN-ENT-001\\`, \\`RN-EXP-005\\`,"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\cleanup_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 76,
+          "text": "doc += '4. `RN-SEL-002`: Pemilihan format dokumen non-standar *(Deprecated — distandardisasi dokumen resmi SIGMA)*.\\n';"
+        },
+        {
+          "lineNum": 242,
+          "text": "doc += '| `RN-SEL-002` | Pemisahan SPB Bibit PSR Terpisah | *Deprecated* — SPB disatukan dalam alur standar pengeluaran bibit disetujui Askep. |\\n';"
+        },
+        {
+          "lineNum": 360,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 81,
+          "text": "doc += '4. `RN-SEL-002`: Pemilihan format dokumen non-standar *(Deprecated — distandardisasi dokumen resmi SIGMA)*.\\n';"
+        },
+        {
+          "lineNum": 247,
+          "text": "doc += '| `RN-SEL-002` | Pemisahan SPB Bibit PSR Terpisah | *Deprecated* — SPB disatukan dalam alur standar pengeluaran bibit disetujui Askep. |\\n';"
+        },
+        {
+          "lineNum": 358,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\test_classification_categorization.js",
+      "matches": [
+        {
+          "lineNum": 12,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_catalog_helper.js",
+      "matches": [
+        {
+          "lineNum": 19,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_exact_reconciliation.js",
+      "matches": [
+        {
+          "lineNum": 21,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "TASK-10-FLOW-TRACEABILITY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 189,
+          "text": "4. `RN-SEL-002` — Pemilihan Dokumen Transaksi Manual Non-Standar"
+        }
+      ]
+    },
+    {
+      "file": "TASK-11-AUDIT-TASK10-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 102,
+          "text": "4. `RN-SEL-002` — Pemilihan Dokumen Transaksi Non-Standar (`isArchived: true`)"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13-DAK-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 61,
+          "text": "4. `RN-SEL-002`: Pemilihan format dokumen non-standar *(Deprecated — distandardisasi dokumen resmi SIGMA)*."
+        },
+        {
+          "lineNum": 484,
+          "text": "| `RN-SEL-002` | Pemisahan SPB Bibit PSR Terpisah | *Deprecated* — SPB disatukan dalam alur standar pengeluaran bibit disetujui Askep. |"
+        },
+        {
+          "lineNum": 787,
+          "text": "* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-"
+        }
+      ]
+    }
+  ],
+  "RN-ENT-001": [
+    {
+      "file": "data\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 2463,
+          "text": "\"reqId\": \"RN-ENT-001\","
+        },
+        {
+          "lineNum": 5044,
+          "text": "\"id\": \"RN-ENT-001\","
+        }
+      ]
+    },
+    {
+      "file": "docs\\final-release\\SIGMA-RUBBER-NURSERY-CHANGE-HISTORY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 37,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-006"
+        }
+      ]
+    },
+    {
+      "file": "js\\data\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 2471,
+          "text": "\"reqId\": \"RN-ENT-001\","
+        },
+        {
+          "lineNum": 5052,
+          "text": "\"id\": \"RN-ENT-001\","
+        }
+      ]
+    },
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 2832,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 2474,
+          "text": "\"reqId\": \"RN-ENT-001\","
+        },
+        {
+          "lineNum": 5045,
+          "text": "\"id\": \"RN-ENT-001\","
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 3402,
+          "text": "'RN-ENT-001': ['BR-GLB-001'],"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 2463,
+          "text": "\"reqId\": \"RN-ENT-001\","
+        },
+        {
+          "lineNum": 5034,
+          "text": "\"id\": \"RN-ENT-001\","
+        }
+      ]
+    },
+    {
+      "file": "requirement.md",
+      "matches": [
+        {
+          "lineNum": 2991,
+          "text": "\"id\": \"RN-ENT-001\","
+        },
+        {
+          "lineNum": 2992,
+          "text": "\"reqId\": \"RN-ENT-001\","
+        },
+        {
+          "lineNum": 7783,
+          "text": "\"reqId\": \"RN-ENT-001\","
+        }
+      ]
+    },
+    {
+      "file": "scratch\\build_release_candidate.js",
+      "matches": [
+        {
+          "lineNum": 201,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (\\`RN-PRS-004\\`, \\`RN-RCV-001\\`, \\`RN-OKL-000\\`, \\`RN-SEL-002\\`, \\`RN-ENT-001\\`, \\`RN-EXP-005\\`,"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\cleanup_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 77,
+          "text": "doc += '5. `RN-ENT-001`: Perhitungan rasio pemakaian entres tanpa validasi klon *(Deprecated — validasi klon mandatory)*.\\n';"
+        },
+        {
+          "lineNum": 243,
+          "text": "doc += '| `RN-ENT-001` | Formulir Emergency Transaksional Terpisah | *Deprecated* — Tidak diizinkan bypass form emergency; wajib mengikuti approval be"
+        },
+        {
+          "lineNum": 360,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 82,
+          "text": "doc += '5. `RN-ENT-001`: Perhitungan rasio pemakaian entres tanpa validasi klon *(Deprecated — validasi klon mandatory)*.\\n';"
+        },
+        {
+          "lineNum": 248,
+          "text": "doc += '| `RN-ENT-001` | Formulir Emergency Transaksional Terpisah | *Deprecated* — Tidak diizinkan bypass form emergency; wajib mengikuti approval be"
+        },
+        {
+          "lineNum": 358,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\test_classification_categorization.js",
+      "matches": [
+        {
+          "lineNum": 12,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_catalog_helper.js",
+      "matches": [
+        {
+          "lineNum": 19,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_exact_reconciliation.js",
+      "matches": [
+        {
+          "lineNum": 21,
+          "text": "'RN-PRS-004', 'RN-RCV-001', 'RN-OKL-000', 'RN-SEL-002', 'RN-ENT-001',"
+        }
+      ]
+    },
+    {
+      "file": "TASK-10-FLOW-TRACEABILITY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 190,
+          "text": "5. `RN-ENT-001` — Perhitungan Rasio Entres Tanpa Validasi Klon"
+        }
+      ]
+    },
+    {
+      "file": "TASK-11-AUDIT-TASK10-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 103,
+          "text": "5. `RN-ENT-001` — Perhitungan Rasio Entres Tanpa Validasi Klon (`isArchived: true`)"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13-DAK-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 62,
+          "text": "5. `RN-ENT-001`: Perhitungan rasio pemakaian entres tanpa validasi klon *(Deprecated — validasi klon mandatory)*."
+        },
+        {
+          "lineNum": 485,
+          "text": "| `RN-ENT-001` | Formulir Emergency Transaksional Terpisah | *Deprecated* — Tidak diizinkan bypass form emergency; wajib mengikuti approval berjenjang"
+        },
+        {
+          "lineNum": 787,
+          "text": "* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-"
+        }
+      ]
+    }
+  ],
+  "RN-EXP-005": [
+    {
+      "file": "data\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 3379,
+          "text": "\"reqId\": \"RN-EXP-005\","
+        },
+        {
+          "lineNum": 5660,
+          "text": "\"id\": \"RN-EXP-005\","
+        }
+      ]
+    },
+    {
+      "file": "docs\\final-release\\SIGMA-RUBBER-NURSERY-CHANGE-HISTORY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 37,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-006"
+        }
+      ]
+    },
+    {
+      "file": "js\\data\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 3387,
+          "text": "\"reqId\": \"RN-EXP-005\","
+        },
+        {
+          "lineNum": 5668,
+          "text": "\"id\": \"RN-EXP-005\","
+        }
+      ]
+    },
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 2833,
+          "text": "'RN-EXP-005', 'RN-EXP-006'"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 3390,
+          "text": "\"reqId\": \"RN-EXP-005\","
+        },
+        {
+          "lineNum": 5657,
+          "text": "\"id\": \"RN-EXP-005\","
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 3450,
+          "text": "'RN-EXP-005': ['BR-GLB-001'],"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 3379,
+          "text": "\"reqId\": \"RN-EXP-005\","
+        },
+        {
+          "lineNum": 5646,
+          "text": "\"id\": \"RN-EXP-005\","
+        }
+      ]
+    },
+    {
+      "file": "requirement.md",
+      "matches": [
+        {
+          "lineNum": 4045,
+          "text": "\"id\": \"RN-EXP-005\","
+        },
+        {
+          "lineNum": 4046,
+          "text": "\"reqId\": \"RN-EXP-005\","
+        },
+        {
+          "lineNum": 8699,
+          "text": "\"reqId\": \"RN-EXP-005\","
+        }
+      ]
+    },
+    {
+      "file": "scratch\\build_release_candidate.js",
+      "matches": [
+        {
+          "lineNum": 201,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (\\`RN-PRS-004\\`, \\`RN-RCV-001\\`, \\`RN-OKL-000\\`, \\`RN-SEL-002\\`, \\`RN-ENT-001\\`, \\`RN-EXP-005\\`,"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\cleanup_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 78,
+          "text": "doc += '6. `RN-EXP-005`: Dokumentasi foto pengeluaran non-geotagged *(Deprecated — foto mandatory geotagged)*.\\n';"
+        },
+        {
+          "lineNum": 244,
+          "text": "doc += '| `RN-EXP-005` | Auto-approve Transaksi Tanpa Asisten | *Deprecated* — Melanggar tata kelola pembebanan aset; segregasi tugas Asisten wajib. |"
+        },
+        {
+          "lineNum": 360,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 83,
+          "text": "doc += '6. `RN-EXP-005`: Dokumentasi foto pengeluaran non-geotagged *(Deprecated — foto mandatory geotagged)*.\\n';"
+        },
+        {
+          "lineNum": 249,
+          "text": "doc += '| `RN-EXP-005` | Auto-approve Transaksi Tanpa Asisten | *Deprecated* — Melanggar tata kelola pembebanan aset; segregasi tugas Asisten wajib. |"
+        },
+        {
+          "lineNum": 358,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\test_classification_categorization.js",
+      "matches": [
+        {
+          "lineNum": 13,
+          "text": "'RN-EXP-005', 'RN-EXP-006'"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_catalog_helper.js",
+      "matches": [
+        {
+          "lineNum": 20,
+          "text": "'RN-EXP-005', 'RN-EXP-006'"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_exact_reconciliation.js",
+      "matches": [
+        {
+          "lineNum": 22,
+          "text": "'RN-EXP-005', 'RN-EXP-006'"
+        }
+      ]
+    },
+    {
+      "file": "TASK-10-FLOW-TRACEABILITY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 191,
+          "text": "6. `RN-EXP-005` — Foto Dokumentasi Tanpa Label Geotagging"
+        }
+      ]
+    },
+    {
+      "file": "TASK-11-AUDIT-TASK10-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 104,
+          "text": "6. `RN-EXP-005` — Foto Dokumentasi Non-Geotagged (`isArchived: true`)"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13-DAK-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 63,
+          "text": "6. `RN-EXP-005`: Dokumentasi foto pengeluaran non-geotagged *(Deprecated — foto mandatory geotagged)*."
+        },
+        {
+          "lineNum": 486,
+          "text": "| `RN-EXP-005` | Auto-approve Transaksi Tanpa Asisten | *Deprecated* — Melanggar tata kelola pembebanan aset; segregasi tugas Asisten wajib. |"
+        },
+        {
+          "lineNum": 787,
+          "text": "* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-"
+        }
+      ]
+    }
+  ],
+  "RN-EXP-006": [
+    {
+      "file": "data\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 3405,
+          "text": "\"reqId\": \"RN-EXP-006\","
+        },
+        {
+          "lineNum": 5679,
+          "text": "\"id\": \"RN-EXP-006\","
+        }
+      ]
+    },
+    {
+      "file": "docs\\final-release\\SIGMA-RUBBER-NURSERY-CHANGE-HISTORY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 37,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-006"
+        }
+      ]
+    },
+    {
+      "file": "js\\data\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 3413,
+          "text": "\"reqId\": \"RN-EXP-006\","
+        },
+        {
+          "lineNum": 5687,
+          "text": "\"id\": \"RN-EXP-006\","
+        }
+      ]
+    },
+    {
+      "file": "js\\modules\\process-mapping\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 2833,
+          "text": "'RN-EXP-005', 'RN-EXP-006'"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-baseline.js",
+      "matches": [
+        {
+          "lineNum": 3416,
+          "text": "\"reqId\": \"RN-EXP-006\","
+        },
+        {
+          "lineNum": 5675,
+          "text": "\"id\": \"RN-EXP-006\","
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.js",
+      "matches": [
+        {
+          "lineNum": 3451,
+          "text": "'RN-EXP-006': ['BR-GLB-002'],"
+        }
+      ]
+    },
+    {
+      "file": "portal_patch\\backup-task10\\process-mapping-data.json",
+      "matches": [
+        {
+          "lineNum": 3405,
+          "text": "\"reqId\": \"RN-EXP-006\","
+        },
+        {
+          "lineNum": 5664,
+          "text": "\"id\": \"RN-EXP-006\","
+        }
+      ]
+    },
+    {
+      "file": "requirement.md",
+      "matches": [
+        {
+          "lineNum": 4076,
+          "text": "\"id\": \"RN-EXP-006\","
+        },
+        {
+          "lineNum": 4077,
+          "text": "\"reqId\": \"RN-EXP-006\","
+        },
+        {
+          "lineNum": 8725,
+          "text": "\"reqId\": \"RN-EXP-006\","
+        }
+      ]
+    },
+    {
+      "file": "scratch\\audit_dak_13_1.js",
+      "matches": [
+        {
+          "lineNum": 37,
+          "text": "{ id: 'D', title: 'Scope (In/Out of Scope)', status: 'SUPPORTED', notes: '11 modul In-Scope dan 7 deprecated requirements (RN-PRS-004 s/d RN-EXP-006) "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\build_release_candidate.js",
+      "matches": [
+        {
+          "lineNum": 201,
+          "text": "* **Requirements Deprecated (Arsip):** 7 Requirements (\\`RN-PRS-004\\`, \\`RN-RCV-001\\`, \\`RN-OKL-000\\`, \\`RN-SEL-002\\`, \\`RN-ENT-001\\`, \\`RN-EXP-005\\`,"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\cleanup_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 79,
+          "text": "doc += '7. `RN-EXP-006`: Pemuatan armada melebihi kapasitas tanpa persetujuan *(Deprecated — dibatasi kuota armada SPB)*.\\n\\n';"
+        },
+        {
+          "lineNum": 245,
+          "text": "doc += '| `RN-EXP-006` | Pencatatan Jam Istirahat Mandiri Pekerja | *Deprecated* — Jam kerja dihitung otomatis berdasarkan formula output HK (7 Jam Ke"
+        },
+        {
+          "lineNum": 360,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_audit_report.js",
+      "matches": [
+        {
+          "lineNum": 38,
+          "text": "doc += '| **D** | Scope (In/Out of Scope) | **SUPPORTED** | 11 Modul In-Scope dan 7 Deprecated Requirements (`RN-PRS-004` s/d `RN-EXP-006`) sesuai sta"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\generate_dak_final.js",
+      "matches": [
+        {
+          "lineNum": 84,
+          "text": "doc += '7. `RN-EXP-006`: Pemuatan armada melebihi kapasitas tanpa persetujuan *(Deprecated — dibatasi kuota armada SPB)*.\\n\\n';"
+        },
+        {
+          "lineNum": 250,
+          "text": "doc += '| `RN-EXP-006` | Pencatatan Jam Istirahat Mandiri Pekerja | *Deprecated* — Jam kerja dihitung otomatis berdasarkan formula output HK (7 Jam Ke"
+        },
+        {
+          "lineNum": 358,
+          "text": "doc += '* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, "
+        }
+      ]
+    },
+    {
+      "file": "scratch\\test_classification_categorization.js",
+      "matches": [
+        {
+          "lineNum": 13,
+          "text": "'RN-EXP-005', 'RN-EXP-006'"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_catalog_helper.js",
+      "matches": [
+        {
+          "lineNum": 20,
+          "text": "'RN-EXP-005', 'RN-EXP-006'"
+        }
+      ]
+    },
+    {
+      "file": "scratch\\verify_exact_reconciliation.js",
+      "matches": [
+        {
+          "lineNum": 22,
+          "text": "'RN-EXP-005', 'RN-EXP-006'"
+        }
+      ]
+    },
+    {
+      "file": "TASK-10-FLOW-TRACEABILITY-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 192,
+          "text": "7. `RN-EXP-006` — Muat Bibit Melebihi Kapasitas Armada Tanpa Otorisasi Askep"
+        }
+      ]
+    },
+    {
+      "file": "TASK-11-AUDIT-TASK10-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 105,
+          "text": "7. `RN-EXP-006` — Muat Bibit Melebihi Kapasitas Armada (`isArchived: true`)"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13-DAK-FINAL.md",
+      "matches": [
+        {
+          "lineNum": 64,
+          "text": "7. `RN-EXP-006`: Pemuatan armada melebihi kapasitas tanpa persetujuan *(Deprecated — dibatasi kuota armada SPB)*."
+        },
+        {
+          "lineNum": 487,
+          "text": "| `RN-EXP-006` | Pencatatan Jam Istirahat Mandiri Pekerja | *Deprecated* — Jam kerja dihitung otomatis berdasarkan formula output HK (7 Jam Kerja/5 Ja"
+        },
+        {
+          "lineNum": 787,
+          "text": "* **Depresiasi:** 7 Requirements out-of-scope diarsipkan (`RN-PRS-004`, `RN-RCV-001`, `RN-OKL-000`, `RN-SEL-002`, `RN-ENT-001`, `RN-EXP-005`, `RN-EXP-"
+        }
+      ]
+    },
+    {
+      "file": "TASK-13.1-DAK-CONTENT-INTEGRITY-AUDIT.md",
+      "matches": [
+        {
+          "lineNum": 30,
+          "text": "| **D** | Scope (In/Out of Scope) | **SUPPORTED** | 11 Modul In-Scope dan 7 Deprecated Requirements (`RN-PRS-004` s/d `RN-EXP-006`) sesuai status `isA"
+        }
+      ]
+    }
+  ]
+}
