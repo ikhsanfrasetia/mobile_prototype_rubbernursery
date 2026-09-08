@@ -1,3 +1,12 @@
 node_modules/
 .DS_Store
 .env
+
+# Runtime audit log and backups (Server mutation data - not source code)
+data/process-mapping-audit-log.json
+data/*.tmp
+data/*.bak
+data/*.backup*
+data/backups/
+portal_patch/backup*
+scratch/

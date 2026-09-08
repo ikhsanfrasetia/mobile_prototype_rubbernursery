@@ -13,6 +13,7 @@
  * - Flow Edge Finalization, Cross-Flow Edges & Business Rule Finalization (Phase 4F)
  */
 
+import { processMappingApi, normalizeProjectData } from './process-mapping-api.js';
 import { PROCESS_MAPPING_BASELINE } from '../../data/process-mapping-baseline.js';
 
 const DRAFT_STORAGE_KEY = 'PM_DRAFT_PROJECT_DATA_V2';
@@ -20,6 +21,8 @@ const DRAFT_STORAGE_KEY = 'PM_DRAFT_PROJECT_DATA_V2';
 // In-Memory Active Data Store
 let activeStore = null;
 let officialBaselineStore = null;
+
+export { processMappingApi };
 
 // =============================================================================
 // VALIDATION & INTEGRITY ENGINE
@@ -192,53 +195,53 @@ export function validateProjectData(data) {
 }
 
 /**
- * Loads the official baseline data from the imported JS module.
+ * Loads the official baseline data from REST API.
+ * @returns {Promise<Object>}
  */
-export function fetchOfficialSourceData() {
-  const data = JSON.parse(JSON.stringify(PROCESS_MAPPING_BASELINE));
-  officialBaselineStore = JSON.parse(JSON.stringify(data));
-  return data;
+export async function fetchOfficialSourceData() {
+  const res = await processMappingApi.getProjectData();
+  officialBaselineStore = JSON.parse(JSON.stringify(res.data));
+  return res.data;
 }
 
 /**
- * Initializes the project data store and applies Phase 4E + Phase 4F finalizations.
- * @param {boolean} forceOfficial If true, bypasses draft and forces official baseline
+ * Initializes the project data store from the backend REST API (/api/process-mapping/data).
+ * Applies schema validation and Phase 4E + Phase 4F traceability finalizations.
+ * 
+ * @param {boolean} [forceOfficial=false] If true, forces reload from API and clears temporary draft
+ * @returns {Promise<Object>} The initialized activeStore
  */
-export function initProjectDataStore(forceOfficial = false) {
-  const official = fetchOfficialSourceData();
-
-  if (!forceOfficial && typeof localStorage !== 'undefined') {
-    try {
-      const draftJson = localStorage.getItem(DRAFT_STORAGE_KEY);
-      if (draftJson) {
-        const parsedDraft = JSON.parse(draftJson);
-        const validation = validateProjectData(parsedDraft);
-        if (validation.valid) {
-          activeStore = parsedDraft;
-          console.log('🌿 [ProcessMapping] Memuat Draft Lokal dari Session Storage');
-          return activeStore;
-        } else {
-          console.warn('⚠️ [ProcessMapping] Draft lokal tidak valid, memulihkan data resmi:', validation.errors);
-          localStorage.removeItem(DRAFT_STORAGE_KEY);
-        }
-      }
-    } catch (err) {
-      console.warn('⚠️ [ProcessMapping] Gagal membaca draft lokal:', err);
-    }
+export async function initProjectDataStore(forceOfficial = false) {
+  if (forceOfficial && typeof localStorage !== 'undefined') {
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
   }
 
-  activeStore = JSON.parse(JSON.stringify(official));
-  finalizeFlowAndBusinessRuleTraceability(activeStore);
-  return activeStore;
+  try {
+    const apiResponse = await processMappingApi.getProjectData();
+    if (!apiResponse || !apiResponse.data) {
+      throw new Error('API /api/process-mapping/data mengembalikan dataset kosong');
+    }
+
+    const data = apiResponse.data;
+    const validation = validateProjectData(data);
+    if (!validation.valid) {
+      console.warn('⚠️ [ProcessMapping] Data dari API memiliki peringatan validasi:', validation.errors);
+    }
+
+    activeStore = JSON.parse(JSON.stringify(data));
+    finalizeFlowAndBusinessRuleTraceability(activeStore);
+    console.log(`🌿 [ProcessMapping] Data runtime berhasil dimuat dari REST API (v${activeStore.metadata?.version || '1.0.0'}, ${activeStore.requirements?.length || 0} reqs)`);
+    return activeStore;
+  } catch (err) {
+    console.error('❌ [ProcessMapping] Gagal memuat data dari REST API:', err);
+    throw err;
+  }
 }
 
 /**
  * Returns the active project data store.
  */
 export function getActiveStore() {
-  if (!activeStore) {
-    return initProjectDataStore();
-  }
   return activeStore;
 }
 
@@ -264,13 +267,13 @@ export function saveDraftToStorage() {
 }
 
 /**
- * Resets the in-memory store and discards any temporary draft in localStorage.
+ * Resets the in-memory store and re-fetches latest data from REST API.
  */
-export function resetDraftToOfficial() {
+export async function resetDraftToOfficial() {
   if (typeof localStorage !== 'undefined') {
     localStorage.removeItem(DRAFT_STORAGE_KEY);
   }
-  return initProjectDataStore(true);
+  return await initProjectDataStore(true);
 }
 
 /**
@@ -1929,20 +1932,20 @@ export function buildCanonicalCrossFlowEdges() {
     },
     {
       id: 'CFE-02',
-      name: 'Transplanting Polybag → Okulasi Grafting',
+      name: 'Penyemaian Bedengan → Okulasi (Grafting)',
       fromModule: '03-penyemaian',
-      fromFeature: 'transplanting-polybag',
-      fromNode: 'TP_END',
+      fromFeature: 'semai-bedengan',
+      fromNode: 'SM_END',
       toModule: '04-okulasi',
       toFeature: 'grafting',
       toNode: 'N_START',
       label: 'Batch Bibit Siap Okulasi',
-      condition: 'Batch Terkonsolidasi',
-      description: 'Bibit polybag yang terkonsolidasi masuk ke siklus penempelan mata entres.'
+      condition: 'Batch Terbentuk',
+      description: 'Batch bibit dari bedengan siap diokulasi masuk ke siklus penempelan mata entres dari Kebun Kayu Okulasi.'
     },
     {
       id: 'CFE-03',
-      name: 'Panen Mata Entres → Okulasi Grafting',
+      name: 'Panen Mata Entres → Okulasi (Grafting)',
       fromModule: '08-panen-mata-entres',
       fromFeature: 'panen-entres',
       fromNode: 'PN_END',
@@ -1990,8 +1993,8 @@ export function finalizeFlowAndBusinessRuleTraceability(store = activeStore) {
     { id: 'BR-GLB-001', title: 'Mandatory Foto Dokumentasi + Timestamp', desc: 'Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.', category: 'Global' },
     { id: 'BR-GLB-002', title: 'Kewajiban Verifikasi Asisten Bibitan', desc: 'Semua transaksi yang diinput oleh Mantri Bibitan berstatus Menunggu Verifikasi dan belum memengaruhi saldo produksi sampai disetujui oleh Asisten Bibitan.', category: 'Global' },
     { id: 'BR-GLB-003', title: 'Promosi ke Server Production', desc: 'Hanya transaksi yang telah diverifikasi dan disetujui oleh Asisten Bibitan yang akan dikirim ke basis data Server Production.', category: 'Global' },
-    { id: 'BR-PRS-001', title: 'Presensi Datang Sebagai Syarat Transaksi', desc: 'Presensi Datang supervisor wajib diselesaikan terlebih dahulu di pagi hari sebelum sistem mengizinkan transaksi operasional harian lainnya.', category: 'Presensi' },
-    { id: 'BR-PRS-003', title: 'Prioritas Biometrik Face ID', desc: 'Face ID adalah metode biometrik utama untuk presensi supervisor. Foto manual hanya diizinkan sebagai fallback jika verifikasi Face ID mengalami kegagalan teknis.', category: 'Presensi' },
+    { id: 'BR-PRS-001', title: 'Presensi Masuk Sebagai Syarat Transaksi', desc: 'Presensi Masuk supervisor wajib diselesaikan terlebih dahulu di pagi hari sebelum sistem mengizinkan transaksi operasional harian lainnya.', category: 'Presensi' },
+    { id: 'BR-PRS-003', title: 'Prioritas Biometrik Face ID', desc: 'Face ID adalah metode biometrik utama untuk presensi supervisor (foto otomatis). Foto manual hanya diizinkan sebagai fallback jika verifikasi Face ID mengalami kegagalan teknis dan wajib menyertakan alasan.', category: 'Presensi' },
     { id: 'BR-OKL-001', title: 'Presensi Sebelum Okulasi', desc: 'Transaksi okulasi hanya dapat dibuka jika Mantri telah menyelesaikan presensi harian dan pekerja yang dialokasikan terdaftar hadir.', category: 'Okulasi' },
     { id: 'BR-OKL-002', title: 'Validasi QR Code Objek Fisik', desc: 'Batch bibit wajib divalidasi menggunakan QR Code sebelum penginputan hasil kerja okulasi dilakukan. Pemilihan manual hanya jalur fallback.', category: 'Okulasi' },
     { id: 'BR-OKL-005', title: 'Identitas Stok Mata Entres', desc: 'Stok mata entres dikelola berdasarkan kombinasi Plot Entres + Clone, bukan berdasarkan Batch.', category: 'Okulasi' },
@@ -2000,528 +2003,53 @@ export function finalizeFlowAndBusinessRuleTraceability(store = activeStore) {
     { id: 'BR-OKL-008', title: 'Regrafting Berulang Tanpa Batas Tunggal', desc: 'Proses regrafting pada bibit gagal tidak dibatasi hanya satu kali. Bibit yang gagal pada pemeriksaan regrafting dapat diregrafting kembali atau diputuskan reject oleh Mantri.', category: 'Okulasi' },
     { id: 'BR-SEM-001', title: 'Alokasi Multi-Bedengan per Dokumen', desc: 'Satu dokumen penerimaan benih dapat dialokasikan ke beberapa bedengan perkecambahan (contoh: 10.000 benih dibagi ke Bedengan 001, 002, dan 003).', category: 'Penyemaian' },
     { id: 'BR-SEM-006', title: 'Standar 1 Polybag = 2 Benih/Bibit', desc: 'Kecambah yang ditransplanting dari bedengan ke kantong polybag wajib ditanami 2 kecambah per polybag untuk seleksi vigor selanjutnya.', category: 'Penyemaian' },
-    { id: 'BR-SEM-007', title: 'Konsolidasi Multi-Bedengan ke 1 Batch', desc: 'Satu Batch bibit siap okulasi dapat dibentuk dari gabungan beberapa bedengan semaian dengan clone yang sama.', category: 'Penyemaian' },
+    { id: 'BR-SEM-007', title: 'Konsolidasi Multi-Bedengan ke 1 Batch', desc: 'Satu Batch bibit siap okulasi dapat dibentuk dari gabungan beberapa bedengan semaian.', category: 'Penyemaian' },
     { id: 'BR-SEL-001', title: 'Verifikasi Fisik Sebelum Pengurangan Populasi Batch', desc: 'Deklarasi bibit reject/mati pada modul penyeleksian oleh Mantri tidak langsung mengurangi populasi Batch sampai Asisten Bibitan melakukan pemeriksaan fisik langsung dan menyetujuinya.', category: 'Penyeleksian' },
     { id: 'BR-MAT-001', title: 'Integritas 1 Dokumen Gudang = 1 Heading Kerja', desc: 'Satu dokumen pengeluaran gudang hanya dapat dilekatkan pada satu aktivitas pemeliharaan dengan heading kerja yang sama (matching).', category: 'Material' },
     { id: 'BR-AUD-001', title: 'Audit Trail Koreksi Transaksi', desc: 'Setiap koreksi terhadap transaksi yang telah berstatus Confirmed wajib mencatat log audit trail yang berisi originalValue, correctedValue, reason, correctedBy, dan correctedAt secara immutable.', category: 'Governance' },
-    { id: 'BR-QAL-001', title: 'Quality Control & Agronomy Standard Tekniker', desc: 'Verifikasi agronomi teknis (uji mutu kecambah benih, kalibrasi pisau/ikatan juru okulasi, dan sertifikasi kemurnian clone kebun entres) wajib memenuhi batas toleransi standar mutu Socfindo sebelum batch disetujui.', category: 'Quality Control' }
+    { id: 'BR-QAL-001', title: 'Quality Control & Agronomy Standard', desc: 'Verifikasi agronomi teknis pembibitan karet wajib memenuhi batas toleransi standar mutu Socfindo sebelum batch disetujui.', category: 'Quality Control' }
   ];
   store.businessRules = canonicalRules;
 
   // 2. Cross-flow edges
   store.crossFlowEdges = buildCanonicalCrossFlowEdges();
 
-  // 3. Ensure all 21 feature flows exist and map to requirements
-  if (!store.flows) store.flows = {};
+  // 3. Normalize Flow Nodes & Edges from Baseline
+  if (!store.flows || Object.keys(store.flows).length === 0) {
+    store.flows = JSON.parse(JSON.stringify(PROCESS_MAPPING_BASELINE.flows || {}));
+  }
 
-  // Setup/Update Feature Flows
-  const FLOW_DEFINITIONS = {
-    '01-presensi/presensi-supervisor': {
-      title: 'Flow Proses - Presensi Supervisor Harian',
-      nodes: [
-        { id: 'PR_START', code: 'START', type: 'start', title: 'Buka Modul Presensi', reqId: 'RN-PRS-001', role: 'Mantri Bibitan' },
-        { id: 'PR_01', code: 'P-001', type: 'process', title: 'Pilih Status Datang / Pulang', reqId: 'RN-PRS-002', role: 'Mantri Bibitan' },
-        { id: 'PR_02', code: 'P-002', type: 'process', title: 'Verifikasi Face ID Biometrik', reqId: 'RN-PRS-003', role: 'Mantri Bibitan' },
-        { id: 'PR_FB', code: 'FB-001', type: 'fallback', title: 'Foto Manual Fallback', reqId: 'RN-PRS-005', role: 'Mantri Bibitan' },
-        { id: 'PR_03', code: 'P-003', type: 'process', title: 'Validasi GPS Radius Lokasi', reqId: 'RN-PRS-005', role: 'Mantri Bibitan' },
-        { id: 'PR_04', code: 'P-004', type: 'process', title: 'Pencatatan Presensi Terverifikasi', reqId: 'RN-PRS-006', role: 'Mantri Bibitan' },
-        { id: 'PR_END', code: 'END', type: 'end', title: 'Presensi Selesai - Buka Transaksi', reqId: 'RN-PRS-007', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_PR_01', fromNode: 'PR_START', toNode: 'PR_01', label: 'Buka Form Presensi' },
-        { id: 'E_PR_02', fromNode: 'PR_01', toNode: 'PR_02', label: 'Pilih Presensi Datang' },
-        { id: 'E_PR_03', fromNode: 'PR_02', toNode: 'PR_03', label: 'Biometrik Berhasil' },
-        { id: 'E_PR_04', fromNode: 'PR_02', toNode: 'PR_FB', label: 'Biometrik Gagal (Fallback)' },
-        { id: 'E_PR_05', fromNode: 'PR_FB', toNode: 'PR_03', label: 'Ambil Foto Manual' },
-        { id: 'E_PR_06', fromNode: 'PR_03', toNode: 'PR_04', label: 'Radius GPS Valid' },
-        { id: 'E_PR_07', fromNode: 'PR_04', toNode: 'PR_END', label: 'Pencatatan Berhasil' }
-      ]
-    },
-    '01-presensi/presensi-pekerja': {
-      title: 'Flow Proses - Presensi & Alokasi Pekerja Lapangan',
-      nodes: [
-        { id: 'PW_START', code: 'START', type: 'start', title: 'Buka Presensi Pekerja', reqId: 'RN-PWP-001', role: 'Mantri Bibitan' },
-        { id: 'PW_01', code: 'P-001', type: 'process', title: 'Pilih Grup Mandor / Regu', reqId: 'RN-PWP-002', role: 'Mantri Bibitan' },
-        { id: 'PW_02', code: 'P-002', type: 'process', title: 'Ceklis Kehadiran & Bantuan Afdeling', reqId: 'RN-PWP-003', role: 'Mantri Bibitan' },
-        { id: 'PW_03', code: 'P-003', type: 'process', title: 'Alokasi Penugasan Blok/Kegiatan', reqId: 'RN-PWP-004', role: 'Mantri Bibitan' },
-        { id: 'PW_04', code: 'P-004', type: 'verification', title: 'Verifikasi Presensi HK oleh Asisten', reqId: 'RN-PWP-006', role: 'Asisten Bibitan' },
-        { id: 'PW_05', code: 'P-005', type: 'verification', title: 'Verifikasi Rekap HK & Payroll KTU', reqId: 'RN-PWP-007', role: 'KTU' },
-        { id: 'PW_END', code: 'END', type: 'end', title: 'Presensi Pekerja Terverifikasi Sah', reqId: 'RN-PWP-005', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_PW_01', fromNode: 'PW_START', toNode: 'PW_01', label: 'Buka Modul' },
-        { id: 'E_PW_02', fromNode: 'PW_01', toNode: 'PW_02', label: 'Pilih Regu Kerja' },
-        { id: 'E_PW_03', fromNode: 'PW_02', toNode: 'PW_03', label: 'Kehadiran Lengkap' },
-        { id: 'E_PW_04', fromNode: 'PW_03', toNode: 'PW_04', label: 'Kirim ke Asisten' },
-        { id: 'E_PW_05', fromNode: 'PW_04', toNode: 'PW_05', label: 'Asisten Setuju' },
-        { id: 'E_PW_06', fromNode: 'PW_05', toNode: 'PW_END', label: 'Payroll KTU Valid' }
-      ]
-    },
-    '02-penerimaan/terima-benih': {
-      title: 'Flow Proses - Penerimaan Benih Kelapa Sawit (Pihak Ke-3)',
-      nodes: [
-        { id: 'TB_START', code: 'START', type: 'start', title: 'Pemeriksaan Surat Jalan Vendor', reqId: 'RN-RCV-002', role: 'Mantri Bibitan' },
-        { id: 'TB_QC', code: 'QC-001', type: 'process', title: 'Uji Mutu & Daya Kecambah Benih', reqId: 'RN-RCV-028', role: 'Tekniker I' },
-        { id: 'TB_03', code: 'P-003', type: 'process', title: 'Hitung Fisik Benih / Karung', reqId: 'RN-RCV-003', role: 'Mantri Bibitan' },
-        { id: 'TB_04', code: 'P-004', type: 'process', title: 'Foto Bukti Fisik & Dokumen', reqId: 'RN-RCV-004', role: 'Mantri Bibitan' },
-        { id: 'TB_05', code: 'P-005', type: 'verification', title: 'Persetujuan Asisten Bibitan', reqId: 'RN-RCV-005', role: 'Asisten Bibitan' },
-        { id: 'TB_END', code: 'END', type: 'end', title: 'Benih Terdaftar & Siap Semai', reqId: 'RN-RCV-006', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_TB_01', fromNode: 'TB_START', toNode: 'TB_QC', label: 'Verifikasi Dokumen' },
-        { id: 'E_TB_02', fromNode: 'TB_QC', toNode: 'TB_03', label: 'Mutu Benih Lolos QC' },
-        { id: 'E_TB_03', fromNode: 'TB_03', toNode: 'TB_04', label: 'Kuantitas Fisik Klop' },
-        { id: 'E_TB_04', fromNode: 'TB_04', toNode: 'TB_05', label: 'Kirim Berkas Verifikasi' },
-        { id: 'E_TB_05', fromNode: 'TB_05', toNode: 'TB_END', label: 'Asisten Approve' }
-      ]
-    },
-    '02-penerimaan/terima-kebun-sendiri': {
-      title: 'Flow Proses - Penerimaan Bibit Kebun Sendiri',
-      nodes: [
-        { id: 'KS_01', code: 'CR-001', type: 'start', title: 'Pengajuan SPB oleh Asisten Divisi', reqId: 'RN-RCV-KS01', role: 'Asisten Divisi' },
-        { id: 'KS_02', code: 'CR-002', type: 'process', title: 'Peninjauan Permintaan Bibit oleh Askep', reqId: 'RN-RCV-KS02', role: 'Asisten Kepala' },
-        { id: 'KS_DEC', code: 'CR-003', type: 'decision', title: 'Keputusan Kuota & Stok Askep', reqId: 'RN-RCV-KS03', role: 'Asisten Kepala' },
-        { id: 'KS_03', code: 'CR-004', type: 'process', title: 'Tindak Lanjut & Muat oleh Mantri', reqId: 'RN-RCV-KS04', role: 'Mantri Bibitan' },
-        { id: 'KS_04', code: 'CR-005', type: 'process', title: 'Penerimaan & Plotting Polygon Divisi', reqId: 'RN-RCV-KS05', role: 'Asisten Divisi' },
-        { id: 'KS_END', code: 'END', type: 'end', title: 'Serah Terima Bibit Tuntas', reqId: 'RN-RCV-KS06', role: 'Asisten Divisi' }
-      ],
-      edges: [
-        { id: 'E_KS_01', fromNode: 'KS_01', toNode: 'KS_02', label: 'Ajukan SPB' },
-        { id: 'E_KS_02', fromNode: 'KS_02', toNode: 'KS_DEC', label: 'Cek Stok' },
-        { id: 'E_KS_03', fromNode: 'KS_DEC', toNode: 'KS_03', label: 'Disetujui' },
-        { id: 'E_KS_04', fromNode: 'KS_DEC', toNode: 'KS_01', label: 'Ditolak / Revisi' },
-        { id: 'E_KS_05', fromNode: 'KS_03', toNode: 'KS_04', label: 'Kirim Armada' },
-        { id: 'E_KS_06', fromNode: 'KS_04', toNode: 'KS_END', label: 'Polygon Tanam Valid' }
-      ]
-    },
-    '02-penerimaan/terima-kebun-sepupu': {
-      title: 'Flow Proses - Penerimaan Bibit Kebun Sepupu (Cross-Estate)',
-      nodes: [
-        { id: 'KSP_01', code: 'CR-001', type: 'start', title: 'Permohonan Bibit oleh Pengurus', reqId: 'RN-RCV-KSP015', role: 'Pengurus' },
-        { id: 'KSP_02', code: 'CR-002', type: 'process', title: 'Review Permohonan oleh Askep', reqId: 'RN-RCV-KSP016', role: 'Asisten Kepala' },
-        { id: 'KSP_DEC', code: 'CR-003', type: 'decision', title: 'Otorisasi Alokasi oleh Askep', reqId: 'RN-RCV-KSP017', role: 'Asisten Kepala' },
-        { id: 'KSP_03', code: 'CR-004', type: 'process', title: 'Eksekusi Muat oleh Mantri Bibitan', reqId: 'RN-RCV-KSP019', role: 'Mantri Bibitan' },
-        { id: 'KSP_04', code: 'CR-005', type: 'process', title: 'Konfirmasi Terima Kebun Sepupu', reqId: 'RN-RCV-KSP018', role: 'Pengurus' },
-        { id: 'KSP_END', code: 'END', type: 'end', title: 'Transaksi Cross-Estate Tuntas', reqId: 'RN-RCV-KSP020', role: 'Pengurus' }
-      ],
-      edges: [
-        { id: 'E_KSP_01', fromNode: 'KSP_01', toNode: 'KSP_02', label: 'Ajukan Permohonan' },
-        { id: 'E_KSP_02', fromNode: 'KSP_02', toNode: 'KSP_DEC', label: 'Review Kuota' },
-        { id: 'E_KSP_03', fromNode: 'KSP_DEC', toNode: 'KSP_03', label: 'Approve' },
-        { id: 'E_KSP_04', fromNode: 'KSP_DEC', toNode: 'KSP_01', label: 'Reject' },
-        { id: 'E_KSP_05', fromNode: 'KSP_03', toNode: 'KSP_04', label: 'Muat & Kirim' },
-        { id: 'E_KSP_06', fromNode: 'KSP_04', toNode: 'KSP_END', label: 'Konfirmasi Terima' }
-      ]
-    },
-    '02-penerimaan/terima-mata-entres': {
-      title: 'Flow Proses - Penerimaan Mata Entres',
-      nodes: [
-        { id: 'TME_01', code: 'CR-001', type: 'start', title: 'Permintaan Entres Kebun Sepupu', reqId: 'RN-RCV-ME021', role: 'Pengurus' },
-        { id: 'TME_02', code: 'CR-002', type: 'process', title: 'Verifikasi Plot & Klon Askep', reqId: 'RN-RCV-ME022', role: 'Asisten Kepala' },
-        { id: 'TME_DEC', code: 'CR-003', type: 'decision', title: 'Persetujuan Pengiriman Entres', reqId: 'RN-RCV-ME023', role: 'Asisten Kepala' },
-        { id: 'TME_03', code: 'CR-004', type: 'process', title: 'Panen & Kemas Mata Entres Mantri', reqId: 'RN-RCV-ME025', role: 'Mantri Bibitan' },
-        { id: 'TME_04', code: 'CR-005', type: 'process', title: 'Penerimaan Entres di Lokasi Tujuan', reqId: 'RN-RCV-ME024', role: 'Pengurus' },
-        { id: 'TME_END', code: 'END', type: 'end', title: 'Entres Siap Digunakan Okulasi', reqId: 'RN-RCV-ME026', role: 'Pengurus' }
-      ],
-      edges: [
-        { id: 'E_TME_01', fromNode: 'TME_01', toNode: 'TME_02', label: 'Kirim Permintaan' },
-        { id: 'E_TME_02', fromNode: 'TME_02', toNode: 'TME_DEC', label: 'Cek Ketersediaan' },
-        { id: 'E_TME_03', fromNode: 'TME_DEC', toNode: 'TME_03', label: 'Disetujui' },
-        { id: 'E_TME_04', fromNode: 'TME_DEC', toNode: 'TME_01', label: 'Ditolak' },
-        { id: 'E_TME_05', fromNode: 'TME_03', toNode: 'TME_04', label: 'Kemas & Kirim' },
-        { id: 'E_TME_06', fromNode: 'TME_04', toNode: 'TME_END', label: 'Diterima' }
-      ]
-    },
-    '03-penyemaian/semai-bedengan': {
-      title: 'Flow Proses - Penyemaian Benih di Bedengan',
-      nodes: [
-        { id: 'SM_START', code: 'START', type: 'start', title: 'Alokasi Dokumen Penerimaan', reqId: 'RN-SEM-001', role: 'Mantri Bibitan' },
-        { id: 'SM_01', code: 'P-001', type: 'process', title: 'Scan QR Code Plang Bedengan', reqId: 'RN-SEM-002', role: 'Mantri Bibitan' },
-        { id: 'SM_02', code: 'P-002', type: 'process', title: 'Input Jumlah Butir Benih', reqId: 'RN-SEM-003', role: 'Mantri Bibitan' },
-        { id: 'SM_03', code: 'P-003', type: 'process', title: 'Foto Bukti Benih Reject & Rusak', reqId: 'RN-SEM-004', role: 'Mantri Bibitan' },
-        { id: 'SM_04', code: 'P-004', type: 'verification', title: 'Persetujuan Penaburan Asisten', reqId: 'RN-SEM-005', role: 'Asisten Bibitan' },
-        { id: 'SM_05', code: 'P-005', type: 'process', title: 'Transplanting ke Polybag (Rasio 2)', reqId: 'RN-SEM-006', role: 'Mantri Bibitan' },
-        { id: 'SM_06', code: 'P-006', type: 'process', title: 'Konsolidasi Multi-Bedengan ke Batch', reqId: 'RN-SEM-007', role: 'Mantri Bibitan' },
-        { id: 'SM_END', code: 'END', type: 'end', title: 'Batch Polybag Terdaftar Resmi', reqId: 'RN-SEM-008', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_SM_01', fromNode: 'SM_START', toNode: 'SM_01', label: 'Pilih Dokumen' },
-        { id: 'E_SM_02', fromNode: 'SM_01', toNode: 'SM_02', label: 'QR Valid' },
-        { id: 'E_SM_03', fromNode: 'SM_02', toNode: 'SM_03', label: 'Input Selesai' },
-        { id: 'E_SM_04', fromNode: 'SM_03', toNode: 'SM_04', label: 'Kirim Verifikasi' },
-        { id: 'E_SM_05', fromNode: 'SM_04', toNode: 'SM_05', label: 'Asisten Setuju' },
-        { id: 'E_SM_06', fromNode: 'SM_05', toNode: 'SM_06', label: 'Transplanting' },
-        { id: 'E_SM_07', fromNode: 'SM_06', toNode: 'SM_END', label: 'Batch Terbentuk' }
-      ]
-    },
-    '03-penyemaian/transplanting-polybag': {
-      title: 'Flow Proses - Transplanting Polybag & Pemeliharaan Seedling',
-      nodes: [
-        { id: 'TP_START', code: 'START', type: 'start', title: 'Alokasi Dokumen Penerimaan Polybag', reqId: 'RN-SEM-TP028', role: 'Mantri Bibitan' },
-        { id: 'TP_01', code: 'P-001', type: 'process', title: 'Pilih Batch Bedengan Asal', reqId: 'RN-SEM-TP029', role: 'Mantri Bibitan' },
-        { id: 'TP_02', code: 'P-002', type: 'process', title: 'Scan QR Blok Polybag', reqId: 'RN-SEM-TP030', role: 'Mantri Bibitan' },
-        { id: 'TP_03', code: 'P-003', type: 'process', title: 'Pencatatan Kuantitas Transplanting', reqId: 'RN-SEM-TP031', role: 'Mantri Bibitan' },
-        { id: 'TP_04', code: 'P-004', type: 'process', title: 'Pencatatan Tenaga Kerja & HK', reqId: 'RN-SEM-TP033', role: 'Mantri Bibitan' },
-        { id: 'TP_05', code: 'P-005', type: 'process', title: 'Foto Dokumentasi Blok Polybag', reqId: 'RN-SEM-TP034', role: 'Mantri Bibitan' },
-        { id: 'TP_06', code: 'P-006', type: 'verification', title: 'Verifikasi Lapangan Asisten', reqId: 'RN-SEM-TP032', role: 'Asisten Bibitan' },
-        { id: 'TP_07', code: 'P-007', type: 'process', title: 'Transfer Tahap Pertumbuhan Seedling', reqId: 'RN-SEM-TP036', role: 'Asisten Bibitan' },
-        { id: 'TP_END', code: 'END', type: 'end', title: 'Seedling Siap Siklus Okulasi', reqId: 'RN-SEM-TP035', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_TP_01', fromNode: 'TP_START', toNode: 'TP_01', label: 'Buka Dokumen' },
-        { id: 'E_TP_02', fromNode: 'TP_01', toNode: 'TP_02', label: 'Pilih Batch' },
-        { id: 'E_TP_03', fromNode: 'TP_02', toNode: 'TP_03', label: 'QR Valid' },
-        { id: 'E_TP_04', fromNode: 'TP_03', toNode: 'TP_04', label: 'Input Jumlah' },
-        { id: 'E_TP_05', fromNode: 'TP_04', toNode: 'TP_05', label: 'Alokasi HK' },
-        { id: 'E_TP_06', fromNode: 'TP_05', toNode: 'TP_06', label: 'Kirim Verifikasi' },
-        { id: 'E_TP_07', fromNode: 'TP_06', toNode: 'TP_07', label: 'Asisten Setuju' },
-        { id: 'E_TP_08', fromNode: 'TP_07', toNode: 'TP_END', label: 'Status: Siap Okulasi' }
-      ]
-    },
-    '04-okulasi/grafting': {
-      title: 'Flow Proses - Okulasi Grafting Utama',
-      nodes: [
-        { id: 'N_START', code: 'START', type: 'start', title: 'Pilih Batch Batang Bawah', reqId: 'RN-OKL-001', role: 'Mantri Bibitan' },
-        { id: 'N_P002', code: 'P-002', type: 'process', title: 'Validasi QR Plang Batch', reqId: 'RN-OKL-002', role: 'Mantri Bibitan' },
-        { id: 'N_P003', code: 'P-003', type: 'process', title: 'Tampilkan Saldo Populasi Batch', reqId: 'RN-OKL-003', role: 'Mantri Bibitan' },
-        { id: 'N_P004', code: 'P-004', type: 'process', title: 'Catat Identitas Juru Okulasi', reqId: 'RN-OKL-004', role: 'Mantri Bibitan' },
-        { id: 'N_QC', code: 'QC-001', type: 'process', title: 'Kalibrasi Standar Irisan Okulasi', reqId: 'RN-OKL-029', role: 'Tekniker I' },
-        { id: 'N_P005', code: 'P-005', type: 'process', title: 'Validasi Kemurnian Varietas Klon', reqId: 'RN-OKL-005', role: 'Mantri Bibitan' },
-        { id: 'N_P006', code: 'P-006', type: 'process', title: 'Hitung Estimasi Kebutuhan Entres', reqId: 'RN-OKL-006', role: 'Mantri Bibitan' },
-        { id: 'N_P007', code: 'P-007', type: 'process', title: 'Potong Saldo Stok Mata Entres', reqId: 'RN-OKL-007', role: 'Mantri Bibitan' },
-        { id: 'N_P008', code: 'P-008', type: 'process', title: 'Input Jumlah Batang Kayu Entres', reqId: 'RN-OKL-008', role: 'Mantri Bibitan' },
-        { id: 'N_P009', code: 'P-009', type: 'process', title: 'Tampilkan Indeks Rasio Entres', reqId: 'RN-OKL-009', role: 'Mantri Bibitan' },
-        { id: 'N_P010', code: 'P-010', type: 'process', title: 'Catat Mata Entres Aktual Dipakai', reqId: 'RN-OKL-010', role: 'Mantri Bibitan' },
-        { id: 'N_P011', code: 'P-011', type: 'process', title: 'Foto Fisik Penempelan & Ikatan', reqId: 'RN-OKL-011', role: 'Mantri Bibitan' },
-        { id: 'N_P012', code: 'P-012', type: 'process', title: 'Kirim Berkas ke Antrean Asisten', reqId: 'RN-OKL-012', role: 'Mantri Bibitan' },
-        { id: 'N_P013', code: 'P-013', type: 'verification', title: 'Pemeriksaan Lapangan Asisten', reqId: 'RN-OKL-013', role: 'Asisten Bibitan' },
-        { id: 'N_P014', code: 'P-014', type: 'process', title: 'Pemotongan Resmi Stok Database', reqId: 'RN-OKL-014', role: 'Mantri Bibitan' },
-        { id: 'N_END', code: 'END', type: 'end', title: 'Okulasi Grafting Berhasil Tuntas', reqId: 'RN-OKL-015', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_OKL_01', fromNode: 'N_START', toNode: 'N_P002', label: 'Pilih Batch' },
-        { id: 'E_OKL_02', fromNode: 'N_P002', toNode: 'N_P003', label: 'QR Valid' },
-        { id: 'E_OKL_03', fromNode: 'N_P003', toNode: 'N_P004', label: 'Populasi Sesuai' },
-        { id: 'E_OKL_04', fromNode: 'N_P004', toNode: 'N_QC', label: 'Juru Okulasi Siap' },
-        { id: 'E_OKL_05', fromNode: 'N_QC', toNode: 'N_P005', label: 'Standar QC Valid' },
-        { id: 'E_OKL_06', fromNode: 'N_P005', toNode: 'N_P006', label: 'Klon Sesuai' },
-        { id: 'E_OKL_07', fromNode: 'N_P006', toNode: 'N_P007', label: 'Estimasi Ok' },
-        { id: 'E_OKL_08', fromNode: 'N_P007', toNode: 'N_P008', label: 'Alokasi Stok' },
-        { id: 'E_OKL_09', fromNode: 'N_P008', toNode: 'N_P009', label: 'Input Kayu' },
-        { id: 'E_OKL_10', fromNode: 'N_P009', toNode: 'N_P010', label: 'Rasio Valid' },
-        { id: 'E_OKL_11', fromNode: 'N_P010', toNode: 'N_P011', label: 'Catat Aktual' },
-        { id: 'E_OKL_12', fromNode: 'N_P011', toNode: 'N_P012', label: 'Foto + Timestamp' },
-        { id: 'E_OKL_13', fromNode: 'N_P012', toNode: 'N_P013', label: 'Kirim Verifikasi' },
-        { id: 'E_OKL_14', fromNode: 'N_P013', toNode: 'N_P014', label: 'Asisten Approve' },
-        { id: 'E_OKL_15', fromNode: 'N_P014', toNode: 'N_END', label: 'Stok Terpotong' }
-      ]
-    },
-    '04-okulasi/regrafting': {
-      title: 'Flow Proses - Okulasi Ulang (Regrafting)',
-      nodes: [
-        { id: 'RG_START', code: 'START', type: 'start', title: 'Inisialisasi Okulasi Ulang', reqId: 'RN-REG-000', role: 'Mantri Bibitan' },
-        { id: 'RG_01', code: 'P-001', type: 'process', title: 'Pilih Dokumen Pemeriksaan Gagal', reqId: 'RN-REG-001', role: 'Mantri Bibitan' },
-        { id: 'RG_02', code: 'P-002', type: 'process', title: 'Validasi QR Batch Regrafting', reqId: 'RN-REG-002', role: 'Mantri Bibitan' },
-        { id: 'RG_03', code: 'P-003', type: 'process', title: 'Periksa Kuota Batang Gagal', reqId: 'RN-REG-003', role: 'Mantri Bibitan' },
-        { id: 'RG_04', code: 'P-004', type: 'process', title: 'Input Jumlah Regrafting & Juru', reqId: 'RN-REG-004', role: 'Mantri Bibitan' },
-        { id: 'RG_05', code: 'P-005', type: 'process', title: 'Scan QR Plot Kebun Entres', reqId: 'RN-REG-005', role: 'Mantri Bibitan' },
-        { id: 'RG_06', code: 'P-006', type: 'process', title: 'Catat Mata Entres Regrafting', reqId: 'RN-REG-006', role: 'Mantri Bibitan' },
-        { id: 'RG_07', code: 'P-007', type: 'process', title: 'Foto Dokumentasi Ikatan Regrafting', reqId: 'RN-REG-007', role: 'Mantri Bibitan' },
-        { id: 'RG_08', code: 'P-008', type: 'process', title: 'Kirim Berkas ke Antrean Asisten', reqId: 'RN-REG-008', role: 'Mantri Bibitan' },
-        { id: 'RG_09', code: 'P-009', type: 'verification', title: 'Pemeriksaan Mutu Tempelan Ulang', reqId: 'RN-REG-009', role: 'Asisten Bibitan' },
-        { id: 'RG_10', code: 'P-010', type: 'process', title: 'Pemotongan Resmi Stok Entres', reqId: 'RN-REG-010', role: 'Mantri Bibitan' },
-        { id: 'RG_END', code: 'END', type: 'end', title: 'Regrafting Selesai & Siap Diperiksa', reqId: 'RN-REG-011', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_RG_01', fromNode: 'RG_START', toNode: 'RG_01', label: 'Buka Form' },
-        { id: 'E_RG_02', fromNode: 'RG_01', toNode: 'RG_02', label: 'Pilih Dokumen' },
-        { id: 'E_RG_03', fromNode: 'RG_02', toNode: 'RG_03', label: 'QR Valid' },
-        { id: 'E_RG_04', fromNode: 'RG_03', toNode: 'RG_04', label: 'Kuota Sesuai' },
-        { id: 'E_RG_05', fromNode: 'RG_04', toNode: 'RG_05', label: 'Input Batang' },
-        { id: 'E_RG_06', fromNode: 'RG_05', toNode: 'RG_06', label: 'Scan Entres' },
-        { id: 'E_RG_07', fromNode: 'RG_06', toNode: 'RG_07', label: 'Catat Kebutuhan' },
-        { id: 'E_RG_08', fromNode: 'RG_07', toNode: 'RG_08', label: 'Foto + Timestamp' },
-        { id: 'E_RG_09', fromNode: 'RG_08', toNode: 'RG_09', label: 'Kirim Verifikasi' },
-        { id: 'E_RG_10', fromNode: 'RG_09', toNode: 'RG_10', label: 'Asisten Approve' },
-        { id: 'E_RG_11', fromNode: 'RG_10', toNode: 'RG_END', label: 'Stok Terpotong' }
-      ]
-    },
-    '05-pemeriksaan/periksa-grafting': {
-      title: 'Flow Proses - Pemeriksaan Bertahap Okulasi Grafting',
-      nodes: [
-        { id: 'CHK_START', code: 'START', type: 'start', title: 'Inisialisasi Jadwal Pemeriksaan', reqId: 'RN-CHK-001', role: 'Mantri Bibitan' },
-        { id: 'CHK_01', code: 'P-001', type: 'process', title: 'Identifikasi Tindak Lanjut Gagal', reqId: 'RN-CHK-002', role: 'Mantri Bibitan' },
-        { id: 'CHK_02', code: 'P-002', type: 'process', title: 'Validasi QR Code Batch', reqId: 'RN-CHK-003', role: 'Mantri Bibitan' },
-        { id: 'CHK_03', code: 'P-003', type: 'process', title: 'Input Jumlah Batang Sesi Periksa', reqId: 'RN-CHK-004', role: 'Mantri Bibitan' },
-        { id: 'CHK_04', code: 'P-004', type: 'process', title: 'Catat Jumlah Mata Tempelan Hijau', reqId: 'RN-CHK-005', role: 'Mantri Bibitan' },
-        { id: 'CHK_05', code: 'P-005', type: 'decision', title: 'Tindak Lanjut Mata Gagal (Regraft/Afkir)', reqId: 'RN-CHK-006', role: 'Mantri Bibitan' },
-        { id: 'CHK_06', code: 'P-006', type: 'process', title: 'Foto Dokumentasi Tempelan & Sampel', reqId: 'RN-CHK-007', role: 'Mantri Bibitan' },
-        { id: 'CHK_07', code: 'P-007', type: 'verification', title: 'Verifikasi Hasil Periksa oleh Asisten', reqId: 'RN-CHK-008', role: 'Asisten Bibitan' },
-        { id: 'CHK_END', code: 'END', type: 'end', title: 'Pemeriksaan Tuntas - Update Status', reqId: 'RN-CHK-009', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_CHK_01', fromNode: 'CHK_START', toNode: 'CHK_01', label: 'Buka Form' },
-        { id: 'E_CHK_02', fromNode: 'CHK_01', toNode: 'CHK_02', label: 'Jadwal Hari Ke-21' },
-        { id: 'E_CHK_03', fromNode: 'CHK_02', toNode: 'CHK_03', label: 'QR Valid' },
-        { id: 'E_CHK_04', fromNode: 'CHK_03', toNode: 'CHK_04', label: 'Hitung Batang' },
-        { id: 'E_CHK_05', fromNode: 'CHK_04', toNode: 'CHK_05', label: 'Catat Sukses' },
-        { id: 'E_CHK_06', fromNode: 'CHK_05', toNode: 'CHK_06', label: 'Klasifikasi Gagal' },
-        { id: 'E_CHK_07', fromNode: 'CHK_06', toNode: 'CHK_07', label: 'Kirim Verifikasi' },
-        { id: 'E_CHK_08', fromNode: 'CHK_07', toNode: 'CHK_END', label: 'Asisten Approve' }
-      ]
-    },
-    '05-pemeriksaan/periksa-regrafting': {
-      title: 'Flow Proses - Pemeriksaan Okulasi Ulang (Regrafting)',
-      nodes: [
-        { id: 'CHKR_START', code: 'START', type: 'start', title: 'Inisialisasi Pemeriksaan Regrafting', reqId: 'RN-CHK-RG036', role: 'Mantri Bibitan' },
-        { id: 'CHKR_01', code: 'P-001', type: 'process', title: 'Identifikasi Bibit Gagal Regrafting', reqId: 'RN-CHK-RG037', role: 'Mantri Bibitan' },
-        { id: 'CHKR_02', code: 'P-002', type: 'process', title: 'Validasi QR Batch Regrafting', reqId: 'RN-CHK-RG038', role: 'Mantri Bibitan' },
-        { id: 'CHKR_03', code: 'P-003', type: 'process', title: 'Input Jumlah Batang Sesi Periksa', reqId: 'RN-CHK-RG039', role: 'Mantri Bibitan' },
-        { id: 'CHKR_04', code: 'P-004', type: 'process', title: 'Catat Jumlah Tempelan Hijau', reqId: 'RN-CHK-RG040', role: 'Mantri Bibitan' },
-        { id: 'CHKR_05', code: 'P-005', type: 'decision', title: 'Tindak Lanjut Batang Gagal Regrafting', reqId: 'RN-CHK-RG041', role: 'Mantri Bibitan' },
-        { id: 'CHKR_06', code: 'P-006', type: 'process', title: 'Foto Bukti Fisik & Geotagging', reqId: 'RN-CHK-RG042', role: 'Mantri Bibitan' },
-        { id: 'CHKR_07', code: 'P-007', type: 'verification', title: 'Verifikasi Lapangan Asisten', reqId: 'RN-CHK-RG043', role: 'Asisten Bibitan' },
-        { id: 'CHKR_END', code: 'END', type: 'end', title: 'Pemeriksaan Regrafting Tuntas', reqId: 'RN-CHK-RG044', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_CHKR_01', fromNode: 'CHKR_START', toNode: 'CHKR_01', label: 'Buka Jadwal' },
-        { id: 'E_CHKR_02', fromNode: 'CHKR_01', toNode: 'CHKR_02', label: 'Cek Riwayat' },
-        { id: 'E_CHKR_03', fromNode: 'CHKR_02', toNode: 'CHKR_03', label: 'QR Valid' },
-        { id: 'E_CHKR_04', fromNode: 'CHKR_03', toNode: 'CHKR_04', label: 'Hitung Batang' },
-        { id: 'E_CHKR_05', fromNode: 'CHKR_04', toNode: 'CHKR_05', label: 'Catat Sukses' },
-        { id: 'E_CHKR_06', fromNode: 'CHKR_05', toNode: 'CHKR_06', label: 'Tentukan Status' },
-        { id: 'E_CHKR_07', fromNode: 'CHKR_06', toNode: 'CHKR_07', label: 'Kirim Verifikasi' },
-        { id: 'E_CHKR_08', fromNode: 'CHKR_07', toNode: 'CHKR_END', label: 'Asisten Approve' }
-      ]
-    },
-    '06-penyeleksian/seleksi-batch': {
-      title: 'Flow Proses - Penyeleksian Batch Polybag & Klasifikasi Mutu',
-      nodes: [
-        { id: 'SEL_START', code: 'START', type: 'start', title: 'Perekaman Usulan Seleksi Afkir Mantri', reqId: 'RN-SEL-001', role: 'Mantri Bibitan' },
-        { id: 'SEL_02', code: 'P-002', type: 'process', title: 'Scan QR Form Penilaian Visual Batch', reqId: 'RN-SEL-003', role: 'Mantri Bibitan' },
-        { id: 'SEL_03', code: 'P-003', type: 'process', title: 'Sajian Data Historis & Populasi Batch', reqId: 'RN-SEL-004', role: 'Mantri Bibitan' },
-        { id: 'SEL_04', code: 'P-004', type: 'process', title: 'Input 3 Grade Mutu (Siap Salur/Tunda/Afkir)', reqId: 'RN-SEL-005', role: 'Mantri Bibitan' },
-        { id: 'SEL_05', code: 'P-005', type: 'process', title: 'Foto Dokumentasi Fisik Bibit Afkir', reqId: 'RN-SEL-006', role: 'Mantri Bibitan' },
-        { id: 'SEL_06', code: 'P-006', type: 'process', title: 'Kirim Berkas Usulan Seleksi ke Asisten', reqId: 'RN-SEL-007', role: 'Mantri Bibitan' },
-        { id: 'SEL_07', code: 'P-007', type: 'verification', title: 'Pemeriksaan Fisik Lapangan oleh Asisten', reqId: 'RN-SEL-008', role: 'Asisten Bibitan' },
-        { id: 'SEL_08', code: 'P-008', type: 'verification', title: 'Verifikasi Kuantitas & Kriteria Afkir', reqId: 'RN-SEL-009', role: 'Asisten Bibitan' },
-        { id: 'SEL_09', code: 'P-009', type: 'verification', title: 'Asisten Bibitan Setujui Hasil Seleksi', reqId: 'RN-SEL-010', role: 'Asisten Bibitan' },
-        { id: 'SEL_10', code: 'P-010', type: 'decision', title: 'Otorisasi Berita Acara Pemusnahan Askep', reqId: 'RN-SEL-012', role: 'Asisten Kepala' },
-        { id: 'SEL_11', code: 'P-011', type: 'process', title: 'Verifikasi Transfer Batch Bibitan', reqId: 'RN-SEL-013', role: 'Asisten Bibitan' },
-        { id: 'SEL_12', code: 'P-012', type: 'process', title: 'Pemeriksaan Berkala Stok Siap Salur vs RKAP', reqId: 'RN-SEL-014', role: 'Asisten Kepala' },
-        { id: 'SEL_END', code: 'END', type: 'end', title: 'Populasi Batch Resmi Terkoreksi', reqId: 'RN-SEL-011', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_SEL_01', fromNode: 'SEL_START', toNode: 'SEL_02', label: 'Buka Form Seleksi' },
-        { id: 'E_SEL_02', fromNode: 'SEL_02', toNode: 'SEL_03', label: 'QR Valid' },
-        { id: 'E_SEL_03', fromNode: 'SEL_03', toNode: 'SEL_04', label: 'Tampil Populasi' },
-        { id: 'E_SEL_04', fromNode: 'SEL_04', toNode: 'SEL_05', label: 'Klasifikasi Grade' },
-        { id: 'E_SEL_05', fromNode: 'SEL_05', toNode: 'SEL_06', label: 'Foto Bukti Afkir' },
-        { id: 'E_SEL_06', fromNode: 'SEL_06', toNode: 'SEL_07', label: 'Kirim ke Asisten' },
-        { id: 'E_SEL_07', fromNode: 'SEL_07', toNode: 'SEL_08', label: 'Cek Fisik Lapangan' },
-        { id: 'E_SEL_08', fromNode: 'SEL_08', toNode: 'SEL_09', label: 'Kuantitas Klop' },
-        { id: 'E_SEL_09', fromNode: 'SEL_09', toNode: 'SEL_10', label: 'Susun BA Pemusnahan' },
-        { id: 'E_SEL_10', fromNode: 'SEL_10', toNode: 'SEL_11', label: 'Askep Otorisasi' },
-        { id: 'E_SEL_11', fromNode: 'SEL_11', toNode: 'SEL_12', label: 'Transfer Batch Grade' },
-        { id: 'E_SEL_12', fromNode: 'SEL_12', toNode: 'SEL_END', label: 'Sinkron Stok Siap Salur' }
-      ]
-    },
-    '07-kebun-entres/entres-menunas': {
-      title: 'Flow Proses - Menunas Kebun Entres',
-      nodes: [
-        { id: 'MN_START', code: 'START', type: 'start', title: 'Scan QR Plang Plot Entres', reqId: 'RN-ENT-002', role: 'Mantri Bibitan' },
-        { id: 'MN_QC', code: 'QC-001', type: 'process', title: 'Audit Kemurnian Clone Entres', reqId: 'RN-ENT-008', role: 'Tekniker I' },
-        { id: 'MN_02', code: 'P-002', type: 'process', title: 'Tampilkan Data Clone & Pokok', reqId: 'RN-ENT-003', role: 'Mantri Bibitan' },
-        { id: 'MN_03', code: 'P-003', type: 'process', title: 'Input Variabel Menunas (Perisai/Cabang)', reqId: 'RN-ENT-004', role: 'Mantri Bibitan' },
-        { id: 'MN_04', code: 'P-004', type: 'process', title: 'Kalkulasi Otomatis Rata-rata Perisai', reqId: 'RN-ENT-005', role: 'Mantri Bibitan' },
-        { id: 'MN_05', code: 'P-005', type: 'verification', title: 'Foto Dokumentasi & Verifikasi Asisten', reqId: 'RN-ENT-006', role: 'Asisten Bibitan' },
-        { id: 'MN_END', code: 'END', type: 'end', title: 'Plot Entres Terawat & Siap Panen', reqId: 'RN-ENT-007', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_MN_01', fromNode: 'MN_START', toNode: 'MN_QC', label: 'Scan QR Plot' },
-        { id: 'E_MN_02', fromNode: 'MN_QC', toNode: 'MN_02', label: 'Clone Murni Terverifikasi' },
-        { id: 'E_MN_03', fromNode: 'MN_02', toNode: 'MN_03', label: 'Tampil Data Pokok' },
-        { id: 'E_MN_04', fromNode: 'MN_03', toNode: 'MN_04', label: 'Input Parameter' },
-        { id: 'E_MN_05', fromNode: 'MN_04', toNode: 'MN_05', label: 'Hitung Rata-rata' },
-        { id: 'E_MN_06', fromNode: 'MN_05', toNode: 'MN_END', label: 'Asisten Approve' }
-      ]
-    },
-    '07-kebun-entres/entres-topping': {
-      title: 'Flow Proses - Topping Plot Entres',
-      nodes: [
-        { id: 'TOP_START', code: 'START', type: 'start', title: 'Inisialisasi Aktivitas Topping', reqId: 'RN-ENT-TOP045', role: 'Mantri Bibitan' },
-        { id: 'TOP_01', code: 'P-001', type: 'process', title: 'Scan QR Code Plot Entres', reqId: 'RN-ENT-TOP046', role: 'Mantri Bibitan' },
-        { id: 'TOP_02', code: 'P-002', type: 'process', title: 'Tampilkan Data Pokok & Clone', reqId: 'RN-ENT-TOP047', role: 'Mantri Bibitan' },
-        { id: 'TOP_03', code: 'P-003', type: 'process', title: 'Input Kayu Okulasi & Panjang Meter', reqId: 'RN-ENT-TOP048', role: 'Mantri Bibitan' },
-        { id: 'TOP_04', code: 'P-004', type: 'process', title: 'Kalkulasi Rasio Perisai/Kayu', reqId: 'RN-ENT-TOP049', role: 'Mantri Bibitan' },
-        { id: 'TOP_05', code: 'P-005', type: 'verification', title: 'Foto Dokumentasi & Verifikasi Asisten', reqId: 'RN-ENT-TOP050', role: 'Asisten Bibitan' },
-        { id: 'TOP_END', code: 'END', type: 'end', title: 'Topping Selesai - Mutu Terjaga', reqId: 'RN-ENT-TOP051', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_TOP_01', fromNode: 'TOP_START', toNode: 'TOP_01', label: 'Buka Modul' },
-        { id: 'E_TOP_02', fromNode: 'TOP_01', toNode: 'TOP_02', label: 'QR Valid' },
-        { id: 'E_TOP_03', fromNode: 'TOP_02', toNode: 'TOP_03', label: 'Data Pokok Valid' },
-        { id: 'E_TOP_04', fromNode: 'TOP_03', toNode: 'TOP_04', label: 'Input Variabel' },
-        { id: 'E_TOP_05', fromNode: 'TOP_04', toNode: 'TOP_05', label: 'Hitung Rasio' },
-        { id: 'E_TOP_06', fromNode: 'TOP_05', toNode: 'TOP_END', label: 'Asisten Approve' }
-      ]
-    },
-    '08-panen-mata-entres/panen-entres': {
-      title: 'Flow Proses - Panen Mata Entres',
-      nodes: [
-        { id: 'PN_START', code: 'START', type: 'start', title: 'Inisialisasi Panen Mata Entres', reqId: 'RN-HAR-001', role: 'Mantri Bibitan' },
-        { id: 'PN_01', code: 'P-001', type: 'process', title: 'Validasi QR Code Plot Entres', reqId: 'RN-HAR-002', role: 'Mantri Bibitan' },
-        { id: 'PN_02', code: 'P-002', type: 'process', title: 'Input Jumlah Cabang Entres Dipotong', reqId: 'RN-HAR-003', role: 'Mantri Bibitan' },
-        { id: 'PN_03', code: 'P-003', type: 'process', title: 'Kalkulasi Nilai Estimasi Mata Entres', reqId: 'RN-HAR-004', role: 'Mantri Bibitan' },
-        { id: 'PN_04', code: 'P-004', type: 'process', title: 'Pencatatan Jumlah Mata Entres Aktual', reqId: 'RN-HAR-005', role: 'Mantri Bibitan' },
-        { id: 'PN_05', code: 'P-005', type: 'process', title: 'Foto Ikatan Cabang Kayu Entres', reqId: 'RN-HAR-006', role: 'Mantri Bibitan' },
-        { id: 'PN_06', code: 'P-006', type: 'verification', title: 'Pemeriksaan Mutu Fisik Asisten', reqId: 'RN-HAR-007', role: 'Asisten Bibitan' },
-        { id: 'PN_END', code: 'END', type: 'end', title: 'Mata Entres Siap Dialokasikan', reqId: 'RN-HAR-008', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_PN_01', fromNode: 'PN_START', toNode: 'PN_01', label: 'Buka Form' },
-        { id: 'E_PN_02', fromNode: 'PN_01', toNode: 'PN_02', label: 'QR Valid' },
-        { id: 'E_PN_03', fromNode: 'PN_02', toNode: 'PN_03', label: 'Input Cabang' },
-        { id: 'E_PN_04', fromNode: 'PN_03', toNode: 'PN_04', label: 'Hitung Estimasi' },
-        { id: 'E_PN_05', fromNode: 'PN_04', toNode: 'PN_05', label: 'Catat Riil' },
-        { id: 'E_PN_06', fromNode: 'PN_05', toNode: 'PN_06', label: 'Foto + Timestamp' },
-        { id: 'E_PN_07', fromNode: 'PN_06', toNode: 'PN_END', label: 'Asisten Approve' }
-      ]
-    },
-    '09-material-bahan/monitoring-stok-entres': {
-      title: 'Flow Proses - Monitoring Mutasi Stok Entres',
-      nodes: [
-        { id: 'MB_START', code: 'START', type: 'start', title: 'Pilih Plot Entres & Klon', reqId: 'RN-MAT-001', role: 'Mantri Bibitan' },
-        { id: 'MB_01', code: 'P-001', type: 'process', title: 'Tampilkan Saldo Stok Tersedia', reqId: 'RN-MAT-002', role: 'Mantri Bibitan' },
-        { id: 'MB_02', code: 'P-002', type: 'process', title: 'Audit Mutasi Tambah (+ Panen)', reqId: 'RN-MAT-003', role: 'Mantri Bibitan' },
-        { id: 'MB_03', code: 'P-003', type: 'process', title: 'Audit Mutasi Kurang (- Okulasi)', reqId: 'RN-MAT-004', role: 'Mantri Bibitan' },
-        { id: 'MB_04', code: 'P-004', type: 'process', title: 'Validasi Rekonsiliasi Kartu Stok', reqId: 'RN-MAT-005', role: 'Mantri Bibitan' },
-        { id: 'MB_05', code: 'P-005', type: 'process', title: 'Notifikasi Sinkronisasi Berhasil', reqId: 'RN-MAT-006', role: 'Mantri Bibitan' },
-        { id: 'MB_END', code: 'END', type: 'end', title: 'Mutasi Stok Entres Tuntas & Sah', reqId: 'RN-MAT-007', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_MB_01', fromNode: 'MB_START', toNode: 'MB_01', label: 'Pilih Plot' },
-        { id: 'E_MB_02', fromNode: 'MB_01', toNode: 'MB_02', label: 'Tampil Saldo' },
-        { id: 'E_MB_03', fromNode: 'MB_02', toNode: 'MB_03', label: 'Cek Tambah' },
-        { id: 'E_MB_04', fromNode: 'MB_03', toNode: 'MB_04', label: 'Cek Kurang' },
-        { id: 'E_MB_05', fromNode: 'MB_04', toNode: 'MB_05', label: 'Rekonsiliasi Valid' },
-        { id: 'E_MB_06', fromNode: 'MB_05', toNode: 'MB_END', label: 'Sinkron Selesai' }
-      ]
-    },
-    '09-material-bahan/material-gudang-matching': {
-      title: 'Flow Proses - Matching Material Gudang (BKB)',
-      nodes: [
-        { id: 'MMG_START', code: 'START', type: 'start', title: 'Buka Dokumen Matching Gudang', reqId: 'RN-MAT-MMG052', role: 'Mantri Bibitan' },
-        { id: 'MMG_01', code: 'P-001', type: 'process', title: 'Pilih Rentang Waktu & Jenis Bahan', reqId: 'RN-MAT-MMG053', role: 'Mantri Bibitan' },
-        { id: 'MMG_02', code: 'P-002', type: 'process', title: 'Tarik Alokasi Bahan Gudang (Pupuk/Kimia)', reqId: 'RN-MAT-MMG055', role: 'Mantri Bibitan' },
-        { id: 'MMG_03', code: 'P-003', type: 'process', title: 'Pencocokan BKB vs Realisasi Heading', reqId: 'RN-MAT-MMG054', role: 'Mantri Bibitan' },
-        { id: 'MMG_04', code: 'P-004', type: 'process', title: 'Validasi Batas Maksimum Alokasi BKB', reqId: 'RN-MAT-MMG056', role: 'Mantri Bibitan' },
-        { id: 'MMG_05', code: 'P-005', type: 'verification', title: 'Approval BKB oleh Asisten Bibitan', reqId: 'RN-MAT-MMG059', role: 'Asisten Bibitan' },
-        { id: 'MMG_06', code: 'P-006', type: 'verification', title: 'Audit Biaya Material oleh KTU', reqId: 'RN-MAT-MMG060', role: 'KTU' },
-        { id: 'MMG_07', code: 'P-007', type: 'process', title: 'Notifikasi Matching BKB Sukses', reqId: 'RN-MAT-MMG057', role: 'Mantri Bibitan' },
-        { id: 'MMG_END', code: 'END', type: 'end', title: 'Material Gudang Terbebankan Sah', reqId: 'RN-MAT-MMG058', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_MMG_01', fromNode: 'MMG_START', toNode: 'MMG_01', label: 'Buka Form' },
-        { id: 'E_MMG_02', fromNode: 'MMG_01', toNode: 'MMG_02', label: 'Pilih Parameter' },
-        { id: 'E_MMG_03', fromNode: 'MMG_02', toNode: 'MMG_03', label: 'Tarik BKB' },
-        { id: 'E_MMG_04', fromNode: 'MMG_03', toNode: 'MMG_04', label: 'Cocokkan Heading' },
-        { id: 'E_MMG_05', fromNode: 'MMG_04', toNode: 'MMG_05', label: 'Kirim ke Asisten' },
-        { id: 'E_MMG_06', fromNode: 'MMG_05', toNode: 'MMG_06', label: 'Asisten Setuju' },
-        { id: 'E_MMG_07', fromNode: 'MMG_06', toNode: 'MMG_07', label: 'Audit KTU Valid' },
-        { id: 'E_MMG_08', fromNode: 'MMG_07', toNode: 'MMG_END', label: 'Tercatat Resmi' }
-      ]
-    },
-    '10-rekam-pemeliharaan/pemeliharaan-heading': {
-      title: 'Flow Proses - Rekam Pemeliharaan Tanaman (Heading Kerja)',
-      nodes: [
-        { id: 'PM_START', code: 'START', type: 'start', title: 'Buka Form Rekam Pemeliharaan Harian', reqId: 'RN-MNT-001', role: 'Mantri Bibitan' },
-        { id: 'PM_01', code: 'P-001', type: 'process', title: 'Pilih Master Grup Heading Pemeliharaan', reqId: 'RN-MNT-002', role: 'Mantri Bibitan' },
-        { id: 'PM_02', code: 'P-002', type: 'process', title: 'Scan QR Lokasi Blok/Bedengan Kerja', reqId: 'RN-MNT-003', role: 'Mantri Bibitan' },
-        { id: 'PM_03', code: 'P-003', type: 'process', title: 'Perekaman Tenaga Kerja & Output Fisik', reqId: 'RN-MNT-004', role: 'Mantri Bibitan' },
-        { id: 'PM_04', code: 'P-004', type: 'process', title: 'Foto Geotagging Koordinat & Timestamp', reqId: 'RN-MNT-005', role: 'Mantri Bibitan' },
-        { id: 'PM_05', code: 'P-005', type: 'process', title: 'Tautkan Nomor BKB Material ke Heading', reqId: 'RN-MNT-006', role: 'Mantri Bibitan' },
-        { id: 'PM_06', code: 'P-006', type: 'verification', title: 'Kirim Rekapitulasi ke Asisten Bibitan', reqId: 'RN-MNT-007', role: 'Asisten Bibitan' },
-        { id: 'PM_07', code: 'P-007', type: 'process', title: 'Pencatatan Audit Trail Koreksi Transaksi', reqId: 'RN-MNT-009', role: 'Mantri Bibitan' },
-        { id: 'PM_END', code: 'END', type: 'end', title: 'Aktivitas Pemeliharaan Selesai & Sah', reqId: 'RN-MNT-008', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_PM_01', fromNode: 'PM_START', toNode: 'PM_01', label: 'Buka Form' },
-        { id: 'E_PM_02', fromNode: 'PM_01', toNode: 'PM_02', label: 'Pilih Heading' },
-        { id: 'E_PM_03', fromNode: 'PM_02', toNode: 'PM_03', label: 'QR Valid' },
-        { id: 'E_PM_04', fromNode: 'PM_03', toNode: 'PM_04', label: 'Catat Pekerja' },
-        { id: 'E_PM_05', fromNode: 'PM_04', toNode: 'PM_05', label: 'Foto Bukti' },
-        { id: 'E_PM_06', fromNode: 'PM_05', toNode: 'PM_06', label: 'Kaitkan BKB' },
-        { id: 'E_PM_07', fromNode: 'PM_06', toNode: 'PM_07', label: 'Asisten Setuju' },
-        { id: 'E_PM_08', fromNode: 'PM_07', toNode: 'PM_END', label: 'Log Audit Valid' }
-      ]
-    },
-    '11-pengeluaran/pengeluaran-bibit': {
-      title: 'Flow Proses - Pengeluaran Bibit SPB Disetujui',
-      nodes: [
-        { id: 'EXB_START', code: 'START', type: 'start', title: 'Pengajuan SPB Bibit Kebun Sendiri', reqId: 'RN-EXP-001', role: 'Asisten Divisi' },
-        { id: 'EXB_01', code: 'P-001', type: 'process', title: 'Pilih Dokumen SPB Terverifikasi Askep', reqId: 'RN-EXP-002', role: 'Mantri Bibitan' },
-        { id: 'EXB_02', code: 'P-002', type: 'process', title: 'Validasi QR Plang Batch Bibit', reqId: 'RN-EXP-003', role: 'Mantri Bibitan' },
-        { id: 'EXB_03', code: 'P-003', type: 'process', title: 'Perekaman Muat Bibit & Verifikasi Armada', reqId: 'RN-EXP-004', role: 'Mantri Bibitan' },
-        { id: 'EXB_04', code: 'P-004', type: 'process', title: 'Plotting Polygon Lokasi Tanam & Terima Divisi', reqId: 'RN-EXP-008', role: 'Asisten Divisi' },
-        { id: 'EXB_05', code: 'P-005', type: 'verification', title: 'Rekonsiliasi Buku Stok & SPPB oleh KTU', reqId: 'RN-EXP-009', role: 'KTU' },
-        { id: 'EXB_END', code: 'END', type: 'end', title: 'Armada Tuntas & Mutasi Stok Terbukukan', reqId: 'RN-EXP-007', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_EXB_01', fromNode: 'EXB_START', toNode: 'EXB_01', label: 'SPB Disetujui' },
-        { id: 'E_EXB_02', fromNode: 'EXB_01', toNode: 'EXB_02', label: 'Pilih SPB' },
-        { id: 'E_EXB_03', fromNode: 'EXB_02', toNode: 'EXB_03', label: 'QR Valid' },
-        { id: 'E_EXB_04', fromNode: 'EXB_03', toNode: 'EXB_04', label: 'Muat Bibit' },
-        { id: 'E_EXB_05', fromNode: 'EXB_04', toNode: 'EXB_05', label: 'Polygon Tanam Valid' },
-        { id: 'E_EXB_06', fromNode: 'EXB_05', toNode: 'EXB_END', label: 'Audit KTU Klop' }
-      ]
-    },
-    '11-pengeluaran/pengeluaran-mata-entres': {
-      title: 'Flow Proses - Pengeluaran Mata Entres',
-      nodes: [
-        { id: 'EXM_START', code: 'START', type: 'start', title: 'Inisialisasi Pengeluaran Mata Entres', reqId: 'RN-EXM-001', role: 'Mantri Bibitan' },
-        { id: 'EXM_01', code: 'P-001', type: 'process', title: 'Validasi QR Code Plot Entres Sumber', reqId: 'RN-EXM-002', role: 'Mantri Bibitan' },
-        { id: 'EXM_02', code: 'P-002', type: 'process', title: 'Input Cabang & Kuantitas Mata Entres', reqId: 'RN-EXM-003', role: 'Mantri Bibitan' },
-        { id: 'EXM_03', code: 'P-003', type: 'verification', title: 'Foto Ikatan & Verifikasi Asisten', reqId: 'RN-EXM-004', role: 'Asisten Bibitan' },
-        { id: 'EXM_END', code: 'END', type: 'end', title: 'Entres Siap Dikirim ke Peminta', reqId: 'RN-EXM-005', role: 'Mantri Bibitan' }
-      ],
-      edges: [
-        { id: 'E_EXM_01', fromNode: 'EXM_START', toNode: 'EXM_01', label: 'Buka Dokumen' },
-        { id: 'E_EXM_02', fromNode: 'EXM_01', toNode: 'EXM_02', label: 'QR Valid' },
-        { id: 'E_EXM_03', fromNode: 'EXM_02', toNode: 'EXM_03', label: 'Input Kuantitas' },
-        { id: 'E_EXM_04', fromNode: 'EXM_03', toNode: 'EXM_END', label: 'Asisten Setuju' }
-      ]
-    }
-  };
+  for (const [modId, features] of Object.entries(store.flows)) {
+    if (!features || typeof features !== 'object') continue;
+    for (const [featId, flowObj] of Object.entries(features)) {
+      if (!flowObj || !Array.isArray(flowObj.nodes)) continue;
 
-  for (const [key, flowDef] of Object.entries(FLOW_DEFINITIONS)) {
-    const [modId, featId] = key.split('/');
-    if (!store.flows[modId]) store.flows[modId] = {};
-    store.flows[modId][featId] = {
-      title: flowDef.title,
-      nodes: flowDef.nodes.map(n => ({
+      flowObj.nodes = flowObj.nodes.map(n => ({
         ...n,
-        version: 1,
-        status: 'Confirmed',
-        isArchived: false,
-        isSuperseded: false,
-        revisionOf: null,
-        createdAt: new Date().toISOString()
-      })),
-      edges: flowDef.edges.map(e => ({
-        ...e,
-        from: e.from || e.fromNode,
-        to: e.to || e.toNode,
-        fromNode: e.fromNode || e.from,
-        toNode: e.toNode || e.to,
-        version: 1,
-        status: 'Confirmed',
-        isArchived: false,
-        isSuperseded: false,
-        revisionOf: null,
-        createdAt: new Date().toISOString()
-      }))
-    };
+        version: n.version || 1,
+        status: n.status || 'Confirmed',
+        isArchived: Boolean(n.isArchived),
+        isSuperseded: Boolean(n.isSuperseded),
+        revisionOf: n.revisionOf || null,
+        createdAt: n.createdAt || new Date().toISOString()
+      }));
+
+      if (Array.isArray(flowObj.edges)) {
+        flowObj.edges = flowObj.edges.map(e => ({
+          ...e,
+          from: e.from || e.fromNode,
+          to: e.to || e.toNode,
+          fromNode: e.fromNode || e.from,
+          toNode: e.toNode || e.to,
+          version: e.version || 1,
+          status: e.status || 'Confirmed',
+          isArchived: Boolean(e.isArchived),
+          isSuperseded: Boolean(e.isSuperseded),
+          revisionOf: e.revisionOf || null,
+          createdAt: e.createdAt || new Date().toISOString()
+        }));
+      }
+    }
   }
 
   // 4. Link Business Rules to Requirements
@@ -2948,6 +2476,33 @@ export function resolveNodeCanonicalContent(moduleId, featureId, node, store = a
   const trace = getNodeTrace(moduleId, featureId, node.id, store);
   const linkedReq = trace?.requirement || (node.reqId ? getRequirementByReqId(node.reqId, store) : null);
   const matchedRules = trace?.businessRules || [];
+
+  // Special canonical override for Modul 01 - Presensi Supervisor (Task 15.9.1)
+  const isPresensiSupervisor = (moduleId === '01-presensi' || node.module === 'Presensi') && 
+    (featureId === 'presensi-supervisor' || node.feature === 'Presensi Supervisor' || (node.id && node.id.startsWith('PR_')));
+
+  if (isPresensiSupervisor) {
+    const role = node.role || linkedReq?.role || 'Mantri Bibitan';
+    const relatedRole = node.relatedRole || 'Asisten Bibitan';
+    return {
+      nodeId: node.id,
+      nodeCode: node.code || node.id,
+      nodeLabel: node.label || node.title || linkedReq?.title || '',
+      reqId: linkedReq?.id || node.reqId || null,
+      linkedReq,
+      matchedRules,
+      input: 'Kredensial pengguna, pindaian Face ID (foto otomatis), koordinat GPS, atau foto manual dan alasan jika Face ID gagal.',
+      validation: 'Kecocokan Face ID valid. Koordinat GPS berada dalam area nursery/kebun yang diizinkan. Presensi Masuk wajib tercatat sebelum transaksi operasional. Presensi Pulang tersedia mulai 14:00 (Jumat mulai 12:00).',
+      fallback: 'Jika Face ID gagal, gunakan Foto Manual dengan wajib mencantumkan alasan. Jika berada di luar koordinat kebun/nursery yang diizinkan, presensi ditolak.',
+      output: 'Data presensi supervisor tercatat dan status presensi aktif untuk membuka akses transaksi operasional.',
+      purpose: 'Melakukan presensi Mantri Bibitan sebelum menjalankan transaksi operasional.',
+      process: 'Sistem menentukan status presensi (Masuk/Pulang) secara otomatis berdasarkan waktu. Pengguna melakukan verifikasi biometrik Face ID di mana foto diambil secara otomatis. Jika Face ID gagal, pengguna menggunakan Foto Manual sebagai fallback dengan menyertakan alasan. Sistem memvalidasi koordinat GPS berada dalam area nursery/kebun yang diizinkan.',
+      stockImpact: (node.stockImpact && node.stockImpact.trim() && node.stockImpact !== 'NO STOCK CHANGE') ? node.stockImpact.trim() : '',
+      populationImpact: (node.populationImpact && node.populationImpact.trim() && node.populationImpact !== 'NO POPULATION CHANGE') ? node.populationImpact.trim() : '',
+      role,
+      relatedRole
+    };
+  }
 
   // 1. Input Data
   let input = '';

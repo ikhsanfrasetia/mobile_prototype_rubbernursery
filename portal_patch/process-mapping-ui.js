@@ -1045,50 +1045,79 @@ function renderPagination(currentPage, pageSize, totalItems, type = 'req') {
 }
 
 function renderRequirementsView(reqs, modules, store, roleObj) {
-  const allReqs = reqs || store?.requirements || [];
+  const currentStore = store || getActiveStore();
+  const allReqs = (currentStore?.requirements || reqs || []);
   // Active requirements are those not archived and not superseded (superseded versions are in revision history)
   const activeReqs = allReqs.filter((r) => !r.isArchived && !r.isSuperseded);
 
-  // Available roles for filter
-  const roles = (roleObj && roleObj.id !== 'mantri-bibitan') ? [roleObj] : (store?.roles || []);
-  const availableModules = modules || store?.modules || [];
+  // Available roles for filter (all master roles)
+  const roles = currentStore?.roles || [];
+  const availableModules = currentStore?.modules || modules || [];
 
-  // Filter Feature options based on current reqFilterModule
-  const selectedModObj = availableModules.find((m) => m.id === reqFilterModule || m.name === reqFilterModule);
-  const availableFeatures = selectedModObj ? (selectedModObj.features || []) : [];
+  // Filter Feature options: if a specific module is selected, list its features; otherwise list all features across modules
+  let availableFeatures = [];
+  if (reqFilterModule !== 'ALL') {
+    const selectedModObj = availableModules.find((m) => m.id === reqFilterModule || m.name.toLowerCase() === reqFilterModule.toLowerCase());
+    availableFeatures = selectedModObj ? (selectedModObj.features || []) : [];
+  } else {
+    const featMap = new Map();
+    availableModules.forEach((m) => {
+      (m.features || []).forEach((f) => {
+        if (!featMap.has(f.id)) featMap.set(f.id, f);
+      });
+    });
+    availableFeatures = Array.from(featMap.values());
+  }
 
-  // Apply filters
+  // Apply filters with AND combination
   const filteredReqs = activeReqs.filter((r) => {
-    // Search query
+    // 1. Search query
     const q = reqSearchQuery.toLowerCase().trim();
     const matchSearch = !q ||
       (r.id && r.id.toLowerCase().includes(q)) ||
       (r.title && r.title.toLowerCase().includes(q)) ||
       (r.process && r.process.toLowerCase().includes(q)) ||
-      (r.acceptanceCriteria && r.acceptanceCriteria.toLowerCase().includes(q)) ||
+      (r.acceptanceCriteria && (
+        Array.isArray(r.acceptanceCriteria)
+          ? r.acceptanceCriteria.some((ac) => String(ac).toLowerCase().includes(q))
+          : String(r.acceptanceCriteria).toLowerCase().includes(q)
+      )) ||
+      (r.description && r.description.toLowerCase().includes(q)) ||
       (r.role && r.role.toLowerCase().includes(q)) ||
+      (r.roleId && r.roleId.toLowerCase().includes(q)) ||
       (r.module && r.module.toLowerCase().includes(q)) ||
+      (r.moduleId && r.moduleId.toLowerCase().includes(q)) ||
       (r.feature && r.feature.toLowerCase().includes(q)) ||
-      (r.businessRule && r.businessRule.toLowerCase().includes(q));
+      (r.featureId && r.featureId.toLowerCase().includes(q)) ||
+      (r.businessRule && r.businessRule.toLowerCase().includes(q)) ||
+      (r.ruleIds && Array.isArray(r.ruleIds) && r.ruleIds.some((ruleId) => String(ruleId).toLowerCase().includes(q)));
 
-    // Role filter
-    const matchRole = reqFilterRole === 'ALL' || r.role === reqFilterRole;
+    // 2. Role filter (case-insensitive, match role name or role id)
+    const matchRole = reqFilterRole === 'ALL' ||
+      (r.role && r.role.toLowerCase() === reqFilterRole.toLowerCase()) ||
+      (r.roleId && r.roleId.toLowerCase() === reqFilterRole.toLowerCase());
 
-    // Module filter
-    const matchModule = reqFilterModule === 'ALL' || r.module === reqFilterModule || r.moduleId === reqFilterModule;
+    // 3. Module filter (match moduleId or module name)
+    const matchModule = reqFilterModule === 'ALL' ||
+      (r.moduleId && r.moduleId.toLowerCase() === reqFilterModule.toLowerCase()) ||
+      (r.module && r.module.toLowerCase() === reqFilterModule.toLowerCase());
 
-    // Feature filter
-    const matchFeature = reqFilterFeature === 'ALL' || r.feature === reqFilterFeature || r.featureId === reqFilterFeature;
+    // 4. Feature filter (match featureId or feature name)
+    const matchFeature = reqFilterFeature === 'ALL' ||
+      (r.featureId && r.featureId.toLowerCase() === reqFilterFeature.toLowerCase()) ||
+      (r.feature && r.feature.toLowerCase() === reqFilterFeature.toLowerCase());
 
-    // Status filter
-    const matchStatus = reqFilterStatus === 'ALL' || r.status === reqFilterStatus;
+    // 5. Status filter (case-insensitive)
+    const matchStatus = reqFilterStatus === 'ALL' ||
+      (r.status && r.status.toUpperCase() === reqFilterStatus.toUpperCase());
 
     return matchSearch && matchRole && matchModule && matchFeature && matchStatus;
   });
 
   const totalActive = activeReqs.length;
-  const confirmedCount = activeReqs.filter((r) => r.status === 'Confirmed').length;
-  const draftCount = activeReqs.filter((r) => r.status === 'Draft').length;
+  const totalFiltered = filteredReqs.length;
+  const confirmedCount = activeReqs.filter((r) => (r.status || '').toUpperCase() === 'CONFIRMED').length;
+  const confirmedFiltered = filteredReqs.filter((r) => (r.status || '').toUpperCase() === 'CONFIRMED').length;
   const hasFiltersActive = Boolean(reqSearchQuery || reqFilterRole !== 'ALL' || reqFilterModule !== 'ALL' || reqFilterFeature !== 'ALL' || reqFilterStatus !== 'ALL');
 
   // Pagination calculation
@@ -1103,10 +1132,9 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
       <div class="pm-req-table-card" style="margin-top: 0;">
         <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span class="pm-req-table-title" style="font-size:1.05rem;">Requirement Manager</span>
-            <span class="pm-req-count-badge" title="Total active requirements">${totalActive} Total</span>
-            <span class="pm-req-count-badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;" title="Confirmed requirements">${confirmedCount} Confirmed</span>
-            <span class="pm-req-count-badge" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;" title="Draft / In Progress requirements">${draftCount} Draft</span>
+            <span class="pm-req-table-title" style="font-size:1.05rem;">Requirement Master</span>
+            <span class="pm-req-count-badge" title="Total requirement terfilter">${hasFiltersActive ? `${totalFiltered} dari ${totalActive} Active` : `${totalActive} Active`}</span>
+            <span class="pm-req-count-badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;" title="Confirmed requirements">${confirmedFiltered} Confirmed</span>
           </div>
           ${isManageMode
       ? `
@@ -1127,29 +1155,28 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
             type="text"
             id="pm-req-search-input"
             class="pm-req-search-input"
-            placeholder="Cari ID, requirement, proses, acceptance criteria..."
+            placeholder="Cari ID, requirement, proses, acceptance criteria, role, modul, fitur..."
             value="${escapeHtml(reqSearchQuery)}"
           />
 
           <select id="pm-req-filter-role" class="pm-req-filter-select" title="Filter berdasarkan Role">
             <option value="ALL" ${reqFilterRole === 'ALL' ? 'selected' : ''}>Semua Role</option>
-            ${roles.map((ro) => `<option value="${ro.name}" ${reqFilterRole === ro.name ? 'selected' : ''}>${ro.name}</option>`).join('')}
+            ${roles.map((ro) => `<option value="${escapeHtml(ro.name)}" ${reqFilterRole.toLowerCase() === ro.name.toLowerCase() || reqFilterRole.toLowerCase() === ro.id.toLowerCase() ? 'selected' : ''}>${escapeHtml(ro.name)}</option>`).join('')}
           </select>
 
           <select id="pm-req-filter-module" class="pm-req-filter-select" title="Filter berdasarkan Modul">
             <option value="ALL" ${reqFilterModule === 'ALL' ? 'selected' : ''}>Semua Modul</option>
-            ${availableModules.map((m) => `<option value="${m.id}" ${reqFilterModule === m.id || reqFilterModule === m.name ? 'selected' : ''}>[${m.order}] ${m.name}</option>`).join('')}
+            ${availableModules.map((m) => `<option value="${m.id}" ${reqFilterModule === m.id || reqFilterModule.toLowerCase() === m.name.toLowerCase() ? 'selected' : ''}>[${m.order}] ${escapeHtml(m.name)}</option>`).join('')}
           </select>
 
-          <select id="pm-req-filter-feature" class="pm-req-filter-select" title="Filter berdasarkan Fitur" ${availableFeatures.length === 0 ? 'disabled' : ''}>
+          <select id="pm-req-filter-feature" class="pm-req-filter-select" title="Filter berdasarkan Fitur">
             <option value="ALL" ${reqFilterFeature === 'ALL' ? 'selected' : ''}>Semua Fitur</option>
-            ${availableFeatures.map((f) => `<option value="${f.id}" ${reqFilterFeature === f.id || reqFilterFeature === f.name ? 'selected' : ''}>${f.name}</option>`).join('')}
+            ${availableFeatures.map((f) => `<option value="${f.id}" ${reqFilterFeature === f.id || reqFilterFeature.toLowerCase() === f.name.toLowerCase() ? 'selected' : ''}>${escapeHtml(f.name)}</option>`).join('')}
           </select>
 
-          <select id="pm-req-filter-status" class="pm-req-filter-select" style="min-width:110px;" title="Filter Status">
+          <select id="pm-req-filter-status" class="pm-req-filter-select" style="min-width:130px;" title="Filter Status">
             <option value="ALL" ${reqFilterStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
-            <option value="Confirmed" ${reqFilterStatus === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
-            <option value="Draft" ${reqFilterStatus === 'Draft' ? 'selected' : ''}>Draft</option>
+            <option value="CONFIRMED" ${reqFilterStatus.toUpperCase() === 'CONFIRMED' ? 'selected' : ''}>CONFIRMED (${confirmedCount})</option>
           </select>
 
           ${hasFiltersActive

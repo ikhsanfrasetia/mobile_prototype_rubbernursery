@@ -1,0 +1,3089 @@
+{
+  "coverageMetrics": {
+    "totalActiveRequirements": 149,
+    "flowRequired": 139,
+    "flowCovered": 108,
+    "flowGap": 31,
+    "managementRequirements": 10,
+    "requirementsWithBusinessRules": 149,
+    "totalModules": 11,
+    "modulesWithFlows": 11,
+    "totalFeatures": 20,
+    "featuresWithFlows": 15,
+    "flowCoverageRate": 77.7,
+    "totalTraceabilityHealth": 79.19,
+    "businessRuleCoverage": 100,
+    "featureFlowCompleteness": 75,
+    "moduleFlowCompleteness": 100
+  },
+  "gapReport": {
+    "totalGaps": 31,
+    "moduleSummary": [
+      {
+        "moduleId": "01-presensi",
+        "moduleName": "Presensi",
+        "moduleOrder": "01",
+        "totalGaps": 0,
+        "requirements": []
+      },
+      {
+        "moduleId": "02-penerimaan",
+        "moduleName": "Penerimaan",
+        "moduleOrder": "02",
+        "totalGaps": 2,
+        "requirements": [
+          {
+            "requirement": {
+              "id": "RN-RCV-KSP019",
+              "title": "Mantri Bibitan mengeksekusi muat bibit kebun sepupu sesuai kuota SPB yang diteruskan Asisten.",
+              "role": "Mantri Bibitan",
+              "module": "Penerimaan",
+              "feature": "Penerimaan Bibit - Kebun Sepupu",
+              "process": "Eksekusi Muat Bibit Kebun Sepupu",
+              "status": "Confirmed",
+              "input": "Dokumen SPB, armada angkut, dan fisik batch bibit.",
+              "validation": "Jumlah bibit sesuai dokumen SPB.",
+              "fallback": "Scan manual jika QR rusak.",
+              "output": "Surat jalan pengiriman bibit terbit.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "02-penerimaan",
+              "featureId": "terima-kebun-sepupu",
+              "ruleIds": [
+                "BR-GLB-001"
+              ],
+              "businessRule": "BR-GLB-001"
+            },
+            "module": {
+              "id": "02-penerimaan",
+              "order": "02",
+              "name": "Penerimaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Penerimaan Benih, Bibit & Mata Entres",
+              "desc": "Penerimaan material biologis pembibitan dari pihak ke-3 (biji kelatak), kebun sendiri (cross-role dengan Asisten Divisi/Kepala), dan kebun sepupu dengan dokumentasi foto dan timestamp.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan, Asisten Divisi, Asisten Kepala",
+              "features": [
+                {
+                  "id": "terima-benih",
+                  "name": "Penerimaan Benih / Biji Kelatak"
+                },
+                {
+                  "id": "terima-kebun-sendiri",
+                  "name": "Penerimaan Bibit - Kebun Sendiri"
+                },
+                {
+                  "id": "terima-kebun-sepupu",
+                  "name": "Penerimaan Bibit - Kebun Sepupu"
+                },
+                {
+                  "id": "terima-mata-entres",
+                  "name": "Penerimaan Mata Entres"
+                }
+              ]
+            },
+            "feature": {
+              "id": "terima-kebun-sepupu",
+              "name": "Penerimaan Bibit - Kebun Sepupu"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Jumlah bibit sesuai dokumen SPB."
+          },
+          {
+            "requirement": {
+              "id": "RN-RCV-ME025",
+              "title": "Mantri Bibitan memotong dan mengemas mata entres kebun sepupu berdasarkan otorisasi Asisten.",
+              "role": "Mantri Bibitan",
+              "module": "Penerimaan",
+              "feature": "Penerimaan Mata Entres",
+              "process": "Panen & Kemas Mata Entres Kebun Sepupu",
+              "status": "Confirmed",
+              "input": "Dokumen SPB, armada angkut, dan fisik batch bibit.",
+              "validation": "Jumlah bibit sesuai dokumen SPB.",
+              "fallback": "Scan manual jika QR rusak.",
+              "output": "Surat jalan pengiriman bibit terbit.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "02-penerimaan",
+              "featureId": "terima-mata-entres",
+              "ruleIds": [
+                "BR-GLB-001"
+              ],
+              "businessRule": "BR-GLB-001"
+            },
+            "module": {
+              "id": "02-penerimaan",
+              "order": "02",
+              "name": "Penerimaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Penerimaan Benih, Bibit & Mata Entres",
+              "desc": "Penerimaan material biologis pembibitan dari pihak ke-3 (biji kelatak), kebun sendiri (cross-role dengan Asisten Divisi/Kepala), dan kebun sepupu dengan dokumentasi foto dan timestamp.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan, Asisten Divisi, Asisten Kepala",
+              "features": [
+                {
+                  "id": "terima-benih",
+                  "name": "Penerimaan Benih / Biji Kelatak"
+                },
+                {
+                  "id": "terima-kebun-sendiri",
+                  "name": "Penerimaan Bibit - Kebun Sendiri"
+                },
+                {
+                  "id": "terima-kebun-sepupu",
+                  "name": "Penerimaan Bibit - Kebun Sepupu"
+                },
+                {
+                  "id": "terima-mata-entres",
+                  "name": "Penerimaan Mata Entres"
+                }
+              ]
+            },
+            "feature": {
+              "id": "terima-mata-entres",
+              "name": "Penerimaan Mata Entres"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Jumlah bibit sesuai dokumen SPB."
+          }
+        ]
+      },
+      {
+        "moduleId": "03-penyemaian",
+        "moduleName": "Penyemaian",
+        "moduleOrder": "03",
+        "totalGaps": 0,
+        "requirements": []
+      },
+      {
+        "moduleId": "04-okulasi",
+        "moduleName": "Okulasi",
+        "moduleOrder": "04",
+        "totalGaps": 6,
+        "requirements": [
+          {
+            "requirement": {
+              "id": "RN-OKL-004",
+              "title": "Mantri Bibitan mencatat identitas Juru Okulasi, jumlah okulasi sukses, dan penggunaan entres.",
+              "role": "Mantri Bibitan",
+              "module": "Okulasi",
+              "feature": "Grafting (Okulasi Utama)",
+              "process": "Pencatatan Juru Okulasi & Realisasi Okulasi",
+              "status": "Confirmed",
+              "input": "Daftar pekerja presensi",
+              "validation": "Pekerja harus berstatus hadir",
+              "fallback": "Pencarian manual",
+              "output": "Alokasi pekerja tersimpan",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "04-okulasi",
+              "featureId": "grafting",
+              "ruleIds": [
+                "BR-OKL-001"
+              ],
+              "businessRule": "BR-OKL-001"
+            },
+            "module": {
+              "id": "04-okulasi",
+              "order": "04",
+              "name": "Okulasi",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Okulasi (Grafting) & Okulasi Janda (Regrafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "grafting",
+                  "name": "Okulasi (Grafting)",
+                  "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+                },
+                {
+                  "id": "regrafting",
+                  "name": "Okulasi Janda / Regrafting",
+                  "desc": "Penempelan ulang mata entres pada bibit yang gagal pada pemeriksaan okulasi."
+                }
+              ]
+            },
+            "feature": {
+              "id": "grafting",
+              "name": "Okulasi (Grafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-001",
+                "title": "Presensi Sebelum Okulasi",
+                "desc": "Transaksi okulasi hanya dapat dibuka jika Mantri telah menyelesaikan presensi harian dan pekerja yang dialokasikan terdaftar hadir.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Pekerja harus berstatus hadir"
+          },
+          {
+            "requirement": {
+              "id": "RN-OKL-007",
+              "title": "Mata entres aktual menjadi pengurang stok setelah verifikasi.",
+              "role": "Mantri Bibitan",
+              "module": "Okulasi",
+              "feature": "Grafting (Okulasi Utama)",
+              "process": "Scan QR Plot Entres",
+              "status": "Confirmed",
+              "input": "Kuantitas mata entres aktual",
+              "validation": "Verifikasi Asisten Bibitan disetujui",
+              "fallback": "Logging mutasi sistem",
+              "output": "Stok mata entres terpotong",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "04-okulasi",
+              "featureId": "grafting",
+              "ruleIds": [
+                "BR-OKL-007"
+              ],
+              "businessRule": "BR-OKL-007"
+            },
+            "module": {
+              "id": "04-okulasi",
+              "order": "04",
+              "name": "Okulasi",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Okulasi (Grafting) & Okulasi Janda (Regrafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "grafting",
+                  "name": "Okulasi (Grafting)",
+                  "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+                },
+                {
+                  "id": "regrafting",
+                  "name": "Okulasi Janda / Regrafting",
+                  "desc": "Penempelan ulang mata entres pada bibit yang gagal pada pemeriksaan okulasi."
+                }
+              ]
+            },
+            "feature": {
+              "id": "grafting",
+              "name": "Okulasi (Grafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-007",
+                "title": "Pengurangan Stok Pasca Verifikasi",
+                "desc": "Pengurangan saldo stok mata entres terjadi secara otomatis hanya setelah berkas transaksi okulasi disetujui (diverifikasi) oleh Asisten Bibitan.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Verifikasi Asisten Bibitan disetujui"
+          },
+          {
+            "requirement": {
+              "id": "RN-OKL-009",
+              "title": "Sistem menghitung dan menampilkan estimasi perolehan mata entres.",
+              "role": "Mantri Bibitan",
+              "module": "Okulasi",
+              "feature": "Grafting (Okulasi Utama)",
+              "process": "Tampilkan Estimasi",
+              "status": "Confirmed",
+              "input": "Jumlah cabang x rata-rata mata entres per cabang plot.",
+              "validation": "Estimasi merupakan referensi, BUKAN stok aktual.",
+              "fallback": "Nilai estimasi dapat disesuaikan faktor perisai tunas.",
+              "output": "Tampilan estimasi mata entres terlihat di antarmuka.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "04-okulasi",
+              "featureId": "grafting",
+              "ruleIds": [
+                "BR-OKL-006"
+              ],
+              "businessRule": "BR-OKL-006"
+            },
+            "module": {
+              "id": "04-okulasi",
+              "order": "04",
+              "name": "Okulasi",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Okulasi (Grafting) & Okulasi Janda (Regrafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "grafting",
+                  "name": "Okulasi (Grafting)",
+                  "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+                },
+                {
+                  "id": "regrafting",
+                  "name": "Okulasi Janda / Regrafting",
+                  "desc": "Penempelan ulang mata entres pada bibit yang gagal pada pemeriksaan okulasi."
+                }
+              ]
+            },
+            "feature": {
+              "id": "grafting",
+              "name": "Okulasi (Grafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-006",
+                "title": "Status Estimasi vs Stok Aktual",
+                "desc": "Kalkulasi Jumlah Cabang x Rata-rata Mata Entres adalah estimasi referensi semata. Hanya mata entres aktual yang diverifikasi yang menjadi pengurang saldo stok.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Estimasi merupakan referensi, BUKAN stok aktual."
+          },
+          {
+            "requirement": {
+              "id": "RN-OKL-010",
+              "title": "Mencatat kuantitas mata entres aktual yang berhasil ditempelkan.",
+              "role": "Mantri Bibitan",
+              "module": "Okulasi",
+              "feature": "Grafting (Okulasi Utama)",
+              "process": "Input Mata Entres Aktual",
+              "status": "Confirmed",
+              "input": "Jumlah mata entres yang terpakai riil.",
+              "validation": "Mata entres aktual <= stok tersedia pada Plot Entres + Clone.",
+              "fallback": "Pemberitahuan peringatan jika melebihi stok terverifikasi.",
+              "output": "Data kuantitas mata entres aktual tersimpan.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "04-okulasi",
+              "featureId": "grafting",
+              "ruleIds": [
+                "BR-OKL-006"
+              ],
+              "businessRule": "BR-OKL-006"
+            },
+            "module": {
+              "id": "04-okulasi",
+              "order": "04",
+              "name": "Okulasi",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Okulasi (Grafting) & Okulasi Janda (Regrafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "grafting",
+                  "name": "Okulasi (Grafting)",
+                  "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+                },
+                {
+                  "id": "regrafting",
+                  "name": "Okulasi Janda / Regrafting",
+                  "desc": "Penempelan ulang mata entres pada bibit yang gagal pada pemeriksaan okulasi."
+                }
+              ]
+            },
+            "feature": {
+              "id": "grafting",
+              "name": "Okulasi (Grafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-006",
+                "title": "Status Estimasi vs Stok Aktual",
+                "desc": "Kalkulasi Jumlah Cabang x Rata-rata Mata Entres adalah estimasi referensi semata. Hanya mata entres aktual yang diverifikasi yang menjadi pengurang saldo stok.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Mata entres aktual <= stok tersedia pada Plot Entres + Clone."
+          },
+          {
+            "requirement": {
+              "id": "RN-OKL-012",
+              "title": "Mengirim berkas transaksi okulasi ke antrean verifikasi Asisten.",
+              "role": "Mantri Bibitan",
+              "module": "Okulasi",
+              "feature": "Grafting (Okulasi Utama)",
+              "process": "Submit Transaksi",
+              "status": "Confirmed",
+              "input": "Seluruh formulir data transaksi okulasi lengkap.",
+              "validation": "Semua validasi mandatory terpenuhi (QR, pekerja, entres, foto).",
+              "fallback": "Tersimpan di offline queue jika jaringan offline.",
+              "output": "Nomor transaksi diterbitkan berstatus Menunggu Verifikasi.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "04-okulasi",
+              "featureId": "grafting",
+              "ruleIds": [
+                "BR-GLB-002"
+              ],
+              "businessRule": "BR-GLB-002"
+            },
+            "module": {
+              "id": "04-okulasi",
+              "order": "04",
+              "name": "Okulasi",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Okulasi (Grafting) & Okulasi Janda (Regrafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "grafting",
+                  "name": "Okulasi (Grafting)",
+                  "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+                },
+                {
+                  "id": "regrafting",
+                  "name": "Okulasi Janda / Regrafting",
+                  "desc": "Penempelan ulang mata entres pada bibit yang gagal pada pemeriksaan okulasi."
+                }
+              ]
+            },
+            "feature": {
+              "id": "grafting",
+              "name": "Okulasi (Grafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-002",
+                "title": "Kewajiban Verifikasi Asisten Bibitan",
+                "desc": "Semua transaksi yang diinput oleh Mantri Bibitan berstatus Menunggu Verifikasi dan belum memengaruhi saldo produksi sampai disetujui oleh Asisten Bibitan.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Semua validasi mandatory terpenuhi (QR, pekerja, entres, foto)."
+          },
+          {
+            "requirement": {
+              "id": "RN-OKL-014",
+              "title": "Pengurangan stok mata entres terverifikasi pada Plot Entres + Clone.",
+              "role": "Sistem Database",
+              "module": "Okulasi",
+              "feature": "Grafting (Okulasi Utama)",
+              "process": "Update Stok Mata Entres",
+              "status": "Confirmed",
+              "input": "Kuantitas mata entres aktual yang telah diverifikasi Asisten.",
+              "validation": "Stok tidak boleh minus.",
+              "fallback": "Logging transaksi mutasi sistem.",
+              "output": "Saldo stok terpotong, tercatat dalam ledger material.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "04-okulasi",
+              "featureId": "grafting",
+              "description": "Belum didefinisikan pada baseline.",
+              "businessRule": "BR-OKL-007",
+              "ruleIds": [
+                "BR-OKL-007"
+              ]
+            },
+            "module": {
+              "id": "04-okulasi",
+              "order": "04",
+              "name": "Okulasi",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Okulasi (Grafting) & Okulasi Janda (Regrafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "grafting",
+                  "name": "Okulasi (Grafting)",
+                  "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+                },
+                {
+                  "id": "regrafting",
+                  "name": "Okulasi Janda / Regrafting",
+                  "desc": "Penempelan ulang mata entres pada bibit yang gagal pada pemeriksaan okulasi."
+                }
+              ]
+            },
+            "feature": {
+              "id": "grafting",
+              "name": "Okulasi (Grafting)",
+              "desc": "Melakukan okulasi pada bibit dalam Batch menggunakan material Mata Entres dari Kebun Kayu Okulasi."
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-007",
+                "title": "Pengurangan Stok Pasca Verifikasi",
+                "desc": "Pengurangan saldo stok mata entres terjadi secara otomatis hanya setelah berkas transaksi okulasi disetujui (diverifikasi) oleh Asisten Bibitan.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Stok tidak boleh minus."
+          }
+        ]
+      },
+      {
+        "moduleId": "05-pemeriksaan",
+        "moduleName": "Pemeriksaan",
+        "moduleOrder": "05",
+        "totalGaps": 9,
+        "requirements": [
+          {
+            "requirement": {
+              "id": "RN-CHK-RG036",
+              "title": "Pemeriksaan bersifat dinamis dan dapat dilakukan bertahap.",
+              "role": "Mantri Bibitan",
+              "module": "Pemeriksaan",
+              "feature": "Pemeriksaan Regrafting",
+              "process": "Buka Pemeriksaan",
+              "status": "Confirmed",
+              "input": "Dokumen berkewajiban periksa",
+              "validation": "Jumlah periksa <= sisa periksa",
+              "fallback": "Sisa tetap muncul di antrean",
+              "output": "Hasil berhasil vs gagal",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "05-pemeriksaan",
+              "featureId": "periksa-regrafting",
+              "ruleIds": [
+                "BR-OKL-008"
+              ],
+              "businessRule": "BR-OKL-008"
+            },
+            "module": {
+              "id": "05-pemeriksaan",
+              "order": "05",
+              "name": "Pemeriksaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeriksaan Hasil Okulasi (Grafting & Regrafting)",
+              "desc": "Pemeriksaan berkala hasil okulasi secara dinamis dan bertahap. Bibit yang gagal dapat ditentukan untuk Regrafting berulang kali atau dinyatakan Reject oleh Mantri Bibitan.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "periksa-grafting",
+                  "name": "Pemeriksaan Bertahap Grafting"
+                },
+                {
+                  "id": "periksa-regrafting",
+                  "name": "Pemeriksaan Regrafting"
+                }
+              ]
+            },
+            "feature": {
+              "id": "periksa-regrafting",
+              "name": "Pemeriksaan Regrafting"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-008",
+                "title": "Regrafting Berulang Tanpa Batas Tunggal",
+                "desc": "Proses regrafting pada bibit gagal tidak dibatasi hanya satu kali. Bibit yang gagal pada pemeriksaan regrafting dapat diregrafting kembali atau diputuskan reject oleh Mantri.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Jumlah periksa <= sisa periksa"
+          },
+          {
+            "requirement": {
+              "id": "RN-CHK-RG037",
+              "title": "Bibit gagal dapat ditentukan untuk Regrafting kembali atau Reject.",
+              "role": "Mantri Bibitan",
+              "module": "Pemeriksaan",
+              "feature": "Pemeriksaan Regrafting",
+              "process": "Pilih Dokumen Okulasi",
+              "status": "Confirmed",
+              "input": "Kuantitas bibit gagal",
+              "validation": "Pilihan Mantri: Regrafting vs Reject",
+              "fallback": "Tidak dibatasi 1x regrafting",
+              "output": "Tindak lanjut terdaftar",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "05-pemeriksaan",
+              "featureId": "periksa-regrafting",
+              "ruleIds": [
+                "BR-OKL-008"
+              ],
+              "businessRule": "BR-OKL-008"
+            },
+            "module": {
+              "id": "05-pemeriksaan",
+              "order": "05",
+              "name": "Pemeriksaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeriksaan Hasil Okulasi (Grafting & Regrafting)",
+              "desc": "Pemeriksaan berkala hasil okulasi secara dinamis dan bertahap. Bibit yang gagal dapat ditentukan untuk Regrafting berulang kali atau dinyatakan Reject oleh Mantri Bibitan.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "periksa-grafting",
+                  "name": "Pemeriksaan Bertahap Grafting"
+                },
+                {
+                  "id": "periksa-regrafting",
+                  "name": "Pemeriksaan Regrafting"
+                }
+              ]
+            },
+            "feature": {
+              "id": "periksa-regrafting",
+              "name": "Pemeriksaan Regrafting"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-008",
+                "title": "Regrafting Berulang Tanpa Batas Tunggal",
+                "desc": "Proses regrafting pada bibit gagal tidak dibatasi hanya satu kali. Bibit yang gagal pada pemeriksaan regrafting dapat diregrafting kembali atau diputuskan reject oleh Mantri.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Pilihan Mantri: Regrafting vs Reject"
+          },
+          {
+            "requirement": {
+              "id": "RN-CHK-RG038",
+              "title": "Validasi fisik QR Code Batch yang diperiksa.",
+              "role": "Mantri Bibitan",
+              "module": "Pemeriksaan",
+              "feature": "Pemeriksaan Regrafting",
+              "process": "Scan QR Batch",
+              "status": "Confirmed",
+              "input": "QR Code Batch fisik.",
+              "validation": "Batch cocok dengan dokumen okulasi.",
+              "fallback": "Pilih manual jika QR rusak.",
+              "output": "Batch tervalidasi.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "05-pemeriksaan",
+              "featureId": "periksa-regrafting",
+              "ruleIds": [
+                "BR-OKL-002"
+              ],
+              "businessRule": "BR-OKL-002"
+            },
+            "module": {
+              "id": "05-pemeriksaan",
+              "order": "05",
+              "name": "Pemeriksaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeriksaan Hasil Okulasi (Grafting & Regrafting)",
+              "desc": "Pemeriksaan berkala hasil okulasi secara dinamis dan bertahap. Bibit yang gagal dapat ditentukan untuk Regrafting berulang kali atau dinyatakan Reject oleh Mantri Bibitan.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "periksa-grafting",
+                  "name": "Pemeriksaan Bertahap Grafting"
+                },
+                {
+                  "id": "periksa-regrafting",
+                  "name": "Pemeriksaan Regrafting"
+                }
+              ]
+            },
+            "feature": {
+              "id": "periksa-regrafting",
+              "name": "Pemeriksaan Regrafting"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-002",
+                "title": "Validasi QR Code Objek Fisik",
+                "desc": "Batch bibit wajib divalidasi menggunakan QR Code sebelum penginputan hasil kerja okulasi dilakukan. Pemilihan manual hanya jalur fallback.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Batch cocok dengan dokumen okulasi."
+          },
+          {
+            "requirement": {
+              "id": "RN-CHK-RG039",
+              "title": "Menginput jumlah batang yang diperiksa pada sesi ini (misal 600 dari 1.000).",
+              "role": "Mantri Bibitan",
+              "module": "Pemeriksaan",
+              "feature": "Pemeriksaan Regrafting",
+              "process": "Input Bibit Diperiksa Bertahap",
+              "status": "Confirmed",
+              "input": "Jumlah bibit diperiksa.",
+              "validation": "Jumlah diperiksa <= sisa belum periksa.",
+              "fallback": "-",
+              "output": "Sisa pemeriksaan tetap tersimpan.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "05-pemeriksaan",
+              "featureId": "periksa-regrafting",
+              "ruleIds": [
+                "BR-GLB-001"
+              ],
+              "businessRule": "BR-GLB-001"
+            },
+            "module": {
+              "id": "05-pemeriksaan",
+              "order": "05",
+              "name": "Pemeriksaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeriksaan Hasil Okulasi (Grafting & Regrafting)",
+              "desc": "Pemeriksaan berkala hasil okulasi secara dinamis dan bertahap. Bibit yang gagal dapat ditentukan untuk Regrafting berulang kali atau dinyatakan Reject oleh Mantri Bibitan.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "periksa-grafting",
+                  "name": "Pemeriksaan Bertahap Grafting"
+                },
+                {
+                  "id": "periksa-regrafting",
+                  "name": "Pemeriksaan Regrafting"
+                }
+              ]
+            },
+            "feature": {
+              "id": "periksa-regrafting",
+              "name": "Pemeriksaan Regrafting"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Jumlah diperiksa <= sisa belum periksa."
+          },
+          {
+            "requirement": {
+              "id": "RN-CHK-RG040",
+              "title": "Mencatat jumlah mata tempelan yang hijau (berhasil) vs hitam/mati (gagal).",
+              "role": "Mantri Bibitan",
+              "module": "Pemeriksaan",
+              "feature": "Pemeriksaan Regrafting",
+              "process": "Input Berhasil & Gagal",
+              "status": "Confirmed",
+              "input": "Jumlah berhasil dan jumlah gagal.",
+              "validation": "Total Berhasil + Gagal = Jumlah Diperiksa.",
+              "fallback": "Hitung ulang jika ada selisih.",
+              "output": "Data perolehan berhasil & gagal tersimpan.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "05-pemeriksaan",
+              "featureId": "periksa-regrafting",
+              "ruleIds": [
+                "BR-GLB-001"
+              ],
+              "businessRule": "BR-GLB-001"
+            },
+            "module": {
+              "id": "05-pemeriksaan",
+              "order": "05",
+              "name": "Pemeriksaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeriksaan Hasil Okulasi (Grafting & Regrafting)",
+              "desc": "Pemeriksaan berkala hasil okulasi secara dinamis dan bertahap. Bibit yang gagal dapat ditentukan untuk Regrafting berulang kali atau dinyatakan Reject oleh Mantri Bibitan.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "periksa-grafting",
+                  "name": "Pemeriksaan Bertahap Grafting"
+                },
+                {
+                  "id": "periksa-regrafting",
+                  "name": "Pemeriksaan Regrafting"
+                }
+              ]
+            },
+            "feature": {
+              "id": "periksa-regrafting",
+              "name": "Pemeriksaan Regrafting"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Total Berhasil + Gagal = Jumlah Diperiksa."
+          },
+          {
+            "requirement": {
+              "id": "RN-CHK-RG041",
+              "title": "Mantri menentukan tindak lanjut bibit yang gagal: Regrafting kembali atau Reject.",
+              "role": "Mantri Bibitan",
+              "module": "Pemeriksaan",
+              "feature": "Pemeriksaan Regrafting",
+              "process": "Tindak Lanjut Bibit Gagal",
+              "status": "Confirmed",
+              "input": "Kuantitas bibit gagal dan kondisi visual batang.",
+              "validation": "Keputusan ditentukan sepenuhnya oleh Mantri Bibitan.",
+              "fallback": "Konsultasi Asisten jika ragu.",
+              "output": "Kuota regrafting atau reject tercatat.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "05-pemeriksaan",
+              "featureId": "periksa-regrafting",
+              "ruleIds": [
+                "BR-OKL-008"
+              ],
+              "businessRule": "BR-OKL-008"
+            },
+            "module": {
+              "id": "05-pemeriksaan",
+              "order": "05",
+              "name": "Pemeriksaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeriksaan Hasil Okulasi (Grafting & Regrafting)",
+              "desc": "Pemeriksaan berkala hasil okulasi secara dinamis dan bertahap. Bibit yang gagal dapat ditentukan untuk Regrafting berulang kali atau dinyatakan Reject oleh Mantri Bibitan.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "periksa-grafting",
+                  "name": "Pemeriksaan Bertahap Grafting"
+                },
+                {
+                  "id": "periksa-regrafting",
+                  "name": "Pemeriksaan Regrafting"
+                }
+              ]
+            },
+            "feature": {
+              "id": "periksa-regrafting",
+              "name": "Pemeriksaan Regrafting"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-008",
+                "title": "Regrafting Berulang Tanpa Batas Tunggal",
+                "desc": "Proses regrafting pada bibit gagal tidak dibatasi hanya satu kali. Bibit yang gagal pada pemeriksaan regrafting dapat diregrafting kembali atau diputuskan reject oleh Mantri.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Keputusan ditentukan sepenuhnya oleh Mantri Bibitan."
+          },
+          {
+            "requirement": {
+              "id": "RN-CHK-RG042",
+              "title": "Foto bukti fisik mata tempelan berhasil dan gagal beserta watermark.",
+              "role": "Mantri Bibitan",
+              "module": "Pemeriksaan",
+              "feature": "Pemeriksaan Regrafting",
+              "process": "Dokumentasi Foto + Timestamp",
+              "status": "Confirmed",
+              "input": "Foto mata tunas okulasi.",
+              "validation": "Foto wajib diunggah.",
+              "fallback": "Ambil ulang foto.",
+              "output": "Foto audit tersimpan.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "05-pemeriksaan",
+              "featureId": "periksa-regrafting",
+              "ruleIds": [
+                "BR-GLB-001"
+              ],
+              "businessRule": "BR-GLB-001"
+            },
+            "module": {
+              "id": "05-pemeriksaan",
+              "order": "05",
+              "name": "Pemeriksaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeriksaan Hasil Okulasi (Grafting & Regrafting)",
+              "desc": "Pemeriksaan berkala hasil okulasi secara dinamis dan bertahap. Bibit yang gagal dapat ditentukan untuk Regrafting berulang kali atau dinyatakan Reject oleh Mantri Bibitan.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "periksa-grafting",
+                  "name": "Pemeriksaan Bertahap Grafting"
+                },
+                {
+                  "id": "periksa-regrafting",
+                  "name": "Pemeriksaan Regrafting"
+                }
+              ]
+            },
+            "feature": {
+              "id": "periksa-regrafting",
+              "name": "Pemeriksaan Regrafting"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Foto wajib diunggah."
+          },
+          {
+            "requirement": {
+              "id": "RN-CHK-RG043",
+              "title": "Mengirim hasil pemeriksaan ke Asisten Bibitan untuk disetujui.",
+              "role": "Mantri Bibitan",
+              "module": "Pemeriksaan",
+              "feature": "Pemeriksaan Regrafting",
+              "process": "Submit & Verifikasi Asisten",
+              "status": "Confirmed",
+              "input": "Data pemeriksaan lengkap.",
+              "validation": "Jika disetujui, data masuk server production.",
+              "fallback": "Koreksi jika ada selisih hitung.",
+              "output": "Status: Terverifikasi.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "05-pemeriksaan",
+              "featureId": "periksa-regrafting",
+              "ruleIds": [
+                "BR-GLB-002"
+              ],
+              "businessRule": "BR-GLB-002"
+            },
+            "module": {
+              "id": "05-pemeriksaan",
+              "order": "05",
+              "name": "Pemeriksaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeriksaan Hasil Okulasi (Grafting & Regrafting)",
+              "desc": "Pemeriksaan berkala hasil okulasi secara dinamis dan bertahap. Bibit yang gagal dapat ditentukan untuk Regrafting berulang kali atau dinyatakan Reject oleh Mantri Bibitan.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "periksa-grafting",
+                  "name": "Pemeriksaan Bertahap Grafting"
+                },
+                {
+                  "id": "periksa-regrafting",
+                  "name": "Pemeriksaan Regrafting"
+                }
+              ]
+            },
+            "feature": {
+              "id": "periksa-regrafting",
+              "name": "Pemeriksaan Regrafting"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-002",
+                "title": "Kewajiban Verifikasi Asisten Bibitan",
+                "desc": "Semua transaksi yang diinput oleh Mantri Bibitan berstatus Menunggu Verifikasi dan belum memengaruhi saldo produksi sampai disetujui oleh Asisten Bibitan.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Jika disetujui, data masuk server production."
+          },
+          {
+            "requirement": {
+              "id": "RN-CHK-RG044",
+              "title": "Pemeriksaan tuntas; bibit berhasil lanjut tumbuh, bibit gagal siap di-Regrafting kembali atau di-Reject.",
+              "role": "Mantri Bibitan",
+              "module": "Pemeriksaan",
+              "feature": "Pemeriksaan Regrafting",
+              "process": "Selesai Pemeriksaan",
+              "status": "Confirmed",
+              "input": "Status verified.",
+              "validation": "-",
+              "fallback": "-",
+              "output": "Data siap untuk siklus selanjutnya.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "05-pemeriksaan",
+              "featureId": "periksa-regrafting",
+              "ruleIds": [
+                "BR-GLB-003"
+              ],
+              "businessRule": "BR-GLB-003"
+            },
+            "module": {
+              "id": "05-pemeriksaan",
+              "order": "05",
+              "name": "Pemeriksaan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeriksaan Hasil Okulasi (Grafting & Regrafting)",
+              "desc": "Pemeriksaan berkala hasil okulasi secara dinamis dan bertahap. Bibit yang gagal dapat ditentukan untuk Regrafting berulang kali atau dinyatakan Reject oleh Mantri Bibitan.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "periksa-grafting",
+                  "name": "Pemeriksaan Bertahap Grafting"
+                },
+                {
+                  "id": "periksa-regrafting",
+                  "name": "Pemeriksaan Regrafting"
+                }
+              ]
+            },
+            "feature": {
+              "id": "periksa-regrafting",
+              "name": "Pemeriksaan Regrafting"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-003",
+                "title": "Promosi ke Server Production",
+                "desc": "Hanya transaksi yang telah diverifikasi dan disetujui oleh Asisten Bibitan yang akan dikirim ke basis data Server Production.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Pemeriksaan tuntas; bibit berhasil lanjut tumbuh, bibit gagal siap di-Regrafting kembali atau di-Reject."
+          }
+        ]
+      },
+      {
+        "moduleId": "06-penyeleksian",
+        "moduleName": "Penyeleksian",
+        "moduleOrder": "06",
+        "totalGaps": 0,
+        "requirements": []
+      },
+      {
+        "moduleId": "07-kebun-entres",
+        "moduleName": "Kebun Entres",
+        "moduleOrder": "07",
+        "totalGaps": 7,
+        "requirements": [
+          {
+            "requirement": {
+              "id": "RN-ENT-TOP045",
+              "title": "Aktivitas topping menghitung rasio Perisai/Kayu dan Perisai/Meter.",
+              "role": "Mantri Bibitan",
+              "module": "Kebun Entres",
+              "feature": "Topping Plot Entres",
+              "process": "Buka Menunas Entres",
+              "status": "Confirmed",
+              "input": "Perisai, cabang, panjang meter",
+              "validation": "Perhitungan matematis otomatis",
+              "fallback": "Koreksi input",
+              "output": "Rasio kualitas entres",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "07-kebun-entres",
+              "featureId": "entres-topping",
+              "ruleIds": [
+                "BR-GLB-001"
+              ],
+              "businessRule": "BR-GLB-001"
+            },
+            "module": {
+              "id": "07-kebun-entres",
+              "order": "07",
+              "name": "Kebun Entres",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeliharaan Kebun Entres (Menunas & Topping)",
+              "desc": "Pemeliharaan pokok induk entres pada Plot Entres melalui aktivitas Menunas dan Topping dengan perhitungan rasio perisai/cabang dan perisai/meter.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "entres-menunas",
+                  "name": "Menunas Plot Entres"
+                },
+                {
+                  "id": "entres-topping",
+                  "name": "Topping Plot Entres"
+                }
+              ]
+            },
+            "feature": {
+              "id": "entres-topping",
+              "name": "Topping Plot Entres"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Perhitungan matematis otomatis"
+          },
+          {
+            "requirement": {
+              "id": "RN-ENT-TOP046",
+              "title": "Validasi QR Code plang fisik plot entres yang dirawat.",
+              "role": "Mantri Bibitan",
+              "module": "Kebun Entres",
+              "feature": "Topping Plot Entres",
+              "process": "Scan QR Plot Entres",
+              "status": "Confirmed",
+              "input": "QR Code Plot Entres.",
+              "validation": "QR plot entres valid.",
+              "fallback": "Pilih manual plot jika QR rusak.",
+              "output": "Identitas plot terverifikasi.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "07-kebun-entres",
+              "featureId": "entres-topping",
+              "ruleIds": [
+                "BR-OKL-002"
+              ],
+              "businessRule": "BR-OKL-002"
+            },
+            "module": {
+              "id": "07-kebun-entres",
+              "order": "07",
+              "name": "Kebun Entres",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeliharaan Kebun Entres (Menunas & Topping)",
+              "desc": "Pemeliharaan pokok induk entres pada Plot Entres melalui aktivitas Menunas dan Topping dengan perhitungan rasio perisai/cabang dan perisai/meter.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "entres-menunas",
+                  "name": "Menunas Plot Entres"
+                },
+                {
+                  "id": "entres-topping",
+                  "name": "Topping Plot Entres"
+                }
+              ]
+            },
+            "feature": {
+              "id": "entres-topping",
+              "name": "Topping Plot Entres"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-002",
+                "title": "Validasi QR Code Objek Fisik",
+                "desc": "Batch bibit wajib divalidasi menggunakan QR Code sebelum penginputan hasil kerja okulasi dilakukan. Pemilihan manual hanya jalur fallback.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "QR plot entres valid."
+          },
+          {
+            "requirement": {
+              "id": "RN-ENT-TOP047",
+              "title": "Sistem menyajikan data clone dan jumlah pokok tanaman induk per plot.",
+              "role": "Mantri Bibitan",
+              "module": "Kebun Entres",
+              "feature": "Topping Plot Entres",
+              "process": "Tampilkan Clone & Pokok",
+              "status": "Confirmed",
+              "input": "Master data plot entres.",
+              "validation": "Populasi pokok terdefinisi.",
+              "fallback": "-",
+              "output": "Data clone & pokok tampil.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "07-kebun-entres",
+              "featureId": "entres-topping",
+              "ruleIds": [
+                "BR-OKL-005"
+              ],
+              "businessRule": "BR-OKL-005"
+            },
+            "module": {
+              "id": "07-kebun-entres",
+              "order": "07",
+              "name": "Kebun Entres",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeliharaan Kebun Entres (Menunas & Topping)",
+              "desc": "Pemeliharaan pokok induk entres pada Plot Entres melalui aktivitas Menunas dan Topping dengan perhitungan rasio perisai/cabang dan perisai/meter.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "entres-menunas",
+                  "name": "Menunas Plot Entres"
+                },
+                {
+                  "id": "entres-topping",
+                  "name": "Topping Plot Entres"
+                }
+              ]
+            },
+            "feature": {
+              "id": "entres-topping",
+              "name": "Topping Plot Entres"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-OKL-005",
+                "title": "Identitas Stok Mata Entres",
+                "desc": "Stok mata entres dikelola berdasarkan kombinasi Plot Entres + Clone, bukan berdasarkan Batch.",
+                "category": "Okulasi"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Populasi pokok terdefinisi."
+          },
+          {
+            "requirement": {
+              "id": "RN-ENT-TOP048",
+              "title": "Mantri menginput Tanggal, Jumlah Kayu Okulasi, Total Panjang Meter, dan Jumlah Perisai.",
+              "role": "Mantri Bibitan",
+              "module": "Kebun Entres",
+              "feature": "Topping Plot Entres",
+              "process": "Input Variabel Menunas",
+              "status": "Confirmed",
+              "input": "Tanggal, Perisai, Cabang, Panjang Meter.",
+              "validation": "Seluruh angka > 0.",
+              "fallback": "Koreksi input.",
+              "output": "Data variabel tersimpan di form.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "07-kebun-entres",
+              "featureId": "entres-topping",
+              "ruleIds": [
+                "BR-GLB-001"
+              ],
+              "businessRule": "BR-GLB-001"
+            },
+            "module": {
+              "id": "07-kebun-entres",
+              "order": "07",
+              "name": "Kebun Entres",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeliharaan Kebun Entres (Menunas & Topping)",
+              "desc": "Pemeliharaan pokok induk entres pada Plot Entres melalui aktivitas Menunas dan Topping dengan perhitungan rasio perisai/cabang dan perisai/meter.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "entres-menunas",
+                  "name": "Menunas Plot Entres"
+                },
+                {
+                  "id": "entres-topping",
+                  "name": "Topping Plot Entres"
+                }
+              ]
+            },
+            "feature": {
+              "id": "entres-topping",
+              "name": "Topping Plot Entres"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Seluruh angka > 0."
+          },
+          {
+            "requirement": {
+              "id": "RN-ENT-TOP049",
+              "title": "Sistem menghitung Rata-rata Perisai/Kayu dan Rata-rata Perisai/Meter.",
+              "role": "Mantri Bibitan",
+              "module": "Kebun Entres",
+              "feature": "Topping Plot Entres",
+              "process": "Hitung Rata-rata Otomatis",
+              "status": "Confirmed",
+              "input": "Perisai / Cabang dan Perisai / Panjang Meter.",
+              "validation": "Perhitungan matematis otomatis valid.",
+              "fallback": "-",
+              "output": "Indeks rata-rata tampil di layar.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "07-kebun-entres",
+              "featureId": "entres-topping",
+              "ruleIds": [
+                "BR-GLB-001"
+              ],
+              "businessRule": "BR-GLB-001"
+            },
+            "module": {
+              "id": "07-kebun-entres",
+              "order": "07",
+              "name": "Kebun Entres",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeliharaan Kebun Entres (Menunas & Topping)",
+              "desc": "Pemeliharaan pokok induk entres pada Plot Entres melalui aktivitas Menunas dan Topping dengan perhitungan rasio perisai/cabang dan perisai/meter.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "entres-menunas",
+                  "name": "Menunas Plot Entres"
+                },
+                {
+                  "id": "entres-topping",
+                  "name": "Topping Plot Entres"
+                }
+              ]
+            },
+            "feature": {
+              "id": "entres-topping",
+              "name": "Topping Plot Entres"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Perhitungan matematis otomatis valid."
+          },
+          {
+            "requirement": {
+              "id": "RN-ENT-TOP050",
+              "title": "Foto dokumentasi plot setelah ditopping beserta timestamp, diteruskan ke Asisten Bibitan.",
+              "role": "Mantri Bibitan",
+              "module": "Kebun Entres",
+              "feature": "Topping Plot Entres",
+              "process": "Foto + Timestamp & Verifikasi",
+              "status": "Confirmed",
+              "input": "Foto pokok entres bersih tunas air.",
+              "validation": "Foto wajib diunggah.",
+              "fallback": "Ambil ulang jika buram.",
+              "output": "Status: Terverifikasi.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "07-kebun-entres",
+              "featureId": "entres-topping",
+              "ruleIds": [
+                "BR-GLB-001",
+                "BR-GLB-002"
+              ],
+              "businessRule": "BR-GLB-001, BR-GLB-002"
+            },
+            "module": {
+              "id": "07-kebun-entres",
+              "order": "07",
+              "name": "Kebun Entres",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeliharaan Kebun Entres (Menunas & Topping)",
+              "desc": "Pemeliharaan pokok induk entres pada Plot Entres melalui aktivitas Menunas dan Topping dengan perhitungan rasio perisai/cabang dan perisai/meter.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "entres-menunas",
+                  "name": "Menunas Plot Entres"
+                },
+                {
+                  "id": "entres-topping",
+                  "name": "Topping Plot Entres"
+                }
+              ]
+            },
+            "feature": {
+              "id": "entres-topping",
+              "name": "Topping Plot Entres"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              },
+              {
+                "id": "BR-GLB-002",
+                "title": "Kewajiban Verifikasi Asisten Bibitan",
+                "desc": "Semua transaksi yang diinput oleh Mantri Bibitan berstatus Menunggu Verifikasi dan belum memengaruhi saldo produksi sampai disetujui oleh Asisten Bibitan.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Foto wajib diunggah."
+          },
+          {
+            "requirement": {
+              "id": "RN-ENT-TOP051",
+              "title": "Plot entres terawat optimal dan siap menghasilkan kayu entres berkualitas.",
+              "role": "Mantri Bibitan",
+              "module": "Kebun Entres",
+              "feature": "Topping Plot Entres",
+              "process": "Menunas Selesai",
+              "status": "Confirmed",
+              "input": "Approval sukses.",
+              "validation": "-",
+              "fallback": "-",
+              "output": "Plot siap panen entres berikutnya.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "07-kebun-entres",
+              "featureId": "entres-topping",
+              "ruleIds": [
+                "BR-GLB-003"
+              ],
+              "businessRule": "BR-GLB-003"
+            },
+            "module": {
+              "id": "07-kebun-entres",
+              "order": "07",
+              "name": "Kebun Entres",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Pemeliharaan Kebun Entres (Menunas & Topping)",
+              "desc": "Pemeliharaan pokok induk entres pada Plot Entres melalui aktivitas Menunas dan Topping dengan perhitungan rasio perisai/cabang dan perisai/meter.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi)",
+              "features": [
+                {
+                  "id": "entres-menunas",
+                  "name": "Menunas Plot Entres"
+                },
+                {
+                  "id": "entres-topping",
+                  "name": "Topping Plot Entres"
+                }
+              ]
+            },
+            "feature": {
+              "id": "entres-topping",
+              "name": "Topping Plot Entres"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-003",
+                "title": "Promosi ke Server Production",
+                "desc": "Hanya transaksi yang telah diverifikasi dan disetujui oleh Asisten Bibitan yang akan dikirim ke basis data Server Production.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Plot entres terawat optimal dan siap menghasilkan kayu entres berkualitas."
+          }
+        ]
+      },
+      {
+        "moduleId": "08-panen-mata-entres",
+        "moduleName": "Panen Mata Entres",
+        "moduleOrder": "08",
+        "totalGaps": 0,
+        "requirements": []
+      },
+      {
+        "moduleId": "09-material-bahan",
+        "moduleName": "Material & Bahan",
+        "moduleOrder": "09",
+        "totalGaps": 7,
+        "requirements": [
+          {
+            "requirement": {
+              "id": "RN-MAT-MMG052",
+              "title": "Dokumen gudang material wajib matching 1 Heading Kerja pemeliharaan.",
+              "role": "Mantri Bibitan",
+              "module": "Material & Bahan",
+              "feature": "Matching Material Dokumen Gudang",
+              "process": "Buka Monitoring Material",
+              "status": "Confirmed",
+              "input": "Dokumen pengeluaran gudang",
+              "validation": "1 Dokumen Gudang = 1 Heading Kerja",
+              "fallback": "Dokumen tidak dapat digunakan jika beda heading",
+              "output": "Material melekat ke rekam pemeliharaan",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "09-material-bahan",
+              "featureId": "material-gudang-matching",
+              "ruleIds": [
+                "BR-MAT-001"
+              ],
+              "businessRule": "BR-MAT-001"
+            },
+            "module": {
+              "id": "09-material-bahan",
+              "order": "09",
+              "name": "Material & Bahan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Monitoring Stok Mata Entres & Dokumen Gudang",
+              "desc": "Stok dapat bertambah dari hasil Panen Mata Entres yang sudah terverifikasi. Stok digunakan untuk kebutuhan Okulasi (Grafting), Regrafting, permintaan, dan pengeluaran.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi), Petugas Gudang",
+              "features": [
+                {
+                  "id": "monitoring-stok-entres",
+                  "name": "Monitoring Mutasi Stok Mata Entres"
+                },
+                {
+                  "id": "material-gudang-matching",
+                  "name": "Matching Material Dokumen Gudang"
+                }
+              ]
+            },
+            "feature": {
+              "id": "material-gudang-matching",
+              "name": "Matching Material Dokumen Gudang"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-MAT-001",
+                "title": "Integritas 1 Dokumen Gudang = 1 Heading Kerja",
+                "desc": "Satu dokumen pengeluaran gudang hanya dapat dilekatkan pada satu aktivitas pemeliharaan dengan heading kerja yang sama (matching).",
+                "category": "Material"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "1 Dokumen Gudang = 1 Heading Kerja"
+          },
+          {
+            "requirement": {
+              "id": "RN-MAT-MMG053",
+              "title": "Memilih rentang waktu dan jenis material gudang untuk ditinjau rekonsiliasinya.",
+              "role": "Mantri Bibitan",
+              "module": "Material & Bahan",
+              "feature": "Matching Material Dokumen Gudang",
+              "process": "Pilih Plot Entres + Clone",
+              "status": "Confirmed",
+              "input": "Daftar plot entres + clone.",
+              "validation": "Plot entres terdaftar.",
+              "fallback": "-",
+              "output": "Buku mutasi klon terpilih.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "09-material-bahan",
+              "featureId": "material-gudang-matching",
+              "ruleIds": [
+                "BR-MAT-001"
+              ],
+              "businessRule": "BR-MAT-001"
+            },
+            "module": {
+              "id": "09-material-bahan",
+              "order": "09",
+              "name": "Material & Bahan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Monitoring Stok Mata Entres & Dokumen Gudang",
+              "desc": "Stok dapat bertambah dari hasil Panen Mata Entres yang sudah terverifikasi. Stok digunakan untuk kebutuhan Okulasi (Grafting), Regrafting, permintaan, dan pengeluaran.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi), Petugas Gudang",
+              "features": [
+                {
+                  "id": "monitoring-stok-entres",
+                  "name": "Monitoring Mutasi Stok Mata Entres"
+                },
+                {
+                  "id": "material-gudang-matching",
+                  "name": "Matching Material Dokumen Gudang"
+                }
+              ]
+            },
+            "feature": {
+              "id": "material-gudang-matching",
+              "name": "Matching Material Dokumen Gudang"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-MAT-001",
+                "title": "Integritas 1 Dokumen Gudang = 1 Heading Kerja",
+                "desc": "Satu dokumen pengeluaran gudang hanya dapat dilekatkan pada satu aktivitas pemeliharaan dengan heading kerja yang sama (matching).",
+                "category": "Material"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Plot entres terdaftar."
+          },
+          {
+            "requirement": {
+              "id": "RN-MAT-MMG054",
+              "title": "Pencocokan nomor BKB material gudang terhadap realisasi aplikasi pemeliharaan berbasis Heading Kerja.",
+              "role": "Mantri Bibitan",
+              "module": "Material & Bahan",
+              "feature": "Matching Material Dokumen Gudang",
+              "process": "Pencocokan Dokumen BKB vs Realisasi Heading",
+              "status": "Confirmed",
+              "input": "Log mutasi sistem.",
+              "validation": "Tidak boleh ada pengurangan stok manual tanpa transaksi.",
+              "fallback": "Investigasi jika selisih.",
+              "output": "Rincian audit mutasi ditampilkan.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "09-material-bahan",
+              "featureId": "material-gudang-matching",
+              "ruleIds": [
+                "BR-MAT-001"
+              ],
+              "businessRule": "BR-MAT-001"
+            },
+            "module": {
+              "id": "09-material-bahan",
+              "order": "09",
+              "name": "Material & Bahan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Monitoring Stok Mata Entres & Dokumen Gudang",
+              "desc": "Stok dapat bertambah dari hasil Panen Mata Entres yang sudah terverifikasi. Stok digunakan untuk kebutuhan Okulasi (Grafting), Regrafting, permintaan, dan pengeluaran.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi), Petugas Gudang",
+              "features": [
+                {
+                  "id": "monitoring-stok-entres",
+                  "name": "Monitoring Mutasi Stok Mata Entres"
+                },
+                {
+                  "id": "material-gudang-matching",
+                  "name": "Matching Material Dokumen Gudang"
+                }
+              ]
+            },
+            "feature": {
+              "id": "material-gudang-matching",
+              "name": "Matching Material Dokumen Gudang"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-MAT-001",
+                "title": "Integritas 1 Dokumen Gudang = 1 Heading Kerja",
+                "desc": "Satu dokumen pengeluaran gudang hanya dapat dilekatkan pada satu aktivitas pemeliharaan dengan heading kerja yang sama (matching).",
+                "category": "Material"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Tidak boleh ada pengurangan stok manual tanpa transaksi."
+          },
+          {
+            "requirement": {
+              "id": "RN-MAT-MMG055",
+              "title": "Menarik alokasi pupuk, herbisida, fungisida, dan plastik okulasi yang telah dikeluarkan gudang.",
+              "role": "Mantri Bibitan",
+              "module": "Material & Bahan",
+              "feature": "Matching Material Dokumen Gudang",
+              "process": "Penarikan Alokasi Bahan Gudang",
+              "status": "Confirmed",
+              "input": "Nomor dokumen pengeluaran gudang.",
+              "validation": "Dokumen gudang berstatus APPROVED.",
+              "fallback": "-",
+              "output": "Dokumen material siap dicocokkan.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "09-material-bahan",
+              "featureId": "material-gudang-matching",
+              "ruleIds": [
+                "BR-MAT-001"
+              ],
+              "businessRule": "BR-MAT-001"
+            },
+            "module": {
+              "id": "09-material-bahan",
+              "order": "09",
+              "name": "Material & Bahan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Monitoring Stok Mata Entres & Dokumen Gudang",
+              "desc": "Stok dapat bertambah dari hasil Panen Mata Entres yang sudah terverifikasi. Stok digunakan untuk kebutuhan Okulasi (Grafting), Regrafting, permintaan, dan pengeluaran.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi), Petugas Gudang",
+              "features": [
+                {
+                  "id": "monitoring-stok-entres",
+                  "name": "Monitoring Mutasi Stok Mata Entres"
+                },
+                {
+                  "id": "material-gudang-matching",
+                  "name": "Matching Material Dokumen Gudang"
+                }
+              ]
+            },
+            "feature": {
+              "id": "material-gudang-matching",
+              "name": "Matching Material Dokumen Gudang"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-MAT-001",
+                "title": "Integritas 1 Dokumen Gudang = 1 Heading Kerja",
+                "desc": "Satu dokumen pengeluaran gudang hanya dapat dilekatkan pada satu aktivitas pemeliharaan dengan heading kerja yang sama (matching).",
+                "category": "Material"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Dokumen gudang berstatus APPROVED."
+          },
+          {
+            "requirement": {
+              "id": "RN-MAT-MMG056",
+              "title": "Validasi rekonsiliasi material memastikan kuantitas pemakaian tidak melebihi alokasi BKB.",
+              "role": "Mantri Bibitan",
+              "module": "Material & Bahan",
+              "feature": "Matching Material Dokumen Gudang",
+              "process": "Validasi Batas Maksimum Alokasi BKB",
+              "status": "Confirmed",
+              "input": "Heading dokumen gudang vs Heading aktivitas pemeliharaan.",
+              "validation": "Heading harus persis sama.",
+              "fallback": "Jika tidak matching: Dokumen ditolak sistem.",
+              "output": "Status kecocokan heading.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "09-material-bahan",
+              "featureId": "material-gudang-matching",
+              "ruleIds": [
+                "BR-MAT-001"
+              ],
+              "businessRule": "BR-MAT-001"
+            },
+            "module": {
+              "id": "09-material-bahan",
+              "order": "09",
+              "name": "Material & Bahan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Monitoring Stok Mata Entres & Dokumen Gudang",
+              "desc": "Stok dapat bertambah dari hasil Panen Mata Entres yang sudah terverifikasi. Stok digunakan untuk kebutuhan Okulasi (Grafting), Regrafting, permintaan, dan pengeluaran.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi), Petugas Gudang",
+              "features": [
+                {
+                  "id": "monitoring-stok-entres",
+                  "name": "Monitoring Mutasi Stok Mata Entres"
+                },
+                {
+                  "id": "material-gudang-matching",
+                  "name": "Matching Material Dokumen Gudang"
+                }
+              ]
+            },
+            "feature": {
+              "id": "material-gudang-matching",
+              "name": "Matching Material Dokumen Gudang"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-MAT-001",
+                "title": "Integritas 1 Dokumen Gudang = 1 Heading Kerja",
+                "desc": "Satu dokumen pengeluaran gudang hanya dapat dilekatkan pada satu aktivitas pemeliharaan dengan heading kerja yang sama (matching).",
+                "category": "Material"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Heading harus persis sama."
+          },
+          {
+            "requirement": {
+              "id": "RN-MAT-MMG057",
+              "title": "Notifikasi Mantri berhasil; dokumen material melekat pada rekam pemeliharaan.",
+              "role": "Mantri Bibitan",
+              "module": "Material & Bahan",
+              "feature": "Matching Material Dokumen Gudang",
+              "process": "Lekatkan Dokumen & Verifikasi",
+              "status": "Confirmed",
+              "input": "Dokumen matching.",
+              "validation": "Asisten Bibitan memverifikasi pemakaian material.",
+              "fallback": "-",
+              "output": "Material resmi terpakai.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "09-material-bahan",
+              "featureId": "material-gudang-matching",
+              "ruleIds": [
+                "BR-GLB-001"
+              ],
+              "businessRule": "BR-GLB-001"
+            },
+            "module": {
+              "id": "09-material-bahan",
+              "order": "09",
+              "name": "Material & Bahan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Monitoring Stok Mata Entres & Dokumen Gudang",
+              "desc": "Stok dapat bertambah dari hasil Panen Mata Entres yang sudah terverifikasi. Stok digunakan untuk kebutuhan Okulasi (Grafting), Regrafting, permintaan, dan pengeluaran.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi), Petugas Gudang",
+              "features": [
+                {
+                  "id": "monitoring-stok-entres",
+                  "name": "Monitoring Mutasi Stok Mata Entres"
+                },
+                {
+                  "id": "material-gudang-matching",
+                  "name": "Matching Material Dokumen Gudang"
+                }
+              ]
+            },
+            "feature": {
+              "id": "material-gudang-matching",
+              "name": "Matching Material Dokumen Gudang"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-001",
+                "title": "Mandatory Foto Dokumentasi + Timestamp",
+                "desc": "Setiap transaksi operasional Mantri Bibitan wajib menyertakan foto fisik dokumentasi dengan watermark timestamp ISO dan geolokasi GPS yang valid.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Asisten Bibitan memverifikasi pemakaian material."
+          },
+          {
+            "requirement": {
+              "id": "RN-MAT-MMG058",
+              "title": "Seluruh material dan mutasi stok tercatat rapi dan dapat dipertanggungjawabkan.",
+              "role": "Mantri Bibitan",
+              "module": "Material & Bahan",
+              "feature": "Matching Material Dokumen Gudang",
+              "process": "Material & Saldo Sah",
+              "status": "Confirmed",
+              "input": "Data tersinkron.",
+              "validation": "-",
+              "fallback": "-",
+              "output": "Ledger material sah.",
+              "version": 1,
+              "isArchived": false,
+              "revisionOf": null,
+              "moduleId": "09-material-bahan",
+              "featureId": "material-gudang-matching",
+              "ruleIds": [
+                "BR-GLB-003"
+              ],
+              "businessRule": "BR-GLB-003"
+            },
+            "module": {
+              "id": "09-material-bahan",
+              "order": "09",
+              "name": "Material & Bahan",
+              "roleId": "mantri-bibitan",
+              "subtitle": "Monitoring Stok Mata Entres & Dokumen Gudang",
+              "desc": "Stok dapat bertambah dari hasil Panen Mata Entres yang sudah terverifikasi. Stok digunakan untuk kebutuhan Okulasi (Grafting), Regrafting, permintaan, dan pengeluaran.",
+              "status": "Confirmed",
+              "primaryRole": "Mantri Bibitan",
+              "relatedRole": "Asisten Bibitan (Verifikasi), Petugas Gudang",
+              "features": [
+                {
+                  "id": "monitoring-stok-entres",
+                  "name": "Monitoring Mutasi Stok Mata Entres"
+                },
+                {
+                  "id": "material-gudang-matching",
+                  "name": "Matching Material Dokumen Gudang"
+                }
+              ]
+            },
+            "feature": {
+              "id": "material-gudang-matching",
+              "name": "Matching Material Dokumen Gudang"
+            },
+            "nodes": [],
+            "businessRules": [
+              {
+                "id": "BR-GLB-003",
+                "title": "Promosi ke Server Production",
+                "desc": "Hanya transaksi yang telah diverifikasi dan disetujui oleh Asisten Bibitan yang akan dikirim ke basis data Server Production.",
+                "category": "Global"
+              }
+            ],
+            "hasFlowNodeGap": true,
+            "hasRuleGap": false,
+            "classification": "gap",
+            "isFlowRequired": true,
+            "isGap": true,
+            "criteria": "Seluruh material dan mutasi stok tercatat rapi dan dapat dipertanggungjawabkan."
+          }
+        ]
+      },
+      {
+        "moduleId": "10-rekam-pemeliharaan",
+        "moduleName": "Rekam Pemeliharaan",
+        "moduleOrder": "10",
+        "totalGaps": 0,
+        "requirements": []
+      },
+      {
+        "moduleId": "11-pengeluaran",
+        "moduleName": "Pengeluaran",
+        "moduleOrder": "11",
+        "totalGaps": 0,
+        "requirements": []
+      }
+    ]
+  },
+  "detailedGaps": [
+    {
+      "id": "RN-OKL-004",
+      "title": "Mantri Bibitan mencatat identitas Juru Okulasi, jumlah okulasi sukses, dan penggunaan entres.",
+      "role": "Mantri Bibitan",
+      "module": "Okulasi",
+      "moduleId": "04-okulasi",
+      "feature": "Okulasi (Grafting)",
+      "featureId": "grafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-OKL-007",
+      "title": "Mata entres aktual menjadi pengurang stok setelah verifikasi.",
+      "role": "Mantri Bibitan",
+      "module": "Okulasi",
+      "moduleId": "04-okulasi",
+      "feature": "Okulasi (Grafting)",
+      "featureId": "grafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-007",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-OKL-009",
+      "title": "Sistem menghitung dan menampilkan estimasi perolehan mata entres.",
+      "role": "Mantri Bibitan",
+      "module": "Okulasi",
+      "moduleId": "04-okulasi",
+      "feature": "Okulasi (Grafting)",
+      "featureId": "grafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-006",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-OKL-010",
+      "title": "Mencatat kuantitas mata entres aktual yang berhasil ditempelkan.",
+      "role": "Mantri Bibitan",
+      "module": "Okulasi",
+      "moduleId": "04-okulasi",
+      "feature": "Okulasi (Grafting)",
+      "featureId": "grafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-006",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-OKL-012",
+      "title": "Mengirim berkas transaksi okulasi ke antrean verifikasi Asisten.",
+      "role": "Mantri Bibitan",
+      "module": "Okulasi",
+      "moduleId": "04-okulasi",
+      "feature": "Okulasi (Grafting)",
+      "featureId": "grafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-002",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-OKL-014",
+      "title": "Pengurangan stok mata entres terverifikasi pada Plot Entres + Clone.",
+      "role": "Sistem Database",
+      "module": "Okulasi",
+      "moduleId": "04-okulasi",
+      "feature": "Okulasi (Grafting)",
+      "featureId": "grafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-007",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-RCV-KSP019",
+      "title": "Mantri Bibitan mengeksekusi muat bibit kebun sepupu sesuai kuota SPB yang diteruskan Asisten.",
+      "role": "Mantri Bibitan",
+      "module": "Penerimaan",
+      "moduleId": "02-penerimaan",
+      "feature": "Penerimaan Bibit - Kebun Sepupu",
+      "featureId": "terima-kebun-sepupu",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-RCV-ME025",
+      "title": "Mantri Bibitan memotong dan mengemas mata entres kebun sepupu berdasarkan otorisasi Asisten.",
+      "role": "Mantri Bibitan",
+      "module": "Penerimaan",
+      "moduleId": "02-penerimaan",
+      "feature": "Penerimaan Mata Entres",
+      "featureId": "terima-mata-entres",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-CHK-RG036",
+      "title": "Pemeriksaan bersifat dinamis dan dapat dilakukan bertahap.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "moduleId": "05-pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "featureId": "periksa-regrafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-008",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-CHK-RG037",
+      "title": "Bibit gagal dapat ditentukan untuk Regrafting kembali atau Reject.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "moduleId": "05-pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "featureId": "periksa-regrafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-008",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-CHK-RG038",
+      "title": "Validasi fisik QR Code Batch yang diperiksa.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "moduleId": "05-pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "featureId": "periksa-regrafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-002",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-CHK-RG039",
+      "title": "Menginput jumlah batang yang diperiksa pada sesi ini (misal 600 dari 1.000).",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "moduleId": "05-pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "featureId": "periksa-regrafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-CHK-RG040",
+      "title": "Mencatat jumlah mata tempelan yang hijau (berhasil) vs hitam/mati (gagal).",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "moduleId": "05-pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "featureId": "periksa-regrafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-CHK-RG041",
+      "title": "Mantri menentukan tindak lanjut bibit yang gagal: Regrafting kembali atau Reject.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "moduleId": "05-pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "featureId": "periksa-regrafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-008",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-CHK-RG042",
+      "title": "Foto bukti fisik mata tempelan berhasil dan gagal beserta watermark.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "moduleId": "05-pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "featureId": "periksa-regrafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-CHK-RG043",
+      "title": "Mengirim hasil pemeriksaan ke Asisten Bibitan untuk disetujui.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "moduleId": "05-pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "featureId": "periksa-regrafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-002",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-CHK-RG044",
+      "title": "Pemeriksaan tuntas; bibit berhasil lanjut tumbuh, bibit gagal siap di-Regrafting kembali atau di-Reject.",
+      "role": "Mantri Bibitan",
+      "module": "Pemeriksaan",
+      "moduleId": "05-pemeriksaan",
+      "feature": "Pemeriksaan Regrafting",
+      "featureId": "periksa-regrafting",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-003",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-ENT-TOP045",
+      "title": "Aktivitas topping menghitung rasio Perisai/Kayu dan Perisai/Meter.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "moduleId": "07-kebun-entres",
+      "feature": "Topping Plot Entres",
+      "featureId": "entres-topping",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-ENT-TOP046",
+      "title": "Validasi QR Code plang fisik plot entres yang dirawat.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "moduleId": "07-kebun-entres",
+      "feature": "Topping Plot Entres",
+      "featureId": "entres-topping",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-002",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-ENT-TOP047",
+      "title": "Sistem menyajikan data clone dan jumlah pokok tanaman induk per plot.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "moduleId": "07-kebun-entres",
+      "feature": "Topping Plot Entres",
+      "featureId": "entres-topping",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-OKL-005",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-ENT-TOP048",
+      "title": "Mantri menginput Tanggal, Jumlah Kayu Okulasi, Total Panjang Meter, dan Jumlah Perisai.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "moduleId": "07-kebun-entres",
+      "feature": "Topping Plot Entres",
+      "featureId": "entres-topping",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-ENT-TOP049",
+      "title": "Sistem menghitung Rata-rata Perisai/Kayu dan Rata-rata Perisai/Meter.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "moduleId": "07-kebun-entres",
+      "feature": "Topping Plot Entres",
+      "featureId": "entres-topping",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-ENT-TOP050",
+      "title": "Foto dokumentasi plot setelah ditopping beserta timestamp, diteruskan ke Asisten Bibitan.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "moduleId": "07-kebun-entres",
+      "feature": "Topping Plot Entres",
+      "featureId": "entres-topping",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001, BR-GLB-002",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-ENT-TOP051",
+      "title": "Plot entres terawat optimal dan siap menghasilkan kayu entres berkualitas.",
+      "role": "Mantri Bibitan",
+      "module": "Kebun Entres",
+      "moduleId": "07-kebun-entres",
+      "feature": "Topping Plot Entres",
+      "featureId": "entres-topping",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-003",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-MAT-MMG052",
+      "title": "Dokumen gudang material wajib matching 1 Heading Kerja pemeliharaan.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "moduleId": "09-material-bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "featureId": "material-gudang-matching",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-MAT-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-MAT-MMG053",
+      "title": "Memilih rentang waktu dan jenis material gudang untuk ditinjau rekonsiliasinya.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "moduleId": "09-material-bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "featureId": "material-gudang-matching",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-MAT-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-MAT-MMG054",
+      "title": "Pencocokan nomor BKB material gudang terhadap realisasi aplikasi pemeliharaan berbasis Heading Kerja.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "moduleId": "09-material-bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "featureId": "material-gudang-matching",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-MAT-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-MAT-MMG055",
+      "title": "Menarik alokasi pupuk, herbisida, fungisida, dan plastik okulasi yang telah dikeluarkan gudang.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "moduleId": "09-material-bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "featureId": "material-gudang-matching",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-MAT-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-MAT-MMG056",
+      "title": "Validasi rekonsiliasi material memastikan kuantitas pemakaian tidak melebihi alokasi BKB.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "moduleId": "09-material-bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "featureId": "material-gudang-matching",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-MAT-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-MAT-MMG057",
+      "title": "Notifikasi Mantri berhasil; dokumen material melekat pada rekam pemeliharaan.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "moduleId": "09-material-bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "featureId": "material-gudang-matching",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-001",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    },
+    {
+      "id": "RN-MAT-MMG058",
+      "title": "Seluruh material dan mutasi stok tercatat rapi dan dapat dipertanggungjawabkan.",
+      "role": "Mantri Bibitan",
+      "module": "Material & Bahan",
+      "moduleId": "09-material-bahan",
+      "feature": "Matching Material Dokumen Gudang",
+      "featureId": "material-gudang-matching",
+      "reqStatus": "Confirmed",
+      "flowStatus": "Uncovered (No dedicated visual step node)",
+      "businessRule": "BR-GLB-003",
+      "nodeId": "-",
+      "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+    }
+  ],
+  "gapsByModule": {
+    "01-presensi": {
+      "moduleId": "01-presensi",
+      "moduleName": "Presensi",
+      "moduleOrder": "01",
+      "totalGaps": 0,
+      "gaps": []
+    },
+    "02-penerimaan": {
+      "moduleId": "02-penerimaan",
+      "moduleName": "Penerimaan",
+      "moduleOrder": "02",
+      "totalGaps": 2,
+      "gaps": [
+        {
+          "id": "RN-RCV-KSP019",
+          "title": "Mantri Bibitan mengeksekusi muat bibit kebun sepupu sesuai kuota SPB yang diteruskan Asisten.",
+          "role": "Mantri Bibitan",
+          "module": "Penerimaan",
+          "moduleId": "02-penerimaan",
+          "feature": "Penerimaan Bibit - Kebun Sepupu",
+          "featureId": "terima-kebun-sepupu",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-RCV-ME025",
+          "title": "Mantri Bibitan memotong dan mengemas mata entres kebun sepupu berdasarkan otorisasi Asisten.",
+          "role": "Mantri Bibitan",
+          "module": "Penerimaan",
+          "moduleId": "02-penerimaan",
+          "feature": "Penerimaan Mata Entres",
+          "featureId": "terima-mata-entres",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        }
+      ]
+    },
+    "03-penyemaian": {
+      "moduleId": "03-penyemaian",
+      "moduleName": "Penyemaian",
+      "moduleOrder": "03",
+      "totalGaps": 0,
+      "gaps": []
+    },
+    "04-okulasi": {
+      "moduleId": "04-okulasi",
+      "moduleName": "Okulasi",
+      "moduleOrder": "04",
+      "totalGaps": 6,
+      "gaps": [
+        {
+          "id": "RN-OKL-004",
+          "title": "Mantri Bibitan mencatat identitas Juru Okulasi, jumlah okulasi sukses, dan penggunaan entres.",
+          "role": "Mantri Bibitan",
+          "module": "Okulasi",
+          "moduleId": "04-okulasi",
+          "feature": "Okulasi (Grafting)",
+          "featureId": "grafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-OKL-007",
+          "title": "Mata entres aktual menjadi pengurang stok setelah verifikasi.",
+          "role": "Mantri Bibitan",
+          "module": "Okulasi",
+          "moduleId": "04-okulasi",
+          "feature": "Okulasi (Grafting)",
+          "featureId": "grafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-007",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-OKL-009",
+          "title": "Sistem menghitung dan menampilkan estimasi perolehan mata entres.",
+          "role": "Mantri Bibitan",
+          "module": "Okulasi",
+          "moduleId": "04-okulasi",
+          "feature": "Okulasi (Grafting)",
+          "featureId": "grafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-006",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-OKL-010",
+          "title": "Mencatat kuantitas mata entres aktual yang berhasil ditempelkan.",
+          "role": "Mantri Bibitan",
+          "module": "Okulasi",
+          "moduleId": "04-okulasi",
+          "feature": "Okulasi (Grafting)",
+          "featureId": "grafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-006",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-OKL-012",
+          "title": "Mengirim berkas transaksi okulasi ke antrean verifikasi Asisten.",
+          "role": "Mantri Bibitan",
+          "module": "Okulasi",
+          "moduleId": "04-okulasi",
+          "feature": "Okulasi (Grafting)",
+          "featureId": "grafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-002",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-OKL-014",
+          "title": "Pengurangan stok mata entres terverifikasi pada Plot Entres + Clone.",
+          "role": "Sistem Database",
+          "module": "Okulasi",
+          "moduleId": "04-okulasi",
+          "feature": "Okulasi (Grafting)",
+          "featureId": "grafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-007",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        }
+      ]
+    },
+    "05-pemeriksaan": {
+      "moduleId": "05-pemeriksaan",
+      "moduleName": "Pemeriksaan",
+      "moduleOrder": "05",
+      "totalGaps": 9,
+      "gaps": [
+        {
+          "id": "RN-CHK-RG036",
+          "title": "Pemeriksaan bersifat dinamis dan dapat dilakukan bertahap.",
+          "role": "Mantri Bibitan",
+          "module": "Pemeriksaan",
+          "moduleId": "05-pemeriksaan",
+          "feature": "Pemeriksaan Regrafting",
+          "featureId": "periksa-regrafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-008",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-CHK-RG037",
+          "title": "Bibit gagal dapat ditentukan untuk Regrafting kembali atau Reject.",
+          "role": "Mantri Bibitan",
+          "module": "Pemeriksaan",
+          "moduleId": "05-pemeriksaan",
+          "feature": "Pemeriksaan Regrafting",
+          "featureId": "periksa-regrafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-008",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-CHK-RG038",
+          "title": "Validasi fisik QR Code Batch yang diperiksa.",
+          "role": "Mantri Bibitan",
+          "module": "Pemeriksaan",
+          "moduleId": "05-pemeriksaan",
+          "feature": "Pemeriksaan Regrafting",
+          "featureId": "periksa-regrafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-002",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-CHK-RG039",
+          "title": "Menginput jumlah batang yang diperiksa pada sesi ini (misal 600 dari 1.000).",
+          "role": "Mantri Bibitan",
+          "module": "Pemeriksaan",
+          "moduleId": "05-pemeriksaan",
+          "feature": "Pemeriksaan Regrafting",
+          "featureId": "periksa-regrafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-CHK-RG040",
+          "title": "Mencatat jumlah mata tempelan yang hijau (berhasil) vs hitam/mati (gagal).",
+          "role": "Mantri Bibitan",
+          "module": "Pemeriksaan",
+          "moduleId": "05-pemeriksaan",
+          "feature": "Pemeriksaan Regrafting",
+          "featureId": "periksa-regrafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-CHK-RG041",
+          "title": "Mantri menentukan tindak lanjut bibit yang gagal: Regrafting kembali atau Reject.",
+          "role": "Mantri Bibitan",
+          "module": "Pemeriksaan",
+          "moduleId": "05-pemeriksaan",
+          "feature": "Pemeriksaan Regrafting",
+          "featureId": "periksa-regrafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-008",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-CHK-RG042",
+          "title": "Foto bukti fisik mata tempelan berhasil dan gagal beserta watermark.",
+          "role": "Mantri Bibitan",
+          "module": "Pemeriksaan",
+          "moduleId": "05-pemeriksaan",
+          "feature": "Pemeriksaan Regrafting",
+          "featureId": "periksa-regrafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-CHK-RG043",
+          "title": "Mengirim hasil pemeriksaan ke Asisten Bibitan untuk disetujui.",
+          "role": "Mantri Bibitan",
+          "module": "Pemeriksaan",
+          "moduleId": "05-pemeriksaan",
+          "feature": "Pemeriksaan Regrafting",
+          "featureId": "periksa-regrafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-002",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-CHK-RG044",
+          "title": "Pemeriksaan tuntas; bibit berhasil lanjut tumbuh, bibit gagal siap di-Regrafting kembali atau di-Reject.",
+          "role": "Mantri Bibitan",
+          "module": "Pemeriksaan",
+          "moduleId": "05-pemeriksaan",
+          "feature": "Pemeriksaan Regrafting",
+          "featureId": "periksa-regrafting",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-003",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        }
+      ]
+    },
+    "06-penyeleksian": {
+      "moduleId": "06-penyeleksian",
+      "moduleName": "Penyeleksian",
+      "moduleOrder": "06",
+      "totalGaps": 0,
+      "gaps": []
+    },
+    "07-kebun-entres": {
+      "moduleId": "07-kebun-entres",
+      "moduleName": "Kebun Entres",
+      "moduleOrder": "07",
+      "totalGaps": 7,
+      "gaps": [
+        {
+          "id": "RN-ENT-TOP045",
+          "title": "Aktivitas topping menghitung rasio Perisai/Kayu dan Perisai/Meter.",
+          "role": "Mantri Bibitan",
+          "module": "Kebun Entres",
+          "moduleId": "07-kebun-entres",
+          "feature": "Topping Plot Entres",
+          "featureId": "entres-topping",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-ENT-TOP046",
+          "title": "Validasi QR Code plang fisik plot entres yang dirawat.",
+          "role": "Mantri Bibitan",
+          "module": "Kebun Entres",
+          "moduleId": "07-kebun-entres",
+          "feature": "Topping Plot Entres",
+          "featureId": "entres-topping",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-002",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-ENT-TOP047",
+          "title": "Sistem menyajikan data clone dan jumlah pokok tanaman induk per plot.",
+          "role": "Mantri Bibitan",
+          "module": "Kebun Entres",
+          "moduleId": "07-kebun-entres",
+          "feature": "Topping Plot Entres",
+          "featureId": "entres-topping",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-OKL-005",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-ENT-TOP048",
+          "title": "Mantri menginput Tanggal, Jumlah Kayu Okulasi, Total Panjang Meter, dan Jumlah Perisai.",
+          "role": "Mantri Bibitan",
+          "module": "Kebun Entres",
+          "moduleId": "07-kebun-entres",
+          "feature": "Topping Plot Entres",
+          "featureId": "entres-topping",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-ENT-TOP049",
+          "title": "Sistem menghitung Rata-rata Perisai/Kayu dan Rata-rata Perisai/Meter.",
+          "role": "Mantri Bibitan",
+          "module": "Kebun Entres",
+          "moduleId": "07-kebun-entres",
+          "feature": "Topping Plot Entres",
+          "featureId": "entres-topping",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-ENT-TOP050",
+          "title": "Foto dokumentasi plot setelah ditopping beserta timestamp, diteruskan ke Asisten Bibitan.",
+          "role": "Mantri Bibitan",
+          "module": "Kebun Entres",
+          "moduleId": "07-kebun-entres",
+          "feature": "Topping Plot Entres",
+          "featureId": "entres-topping",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001, BR-GLB-002",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-ENT-TOP051",
+          "title": "Plot entres terawat optimal dan siap menghasilkan kayu entres berkualitas.",
+          "role": "Mantri Bibitan",
+          "module": "Kebun Entres",
+          "moduleId": "07-kebun-entres",
+          "feature": "Topping Plot Entres",
+          "featureId": "entres-topping",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-003",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        }
+      ]
+    },
+    "08-panen-mata-entres": {
+      "moduleId": "08-panen-mata-entres",
+      "moduleName": "Panen Mata Entres",
+      "moduleOrder": "08",
+      "totalGaps": 0,
+      "gaps": []
+    },
+    "09-material-bahan": {
+      "moduleId": "09-material-bahan",
+      "moduleName": "Material & Bahan",
+      "moduleOrder": "09",
+      "totalGaps": 7,
+      "gaps": [
+        {
+          "id": "RN-MAT-MMG052",
+          "title": "Dokumen gudang material wajib matching 1 Heading Kerja pemeliharaan.",
+          "role": "Mantri Bibitan",
+          "module": "Material & Bahan",
+          "moduleId": "09-material-bahan",
+          "feature": "Matching Material Dokumen Gudang",
+          "featureId": "material-gudang-matching",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-MAT-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-MAT-MMG053",
+          "title": "Memilih rentang waktu dan jenis material gudang untuk ditinjau rekonsiliasinya.",
+          "role": "Mantri Bibitan",
+          "module": "Material & Bahan",
+          "moduleId": "09-material-bahan",
+          "feature": "Matching Material Dokumen Gudang",
+          "featureId": "material-gudang-matching",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-MAT-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-MAT-MMG054",
+          "title": "Pencocokan nomor BKB material gudang terhadap realisasi aplikasi pemeliharaan berbasis Heading Kerja.",
+          "role": "Mantri Bibitan",
+          "module": "Material & Bahan",
+          "moduleId": "09-material-bahan",
+          "feature": "Matching Material Dokumen Gudang",
+          "featureId": "material-gudang-matching",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-MAT-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-MAT-MMG055",
+          "title": "Menarik alokasi pupuk, herbisida, fungisida, dan plastik okulasi yang telah dikeluarkan gudang.",
+          "role": "Mantri Bibitan",
+          "module": "Material & Bahan",
+          "moduleId": "09-material-bahan",
+          "feature": "Matching Material Dokumen Gudang",
+          "featureId": "material-gudang-matching",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-MAT-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-MAT-MMG056",
+          "title": "Validasi rekonsiliasi material memastikan kuantitas pemakaian tidak melebihi alokasi BKB.",
+          "role": "Mantri Bibitan",
+          "module": "Material & Bahan",
+          "moduleId": "09-material-bahan",
+          "feature": "Matching Material Dokumen Gudang",
+          "featureId": "material-gudang-matching",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-MAT-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-MAT-MMG057",
+          "title": "Notifikasi Mantri berhasil; dokumen material melekat pada rekam pemeliharaan.",
+          "role": "Mantri Bibitan",
+          "module": "Material & Bahan",
+          "moduleId": "09-material-bahan",
+          "feature": "Matching Material Dokumen Gudang",
+          "featureId": "material-gudang-matching",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-001",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        },
+        {
+          "id": "RN-MAT-MMG058",
+          "title": "Seluruh material dan mutasi stok tercatat rapi dan dapat dipertanggungjawabkan.",
+          "role": "Mantri Bibitan",
+          "module": "Material & Bahan",
+          "moduleId": "09-material-bahan",
+          "feature": "Matching Material Dokumen Gudang",
+          "featureId": "material-gudang-matching",
+          "reqStatus": "Confirmed",
+          "flowStatus": "Uncovered (No dedicated visual step node)",
+          "businessRule": "BR-GLB-003",
+          "nodeId": "-",
+          "reason": "Requirement fungsional validasi/input spesifik yang dijalankan dalam alur form transaksi, belum memiliki visual step node tersendiri pada diagram alur."
+        }
+      ]
+    },
+    "10-rekam-pemeliharaan": {
+      "moduleId": "10-rekam-pemeliharaan",
+      "moduleName": "Rekam Pemeliharaan",
+      "moduleOrder": "10",
+      "totalGaps": 0,
+      "gaps": []
+    },
+    "11-pengeluaran": {
+      "moduleId": "11-pengeluaran",
+      "moduleName": "Pengeluaran",
+      "moduleOrder": "11",
+      "totalGaps": 0,
+      "gaps": []
+    }
+  },
+  "legacyContamination": [],
+  "crossFlowEdges": 5,
+  "businessRulesLinked": "149/149"
+}

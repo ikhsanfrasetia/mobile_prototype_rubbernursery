@@ -14,6 +14,7 @@
  * - 11 Modules All-in-One View + Single Module Deep-dive + Right Detail Panel
  */
 
+import { processMappingApi } from './process-mapping-api.js';
 import {
   initProjectDataStore,
   getActiveStore,
@@ -296,12 +297,42 @@ export async function renderProcessMappingPortal(container) {
   if (!container) return;
 
   // Initialize store if not ready
-  let store;
-  try {
-    store = getActiveStore();
-  } catch (err) {
-    container.innerHTML = '<div style="padding: 48px; text-align: center; color: #64748b; font-size: 0.95rem;">Memuat data resmi proses bisnis pembibitan...</div>';
-    store = await initProjectDataStore();
+  let store = getActiveStore();
+  if (!store) {
+    container.innerHTML = `
+      <div class="pm-loading-wrapper" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 420px; padding: 48px; text-align: center; color: #475569;">
+        <div class="pm-spinner" style="width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top: 3px solid #116834; border-radius: 50%; animation: pm-spin 0.8s linear infinite; margin-bottom: 16px;"></div>
+        <div style="font-weight: 600; font-size: 1rem; color: #0f172a; margin-bottom: 4px;">Memuat Pemetaan Alur Proses Aplikasi...</div>
+        <div style="font-size: 0.825rem; color: #64748b;">Menghubungkan ke REST API (/api/process-mapping/data)</div>
+      </div>
+      <style>
+        @keyframes pm-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      </style>
+    `;
+    try {
+      store = await initProjectDataStore();
+    } catch (err) {
+      console.error('❌ [ProcessMapping] Gagal memuat data dari REST API:', err);
+      container.innerHTML = `
+        <div class="pm-error-wrapper" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 420px; padding: 48px; text-align: center;">
+          <div style="width: 52px; height: 52px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; margin-bottom: 16px;">⚠️</div>
+          <div style="font-weight: 700; font-size: 1.1rem; color: #991b1b; margin-bottom: 8px;">Gagal Memuat Data dari API</div>
+          <div style="font-size: 0.875rem; color: #475569; max-width: 520px; line-height: 1.5; margin-bottom: 20px;">
+            Terjadi kesalahan saat mengambil data proses bisnis dari server backend (<code>/api/process-mapping/data</code>).
+            <div style="margin-top: 10px; font-family: monospace; font-size: 0.8rem; background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 12px; border-radius: 6px; color: #b91c1c; text-align: left; word-break: break-all;">
+              ${escapeHtml(err.message || 'Network / Server Error')}
+            </div>
+          </div>
+          <button type="button" class="pm-btn-retry" id="pm-btn-retry-load" style="background: #116834; color: #ffffff; border: none; padding: 8px 24px; border-radius: 6px; font-weight: 600; font-size: 0.875rem; cursor: pointer; transition: background 0.2s;">
+            🔄 Coba Lagi
+          </button>
+        </div>
+      `;
+      container.querySelector('#pm-btn-retry-load')?.addEventListener('click', () => {
+        renderProcessMappingPortal(container);
+      });
+      return;
+    }
   }
 
   // Detect Customer Mode from URL parameter (?mode=customer)
@@ -438,8 +469,8 @@ function renderManageToolbar(metadata, isDraftActive) {
       ${isManageMode
       ? `
           <div class="pm-manage-actions">
-            <button type="button" class="pm-btn-sm pm-btn-primary" id="pm-btn-save-draft" title="Simpan ke draf lokal dan perbarui pratinjau seketika">
-              Simpan Draf
+            <button type="button" class="pm-btn-sm pm-btn-primary" id="pm-btn-manage-mapping" title="Kelola relasi keterlacakan (Requirement ke Flow / Rule)">
+              + Kelola Mapping
             </button>
             <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-btn-export-data" title="Ekspor file process-mapping-data.json untuk pembaruan source data">
               Export Project Data
@@ -447,8 +478,8 @@ function renderManageToolbar(metadata, isDraftActive) {
             <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-btn-import-data" title="Impor file data JSON ke editor state">
               Import Data
             </button>
-            <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-reset-draft" title="Batalkan draf dan muat ulang data resmi dari process-mapping-data.json">
-              Reset Draf
+            <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-reset-draft" title="Muat ulang data resmi dari API process-mapping-data.json">
+              Refresh Data API
             </button>
           </div>
         `
@@ -1047,50 +1078,83 @@ function renderPagination(currentPage, pageSize, totalItems, type = 'req') {
 }
 
 function renderRequirementsView(reqs, modules, store, roleObj) {
-  const allReqs = reqs || store?.requirements || [];
-  // Active requirements are those not archived and not superseded (superseded versions are in revision history)
-  const activeReqs = allReqs.filter((r) => !r.isArchived && !r.isSuperseded);
+  const currentStore = store || getActiveStore();
+  const allReqs = (currentStore?.requirements || reqs || []);
+  const archivedReqs = allReqs.filter((r) => r.isArchived);
+  const activeUnsupersededReqs = allReqs.filter((r) => !r.isArchived && !r.isSuperseded);
+  
+  const isViewingArchived = reqFilterStatus.toUpperCase() === 'ARCHIVED';
+  const targetReqs = isViewingArchived ? archivedReqs : activeUnsupersededReqs;
 
-  // Available roles for filter
-  const roles = (roleObj && roleObj.id !== 'mantri-bibitan') ? [roleObj] : (store?.roles || []);
-  const availableModules = modules || store?.modules || [];
+  // Available roles for filter (all master roles)
+  const roles = currentStore?.roles || [];
+  const availableModules = currentStore?.modules || modules || [];
 
-  // Filter Feature options based on current reqFilterModule
-  const selectedModObj = availableModules.find((m) => m.id === reqFilterModule || m.name === reqFilterModule);
-  const availableFeatures = selectedModObj ? (selectedModObj.features || []) : [];
+  // Filter Feature options: if a specific module is selected, list its features; otherwise list all features across modules
+  let availableFeatures = [];
+  if (reqFilterModule !== 'ALL') {
+    const selectedModObj = availableModules.find((m) => m.id === reqFilterModule || m.name.toLowerCase() === reqFilterModule.toLowerCase());
+    availableFeatures = selectedModObj ? (selectedModObj.features || []) : [];
+  } else {
+    const featMap = new Map();
+    availableModules.forEach((m) => {
+      (m.features || []).forEach((f) => {
+        if (!featMap.has(f.id)) featMap.set(f.id, f);
+      });
+    });
+    availableFeatures = Array.from(featMap.values());
+  }
 
-  // Apply filters
-  const filteredReqs = activeReqs.filter((r) => {
-    // Search query
+  // Apply filters with AND combination
+  const filteredReqs = targetReqs.filter((r) => {
+    // 1. Search query
     const q = reqSearchQuery.toLowerCase().trim();
     const matchSearch = !q ||
       (r.id && r.id.toLowerCase().includes(q)) ||
       (r.title && r.title.toLowerCase().includes(q)) ||
       (r.process && r.process.toLowerCase().includes(q)) ||
-      (r.acceptanceCriteria && r.acceptanceCriteria.toLowerCase().includes(q)) ||
+      (r.acceptanceCriteria && (
+        Array.isArray(r.acceptanceCriteria)
+          ? r.acceptanceCriteria.some((ac) => String(ac).toLowerCase().includes(q))
+          : String(r.acceptanceCriteria).toLowerCase().includes(q)
+      )) ||
+      (r.description && r.description.toLowerCase().includes(q)) ||
       (r.role && r.role.toLowerCase().includes(q)) ||
+      (r.roleId && r.roleId.toLowerCase().includes(q)) ||
       (r.module && r.module.toLowerCase().includes(q)) ||
+      (r.moduleId && r.moduleId.toLowerCase().includes(q)) ||
       (r.feature && r.feature.toLowerCase().includes(q)) ||
-      (r.businessRule && r.businessRule.toLowerCase().includes(q));
+      (r.featureId && r.featureId.toLowerCase().includes(q)) ||
+      (r.businessRule && r.businessRule.toLowerCase().includes(q)) ||
+      (r.ruleIds && Array.isArray(r.ruleIds) && r.ruleIds.some((ruleId) => String(ruleId).toLowerCase().includes(q)));
 
-    // Role filter
-    const matchRole = reqFilterRole === 'ALL' || r.role === reqFilterRole;
+    // 2. Role filter (case-insensitive, match role name or role id)
+    const matchRole = reqFilterRole === 'ALL' ||
+      (r.role && r.role.toLowerCase() === reqFilterRole.toLowerCase()) ||
+      (r.roleId && r.roleId.toLowerCase() === reqFilterRole.toLowerCase());
 
-    // Module filter
-    const matchModule = reqFilterModule === 'ALL' || r.module === reqFilterModule || r.moduleId === reqFilterModule;
+    // 3. Module filter (match moduleId or module name)
+    const matchModule = reqFilterModule === 'ALL' ||
+      (r.moduleId && r.moduleId.toLowerCase() === reqFilterModule.toLowerCase()) ||
+      (r.module && r.module.toLowerCase() === reqFilterModule.toLowerCase());
 
-    // Feature filter
-    const matchFeature = reqFilterFeature === 'ALL' || r.feature === reqFilterFeature || r.featureId === reqFilterFeature;
+    // 4. Feature filter (match featureId or feature name)
+    const matchFeature = reqFilterFeature === 'ALL' ||
+      (r.featureId && r.featureId.toLowerCase() === reqFilterFeature.toLowerCase()) ||
+      (r.feature && r.feature.toLowerCase() === reqFilterFeature.toLowerCase());
 
-    // Status filter
-    const matchStatus = reqFilterStatus === 'ALL' || r.status === reqFilterStatus;
+    // 5. Status filter (case-insensitive)
+    const matchStatus = reqFilterStatus === 'ALL' || reqFilterStatus === 'ARCHIVED' ||
+      (r.status && r.status.toUpperCase() === reqFilterStatus.toUpperCase());
 
     return matchSearch && matchRole && matchModule && matchFeature && matchStatus;
   });
 
-  const totalActive = activeReqs.length;
-  const confirmedCount = activeReqs.filter((r) => r.status === 'Confirmed').length;
-  const draftCount = activeReqs.filter((r) => r.status === 'Draft').length;
+  const totalActive = activeUnsupersededReqs.length;
+  const totalFiltered = filteredReqs.length;
+  const confirmedCount = activeUnsupersededReqs.filter((r) => (r.status || '').toUpperCase() === 'CONFIRMED').length;
+  const draftCount = activeUnsupersededReqs.filter((r) => (r.status || '').toUpperCase() === 'DRAFT').length;
+  const confirmedFiltered = filteredReqs.filter((r) => (r.status || '').toUpperCase() === 'CONFIRMED').length;
   const hasFiltersActive = Boolean(reqSearchQuery || reqFilterRole !== 'ALL' || reqFilterModule !== 'ALL' || reqFilterFeature !== 'ALL' || reqFilterStatus !== 'ALL');
 
   // Pagination calculation
@@ -1103,10 +1167,12 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
   return `
     <div class="pm-req-manager-container">
       <div class="pm-req-table-card" style="margin-top: 0;">
-        <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div class="pm-req-table-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span class="pm-req-table-title" style="font-size:1.05rem;">Requirement Master</span>
-            <span class="pm-req-count-badge" title="Total active requirements">${totalActive} Active</span>
-            <span class="pm-req-count-badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;" title="Confirmed requirements">${confirmedCount} Confirmed</span>
+            <span class="pm-req-count-badge" title="Total requirement terfilter">${hasFiltersActive ? `${totalFiltered} dari ${isViewingArchived ? archivedReqs.length : totalActive} ${isViewingArchived ? 'Archived' : 'Active'}` : `${totalActive} Active`}</span>
+            ${!isViewingArchived ? `<span class="pm-req-count-badge" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;" title="Confirmed requirements">${confirmedFiltered} Confirmed</span>` : ''}
+            ${archivedReqs.length > 0 ? `<span class="pm-req-count-badge" style="background:#fef2f2; color:#991b1b; border-color:#fecaca;" title="Archived requirements">${archivedReqs.length} Terarsip</span>` : ''}
           </div>
           ${isManageMode
       ? `
@@ -1127,29 +1193,31 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
             type="text"
             id="pm-req-search-input"
             class="pm-req-search-input"
-            placeholder="Cari ID, requirement, proses, acceptance criteria..."
+            placeholder="Cari ID, requirement, proses, acceptance criteria, role, modul, fitur..."
             value="${escapeHtml(reqSearchQuery)}"
           />
 
           <select id="pm-req-filter-role" class="pm-req-filter-select" title="Filter berdasarkan Role">
             <option value="ALL" ${reqFilterRole === 'ALL' ? 'selected' : ''}>Semua Role</option>
-            ${roles.map((ro) => `<option value="${ro.name}" ${reqFilterRole === ro.name ? 'selected' : ''}>${ro.name}</option>`).join('')}
+            ${roles.map((ro) => `<option value="${escapeHtml(ro.name)}" ${reqFilterRole.toLowerCase() === ro.name.toLowerCase() || reqFilterRole.toLowerCase() === ro.id.toLowerCase() ? 'selected' : ''}>${escapeHtml(ro.name)}</option>`).join('')}
           </select>
 
           <select id="pm-req-filter-module" class="pm-req-filter-select" title="Filter berdasarkan Modul">
             <option value="ALL" ${reqFilterModule === 'ALL' ? 'selected' : ''}>Semua Modul</option>
-            ${availableModules.map((m) => `<option value="${m.id}" ${reqFilterModule === m.id || reqFilterModule === m.name ? 'selected' : ''}>[${m.order}] ${m.name}</option>`).join('')}
+            ${availableModules.map((m) => `<option value="${m.id}" ${reqFilterModule === m.id || reqFilterModule.toLowerCase() === m.name.toLowerCase() ? 'selected' : ''}>[${m.order}] ${escapeHtml(m.name)}</option>`).join('')}
           </select>
 
-          <select id="pm-req-filter-feature" class="pm-req-filter-select" title="Filter berdasarkan Fitur" ${availableFeatures.length === 0 ? 'disabled' : ''}>
+          <select id="pm-req-filter-feature" class="pm-req-filter-select" title="Filter berdasarkan Fitur">
             <option value="ALL" ${reqFilterFeature === 'ALL' ? 'selected' : ''}>Semua Fitur</option>
-            ${availableFeatures.map((f) => `<option value="${f.id}" ${reqFilterFeature === f.id || reqFilterFeature === f.name ? 'selected' : ''}>${f.name}</option>`).join('')}
+            ${availableFeatures.map((f) => `<option value="${f.id}" ${reqFilterFeature === f.id || reqFilterFeature.toLowerCase() === f.name.toLowerCase() ? 'selected' : ''}>${escapeHtml(f.name)}</option>`).join('')}
           </select>
 
-          <select id="pm-req-filter-status" class="pm-req-filter-select" style="min-width:130px;" title="Filter Status">
-            <option value="ALL" ${reqFilterStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
-            <option value="Confirmed" ${reqFilterStatus === 'Confirmed' ? 'selected' : ''}>Confirmed (${confirmedCount})</option>
-          </select>elect>
+          <select id="pm-req-filter-status" class="pm-req-filter-select" style="min-width:140px;" title="Filter Status">
+            <option value="ALL" ${reqFilterStatus === 'ALL' ? 'selected' : ''}>Semua Status Aktif (${totalActive})</option>
+            <option value="CONFIRMED" ${reqFilterStatus.toUpperCase() === 'CONFIRMED' ? 'selected' : ''}>CONFIRMED (${confirmedCount})</option>
+            <option value="DRAFT" ${reqFilterStatus.toUpperCase() === 'DRAFT' ? 'selected' : ''}>DRAFT (${draftCount})</option>
+            <option value="ARCHIVED" ${reqFilterStatus.toUpperCase() === 'ARCHIVED' ? 'selected' : ''}>Riwayat Arsip (${archivedReqs.length})</option>
+          </select>
 
           ${hasFiltersActive
       ? `
@@ -1188,10 +1256,10 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
         .map((r) => {
           const nodeUsage = checkRequirementNodeUsage(r.id);
           const isConfirmed = r.status === 'Confirmed';
-          const isDraftRevision = r.version && r.version > 1;
+          const isArchived = Boolean(r.isArchived);
 
           return `
-                  <tr class="pm-req-full-row" data-req-id="${r.id}" data-mod-name="${r.module}">
+                  <tr class="pm-req-full-row ${isArchived ? 'is-archived-row' : ''}" data-req-id="${r.id}" data-mod-name="${r.module}" style="${isArchived ? 'opacity:0.75; background:#fafafa;' : ''}">
                     <td>
                       <code>${r.id}</code>
                       <div>
@@ -1222,9 +1290,10 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
             }
                     </td>
                     <td style="text-align:center;">
-                      <span class="pm-badge-confirmed" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:700;">
-                        CONFIRMED
-                      </span>
+                      ${isArchived
+                        ? `<span class="pm-badge-draft" style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; font-weight:700;">ARCHIVED</span>`
+                        : `<span class="pm-badge-confirmed" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:700;">${(r.status || 'Draft').toUpperCase()}</span>`
+                      }
                       <div style="margin-top:3px;">
                         ${(() => {
                           const cls = getRequirementClassification(r.id);
@@ -1272,14 +1341,26 @@ function renderRequirementsView(reqs, modules, store, roleObj) {
                               Edit
                             </button>
                             <div class="pm-dropdown-divider"></div>
-                            <button
-                              type="button"
-                              class="pm-dropdown-item is-danger pm-btn-archive-req"
-                              data-req-id="${r.id}"
-                              title="Arsipkan Requirement"
-                            >
-                              Arsip
-                            </button>
+                            ${isArchived ? `
+                              <button
+                                type="button"
+                                class="pm-dropdown-item pm-btn-restore-req"
+                                data-req-id="${r.id}"
+                                style="color:#059669;"
+                                title="Pulihkan Requirement ke Daftar Aktif"
+                              >
+                                Pulihkan
+                              </button>
+                            ` : `
+                              <button
+                                type="button"
+                                class="pm-dropdown-item is-danger pm-btn-archive-req"
+                                data-req-id="${r.id}"
+                                title="Arsipkan Requirement (Soft Delete)"
+                              >
+                                Arsip
+                              </button>
+                            `}
                           `
               : ''
             }
@@ -1374,7 +1455,7 @@ function renderReconciliationCatalogSection(store) {
           <span class="pm-req-count-badge" title="Total Active Requirements">${activeCount} Active Confirmed</span>
         </div>
         <div style="font-size:0.75rem; color:#64748b;">
-          172 Kebutuhan Aktif (130 Retained, 28 Revised, 14 New), 7 Deprecated (Archived), 3 Merged (Historical).
+          ${activeCount} Kebutuhan Aktif (${retainedCount} Retained, ${revisedCount} Revised, ${newCount} New), ${deprecatedCount} Deprecated (Archived), ${mergedCount} Merged (Historical).
         </div>
       </div>
 
@@ -1383,27 +1464,27 @@ function renderReconciliationCatalogSection(store) {
         <div style="padding:12px 14px; background:#f0fdf4; border:1.5px solid ${reconFilterClassification === 'Retained' ? '#16a34a' : '#bbf7d0'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="Retained">
           <div style="font-size:0.72rem; color:#166534; font-weight:600; margin-bottom:2px;">● Retained (Confirmed)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#166534;">${retainedCount}</div>
-          <div style="font-size:0.65rem; color:#4ade80;">130 Kebutuhan eksisting valid &amp; terkonfirmasi</div>
+          <div style="font-size:0.65rem; color:#4ade80;">${retainedCount} Kebutuhan eksisting valid &amp; terkonfirmasi</div>
         </div>
         <div style="padding:12px 14px; background:#eff6ff; border:1.5px solid ${reconFilterClassification === 'Revised' ? '#2563eb' : '#bfdbfe'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="Revised">
           <div style="font-size:0.72rem; color:#1d4ed8; font-weight:600; margin-bottom:2px;">↻ Revised (Confirmed)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#1d4ed8;">${revisedCount}</div>
-          <div style="font-size:0.65rem; color:#93c5fd;">28 Penyempurnaan wording &amp; kewenangan peran</div>
+          <div style="font-size:0.65rem; color:#93c5fd;">${revisedCount} Penyempurnaan wording &amp; kewenangan peran</div>
         </div>
         <div style="padding:12px 14px; background:#f0f9ff; border:1.5px solid ${reconFilterClassification === 'New' ? '#0369a1' : '#bae6fd'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="New">
           <div style="font-size:0.72rem; color:#0369a1; font-weight:600; margin-bottom:2px;">+ New (Confirmed)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#0369a1;">${newCount}</div>
-          <div style="font-size:0.65rem; color:#7dd3fc;">14 Kebutuhan baru diadopsi resmi</div>
+          <div style="font-size:0.65rem; color:#7dd3fc;">${newCount} Kebutuhan baru diadopsi resmi</div>
         </div>
         <div style="padding:12px 14px; background:#fef2f2; border:1.5px solid ${reconFilterClassification === 'Deprecated' ? '#dc2626' : '#fecaca'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="Deprecated">
           <div style="font-size:0.72rem; color:#991b1b; font-weight:600; margin-bottom:2px;">✕ Deprecated (Archived)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#991b1b;">${deprecatedCount}</div>
-          <div style="font-size:0.65rem; color:#fca5a5;">7 Out-of-scope, diarsipkan</div>
+          <div style="font-size:0.65rem; color:#fca5a5;">${deprecatedCount} Out-of-scope, diarsipkan</div>
         </div>
         <div style="padding:12px 14px; background:#faf5ff; border:1.5px solid ${reconFilterClassification === 'Merged' ? '#7c3aed' : '#ddd6fe'}; border-radius:8px; cursor:pointer; transition:all 0.2s;" class="pm-recon-kpi-card" data-recon-class="Merged">
           <div style="font-size:0.72rem; color:#7c3aed; font-weight:600; margin-bottom:2px;">⤵ Merged (Historical)</div>
           <div style="font-size:1.5rem; font-weight:800; color:#7c3aed;">${mergedCount}</div>
-          <div style="font-size:0.65rem; color:#c4b5fd;">3 Dileburkan ke requirement induk</div>
+          <div style="font-size:0.65rem; color:#c4b5fd;">${mergedCount} Dileburkan ke requirement induk</div>
         </div>
       </div>
 
@@ -1586,7 +1667,7 @@ function renderRevisionReviewView(store, filterModId = 'ALL') {
             }
           </div>
           <div style="font-size:0.75rem; color:#64748b;">
-            Seluruh 172 Kebutuhan Aktif telah terkonfirmasi dan berstatus CONFIRMED BASELINE.
+            Seluruh ${store.requirements ? store.requirements.filter(r => !r.isArchived).length : 0} Kebutuhan Aktif telah terkonfirmasi dan berstatus CONFIRMED BASELINE.
           </div>
         </div>
 
@@ -1656,7 +1737,7 @@ function renderRevisionReviewView(store, filterModId = 'ALL') {
                 <tr>
                   <td colspan="8" style="text-align:center; padding:36px; color:#64748b;">
                     <div style="font-size:1.05rem; font-weight:600; margin-bottom:6px; color:#166534;">✅ Seluruh Entitas Berstatus CONFIRMED BASELINE</div>
-                    <div style="font-size:0.82rem; color:#475569;">172 Active Requirement, 175 Flow Node, dan 156 Flow Connection telah terkonfirmasi tanpa draf pending.</div>
+                    <div style="font-size:0.82rem; color:#475569;">${store.requirements ? store.requirements.filter(r => !r.isArchived).length : 0} Active Requirement dan seluruh Flow Node telah terkonfirmasi tanpa draf pending.</div>
                   </td>
                 </tr>
               `
@@ -1852,9 +1933,16 @@ function renderBusinessRuleView(brs, modules, reqs) {
 
   return `
     <div>
-      <div style="margin-bottom: 12px;">
-        <h3 style="margin:0 0 4px; font-size:1.1rem; font-weight:700; color:#0f172a;">Business Rules Pembibitan Karet</h3>
-        <p style="margin:0; font-size:0.84rem; color:#64748b;">Aturan bisnis mutlak yang mendasari validasi, integritas stok, dan audit trail.</p>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h3 style="margin:0 0 4px; font-size:1.1rem; font-weight:700; color:#0f172a;">Business Rules Pembibitan Karet</h3>
+          <p style="margin:0; font-size:0.84rem; color:#64748b;">Aturan bisnis mutlak yang mendasari validasi, integritas stok, dan audit trail.</p>
+        </div>
+        ${isManageMode ? `
+          <button type="button" class="pm-btn-sm pm-btn-primary" id="pm-btn-add-rule" style="display:inline-flex; align-items:center; gap:6px;">
+            <span>+ Tambah Aturan Bisnis</span>
+          </button>
+        ` : ''}
       </div>
 
       <div class="pm-br-list">
@@ -1862,9 +1950,17 @@ function renderBusinessRuleView(brs, modules, reqs) {
       .map(
         (br) => `
           <div class="pm-br-full-card">
-            <span class="pm-br-full-id">${br.id}</span>
-            <h4 class="pm-br-full-title">${escapeHtml(br.title)}</h4>
-            <p class="pm-br-full-desc">${escapeHtml(br.desc)}</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span class="pm-br-full-id">${escapeHtml(br.id || br.code)}</span>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <button type="button" class="pm-btn-sm pm-btn-secondary pm-btn-jump-rule" data-rule-id="${escapeHtml(br.id || br.code)}" style="font-size:0.72rem; padding:2px 8px;">Detail</button>
+                ${isManageMode ? `
+                  <button type="button" class="pm-btn-sm pm-btn-outline-primary pm-btn-edit-rule" data-rule-id="${escapeHtml(br.id || br.code)}" style="font-size:0.72rem; padding:2px 8px;">Edit</button>
+                ` : ''}
+              </div>
+            </div>
+            <h4 class="pm-br-full-title">${escapeHtml(br.title || br.name || '')}</h4>
+            <p class="pm-br-full-desc">${escapeHtml(br.desc || br.description || '')}</p>
           </div>
         `
       )
@@ -1944,13 +2040,14 @@ function renderEndToEndView(pipeline) {
 
 function renderInProgressRole(roleObj) {
   return `
-    <div class="pm-empty-state">
-      <h3 class="pm-empty-title">Requirement Belum Tersedia pada Filter Ini</h3>
-      <p class="pm-empty-desc">
-        Dokumentasi alur proses untuk role <strong>${escapeHtml(roleObj.name)}</strong> (Confirmed) terintegrasi pada modul operasional terkait.
+    <div class="pm-empty-state" style="padding: 48px 24px; text-align: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; margin: 20px;">
+      <div style="font-size: 2.5rem; margin-bottom: 12px;">📋</div>
+      <h3 class="pm-empty-title" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin-bottom: 8px;">Role ${escapeHtml(roleObj.name)}</h3>
+      <p class="pm-empty-desc" style="max-width: 520px; margin: 0 auto 16px; font-size: 0.88rem; color: #64748b; line-height: 1.5;">
+        Role <strong>${escapeHtml(roleObj.name)}</strong> berstatus aktif pada daftar role master, tetapi belum memiliki alur proses atau requirement yang didefinisikan pada baseline saat ini.
       </p>
-      <button type="button" class="pm-ctrl-btn" id="pm-btn-back-mantri" style="margin-top:16px;">
-        Kembali ke Mantri Bibitan (Confirmed)
+      <button type="button" class="pm-btn-sm pm-btn-primary" id="pm-btn-back-mantri" style="margin-top:8px;">
+        Kembali ke Mantri Bibitan
       </button>
     </div>
   `;
@@ -2775,6 +2872,164 @@ function renderModals(store) {
                   <div style="color:#94a3b8; font-size:0.8rem; font-style:italic;">Belum ada flow node yang terhubung ke aturan ini.</div>
                 `}
               </div>
+            </div>
+          </div>
+
+          <div class="pm-modal-footer">
+            <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Tutup</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'edit-rule') {
+    const isNew = !modalData?.id;
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 600px;">
+          <div class="pm-modal-header">
+            <h3 class="pm-modal-title">${isNew ? 'Tambah Aturan Bisnis Baru' : `Edit Aturan Bisnis: ${modalData.id}`}</h3>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <form id="pm-form-rule">
+            <div class="pm-modal-body">
+              <div class="pm-form-grid">
+                <div class="pm-form-group">
+                  <label class="pm-form-label">Rule ID <span style="color:#ef4444;">*</span></label>
+                  <input type="text" name="ruleId" class="pm-form-input" value="${escapeHtml(modalData?.id || '')}" ${!isNew ? 'readonly style="background:#f1f5f9;"' : ''} placeholder="Contoh: BR-OKL-008" required />
+                </div>
+
+                <div class="pm-form-group">
+                  <label class="pm-form-label">Kategori</label>
+                  <input type="text" name="category" class="pm-form-input" value="${escapeHtml(modalData?.category || 'Aturan Operasional')}" placeholder="Contoh: Validasi Operasional" />
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Judul Aturan <span style="color:#ef4444;">*</span></label>
+                  <input type="text" name="title" class="pm-form-input" value="${escapeHtml(modalData?.title || modalData?.name || '')}" placeholder="Masukkan pernyataan aturan bisnis..." required />
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Deskripsi Kebijakan Standar <span style="color:#ef4444;">*</span></label>
+                  <textarea name="description" class="pm-form-textarea" placeholder="Rincian teknis, batasan atau rumus aturan..." required>${escapeHtml(modalData?.desc || modalData?.description || '')}</textarea>
+                </div>
+
+                <div class="pm-form-group is-full">
+                  <label class="pm-form-label">Dampak Operasional / Integritas Data</label>
+                  <textarea name="impact" class="pm-form-textarea" placeholder="Dampak jika aturan dilanggar...">${escapeHtml(modalData?.impact || '')}</textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="pm-modal-footer">
+              <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-modal-cancel-btn">Batal</button>
+              <button type="submit" class="pm-btn-sm pm-btn-primary">
+                ${isNew ? 'Simpan Aturan Bisnis' : 'Simpan Perubahan'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  if (activeModal === 'manage-mapping') {
+    const activeReqs = (store.requirements || []).filter(r => !r.isArchived);
+    const activeRules = store.businessRules || [];
+    const allNodes = [];
+    for (const [mId, fObj] of Object.entries(store.flows || {})) {
+      for (const [featId, flow] of Object.entries(fObj || {})) {
+        (flow.nodes || []).filter(n => !n.isArchived).forEach(n => {
+          allNodes.push({ ...n, moduleId: mId, featureId: featId });
+        });
+      }
+    }
+
+    const explicitMappings = store.mappings || [];
+
+    return `
+      <div class="pm-modal-backdrop" id="pm-modal-backdrop">
+        <div class="pm-modal-dialog" style="max-width: 800px; max-height: 90vh; display:flex; flex-direction:column;">
+          <div class="pm-modal-header">
+            <h3 class="pm-modal-title">Kelola Traceability Mapping</h3>
+            <button type="button" class="pm-modal-close" id="pm-modal-close-btn">&times;</button>
+          </div>
+
+          <div class="pm-modal-body" style="overflow-y:auto;">
+            <!-- Create Mapping Form Card -->
+            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:16px; margin-bottom:20px;">
+              <h4 style="margin:0 0 10px; font-size:0.95rem; color:#0f172a; font-weight:700;">+ Tambah Relasi Baru</h4>
+              <form id="pm-form-mapping">
+                <div class="pm-form-grid">
+                  <div class="pm-form-group">
+                    <label class="pm-form-label">Tipe Relasi</label>
+                    <select name="mappingType" id="pm-mapping-type-select" class="pm-form-select">
+                      <option value="req-node">Requirement ↔ Flow Node</option>
+                      <option value="req-rule">Requirement ↔ Business Rule</option>
+                      <option value="node-rule">Flow Node ↔ Business Rule</option>
+                    </select>
+                  </div>
+
+                  <div class="pm-form-group">
+                    <label class="pm-form-label">Requirement</label>
+                    <select name="reqId" id="pm-mapping-req-select" class="pm-form-select">
+                      <option value="">-- Pilih Requirement --</option>
+                      ${activeReqs.map(r => `<option value="${r.id}">[${r.id}] ${escapeHtml(r.title.slice(0, 45))}</option>`).join('')}
+                    </select>
+                  </div>
+
+                  <div class="pm-form-group">
+                    <label class="pm-form-label">Flow Node</label>
+                    <select name="nodeId" id="pm-mapping-node-select" class="pm-form-select">
+                      <option value="">-- Pilih Flow Node --</option>
+                      ${allNodes.map(n => `<option value="${n.id}" data-mod-id="${n.moduleId}" data-feat-id="${n.featureId}">[${n.code || n.id}] ${escapeHtml(n.label || n.title)} (${n.moduleId})</option>`).join('')}
+                    </select>
+                  </div>
+
+                  <div class="pm-form-group">
+                    <label class="pm-form-label">Business Rule</label>
+                    <select name="ruleId" id="pm-mapping-rule-select" class="pm-form-select" disabled>
+                      <option value="">-- Pilih Business Rule --</option>
+                      ${activeRules.map(br => `<option value="${br.id}">[${br.id}] ${escapeHtml((br.title || br.name || '').slice(0, 45))}</option>`).join('')}
+                    </select>
+                  </div>
+                </div>
+
+                <div style="margin-top:12px; display:flex; justify-content:flex-end;">
+                  <button type="submit" class="pm-btn-sm pm-btn-primary">Hubungkan Relasi</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Existing Mappings Table -->
+            <h4 style="margin:0 0 8px; font-size:0.95rem; color:#0f172a; font-weight:700;">Daftar Relasi Traceability Aktif</h4>
+            <div style="overflow-x:auto; border:1px solid #e2e8f0; border-radius:6px;">
+              <table class="pm-table" style="font-size:0.8rem; margin:0;">
+                <thead>
+                  <tr style="background:#f1f5f9;">
+                    <th style="padding:8px 12px;">ID Relasi</th>
+                    <th style="padding:8px 12px;">Entitas Sumber</th>
+                    <th style="padding:8px 12px;">Entitas Target</th>
+                    <th style="padding:8px 12px; text-align:center;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${explicitMappings.length === 0 ? `
+                    <tr><td colspan="4" style="text-align:center; padding:16px; color:#64748b;">Belum ada relasi eksplisit tercatat di dataset mapping.</td></tr>
+                  ` : explicitMappings.map(m => `
+                    <tr>
+                      <td style="padding:8px 12px;"><code>${escapeHtml(m.id || '-')}</code></td>
+                      <td style="padding:8px 12px;"><strong>${escapeHtml(m.sourceEntity || 'Requirement')}:</strong> <code>${escapeHtml(m.sourceId)}</code></td>
+                      <td style="padding:8px 12px;"><strong>${escapeHtml(m.targetEntity || 'Target')}:</strong> <code>${escapeHtml(m.targetId)}</code></td>
+                      <td style="padding:8px 12px; text-align:center;">
+                        <button type="button" class="pm-btn-sm pm-btn-danger pm-btn-delete-mapping" data-mapping-id="${escapeHtml(m.id || '')}" data-source-entity="${escapeHtml(m.sourceEntity || '')}" data-source-id="${escapeHtml(m.sourceId || '')}" data-target-entity="${escapeHtml(m.targetEntity || '')}" data-target-id="${escapeHtml(m.targetId || '')}" data-mod-id="${escapeHtml(m.moduleId || '')}" data-feat-id="${escapeHtml(m.featureId || '')}" style="font-size:0.7rem; padding:2px 6px;">Hapus</button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -4418,6 +4673,24 @@ function attachPortalEvents(container, store) {
     renderProcessMappingPortal(container);
   });
 
+  // Traceability Mapping Manager Modal
+  container.querySelector('#pm-btn-manage-mapping')?.addEventListener('click', () => {
+    activeModal = 'manage-mapping';
+    renderProcessMappingPortal(container);
+  });
+
+  // Refresh API Data Button
+  container.querySelector('#pm-btn-refresh-api')?.addEventListener('click', async () => {
+    try {
+      showToast('Memuat ulang data dari API...');
+      await initProjectDataStore(true);
+      showToast('Data berhasil disinkronkan dari server');
+      renderProcessMappingPortal(container);
+    } catch (err) {
+      alert('Gagal merefresh data: ' + err.message);
+    }
+  });
+
   // Actions: Finalisasi Traceability & Terapkan True Gap
   container.querySelector('#pm-btn-finalize-traceability')?.addEventListener('click', () => {
     try {
@@ -4561,7 +4834,6 @@ function attachPortalEvents(container, store) {
   // Node Selection on Canvas
   container.querySelectorAll('.pm-node-card[data-node-id]').forEach((box) => {
     box.addEventListener('click', (e) => {
-      // Don't trigger selection if user clicked a manage control button
       if (e.target.closest('.pm-node-ctrl-btns')) return;
 
       selectedNodeId = box.dataset.nodeId;
@@ -4574,10 +4846,9 @@ function attachPortalEvents(container, store) {
   // Requirement row click to open detail
   container.querySelectorAll('.pm-req-full-row[data-req-id]').forEach((row) => {
     row.addEventListener('click', (e) => {
-      if (e.target.closest('.pm-action-menu-wrap') || e.target.closest('.pm-row-btn')) return; // ignore edit/archive buttons
+      if (e.target.closest('.pm-action-menu-wrap') || e.target.closest('.pm-row-btn')) return;
 
       const reqId = row.dataset.reqId;
-      // Find node corresponding to this requirement
       for (const [modId, features] of Object.entries(store.flows)) {
         for (const [featId, flowObj] of Object.entries(features)) {
           const match = (flowObj.nodes || []).find((n) => n.reqId === reqId);
@@ -4650,7 +4921,7 @@ function attachPortalEvents(container, store) {
   });
 
   // ---------------------------------------------------------------------------
-  // Requirement Manager Events (Search, Filters, Add, View Detail, Edit, Archive)
+  // Requirement Manager Events (Search, Filters, Add, View Detail, Edit, Archive, Restore)
   // ---------------------------------------------------------------------------
   
   // Search input in Requirement Manager
@@ -4660,7 +4931,6 @@ function attachPortalEvents(container, store) {
       reqSearchQuery = e.target.value;
       reqCurrentPage = 1;
       renderProcessMappingPortal(container);
-      // Keep focus on input after re-render
       setTimeout(() => {
         const inp = document.getElementById('pm-req-search-input');
         if (inp) {
@@ -4681,7 +4951,7 @@ function attachPortalEvents(container, store) {
   // Filter Module
   container.querySelector('#pm-req-filter-module')?.addEventListener('change', (e) => {
     reqFilterModule = e.target.value;
-    reqFilterFeature = 'ALL'; // reset feature filter when module changes
+    reqFilterFeature = 'ALL';
     reqCurrentPage = 1;
     renderProcessMappingPortal(container);
   });
@@ -4808,13 +5078,30 @@ function attachPortalEvents(container, store) {
     });
   });
 
+  // Restore Requirement Button
+  container.querySelectorAll('.pm-btn-restore-req[data-req-id]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const reqId = btn.dataset.reqId;
+      if (!confirm(`Apakah Anda yakin ingin memulihkan (restore) requirement ${reqId} ke daftar aktif?`)) return;
+      try {
+        await processMappingApi.restoreRequirement(reqId, 'Business Analyst', 'Pulihkan requirement via Portal UI');
+        await initProjectDataStore(true);
+        showToast(`Requirement ${reqId} berhasil dipulihkan`);
+        renderProcessMappingPortal(container);
+      } catch (err) {
+        alert('Gagal memulihkan requirement: ' + err.message);
+      }
+    });
+  });
+
   // Confirm Archive in Archive Modal
-  container.querySelector('#pm-btn-confirm-archive')?.addEventListener('click', () => {
+  container.querySelector('#pm-btn-confirm-archive')?.addEventListener('click', async () => {
     if (!modalData?.id) return;
     const reqId = modalData.id;
     try {
-      archiveRequirement(reqId);
-      saveDraftToStorage();
+      await processMappingApi.archiveRequirement(reqId, 'Business Analyst', 'Arsip requirement via Portal UI');
+      await initProjectDataStore(true);
       showToast(`Requirement ${reqId} berhasil diarsipkan`);
       closeModal();
       renderProcessMappingPortal(container);
@@ -4979,7 +5266,7 @@ function attachPortalEvents(container, store) {
   container.querySelector('#pm-modal-cancel-btn')?.addEventListener('click', closeModal);
 
   // Form Submit: Requirement
-  container.querySelector('#pm-form-requirement')?.addEventListener('submit', (e) => {
+  container.querySelector('#pm-form-requirement')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
     const selectedModName = formData.get('module');
@@ -4987,6 +5274,7 @@ function attachPortalEvents(container, store) {
     const selectedFeatName = formData.get('feature');
     const selectedFeat = selectedMod?.features.find((f) => f.name === selectedFeatName);
 
+    const customId = (formData.get('reqId') || '').trim();
     const fields = {
       title: formData.get('title'),
       role: formData.get('role'),
@@ -5003,44 +5291,56 @@ function attachPortalEvents(container, store) {
       businessRule: formData.get('businessRule') || '',
       status: formData.get('status') || 'Draft'
     };
+    if (customId) {
+      fields.id = customId;
+    }
+
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const origBtnText = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Menyimpan...';
+    }
 
     try {
       if (!modalData?.id) {
-        // Create new requirement (Draft)
-        const created = createRequirement(fields);
-        saveDraftToStorage();
-        showToast(`Requirement ${created.id} berhasil ditambahkan (Draft)`);
+        const res = await processMappingApi.createRequirement(fields, 'Business Analyst', 'Tambah Requirement via UI');
+        await initProjectDataStore(true);
+        showToast(`Requirement ${res?.data?.id || customId || 'baru'} berhasil ditambahkan`);
       } else {
-        // Edit or revision
-        const res = editRequirement(modalData.id, fields, 'Business Analyst');
-        saveDraftToStorage();
-        if (res.isRevision) {
-          showToast(`Revisi baru ${res.requirement.id} v${res.requirement.version} berhasil dibuat (Draft)`);
-        } else {
-          showToast(`Requirement ${res.requirement.id} berhasil diperbarui (Draft)`);
-        }
+        await processMappingApi.updateRequirement(modalData.id, fields, 'Business Analyst', 'Update Requirement via UI');
+        await initProjectDataStore(true);
+        showToast(`Requirement ${modalData.id} berhasil diperbarui`);
       }
 
       closeModal();
       renderProcessMappingPortal(container);
     } catch (err) {
-      alert('Gagal menyimpan requirement: ' + err.message);
+      alert('Gagal menyimpan requirement: ' + (err.message || err));
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = origBtnText;
+      }
     }
   });
 
   // Confirm Archive Node
-  container.querySelector('#pm-btn-confirm-archive-node')?.addEventListener('click', () => {
+  container.querySelector('#pm-btn-confirm-archive-node')?.addEventListener('click', async () => {
     if (modalData?.moduleId && modalData?.featureId && modalData?.node?.id) {
-      archiveFlowNode(modalData.moduleId, modalData.featureId, modalData.node.id);
-      saveDraftToStorage();
-      showToast(`Node ${modalData.node.code || modalData.node.label || ''} berhasil diarsipkan (Draft)`);
-      closeModal();
-      renderProcessMappingPortal(container);
+      try {
+        await processMappingApi.updateFlowNode(modalData.moduleId, modalData.featureId, modalData.node.id, { isArchived: true }, 'Business Analyst', 'Arsip Node via UI');
+        await initProjectDataStore(true);
+        showToast(`Node ${modalData.node.code || modalData.node.label || ''} berhasil diarsipkan`);
+        closeModal();
+        renderProcessMappingPortal(container);
+      } catch (err) {
+        alert('Gagal mengarsipkan node: ' + err.message);
+      }
     }
   });
 
   // Form Submit: Node
-  container.querySelector('#pm-form-node')?.addEventListener('submit', (e) => {
+  container.querySelector('#pm-form-node')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
     const modId = formData.get('moduleId') || modalData.moduleId || selectedModuleId;
@@ -5073,34 +5373,25 @@ function attachPortalEvents(container, store) {
       status: 'Draft'
     };
 
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
     try {
       if (!modalData?.node?.id) {
-        // Add node
-        const createdNode = addFlowNode(modId, featId, fields, 'Business Analyst');
-        if (createdNode && createdNode.id) {
-          selectedNodeId = createdNode.id;
-          selectedModuleId = modId;
-          currentFeatureId = featId;
-        }
-        showToast(`Langkah alur ${createdNode.code || ''} berhasil ditambahkan (Draft)`);
+        const res = await processMappingApi.createFlowNode(modId, featId, fields, 'Business Analyst', 'Tambah Flow Node via UI');
+        await initProjectDataStore(true);
+        showToast(`Langkah alur ${res?.data?.node?.code || newCode || ''} berhasil ditambahkan`);
       } else {
-        // Edit node
-        const res = editFlowNode(modId, featId, modalData.node.id, fields, 'Business Analyst');
-        selectedNodeId = modalData.node.id;
-        selectedModuleId = modId;
-        currentFeatureId = featId;
-        if (res.isRevision) {
-          showToast(`Revisi langkah v${res.node.version} berhasil dibuat (Draft)`);
-        } else {
-          showToast(`Langkah alur ${res.node.code || ''} berhasil diperbarui (Draft)`);
-        }
+        await processMappingApi.updateFlowNode(modId, featId, modalData.node.id, fields, 'Business Analyst', 'Update Flow Node via UI');
+        await initProjectDataStore(true);
+        showToast(`Langkah alur ${modalData.node.code || ''} berhasil diperbarui`);
       }
 
-      saveDraftToStorage();
       closeModal();
       renderProcessMappingPortal(container);
     } catch (err) {
       alert('Gagal menyimpan langkah: ' + err.message);
+      if (submitBtn) submitBtn.disabled = false;
     }
   });
 
@@ -5179,18 +5470,22 @@ function attachPortalEvents(container, store) {
   });
 
   // Confirm Archive Edge
-  container.querySelector('#pm-btn-confirm-archive-edge')?.addEventListener('click', () => {
+  container.querySelector('#pm-btn-confirm-archive-edge')?.addEventListener('click', async () => {
     if (modalData?.moduleId && modalData?.featureId && modalData?.edge?.id) {
-      archiveFlowEdge(modalData.moduleId, modalData.featureId, modalData.edge.id);
-      saveDraftToStorage();
-      showToast('Koneksi alur berhasil diarsipkan (Draft)');
-      closeModal();
-      renderProcessMappingPortal(container);
+      try {
+        await processMappingApi.updateFlowEdge(modalData.moduleId, modalData.featureId, modalData.edge.id, { isArchived: true }, 'Business Analyst', 'Arsip Edge via UI');
+        await initProjectDataStore(true);
+        showToast('Koneksi alur berhasil diarsipkan');
+        closeModal();
+        renderProcessMappingPortal(container);
+      } catch (err) {
+        alert('Gagal mengarsipkan koneksi: ' + err.message);
+      }
     }
   });
 
   // Form Submit: Edge / Connection
-  container.querySelector('#pm-form-edge')?.addEventListener('submit', (e) => {
+  container.querySelector('#pm-form-edge')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
     const modId = modalData.moduleId || selectedModuleId;
@@ -5219,25 +5514,213 @@ function attachPortalEvents(container, store) {
       status: 'Draft'
     };
 
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
     try {
       if (!modalData?.edge?.id) {
-        addFlowEdge(modId, featId, fields, 'Business Analyst');
-        showToast('Koneksi alur baru berhasil ditambahkan (Draft)');
+        await processMappingApi.createFlowEdge(modId, featId, fields, 'Business Analyst', 'Tambah Flow Edge via UI');
+        await initProjectDataStore(true);
+        showToast('Koneksi alur baru berhasil ditambahkan');
       } else {
-        const res = editFlowEdge(modId, featId, modalData.edge.id, fields, 'Business Analyst');
-        if (res.isRevision) {
-          showToast(`Revisi koneksi v${res.edge.version} berhasil dibuat (Draft)`);
-        } else {
-          showToast('Koneksi alur berhasil diperbarui (Draft)');
-        }
+        await processMappingApi.updateFlowEdge(modId, featId, modalData.edge.id, fields, 'Business Analyst', 'Update Flow Edge via UI');
+        await initProjectDataStore(true);
+        showToast('Koneksi alur berhasil diperbarui');
       }
 
-      saveDraftToStorage();
       closeModal();
       renderProcessMappingPortal(container);
     } catch (err) {
       alert('Gagal menyimpan koneksi: ' + err.message);
+      if (submitBtn) submitBtn.disabled = false;
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Business Rule Management Events (Add, Edit, Submit)
+  // ---------------------------------------------------------------------------
+  container.querySelector('#pm-btn-add-rule')?.addEventListener('click', () => {
+    modalData = {
+      id: '',
+      title: '',
+      desc: '',
+      category: 'Aturan Operasional',
+      impact: ''
+    };
+    activeModal = 'edit-rule';
+    renderProcessMappingPortal(container);
+  });
+
+  container.querySelectorAll('.pm-btn-edit-rule[data-rule-id]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ruleId = btn.dataset.ruleId;
+      const rule = (store.businessRules || []).find(r => r.id === ruleId || r.code === ruleId);
+      if (rule) {
+        modalData = JSON.parse(JSON.stringify(rule));
+        activeModal = 'edit-rule';
+        renderProcessMappingPortal(container);
+      }
+    });
+  });
+
+  container.querySelector('#pm-form-rule')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const ruleId = (formData.get('ruleId') || '').trim();
+    const title = (formData.get('title') || '').trim();
+    const category = (formData.get('category') || 'Aturan Operasional').trim();
+    const description = (formData.get('description') || '').trim();
+    const impact = (formData.get('impact') || '').trim();
+
+    if (!ruleId || !title || !description) {
+      alert('Rule ID, Judul, dan Deskripsi wajib diisi.');
+      return;
+    }
+
+    const ruleData = {
+      id: ruleId,
+      title,
+      category,
+      desc: description,
+      description,
+      impact
+    };
+
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      if (!modalData?.id) {
+        await processMappingApi.createRule(ruleData, 'Business Analyst', 'Tambah Business Rule via UI');
+        await initProjectDataStore(true);
+        showToast(`Aturan bisnis ${ruleId} berhasil ditambahkan`);
+      } else {
+        await processMappingApi.updateRule(modalData.id, ruleData, 'Business Analyst', 'Update Business Rule via UI');
+        await initProjectDataStore(true);
+        showToast(`Aturan bisnis ${modalData.id} berhasil diperbarui`);
+      }
+      closeModal();
+      renderProcessMappingPortal(container);
+    } catch (err) {
+      alert('Gagal menyimpan aturan bisnis: ' + err.message);
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Traceability Mapping Events
+  // ---------------------------------------------------------------------------
+  const mappingTypeSelect = container.querySelector('#pm-mapping-type-select');
+  if (mappingTypeSelect) {
+    mappingTypeSelect.addEventListener('change', (e) => {
+      const type = e.target.value;
+      const reqSel = container.querySelector('#pm-mapping-req-select');
+      const nodeSel = container.querySelector('#pm-mapping-node-select');
+      const ruleSel = container.querySelector('#pm-mapping-rule-select');
+
+      if (type === 'req-node') {
+        if (reqSel) reqSel.disabled = false;
+        if (nodeSel) nodeSel.disabled = false;
+        if (ruleSel) ruleSel.disabled = true;
+      } else if (type === 'req-rule') {
+        if (reqSel) reqSel.disabled = false;
+        if (nodeSel) nodeSel.disabled = true;
+        if (ruleSel) ruleSel.disabled = false;
+      } else if (type === 'node-rule') {
+        if (reqSel) reqSel.disabled = true;
+        if (nodeSel) nodeSel.disabled = false;
+        if (ruleSel) ruleSel.disabled = false;
+      }
+    });
+  }
+
+  container.querySelector('#pm-form-mapping')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const mappingType = formData.get('mappingType');
+    const reqId = formData.get('reqId');
+    const nodeId = formData.get('nodeId');
+    const ruleId = formData.get('ruleId');
+
+    let mappingPayload = null;
+    if (mappingType === 'req-node') {
+      if (!reqId || !nodeId) {
+        alert('Pilih Requirement dan Flow Node.');
+        return;
+      }
+      const nodeOpt = container.querySelector(`#pm-mapping-node-select option[value="${nodeId}"]`);
+      mappingPayload = {
+        sourceEntity: 'Requirement',
+        sourceId: reqId,
+        targetEntity: 'FlowNode',
+        targetId: nodeId,
+        moduleId: nodeOpt?.dataset?.modId || '',
+        featureId: nodeOpt?.dataset?.featId || ''
+      };
+    } else if (mappingType === 'req-rule') {
+      if (!reqId || !ruleId) {
+        alert('Pilih Requirement dan Business Rule.');
+        return;
+      }
+      mappingPayload = {
+        sourceEntity: 'Requirement',
+        sourceId: reqId,
+        targetEntity: 'BusinessRule',
+        targetId: ruleId
+      };
+    } else if (mappingType === 'node-rule') {
+      if (!nodeId || !ruleId) {
+        alert('Pilih Flow Node dan Business Rule.');
+        return;
+      }
+      const nodeOpt = container.querySelector(`#pm-mapping-node-select option[value="${nodeId}"]`);
+      mappingPayload = {
+        sourceEntity: 'FlowNode',
+        sourceId: nodeId,
+        targetEntity: 'BusinessRule',
+        targetId: ruleId,
+        moduleId: nodeOpt?.dataset?.modId || '',
+        featureId: nodeOpt?.dataset?.featId || ''
+      };
+    }
+
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      await processMappingApi.createMapping(mappingPayload, 'Business Analyst', 'Tambah Relasi Mapping via UI');
+      await initProjectDataStore(true);
+      showToast('Relasi mapping berhasil ditambahkan');
+      activeModal = 'manage-mapping';
+      renderProcessMappingPortal(container);
+    } catch (err) {
+      alert('Gagal menambahkan mapping: ' + err.message);
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+
+  container.querySelectorAll('.pm-btn-delete-mapping').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const { mappingId, sourceEntity, sourceId, targetEntity, targetId, modId, featId } = btn.dataset;
+      if (!confirm(`Hapus relasi ${sourceId} ↔ ${targetId}?`)) return;
+
+      try {
+        await processMappingApi.deleteMapping(
+          mappingId || `${sourceId}-${targetId}`,
+          { sourceEntity, sourceId, targetEntity, targetId, moduleId: modId, featureId: featId },
+          'Business Analyst',
+          'Hapus Relasi Mapping via UI'
+        );
+        await initProjectDataStore(true);
+        showToast('Relasi mapping berhasil dihapus');
+        activeModal = 'manage-mapping';
+        renderProcessMappingPortal(container);
+      } catch (err) {
+        alert('Gagal menghapus relasi: ' + err.message);
+      }
+    });
   });
 
   // Form Submit: Export
