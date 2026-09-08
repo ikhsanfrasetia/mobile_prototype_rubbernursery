@@ -177,6 +177,19 @@ export const processMappingApi = {
    * @returns {Promise<{ success: boolean, data: Object }>}
    */
   async getProjectData() {
+    if (typeof window !== 'undefined') {
+      const candidates = ['./data/process-mapping-data.json', 'data/process-mapping-data.json', '/data/process-mapping-data.json'];
+      for (const url of candidates) {
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const rawData = await res.json();
+            return { success: true, data: normalizeProjectData(rawData) };
+          }
+        } catch (e) {}
+      }
+      throw new ProcessMappingApiError('Gagal memuat data Portal: data/process-mapping-data.json tidak dapat diakses', 404);
+    }
     const res = await apiRequest(`${PM_ENDPOINT_PREFIX}/data`, { method: 'GET' });
     if (!res || !res.data) {
       throw new ProcessMappingApiError('Endpoint /api/process-mapping/data mengembalikan response kosong', 500);

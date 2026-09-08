@@ -26,6 +26,7 @@ import {
   editRequirement,
   approveRequirementRevision,
   archiveRequirement,
+  restoreRequirement,
   generateUniqueReqId,
   checkRequirementNodeUsage,
   getRequirementRevisionHistory,
@@ -38,6 +39,10 @@ import {
   addFlowEdge,
   editFlowEdge,
   archiveFlowEdge,
+  createBusinessRule,
+  editBusinessRule,
+  createMapping,
+  deleteMapping,
   getFlowEdgeRevisionHistory,
   getAllPendingRevisions,
   calculateEntityDiff,
@@ -303,7 +308,7 @@ export async function renderProcessMappingPortal(container) {
       <div class="pm-loading-wrapper" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 420px; padding: 48px; text-align: center; color: #475569;">
         <div class="pm-spinner" style="width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top: 3px solid #116834; border-radius: 50%; animation: pm-spin 0.8s linear infinite; margin-bottom: 16px;"></div>
         <div style="font-weight: 600; font-size: 1rem; color: #0f172a; margin-bottom: 4px;">Memuat Pemetaan Alur Proses Aplikasi...</div>
-        <div style="font-size: 0.825rem; color: #64748b;">Menghubungkan ke REST API (/api/process-mapping/data)</div>
+        <div style="font-size: 0.825rem; color: #64748b;">Memuat data proses bisnis...</div>
       </div>
       <style>
         @keyframes pm-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -312,15 +317,15 @@ export async function renderProcessMappingPortal(container) {
     try {
       store = await initProjectDataStore();
     } catch (err) {
-      console.error('❌ [ProcessMapping] Gagal memuat data dari REST API:', err);
+      console.error('❌ [ProcessMapping] Gagal memuat data Portal:', err);
       container.innerHTML = `
         <div class="pm-error-wrapper" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 420px; padding: 48px; text-align: center;">
           <div style="width: 52px; height: 52px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; margin-bottom: 16px;">⚠️</div>
-          <div style="font-weight: 700; font-size: 1.1rem; color: #991b1b; margin-bottom: 8px;">Gagal Memuat Data dari API</div>
+          <div style="font-weight: 700; font-size: 1.1rem; color: #991b1b; margin-bottom: 8px;">Gagal memuat data Portal.</div>
           <div style="font-size: 0.875rem; color: #475569; max-width: 520px; line-height: 1.5; margin-bottom: 20px;">
-            Terjadi kesalahan saat mengambil data proses bisnis dari server backend (<code>/api/process-mapping/data</code>).
+            Terjadi kesalahan saat memuat data proses bisnis (<code>data/process-mapping-data.json</code>).
             <div style="margin-top: 10px; font-family: monospace; font-size: 0.8rem; background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 12px; border-radius: 6px; color: #b91c1c; text-align: left; word-break: break-all;">
-              ${escapeHtml(err.message || 'Network / Server Error')}
+              ${escapeHtml(err.message || 'File / Resource Error')}
             </div>
           </div>
           <button type="button" class="pm-btn-retry" id="pm-btn-retry-load" style="background: #116834; color: #ffffff; border: none; padding: 8px 24px; border-radius: 6px; font-weight: 600; font-size: 0.875rem; cursor: pointer; transition: background 0.2s;">
@@ -478,8 +483,8 @@ function renderManageToolbar(metadata, isDraftActive) {
             <button type="button" class="pm-btn-sm pm-btn-secondary" id="pm-btn-import-data" title="Impor file data JSON ke editor state">
               Import Data
             </button>
-            <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-reset-draft" title="Muat ulang data resmi dari API process-mapping-data.json">
-              Refresh Data API
+            <button type="button" class="pm-btn-sm pm-btn-danger" id="pm-btn-reset-draft" title="Muat ulang data resmi dari data/process-mapping-data.json">
+              Refresh Data
             </button>
           </div>
         `
@@ -5085,8 +5090,8 @@ function attachPortalEvents(container, store) {
       const reqId = btn.dataset.reqId;
       if (!confirm(`Apakah Anda yakin ingin memulihkan (restore) requirement ${reqId} ke daftar aktif?`)) return;
       try {
-        await processMappingApi.restoreRequirement(reqId, 'Business Analyst', 'Pulihkan requirement via Portal UI');
-        await initProjectDataStore(true);
+        restoreRequirement(reqId, 'Business Analyst', 'Pulihkan requirement via Portal UI');
+        saveDraftToStorage();
         showToast(`Requirement ${reqId} berhasil dipulihkan`);
         renderProcessMappingPortal(container);
       } catch (err) {
@@ -5100,8 +5105,8 @@ function attachPortalEvents(container, store) {
     if (!modalData?.id) return;
     const reqId = modalData.id;
     try {
-      await processMappingApi.archiveRequirement(reqId, 'Business Analyst', 'Arsip requirement via Portal UI');
-      await initProjectDataStore(true);
+      archiveRequirement(reqId);
+      saveDraftToStorage();
       showToast(`Requirement ${reqId} berhasil diarsipkan`);
       closeModal();
       renderProcessMappingPortal(container);
@@ -5304,12 +5309,12 @@ function attachPortalEvents(container, store) {
 
     try {
       if (!modalData?.id) {
-        const res = await processMappingApi.createRequirement(fields, 'Business Analyst', 'Tambah Requirement via UI');
-        await initProjectDataStore(true);
-        showToast(`Requirement ${res?.data?.id || customId || 'baru'} berhasil ditambahkan`);
+        const newReq = createRequirement(fields, 'Business Analyst');
+        saveDraftToStorage();
+        showToast(`Requirement ${newReq?.id || customId || 'baru'} berhasil ditambahkan`);
       } else {
-        await processMappingApi.updateRequirement(modalData.id, fields, 'Business Analyst', 'Update Requirement via UI');
-        await initProjectDataStore(true);
+        editRequirement(modalData.id, fields, 'Business Analyst');
+        saveDraftToStorage();
         showToast(`Requirement ${modalData.id} berhasil diperbarui`);
       }
 
@@ -5328,8 +5333,8 @@ function attachPortalEvents(container, store) {
   container.querySelector('#pm-btn-confirm-archive-node')?.addEventListener('click', async () => {
     if (modalData?.moduleId && modalData?.featureId && modalData?.node?.id) {
       try {
-        await processMappingApi.updateFlowNode(modalData.moduleId, modalData.featureId, modalData.node.id, { isArchived: true }, 'Business Analyst', 'Arsip Node via UI');
-        await initProjectDataStore(true);
+        archiveFlowNode(modalData.moduleId, modalData.featureId, modalData.node.id, 'Business Analyst', 'Arsip Node via UI');
+        saveDraftToStorage();
         showToast(`Node ${modalData.node.code || modalData.node.label || ''} berhasil diarsipkan`);
         closeModal();
         renderProcessMappingPortal(container);
@@ -5378,12 +5383,12 @@ function attachPortalEvents(container, store) {
 
     try {
       if (!modalData?.node?.id) {
-        const res = await processMappingApi.createFlowNode(modId, featId, fields, 'Business Analyst', 'Tambah Flow Node via UI');
-        await initProjectDataStore(true);
-        showToast(`Langkah alur ${res?.data?.node?.code || newCode || ''} berhasil ditambahkan`);
+        const newNode = addFlowNode(modId, featId, fields, 'Business Analyst');
+        saveDraftToStorage();
+        showToast(`Langkah alur ${newNode?.code || newCode || ''} berhasil ditambahkan`);
       } else {
-        await processMappingApi.updateFlowNode(modId, featId, modalData.node.id, fields, 'Business Analyst', 'Update Flow Node via UI');
-        await initProjectDataStore(true);
+        editFlowNode(modId, featId, modalData.node.id, fields, 'Business Analyst');
+        saveDraftToStorage();
         showToast(`Langkah alur ${modalData.node.code || ''} berhasil diperbarui`);
       }
 
@@ -5473,8 +5478,8 @@ function attachPortalEvents(container, store) {
   container.querySelector('#pm-btn-confirm-archive-edge')?.addEventListener('click', async () => {
     if (modalData?.moduleId && modalData?.featureId && modalData?.edge?.id) {
       try {
-        await processMappingApi.updateFlowEdge(modalData.moduleId, modalData.featureId, modalData.edge.id, { isArchived: true }, 'Business Analyst', 'Arsip Edge via UI');
-        await initProjectDataStore(true);
+        archiveFlowEdge(modalData.moduleId, modalData.featureId, modalData.edge.id, 'Business Analyst', 'Arsip Edge via UI');
+        saveDraftToStorage();
         showToast('Koneksi alur berhasil diarsipkan');
         closeModal();
         renderProcessMappingPortal(container);
@@ -5519,12 +5524,12 @@ function attachPortalEvents(container, store) {
 
     try {
       if (!modalData?.edge?.id) {
-        await processMappingApi.createFlowEdge(modId, featId, fields, 'Business Analyst', 'Tambah Flow Edge via UI');
-        await initProjectDataStore(true);
+        addFlowEdge(modId, featId, fields, 'Business Analyst');
+        saveDraftToStorage();
         showToast('Koneksi alur baru berhasil ditambahkan');
       } else {
-        await processMappingApi.updateFlowEdge(modId, featId, modalData.edge.id, fields, 'Business Analyst', 'Update Flow Edge via UI');
-        await initProjectDataStore(true);
+        editFlowEdge(modId, featId, modalData.edge.id, fields, 'Business Analyst');
+        saveDraftToStorage();
         showToast('Koneksi alur berhasil diperbarui');
       }
 
@@ -5592,12 +5597,12 @@ function attachPortalEvents(container, store) {
 
     try {
       if (!modalData?.id) {
-        await processMappingApi.createRule(ruleData, 'Business Analyst', 'Tambah Business Rule via UI');
-        await initProjectDataStore(true);
+        createBusinessRule(ruleData, 'Business Analyst');
+        saveDraftToStorage();
         showToast(`Aturan bisnis ${ruleId} berhasil ditambahkan`);
       } else {
-        await processMappingApi.updateRule(modalData.id, ruleData, 'Business Analyst', 'Update Business Rule via UI');
-        await initProjectDataStore(true);
+        editBusinessRule(modalData.id, ruleData, 'Business Analyst');
+        saveDraftToStorage();
         showToast(`Aturan bisnis ${modalData.id} berhasil diperbarui`);
       }
       closeModal();
@@ -5689,8 +5694,8 @@ function attachPortalEvents(container, store) {
     if (submitBtn) submitBtn.disabled = true;
 
     try {
-      await processMappingApi.createMapping(mappingPayload, 'Business Analyst', 'Tambah Relasi Mapping via UI');
-      await initProjectDataStore(true);
+      createMapping(mappingPayload, 'Business Analyst');
+      saveDraftToStorage();
       showToast('Relasi mapping berhasil ditambahkan');
       activeModal = 'manage-mapping';
       renderProcessMappingPortal(container);
@@ -5707,13 +5712,12 @@ function attachPortalEvents(container, store) {
       if (!confirm(`Hapus relasi ${sourceId} ↔ ${targetId}?`)) return;
 
       try {
-        await processMappingApi.deleteMapping(
+        deleteMapping(
           mappingId || `${sourceId}-${targetId}`,
           { sourceEntity, sourceId, targetEntity, targetId, moduleId: modId, featureId: featId },
-          'Business Analyst',
-          'Hapus Relasi Mapping via UI'
+          'Business Analyst'
         );
-        await initProjectDataStore(true);
+        saveDraftToStorage();
         showToast('Relasi mapping berhasil dihapus');
         activeModal = 'manage-mapping';
         renderProcessMappingPortal(container);

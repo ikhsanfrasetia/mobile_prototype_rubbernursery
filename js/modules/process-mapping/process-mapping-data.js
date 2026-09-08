@@ -195,20 +195,66 @@ export function validateProjectData(data) {
 }
 
 /**
- * Loads the official baseline data from REST API.
+ * Loads the official baseline data from static JSON (data/process-mapping-data.json)
+ * or bundled baseline fallback.
  * @returns {Promise<Object>}
  */
 export async function fetchOfficialSourceData() {
-  const res = await processMappingApi.getProjectData();
-  officialBaselineStore = JSON.parse(JSON.stringify(res.data));
-  return res.data;
+  let rawData = null;
+
+  // 1. Browser environment: Fetch static JSON file directly
+  if (typeof window !== 'undefined' && typeof fetch === 'function') {
+    const candidates = [
+      './data/process-mapping-data.json',
+      'data/process-mapping-data.json',
+      '/data/process-mapping-data.json'
+    ];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          rawData = await res.json();
+          break;
+        }
+      } catch (e) {
+        // try next candidate
+      }
+    }
+  }
+
+  // 2. Node.js environment: Read static JSON file directly
+  if (!rawData && typeof process !== 'undefined' && process.versions && process.versions.node) {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const jsonPath = path.resolve(process.cwd(), 'data/process-mapping-data.json');
+      if (fs.existsSync(jsonPath)) {
+        rawData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // 3. Fallback to bundled PROCESS_MAPPING_BASELINE
+  if (!rawData && typeof PROCESS_MAPPING_BASELINE !== 'undefined' && PROCESS_MAPPING_BASELINE) {
+    rawData = JSON.parse(JSON.stringify(PROCESS_MAPPING_BASELINE));
+  }
+
+  if (!rawData) {
+    throw new Error('Gagal memuat data Portal: data/process-mapping-data.json tidak dapat diakses');
+  }
+
+  officialBaselineStore = normalizeProjectData(rawData);
+  return officialBaselineStore;
 }
 
 /**
- * Initializes the project data store from the backend REST API (/api/process-mapping/data).
+ * Initializes the project data store from static JSON (data/process-mapping-data.json)
+ * or localStorage draft.
  * Applies schema validation and Phase 4E + Phase 4F traceability finalizations.
  * 
- * @param {boolean} [forceOfficial=false] If true, forces reload from API and clears temporary draft
+ * @param {boolean} [forceOfficial=false] If true, forces reload from static JSON and clears temporary draft
  * @returns {Promise<Object>} The initialized activeStore
  */
 export async function initProjectDataStore(forceOfficial = false) {
@@ -216,24 +262,38 @@ export async function initProjectDataStore(forceOfficial = false) {
     localStorage.removeItem(DRAFT_STORAGE_KEY);
   }
 
-  try {
-    const apiResponse = await processMappingApi.getProjectData();
-    if (!apiResponse || !apiResponse.data) {
-      throw new Error('API /api/process-mapping/data mengembalikan dataset kosong');
+  // Check if draft exists in localStorage
+  if (!forceOfficial && typeof localStorage !== 'undefined') {
+    const draftStr = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (draftStr) {
+      try {
+        const draftData = JSON.parse(draftStr);
+        const validation = validateProjectData(draftData);
+        if (validation.valid) {
+          activeStore = draftData;
+          finalizeFlowAndBusinessRuleTraceability(activeStore);
+          console.log(`🌿 [ProcessMapping] Data runtime dimuat dari LocalStorage draft (v${activeStore.metadata?.version || '1.0.0'})`);
+          return activeStore;
+        }
+      } catch (e) {
+        console.warn('⚠️ [ProcessMapping] Draft LocalStorage tidak valid, memuat data resmi', e);
+      }
     }
+  }
 
-    const data = apiResponse.data;
+  try {
+    const data = await fetchOfficialSourceData();
     const validation = validateProjectData(data);
     if (!validation.valid) {
-      console.warn('⚠️ [ProcessMapping] Data dari API memiliki peringatan validasi:', validation.errors);
+      console.warn('⚠️ [ProcessMapping] Data memiliki peringatan validasi:', validation.errors);
     }
 
     activeStore = JSON.parse(JSON.stringify(data));
     finalizeFlowAndBusinessRuleTraceability(activeStore);
-    console.log(`🌿 [ProcessMapping] Data runtime berhasil dimuat dari REST API (v${activeStore.metadata?.version || '1.0.0'}, ${activeStore.requirements?.length || 0} reqs)`);
+    console.log(`🌿 [ProcessMapping] Data berhasil dimuat dari data/process-mapping-data.json (v${activeStore.metadata?.version || '1.0.0'}, ${activeStore.requirements?.length || 0} reqs)`);
     return activeStore;
   } catch (err) {
-    console.error('❌ [ProcessMapping] Gagal memuat data dari REST API:', err);
+    console.error('❌ [ProcessMapping] Gagal memuat data Portal:', err);
     throw err;
   }
 }
@@ -481,6 +541,17 @@ export function archiveRequirement(reqId, version = null) {
   req.status = 'Draft';
   req.archivedAt = new Date().toISOString();
   updateMetadata({ updatedBy: 'Business Analyst' });
+  return req;
+}
+
+export function restoreRequirement(reqId, author = 'Business Analyst', reason = '') {
+  const store = getActiveStore();
+  const req = store.requirements.find(r => r.id === reqId);
+  if (!req) throw new Error(`Requirement ${reqId} tidak ditemukan`);
+  req.isArchived = false;
+  req.restoredAt = new Date().toISOString();
+  req.restoredBy = author;
+  updateMetadata({ updatedBy: author });
   return req;
 }
 
@@ -1925,7 +1996,7 @@ export function buildCanonicalCrossFlowEdges() {
       fromNode: 'TB_END',
       toModule: '03-penyemaian',
       toFeature: 'semai-bedengan',
-      toNode: 'SM_START',
+      toNode: 'SEM_START',
       label: 'Distribusi Benih ke Bedengan',
       condition: 'Benih Terverifikasi',
       description: 'Benih terverifikasi dari penerimaan masuk ke fase penyemaian bedengan perkecambahan.'
@@ -1935,7 +2006,7 @@ export function buildCanonicalCrossFlowEdges() {
       name: 'Penyemaian Bedengan → Okulasi (Grafting)',
       fromModule: '03-penyemaian',
       fromFeature: 'semai-bedengan',
-      fromNode: 'SM_END',
+      fromNode: 'SEM_END',
       toModule: '04-okulasi',
       toFeature: 'grafting',
       toNode: 'N_START',
@@ -2580,4 +2651,144 @@ export function resolveNodeCanonicalContent(moduleId, featureId, node, store = a
     role,
     relatedRole
   };
+}
+
+// =============================================================================
+// BUSINESS RULES & TRACEABILITY MAPPING CRUD OPERATIONS
+// =============================================================================
+
+export function createBusinessRule(ruleData, author = 'Business Analyst') {
+  const store = getActiveStore();
+  if (!Array.isArray(store.businessRules)) store.businessRules = [];
+  const ruleId = (ruleData.id || ruleData.code || '').trim() || `BR-GEN-${String(store.businessRules.length + 1).padStart(3, '0')}`;
+  
+  const newRule = {
+    id: ruleId,
+    code: ruleId,
+    title: (ruleData.title || ruleData.name || '').trim(),
+    name: (ruleData.name || ruleData.title || '').trim(),
+    category: (ruleData.category || 'Aturan Operasional').trim(),
+    description: (ruleData.description || ruleData.desc || '').trim(),
+    desc: (ruleData.desc || ruleData.description || '').trim(),
+    impact: (ruleData.impact || '').trim(),
+    status: ruleData.status || 'Confirmed',
+    isArchived: false,
+    createdAt: new Date().toISOString()
+  };
+
+  store.businessRules.push(newRule);
+  updateMetadata({ updatedBy: author });
+  return newRule;
+}
+
+export function editBusinessRule(ruleId, updatedFields, author = 'Business Analyst') {
+  const store = getActiveStore();
+  if (!Array.isArray(store.businessRules)) store.businessRules = [];
+  const ruleIdx = store.businessRules.findIndex(r => r.id === ruleId || r.code === ruleId);
+  if (ruleIdx === -1) throw new Error(`Business Rule ${ruleId} tidak ditemukan`);
+  
+  const existing = store.businessRules[ruleIdx];
+  const updated = {
+    ...existing,
+    ...updatedFields,
+    id: existing.id,
+    title: updatedFields.title || updatedFields.name || existing.title || existing.name,
+    name: updatedFields.name || updatedFields.title || existing.name || existing.title,
+    description: updatedFields.description || updatedFields.desc || existing.description || existing.desc,
+    desc: updatedFields.desc || updatedFields.description || existing.desc || existing.description,
+    lastModified: new Date().toISOString()
+  };
+  store.businessRules[ruleIdx] = updated;
+  updateMetadata({ updatedBy: author });
+  return updated;
+}
+
+export function archiveBusinessRule(ruleId, author = 'Business Analyst', reason = '') {
+  const store = getActiveStore();
+  const rule = (store.businessRules || []).find(r => r.id === ruleId || r.code === ruleId);
+  if (!rule) throw new Error(`Business Rule ${ruleId} tidak ditemukan`);
+  rule.isArchived = true;
+  rule.archivedAt = new Date().toISOString();
+  rule.archivedBy = author;
+  updateMetadata({ updatedBy: author });
+  return rule;
+}
+
+export function restoreBusinessRule(ruleId, author = 'Business Analyst', reason = '') {
+  const store = getActiveStore();
+  const rule = (store.businessRules || []).find(r => r.id === ruleId || r.code === ruleId);
+  if (!rule) throw new Error(`Business Rule ${ruleId} tidak ditemukan`);
+  rule.isArchived = false;
+  rule.restoredAt = new Date().toISOString();
+  rule.restoredBy = author;
+  updateMetadata({ updatedBy: author });
+  return rule;
+}
+
+export function createMapping(mapping, author = 'Business Analyst') {
+  const store = getActiveStore();
+  const { sourceEntity, sourceId, targetEntity, targetId, moduleId, featureId } = mapping;
+
+  if (sourceEntity === 'Requirement' && targetEntity === 'FlowNode') {
+    const modId = moduleId || store.modules[0]?.id;
+    const featId = featureId || (store.flows[modId] && Object.keys(store.flows[modId])[0]);
+    const flow = store.flows[modId]?.[featId];
+    const node = flow?.nodes?.find(n => n.id === targetId && !n.isArchived && !n.isSuperseded);
+    if (node) {
+      node.reqId = sourceId;
+    }
+  } else if (sourceEntity === 'Requirement' && targetEntity === 'BusinessRule') {
+    const req = store.requirements.find(r => r.id === sourceId && !r.isArchived && !r.isSuperseded);
+    if (req) {
+      if (!Array.isArray(req.ruleIds)) req.ruleIds = [];
+      if (!req.ruleIds.includes(targetId)) req.ruleIds.push(targetId);
+    }
+  } else if (sourceEntity === 'FlowNode' && targetEntity === 'BusinessRule') {
+    const modId = moduleId || store.modules[0]?.id;
+    const featId = featureId || (store.flows[modId] && Object.keys(store.flows[modId])[0]);
+    const flow = store.flows[modId]?.[featId];
+    const node = flow?.nodes?.find(n => n.id === sourceId && !n.isArchived && !n.isSuperseded);
+    if (node) {
+      if (!Array.isArray(node.ruleIds)) node.ruleIds = [];
+      if (!node.ruleIds.includes(targetId)) node.ruleIds.push(targetId);
+    }
+  }
+
+  updateMetadata({ updatedBy: author });
+  return { success: true, mapping };
+}
+
+export function deleteMapping(mappingId, mappingParams = {}, author = 'Business Analyst') {
+  const store = getActiveStore();
+  const { sourceEntity, sourceId, targetEntity, targetId, moduleId, featureId } = mappingParams;
+
+  if (sourceEntity === 'Requirement' && targetEntity === 'FlowNode') {
+    for (const [modId, features] of Object.entries(store.flows || {})) {
+      for (const [featId, flow] of Object.entries(features || {})) {
+        for (const node of flow.nodes || []) {
+          if (node.id === targetId && node.reqId === sourceId) {
+            node.reqId = '';
+          }
+        }
+      }
+    }
+  } else if (sourceEntity === 'Requirement' && targetEntity === 'BusinessRule') {
+    const req = store.requirements.find(r => r.id === sourceId);
+    if (req && Array.isArray(req.ruleIds)) {
+      req.ruleIds = req.ruleIds.filter(id => id !== targetId);
+    }
+  } else if (sourceEntity === 'FlowNode' && targetEntity === 'BusinessRule') {
+    for (const [modId, features] of Object.entries(store.flows || {})) {
+      for (const [featId, flow] of Object.entries(features || {})) {
+        for (const node of flow.nodes || []) {
+          if (node.id === sourceId && Array.isArray(node.ruleIds)) {
+            node.ruleIds = node.ruleIds.filter(id => id !== targetId);
+          }
+        }
+      }
+    }
+  }
+
+  updateMetadata({ updatedBy: author });
+  return { success: true };
 }
