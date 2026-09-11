@@ -747,7 +747,7 @@ function renderDynamicFormFields(tab, item) {
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
           <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Ref. Dokumen Okulasi</label>
-          <input type="text" name="buddingDocNo" value="${escapeHtml(item?.buddingDocNo || 'OKL/2026/01')}" required style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
+          <input type="text" name="buddingDocNo" value="${escapeHtml(item?.buddingDocNo || '2026/GRF/001')}" required style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
         </div>
         <div>
           <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nomor Batch</label>
@@ -1050,7 +1050,8 @@ async function injectDemoTransactions(tab) {
     seeding: [
       {
         id: 'SEED-001',
-        docNo: 'SEED/2026/01',
+        docNo: '2026/SOW/001',
+        nomorDokumen: '2026/SOW/001',
         program: 'Program Nursery 2026 - Batch 1',
         tahapan: 'Rubber Main Nursery',
         batchNo: 'Batch-01',
@@ -1069,7 +1070,8 @@ async function injectDemoTransactions(tab) {
     budding: [
       {
         id: 'OKL-001',
-        docNo: 'OKL/2026/01',
+        docNo: '2026/GRF/001',
+        nomorDokumen: '2026/GRF/001',
         type: 'GRAFTING',
         program: 'Program Nursery 2026 - Batch 1',
         tahapan: 'Rubber Main Nursery',
@@ -1088,7 +1090,7 @@ async function injectDemoTransactions(tab) {
       {
         id: 'INSP-001',
         docNo: 'INSP/2026/01',
-        buddingDocNo: 'OKL/2026/01',
+        buddingDocNo: '2026/GRF/001',
         program: 'Program Nursery 2026 - Batch 1',
         tahapan: 'Rubber Main Nursery',
         batchNo: 'Batch-01',

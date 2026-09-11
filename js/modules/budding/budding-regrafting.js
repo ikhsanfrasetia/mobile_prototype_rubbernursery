@@ -1,21 +1,69 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
+import { formatStandardDocNo } from '../../core/utils.js';
 
 export function renderBuddingRegrafting() {
   const app = document.getElementById('app');
 
-  // Load regrafting pool from storage
-  let regraftPool = storage.get('regrafting_pool', []);
-  const allBuddingTxs = storage.get('budding_transactions', []);
+  // Load regrafting pool from storage & auto-migrate legacy doc numbers
+  let rawRegraftPool = storage.get('regrafting_pool', []);
+  let hasPoolUpdate = false;
+  let regraftPool = rawRegraftPool.map(p => {
+    let updated = { ...p };
+    if (p.docNo && (p.docNo.includes('/OKJ/') || p.docNo.includes('/OKL/') || p.docNo.includes('/REG/'))) {
+      updated.docNo = p.docNo.replace('/OKJ/', '/RGRF/').replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/');
+      hasPoolUpdate = true;
+    }
+    if (p.inspectionDocNo && (p.inspectionDocNo.includes('/PRK/') || p.inspectionDocNo.includes('/INSP/'))) {
+      updated.inspectionDocNo = p.inspectionDocNo.replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
+      hasPoolUpdate = true;
+    }
+    return updated;
+  });
+  if (hasPoolUpdate) {
+    storage.set('regrafting_pool', regraftPool);
+  }
+
+  // Load budding transactions & auto-migrate legacy OKJ doc numbers
+  const rawBuddingTxs = storage.get('budding_transactions', []);
+  let hasBuddingTxUpdate = false;
+  const allBuddingTxs = rawBuddingTxs.map(b => {
+    let updated = { ...b };
+    if (b.type === 'REGRAFTING') {
+      if (b.docNo && (b.docNo.includes('/OKJ/') || b.docNo.includes('/OKL/') || b.docNo.includes('/REG/'))) {
+        updated.docNo = b.docNo.replace('/OKJ/', '/RGRF/').replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/');
+        hasBuddingTxUpdate = true;
+      }
+      if (b.regraftPoolDocNo && (b.regraftPoolDocNo.includes('/OKJ/') || b.regraftPoolDocNo.includes('/OKL/') || b.regraftPoolDocNo.includes('/REG/'))) {
+        updated.regraftPoolDocNo = b.regraftPoolDocNo.replace('/OKJ/', '/RGRF/').replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/');
+        hasBuddingTxUpdate = true;
+      }
+      if (b.inspectionDocNo && (b.inspectionDocNo.includes('/PRK/') || b.inspectionDocNo.includes('/INSP/'))) {
+        updated.inspectionDocNo = b.inspectionDocNo.replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
+        hasBuddingTxUpdate = true;
+      }
+    }
+    return updated;
+  });
+  if (hasBuddingTxUpdate) {
+    storage.set('budding_transactions', allBuddingTxs);
+  }
+
   const regraftTxs = allBuddingTxs.filter(b => b.type === 'REGRAFTING');
-  const inspectionTxs = storage.get('inspection_transactions', []);
+  const rawInspectionTxs = storage.get('inspection_transactions', []);
+  const inspectionTxs = rawInspectionTxs.map(insp => {
+    if (insp.docNo && (insp.docNo.includes('/PRK/') || insp.docNo.includes('/INSP/'))) {
+      return { ...insp, docNo: insp.docNo.replace('/PRK/', '/INS/').replace('/INSP/', '/INS/') };
+    }
+    return insp;
+  });
 
   // AUTO-SYNC: Ensure all inspections with Regrafting allocation are present in regraftPool
   inspectionTxs.forEach((insp, i) => {
     const gagal = parseInt(insp.jumlahGagal || 0);
     const toRegraft = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : gagal;
     if (toRegraft > 0) {
-      const exists = regraftPool.some(p => p.inspectionDocNo === insp.docNo || (p.batchNo === insp.batchNo && p.sourceBuddingDocNo === insp.buddingDocNo));
+      const exists = regraftPool.some(p => (insp.docNo && p.inspectionDocNo === insp.docNo) || (p.docNo && insp.regraftPoolDocNo && p.docNo === insp.regraftPoolDocNo));
       if (!exists) {
         regraftPool.push({
           docNo: `REG-POOL/2026/0${regraftPool.length + 1}`,
@@ -36,12 +84,12 @@ export function renderBuddingRegrafting() {
 
   // AUTO-SYNC: Ensure any existing Regrafting transaction has its parent document in regraftPool
   regraftTxs.forEach((rtx, i) => {
-    const exists = regraftPool.some(p => (rtx.regraftPoolDocNo && p.docNo === rtx.regraftPoolDocNo) || (rtx.inspectionDocNo && p.inspectionDocNo === rtx.inspectionDocNo) || (p.batchNo === rtx.batchNo));
+    const exists = regraftPool.some(p => (rtx.regraftPoolDocNo && p.docNo === rtx.regraftPoolDocNo) || (rtx.inspectionDocNo && p.inspectionDocNo === rtx.inspectionDocNo));
     if (!exists) {
       const totalPop = parseInt(rtx.jumlah || 0) + parseInt(rtx.jumlahDitolak || 0);
       regraftPool.push({
         docNo: rtx.regraftPoolDocNo || `REG-POOL/2026/0${regraftPool.length + 1}`,
-        inspectionDocNo: rtx.inspectionDocNo || `INSP/2026/0${i + 1}`,
+        inspectionDocNo: rtx.inspectionDocNo || formatStandardDocNo(2026, 'INS', i + 1),
         batchNo: rtx.batchNo || `Batch-0${i + 1}`,
         sourceBuddingDocNo: rtx.sourceBuddingDocNo || `OKL/2026/0${i + 1}`,
         tanggal: rtx.tanggal || 'Hari ini',
@@ -55,18 +103,19 @@ export function renderBuddingRegrafting() {
     }
   });
 
-  storage.set('regrafting_pool', regraftPool);
-
   const processedRegraftPool = regraftPool.map((poolItem, idx) => {
     const batchNo = poolItem.batchNo || `Batch-0${idx + 1}`;
     const docNo = poolItem.docNo || `REG-POOL/2026/0${idx + 1}`;
     const populasiGagal = parseInt(poolItem.jumlah || 0);
 
-    // Calculate accumulated done regraftings for this parent batch
+    // Calculate accumulated done regraftings strictly per unique pool/inspection document
     let ttlRegrafted = 0;
     let ttlDitolak = 0;
     let ttlKayu = 0;
-    const relatedRegrafts = regraftTxs.filter(r => r.regraftPoolDocNo === docNo || r.inspectionDocNo === poolItem.inspectionDocNo || r.batchNo === batchNo);
+    const relatedRegrafts = regraftTxs.filter(r => 
+      (r.regraftPoolDocNo && r.regraftPoolDocNo === docNo) || 
+      (r.inspectionDocNo && poolItem.inspectionDocNo && r.inspectionDocNo === poolItem.inspectionDocNo)
+    );
     
     relatedRegrafts.forEach(r => {
       ttlRegrafted += parseInt(r.jumlah || 0);
@@ -77,6 +126,11 @@ export function renderBuddingRegrafting() {
     const totalRealisasi = ttlRegrafted + ttlDitolak;
     const sisaBelumRegraft = Math.max(0, populasiGagal - totalRealisasi);
     const persenSelesai = populasiGagal > 0 ? Math.min(100, Math.round((totalRealisasi / populasiGagal) * 100)) : 0;
+
+    // Sinkronkan sisa dan status pada pool item secara otomatis
+    poolItem.sisaRegrafting = sisaBelumRegraft;
+    poolItem.status = sisaBelumRegraft <= 0 ? 'COMPLETED' : (totalRealisasi > 0 ? 'IN_PROGRESS' : 'READY_TO_REGRAFT');
+    poolItem.jumlahKayu = ttlKayu;
 
     // Status badge
     let statusBadgeText = 'Perlu Okulasi Ulang';
@@ -119,6 +173,9 @@ export function renderBuddingRegrafting() {
       statusBadgeBorder
     };
   });
+
+  // Persist sinkronisasi pool yang sudah terkoreksi
+  storage.set('regrafting_pool', regraftPool);
 
   // Urutkan: Dokumen yang perlu okulasi ulang / belum selesai paling ATAS, yang sudah selesai di BAWAH
   processedRegraftPool.sort((a, b) => {
@@ -321,24 +378,49 @@ export function renderBuddingRegrafting() {
             ${regraftTxs.map((rtx, rIdx) => {
               const originalIndex = allBuddingTxs.indexOf(rtx);
               const workersList = rtx.workers || [];
+              const docNo = rtx.docNo ? rtx.docNo.replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/').replace('/OKJ/', '/RGRF/') : formatStandardDocNo(2026, 'RGRF', rIdx + 1);
+              const jmlDiokulasi = parseInt(rtx.jumlah || 0);
+              const jmlKayu = parseInt(rtx.jumlahKayu || 0);
+              const rawAvg = (jmlKayu > 0 && jmlDiokulasi > 0) ? Math.round(jmlDiokulasi / jmlKayu) : 0;
+              const avgMataEntresText = rawAvg > 0 ? `${rawAvg} Mata Entres` : '-';
+              const totalMataEntres = (rawAvg > 0 && jmlDiokulasi > 0) ? (jmlDiokulasi * rawAvg) : '-';
+
+              const batchNo = rtx.batchNo || '-';
+              const klonEntres = rtx.klonEntres || rtx.klon || '-';
+              const bedengan = rtx.bedengan || '-';
+              const tanggal = rtx.tanggal || '-';
+              const klonRootstock = rtx.klonRootstock || '-';
+              const regraftPoolDocNo = (rtx.regraftPoolDocNo || '-').replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/').replace('/OKJ/', '/RGRF/');
+              const inspectionDocNo = (rtx.inspectionDocNo || '-').replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
+              const alasan = rtx.alasan || '-';
+              const jumlahDitolak = parseInt(rtx.jumlahDitolak || 0);
 
               return `
-                <div class="card-regraft-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); position: relative;">
+                <div class="card-regraft-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative; margin-bottom: 8px;">
                   
-                  <!-- BARIS 1: JUDUL BATCH & TOMBOL AKSI 3-DOTS -->
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <span style="font-weight: 800; font-size: 0.86rem; color: #111827;">${rtx.batchNo || 'Batch'}</span>
-                      <span style="color: #9CA3AF; font-size: 0.80rem;">-</span>
-                      <span style="font-weight: 700; font-size: 0.84rem; color: #374151;">${rtx.klonEntres || rtx.klon || 'PB 260'}</span>
-                      <span style="font-size: 0.62rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: #FFFBEB; color: #B45309; border: 1px solid #FDE68A;">
-                        Okulasi Janda
-                      </span>
+                  <!-- BAGIAN A: IDENTITAS DOKUMEN -->
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-weight: 800; font-size: 0.98rem; color: #111827; letter-spacing: -0.01em;">${docNo}</span>
+                        <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #FFFBEB; color: #B45309; border: 1px solid #FDE68A;">
+                          Okulasi Janda
+                        </span>
+                      </div>
+                      <div style="font-weight: 700; font-size: 0.86rem; color: #111827; margin-top: 4px;">
+                        ${batchNo} <span style="color: #9CA3AF; margin: 0 2px;">•</span> ${klonEntres}
+                      </div>
+                      <div style="font-size: 0.74rem; color: #6B7280; margin-top: 2px;">
+                        ${bedengan} <span style="color: #9CA3AF; margin: 0 2px;">•</span> ${tanggal}
+                      </div>
+                      <div style="font-size: 0.74rem; color: #6B7280; margin-top: 2px;">
+                        Dok. Alokasi: <span style="color: #374151; font-weight: 600;">${regraftPoolDocNo}</span>
+                      </div>
                     </div>
 
                     <!-- TOMBOL AKSI 3-DOTS -->
-                    <div style="position: relative;">
-                      <button type="button" class="btn-tx-action-trigger" data-index="${rIdx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
+                    <div style="position: relative; flex-shrink: 0; margin-top: 2px;">
+                      <button type="button" class="btn-tx-action-trigger" data-index="${rIdx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
                         <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                           <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
                           <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
@@ -347,11 +429,7 @@ export function renderBuddingRegrafting() {
                       </button>
 
                       <!-- DROPDOWN POPUP MENU -->
-                      <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 130px; overflow: hidden;">
-                        <button type="button" class="menu-action-rincian" data-index="${rIdx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #374151; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
-                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                          <span>Rincian</span>
-                        </button>
+                      <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 34px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 130px; overflow: hidden;">
                         <button type="button" class="menu-action-edit-regraft" data-original-index="${originalIndex >= 0 ? originalIndex : rIdx}" data-pool-doc="${rtx.regraftPoolDocNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
                           <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                           <span>Edit</span>
@@ -364,71 +442,82 @@ export function renderBuddingRegrafting() {
                     </div>
                   </div>
 
-                  <!-- BARIS 2: LOKASI & TANGGAL -->
-                  <div style="font-size: 0.72rem; color: #6B7280; margin-bottom: 8px;">
-                    ${rtx.bedengan || 'Bedengan 01'} • ${rtx.tanggal || 'Hari ini'}
+                  <!-- BAGIAN B: TOMBOL LIHAT DETAIL -->
+                  <div>
+                    <button type="button" class="btn-toggle-expand-regraft-summary" style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; width: 100%; padding: 6px 10px; font-size: 0.74rem; font-weight: 700; color: #B45309; cursor: pointer; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box;">
+                      <span class="text-expand-regraft-summary">Lihat Detail</span>
+                      <svg class="icon-expand-regraft-summary" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease;">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </button>
                   </div>
 
-                  <!-- BARIS 3: METRIK STATISTIK SIMETRIS 2-KOLOM -->
-                  <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 7px 4px; text-align: center;">
-                    <div>
-                      <div style="font-size: 0.65rem; color: #116834;">Total Diokulasi Janda</div>
-                      <div style="font-size: 0.82rem; font-weight: 800; color: #116834; margin-top: 1px;">${rtx.jumlah || 0} Pkk</div>
+                  <!-- EXPANDABLE CONTENT (TERSEMBUNYI SAAT COLLAPSED, TERBUKA SAAT EXPANDED) -->
+                  <div class="regraft-summary-expand-content" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #E5E7EB;">
+                    
+                    <!-- RINGKASAN PRODUKSI (2x2) -->
+                    <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px;">
+                      <!-- Baris 1, Kolom 1: Total Diokulasi Janda -->
+                      <div>
+                        <div style="font-size: 0.70rem; color: #6B7280;">Total Diokulasi Janda</div>
+                        <div style="font-size: 0.92rem; font-weight: 800; color: #B45309; margin-top: 2px;">${jmlDiokulasi} Pkk</div>
+                      </div>
+                      <!-- Baris 1, Kolom 2: Kayu -->
+                      <div>
+                        <div style="font-size: 0.70rem; color: #6B7280;">Kayu Okulasi</div>
+                        <div style="font-size: 0.92rem; font-weight: 800; color: #B45309; margin-top: 2px;">${jmlKayu} Batang</div>
+                      </div>
+                      <!-- Baris 2, Kolom 1: Rata-rata Mata Entres / Batang -->
+                      <div>
+                        <div style="font-size: 0.70rem; color: #6B7280; line-height: 1.2;">Rata-rata Mata Entres / Batang</div>
+                        <div style="font-size: 0.92rem; font-weight: 800; color: #B45309; margin-top: 2px;">${avgMataEntresText}</div>
+                      </div>
+                      <!-- Baris 2, Kolom 2: Jumlah Mata Entres -->
+                      <div>
+                        <div style="font-size: 0.70rem; color: #6B7280; line-height: 1.2;">Jumlah Mata Entres</div>
+                        <div style="font-size: 0.92rem; font-weight: 800; color: #B45309; margin-top: 2px;">${totalMataEntres}</div>
+                      </div>
                     </div>
-                    <div>
-                      <div style="font-size: 0.65rem; color: #6B7280;">Kayu Okulasi</div>
-                      <div style="font-size: 0.82rem; font-weight: 800; color: #374151; margin-top: 1px;">${rtx.jumlahKayu || 0} Batang</div>
-                    </div>
-                  </div>
 
-                  <!-- EXPANDABLE CONTENT DETAIL TRANSAKSI REGRAFTING -->
-                  <div class="regraft-summary-expand-content" style="display: none; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 10px 12px; margin-top: 8px; font-size: 0.74rem;">
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                      <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #6B7280;">No. Dokumen:</span>
-                        <span style="font-weight: 700; color: #111;">${rtx.docNo || `OKL/REG/2026/0${rIdx+1}`}</span>
+                    <!-- INFORMASI PENDUKUNG -->
+                    <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;">
+                      <div style="font-size: 0.70rem; color: #6B7280;">Batang Bawah:</div>
+                      <div style="font-size: 0.86rem; font-weight: 800; color: #111827; margin-top: 1px;">${klonRootstock}</div>
+                      
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E5E7EB;">
+                        <span style="font-size: 0.70rem; color: #6B7280;">Dokumen Pemeriksaan:</span>
+                        <span style="font-weight: 700; color: #111827; font-size: 0.78rem;">${inspectionDocNo}</span>
                       </div>
-                      <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #6B7280;">Dokumen Alokasi:</span>
-                        <span style="font-weight: 700; color: #111;">${rtx.regraftPoolDocNo || '-'}</span>
+
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E5E7EB;">
+                        <span style="font-size: 0.70rem; color: #6B7280;">Penyebab:</span>
+                        <span style="font-weight: 700; color: #B45309; font-size: 0.78rem;">${alasan}</span>
                       </div>
-                      <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #6B7280;">Pemeriksaan Asal:</span>
-                        <span style="font-weight: 700; color: #111;">${rtx.inspectionDocNo || '-'}</span>
-                      </div>
-                      <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #6B7280;">Batang Bawah:</span>
-                        <span style="font-weight: 700; color: #111;">${rtx.klonRootstock || 'GT1'}</span>
-                      </div>
-                      <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #6B7280;">Alasan Okulasi:</span>
-                        <span style="font-weight: 700; color: #D97706;">${rtx.alasan || 'Okulasi Ulang'}</span>
-                      </div>
-                      <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #6B7280;">Kayu Okulasi:</span>
-                        <span style="font-weight: 700; color: #111;">${rtx.jumlahKayu || 0} Batang</span>
-                      </div>
-                      ${parseInt(rtx.jumlahDitolak || 0) > 0 ? `
-                        <div style="display: flex; justify-content: space-between;">
-                          <span style="color: #6B7280;">Bibit Ditolak:</span>
-                          <span style="font-weight: 700; color: #D32F2F;">${rtx.jumlahDitolak} Pkk</span>
+
+                      ${jumlahDitolak > 0 ? `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E5E7EB;">
+                          <span style="font-size: 0.70rem; color: #6B7280;">Bibit Ditolak:</span>
+                          <span style="font-weight: 800; color: #D32F2F; font-size: 0.82rem;">${jumlahDitolak} Pkk</span>
                         </div>
                       ` : ''}
                     </div>
 
+                    <!-- DETAIL PEKERJA LENGKAP -->
                     ${workersList.length > 0 ? `
-                      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #D1D5DB;">
-                        <div style="font-weight: 700; color: #374151; margin-bottom: 6px; font-size: 0.74rem;">Pekerja Okulasi:</div>
+                      <div>
+                        <div style="font-weight: 700; color: #111827; margin-bottom: 6px; font-size: 0.78rem;">Pekerja Okulasi Janda:</div>
                         <div style="display: flex; flex-direction: column; gap: 4px;">
                           ${workersList.map(w => `
-                            <div style="display: flex; justify-content: space-between; color: #4B5563;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; color: #4B5563; font-size: 0.76rem;">
                               <span>• ${w.name} <span style="color: #9CA3AF;">(${w.code})</span></span>
-                              <span style="font-weight: 700; color: #116834;">${w.qty || 0} Pkk</span>
+                              <span style="font-weight: 700; color: #B45309; text-align: right;">${parseInt(w.qty || 0)} Pkk</span>
                             </div>
                           `).join('')}
                         </div>
                       </div>
-                    ` : ''}
+                    ` : `
+                      <div style="color: #9CA3AF; font-size: 0.74rem; font-style: italic;">Tidak ada data pekerja</div>
+                    `}
 
                   </div>
 
@@ -497,6 +586,46 @@ export function renderBuddingRegrafting() {
     }
   });
 
+  // Event Listener: Expand / Collapse on Summary Cards (Single-expand with Auto-scroll)
+  app.querySelectorAll('.card-regraft-summary-wrapper').forEach(wrapper => {
+    const btnToggle = wrapper.querySelector('.btn-toggle-expand-regraft-summary');
+    const content = wrapper.querySelector('.regraft-summary-expand-content');
+    const textSpan = wrapper.querySelector('.text-expand-regraft-summary');
+    const icon = wrapper.querySelector('.icon-expand-regraft-summary');
+
+    if (btnToggle && content) {
+      btnToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const willOpen = content.style.display !== 'block';
+
+        // Close all other summary cards (single-expand behavior)
+        app.querySelectorAll('.card-regraft-summary-wrapper').forEach(otherWrapper => {
+          if (otherWrapper !== wrapper) {
+            const otherContent = otherWrapper.querySelector('.regraft-summary-expand-content');
+            const otherTextSpan = otherWrapper.querySelector('.text-expand-regraft-summary');
+            const otherIcon = otherWrapper.querySelector('.icon-expand-regraft-summary');
+            if (otherContent) otherContent.style.display = 'none';
+            if (otherTextSpan) otherTextSpan.textContent = 'Lihat Detail';
+            if (otherIcon) otherIcon.style.transform = 'rotate(0deg)';
+          }
+        });
+
+        // Toggle current card
+        content.style.display = willOpen ? 'block' : 'none';
+        if (textSpan) textSpan.textContent = willOpen ? 'Sembunyikan Detail' : 'Lihat Detail';
+        if (icon) icon.style.transform = willOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+
+        // Auto-scroll / focus to the opened card
+        if (willOpen) {
+          setTimeout(() => {
+            wrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 50);
+        }
+      });
+    }
+  });
+
   // Event Listener: Action Rekam Okulasi Janda
   app.querySelectorAll('.card-action-regraft').forEach(card => {
     card.addEventListener('click', (e) => {
@@ -544,22 +673,6 @@ export function renderBuddingRegrafting() {
   document.addEventListener('click', () => {
     app.querySelectorAll('.tx-action-menu').forEach(m => {
       m.style.display = 'none';
-    });
-  });
-
-  // Event Listener: Action Rincian (Toggle Expand)
-  app.querySelectorAll('.menu-action-rincian').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const wrapper = e.currentTarget.closest('.card-regraft-summary-wrapper');
-      const menu = wrapper?.querySelector('.tx-action-menu');
-      if (menu) menu.style.display = 'none';
-
-      const content = wrapper?.querySelector('.regraft-summary-expand-content');
-      if (content) {
-        content.style.display = content.style.display === 'block' ? 'none' : 'block';
-      }
     });
   });
 

@@ -733,9 +733,12 @@ export async function syncAllTxFromMobileDB(targetModId = null) {
         if (!map.has(it.id || it.docNo)) map.set(it.id || it.docNo, it);
       });
       const merged = Array.from(map.values()).map((it, idx) => {
-        const standardDoc = it.docNo && it.docNo.includes('/') && !it.docNo.startsWith('SEED-')
+        let standardDoc = it.docNo && it.docNo.includes('/') && !it.docNo.startsWith('SEED-') && !it.docNo.startsWith('SEED/')
           ? it.docNo
-          : formatStandardDocNo(2026, 'SEM', idx + 1);
+          : formatStandardDocNo(2026, 'SOW', idx + 1);
+        if (typeof standardDoc === 'string' && standardDoc.includes('/SEM/')) {
+          standardDoc = standardDoc.replace('/SEM/', '/SOW/');
+        }
         return {
           ...it,
           id: it.id || standardDoc,
@@ -756,7 +759,21 @@ export async function syncAllTxFromMobileDB(targetModId = null) {
       stored.forEach((it) => {
         if (!map.has(it.id || it.docNo)) map.set(it.id || it.docNo, it);
       });
-      const merged = Array.from(map.values());
+      const merged = Array.from(map.values()).map((it, idx) => {
+        let standardDoc = it.docNo;
+        const isRegraft = it.type === 'REGRAFTING';
+        if (!standardDoc || standardDoc.startsWith('OKL/') || standardDoc.startsWith('OKL-') || standardDoc === 'OKL/2026/01') {
+          standardDoc = formatStandardDocNo(2026, isRegraft ? 'RGRF' : 'GRF', idx + 1);
+        } else if (typeof standardDoc === 'string' && (standardDoc.includes('/OKL/') || standardDoc.includes('/OKJ/') || standardDoc.includes('/REG/'))) {
+          standardDoc = standardDoc.replace('/OKL/', isRegraft ? '/RGRF/' : '/GRF/').replace('/OKJ/', '/RGRF/').replace('/REG/', '/RGRF/');
+        }
+        return {
+          ...it,
+          id: it.id || standardDoc,
+          docNo: standardDoc,
+          nomorDokumen: it.nomorDokumen || standardDoc
+        };
+      });
       storage.set('budding_transactions', merged);
       if (targetModId === 'budding') syncedCount = merged.filter((t) => t.type !== 'REGRAFTING').length;
       if (targetModId === 'regrafting') syncedCount = merged.filter((t) => t.type === 'REGRAFTING').length;
@@ -2311,7 +2328,7 @@ function renderDynamicTxTable(modId, curMod, list) {
         <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
           <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
           <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">
-            ${esc(item.docNo || formatStandardDocNo(2026, 'SEM', idx + 1))}
+            ${esc((item.docNo || formatStandardDocNo(2026, 'SOW', idx + 1)).replace('/SEM/', '/SOW/'))}
             <div style="font-size: 0.72rem; color: #116834; font-weight: 700;">${esc(item.batchNo || 'Batch-01')}</div>
           </td>
           <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
@@ -2327,11 +2344,6 @@ function renderDynamicTxTable(modId, curMod, list) {
     }).join('');
   } else if (modId === 'budding') {
     theadHtml = `
-      <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
-        <th style="padding: 10px 12px; width: 40px;">#</th>
-        <th style="padding: 10px 12px;">No. Dokumen & Batch</th>
-        <th style="padding: 10px 12px;">Tanggal Okulasi</th>
-        <th style="padding: 10px 12px;">No. Bedengan</th>
       <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; color: #475569;">
         <th style="padding: 10px 12px; width: 40px;">#</th>
         <th style="padding: 10px 12px;">No. Dokumen & Batch</th>
@@ -2354,7 +2366,7 @@ function renderDynamicTxTable(modId, curMod, list) {
       <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
         <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
         <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">
-          ${esc(item.docNo || 'OKL/2026/01')}
+          ${esc((item.docNo || formatStandardDocNo(2026, 'GRF', idx + 1)).replace('/OKL/', '/GRF/'))}
           <div style="font-size: 0.72rem; color: #116834; font-weight: 700;">${esc(item.batchNo || 'Batch-01')}</div>
         </td>
         <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
@@ -2472,7 +2484,7 @@ function renderDynamicTxTable(modId, curMod, list) {
       return `
       <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.1s ease;">
         <td style="padding: 10px 12px; color: #94a3b8; font-weight: 600;">${idx + 1}</td>
-        <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">${esc(item.docNo || 'SEL/2026/01')}</td>
+        <td style="padding: 10px 12px; font-weight: 700; color: #0f172a;">${esc(item.docNo ? item.docNo.replace('/SEL/', '/CULL/').replace('DEC-CUL/', '2026/CULL/0').replace('SEL-POOL/', '2026/CULL/0').replace('SEL/REJ/', '2026/CULL/0') : formatStandardDocNo(2026, 'CULL', idx + 1))}</td>
         <td style="padding: 10px 12px; color: #334155;">${esc(item.tanggal || item.date || todayISO())}</td>
         <td style="padding: 10px 12px;">
           <span style="font-size: 0.68rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca;">
@@ -3159,7 +3171,7 @@ function renderTxModuleFields(modId, item) {
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
           <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Ref. Dokumen Okulasi</label>
-          <input class="feedback-form-input" id="tx-input-buddingDocNo" type="text" value="${esc(item?.buddingDocNo || 'OKL/2026/01')}" />
+          <input class="feedback-form-input" id="tx-input-buddingDocNo" type="text" value="${esc(item?.buddingDocNo || '2026/GRF/001')}" />
         </div>
         <div>
           <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Nomor Batch</label>

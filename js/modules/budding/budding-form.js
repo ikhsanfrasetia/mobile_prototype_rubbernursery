@@ -75,14 +75,14 @@ export function renderBuddingForm() {
     const regraftIdx = storage.get('selected_regraft_index', 0);
     const poolItem = regraftPool[regraftIdx] || {
       batchNo: 'Batch-01',
-      docNo: formatStandardDocNo(2026, 'OKJ', 1),
-      inspectionDocNo: formatStandardDocNo(2026, 'PRK', 1),
+      docNo: formatStandardDocNo(2026, 'RGRF', 1),
+      inspectionDocNo: formatStandardDocNo(2026, 'INS', 1),
       jumlah: 50,
       bedengan: 'Bedengan 01',
       klonRootstock: 'GT-01'
     };
     batchNo = poolItem.batchNo || 'Batch-01';
-    docNo = poolItem.docNo || formatStandardDocNo(2026, 'OKJ', 1);
+    docNo = poolItem.docNo || formatStandardDocNo(2026, 'RGRF', 1);
     poolDocNo = poolItem.docNo;
     inspectionDocNo = poolItem.inspectionDocNo;
     totalDisemai = parseInt(poolItem.jumlah || 0);
@@ -91,7 +91,7 @@ export function renderBuddingForm() {
   } else {
     const selectedBatch = seedingTxs[batchIdx] || {
       batchNo: 'Batch-01',
-      docNo: formatStandardDocNo(2026, 'APR', 1),
+      docNo: formatStandardDocNo(2026, 'SOW', 1),
       program: 'PRG/NUR/01/2026',
       tahapan: 'Rubber Main Nursery',
       klonAwal: 'GT-01',
@@ -99,7 +99,7 @@ export function renderBuddingForm() {
       rows: [{ bedengan: 'Bedengan 01', disemai: 2000 }]
     };
     batchNo = selectedBatch.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;
-    docNo = selectedBatch.docNo || selectedBatch.sourceDocNo || formatStandardDocNo(2026, 'APR', 1);
+    docNo = selectedBatch.docNo || (selectedBatch.sourceDocNo ? selectedBatch.sourceDocNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', 1));
     totalDisemai = parseInt(selectedBatch.totalDisemai || 0);
     klonRootstock = selectedBatch.klonAwal || 'GT-01';
     const batchBedengan = (selectedBatch.rows || []).map(r => r.bedengan).filter(Boolean);
@@ -113,8 +113,8 @@ export function renderBuddingForm() {
     if (b.type !== (isRegrafting ? 'REGRAFTING' : 'GRAFTING')) return;
     
     const isMatch = isRegrafting 
-      ? (b.regraftPoolDocNo === docNo || b.batchNo === batchNo) 
-      : (b.seedingIndex === parseInt(batchIdx) || b.batchNo === batchNo);
+      ? ((b.regraftPoolDocNo && b.regraftPoolDocNo === poolDocNo) || (b.inspectionDocNo && inspectionDocNo && b.inspectionDocNo === inspectionDocNo)) 
+      : (b.seedingIndex === parseInt(batchIdx) || (b.sourceDocNo && b.sourceDocNo === docNo));
       
     if (isMatch) {
       totalDiokulasiSDHI += parseInt(b.jumlah || 0);
@@ -169,7 +169,7 @@ export function renderBuddingForm() {
                 <div style="font-weight: 700; color: #116834; font-size: 0.84rem; margin-top: 1px;">${batchNo}</div>
               </div>
               <div>
-                <span style="color: #6B7280;">Dokumen Penerimaan:</span>
+                <span style="color: #6B7280;">${isRegrafting ? 'Ref. Dokumen Pool:' : 'Dokumen Penyemaian:'}</span>
                 <div style="font-weight: 700; color: #111; font-size: 0.80rem; margin-top: 1px; word-break: break-all;">${docNo}</div>
               </div>
               <div>
@@ -817,14 +817,23 @@ export function renderBuddingForm() {
       if (isRegrafting) {
         let pool = storage.get('regrafting_pool', []);
         pool = pool.map(p => {
-          if (p.docNo === poolDocNo || p.batchNo === batchNo) {
-            const currentKayu = (parseInt(p.jumlahKayu || 0) + kayu);
-            const newSisa = Math.max(0, parseInt(p.sisaRegrafting || p.jumlah || 0) - totalDiokulasi);
+          const isTarget = (p.docNo && p.docNo === poolDocNo) || (inspectionDocNo && p.inspectionDocNo && p.inspectionDocNo === inspectionDocNo);
+          if (isTarget) {
+            // Hitung akumulasi riil dari seluruh transaksi regrafting terkait dokumen pool ini
+            const relatedTxs = txs.filter(t => t.type === 'REGRAFTING' && ((t.regraftPoolDocNo && t.regraftPoolDocNo === p.docNo) || (t.inspectionDocNo && p.inspectionDocNo && t.inspectionDocNo === p.inspectionDocNo)));
+            let ttlDone = 0;
+            let ttlKayu = 0;
+            relatedTxs.forEach(t => {
+              ttlDone += parseInt(t.jumlah || 0);
+              ttlKayu += parseInt(t.jumlahKayu || 0);
+            });
+            const originalQty = parseInt(p.jumlah || 0);
+            const newSisa = Math.max(0, originalQty - ttlDone);
             return {
               ...p,
-              jumlahKayu: currentKayu,
+              jumlahKayu: ttlKayu,
               sisaRegrafting: newSisa,
-              status: newSisa <= 0 ? 'COMPLETED' : 'IN_PROGRESS'
+              status: newSisa <= 0 ? 'COMPLETED' : (ttlDone > 0 ? 'IN_PROGRESS' : 'READY_TO_REGRAFT')
             };
           }
           return p;
@@ -837,7 +846,7 @@ export function renderBuddingForm() {
       selPool = selPool.filter(s => !(s.buddingDocNo === docNoBudding && s.originType === 'REJECT_OKULASI'));
       if (ditolak > 0) {
         selPool.push({
-          docNo: `SEL/REJ/2026/0${selPool.length + 1}`,
+          docNo: formatStandardDocNo(2026, 'CULL', selPool.length + 1),
           originType: 'REJECT_OKULASI',
           batchNo: batchNo,
           buddingDocNo: docNoBudding,

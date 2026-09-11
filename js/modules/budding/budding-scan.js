@@ -17,7 +17,7 @@ export function renderBuddingScan() {
   const seedingTxs = storage.get('seeding_transactions', []);
   const selectedBatch = seedingTxs[batchIdx] || {
     batchNo: `Batch-0${parseInt(batchIdx) + 1}`,
-    docNo: formatStandardDocNo(2026, 'APR', 1),
+    docNo: formatStandardDocNo(2026, 'SOW', 1),
     program: 'PRG/NUR/01/2026',
     tahapan: 'Rubber Main Nursery',
     klonAwal: 'GT-01',
@@ -26,7 +26,7 @@ export function renderBuddingScan() {
   };
 
   const batchNo = selectedBatch.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;
-  const docNo = selectedBatch.docNo || selectedBatch.sourceDocNo || formatStandardDocNo(2026, 'APR', 1);
+  const docNo = selectedBatch.docNo || (selectedBatch.sourceDocNo ? selectedBatch.sourceDocNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', 1));
   const program = selectedBatch.program || 'PRG/NUR/01/2026';
   const klonRootstock = selectedBatch.klonAwal || selectedBatch.klon || 'GT1';
   const batchBedengan = (selectedBatch.rows || []).map(r => r.bedengan).filter(Boolean);

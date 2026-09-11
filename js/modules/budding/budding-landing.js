@@ -29,9 +29,16 @@ export function renderBuddingLanding() {
   for (let i = 0; i < regraftPool.length; i++) {
     const item = regraftPool[i];
     const qty = parseInt(item.jumlah || 0);
+    if (qty <= 0) continue;
+
+    // Lewati jika item secara eksplisit sudah selesai (status COMPLETED atau sisa <= 0)
+    if (item.status === 'COMPLETED' || (item.sisaRegrafting !== undefined && parseInt(item.sisaRegrafting) <= 0)) {
+      continue;
+    }
+
     let done = 0;
-    regraftTxs.filter(r => r.regraftPoolDocNo === item.docNo || r.inspectionDocNo === item.inspectionDocNo).forEach(r => {
-      done += parseInt(r.jumlah || 0);
+    regraftTxs.filter(r => (r.regraftPoolDocNo && r.regraftPoolDocNo === item.docNo) || (r.inspectionDocNo && item.inspectionDocNo && r.inspectionDocNo === item.inspectionDocNo)).forEach(r => {
+      done += parseInt(r.jumlah || 0) + parseInt(r.jumlahDitolak || 0);
     });
     if (qty - done > 0) {
       hasPendingRegrafting = true;

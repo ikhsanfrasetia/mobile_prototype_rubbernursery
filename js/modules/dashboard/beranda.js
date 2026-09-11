@@ -10,6 +10,7 @@ import { storage } from '../../core/storage.js';
 import { openDrawer } from '../../components/drawer.js';
 import { toast } from '../../components/toast.js';
 import { navigate } from '../../core/router.js';
+import { formatStandardDocNo } from '../../core/utils.js';
 import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
 
 /* SVG Icons sesuai desain acuan - proporsional & tajam */
@@ -169,9 +170,16 @@ export function renderBeranda() {
   for (let i = 0; i < regraftPool.length; i++) {
     const item = regraftPool[i];
     const qty = parseInt(item.jumlah || 0);
+    if (qty <= 0) continue;
+
+    // Lewati jika item secara eksplisit sudah selesai (status COMPLETED atau sisa <= 0)
+    if (item.status === 'COMPLETED' || (item.sisaRegrafting !== undefined && parseInt(item.sisaRegrafting) <= 0)) {
+      continue;
+    }
+
     let done = 0;
-    regraftTxs.filter(r => r.regraftPoolDocNo === item.docNo || r.inspectionDocNo === item.inspectionDocNo).forEach(r => {
-      done += parseInt(r.jumlah || 0);
+    regraftTxs.filter(r => (r.regraftPoolDocNo && r.regraftPoolDocNo === item.docNo) || (r.inspectionDocNo && item.inspectionDocNo && r.inspectionDocNo === item.inspectionDocNo)).forEach(r => {
+      done += parseInt(r.jumlah || 0) + parseInt(r.jumlahDitolak || 0);
     });
     if (qty - done > 0) {
       hasPendingRegrafting = true;
@@ -179,48 +187,91 @@ export function renderBeranda() {
     }
   }
 
-  // Hitung pending penyeleksian (dari pemeriksaan gagal, reject okulasi, dan reject penerimaan APM/benih)
+  // Hitung pending penyeleksian (dari pemeriksaan gagal, reject okulasi/regrafting, dan reject penerimaan APM/benih)
   let pendingSelectionCount = 0;
   const culledTxs = storage.get('selection_transactions', []);
   const culledPoolDocs = new Set(culledTxs.map(c => c.selectionPoolDocNo).filter(Boolean));
+  let selectionPool = storage.get('selection_pool', []);
 
-  // 1. selection_pool eksisting
-  const selectionPool = storage.get('selection_pool', []);
-  selectionPool.forEach(s => {
-    if (s.status !== 'DECLARED_CULLED' && !culledPoolDocs.has(s.docNo)) {
-      pendingSelectionCount++;
-    }
-  });
-
-  // 2. data reject dari receipt_transactions (Penerimaan Bibit APM / Benih)
+  // Sinkronisasi data reject dari receipt_transactions (Penerimaan Bibit APM / Benih)
   const receiptTxs = storage.get('receipt_transactions', []);
   receiptTxs.forEach((rtx, i) => {
+    const rcvDocNo = rtx.docNo || rtx.nomorDokumen || formatStandardDocNo(2026, 'APR', i + 1);
     const rows = (rtx.rawState && rtx.rawState.tableRows) || [];
     if (rows.length > 0) {
       rows.forEach((row, rIdx) => {
-        if (parseInt(row.rejected || 0) > 0) {
-          const poolDocNo = `SEL/RCV/2026/0${i + 1}_${rIdx + 1}`;
-          if (!culledPoolDocs.has(poolDocNo) && !selectionPool.some(s => s.docNo === poolDocNo && s.status === 'DECLARED_CULLED')) {
-            pendingSelectionCount++;
+        const rejected = parseInt(row.rejected || 0);
+        if (rejected > 0) {
+          const poolDocNo = formatStandardDocNo(2026, 'CULL', selectionPool.length + 1);
+          if (!selectionPool.some(s => s.receiptDocNo === rcvDocNo && s.originType === 'REJECT_PENERIMAAN' && s.klon === (row.klon || rtx.klon))) {
+            selectionPool.push({
+              docNo: poolDocNo,
+              originType: 'REJECT_PENERIMAAN',
+              receiptDocNo: rcvDocNo,
+              jumlahAfkir: rejected,
+              status: 'PENDING_DECLARATION'
+            });
           }
         }
       });
     } else if (parseInt(rtx.rejected || rtx.jumlahDitolak || 0) > 0) {
-      const poolDocNo = `SEL/RCV/2026/0${i + 1}`;
-      if (!culledPoolDocs.has(poolDocNo) && !selectionPool.some(s => s.docNo === poolDocNo && s.status === 'DECLARED_CULLED')) {
-        pendingSelectionCount++;
+      const poolDocNo = formatStandardDocNo(2026, 'CULL', selectionPool.length + 1);
+      if (!selectionPool.some(s => s.receiptDocNo === rcvDocNo && s.originType === 'REJECT_PENERIMAAN')) {
+        selectionPool.push({
+          docNo: poolDocNo,
+          originType: 'REJECT_PENERIMAAN',
+          receiptDocNo: rcvDocNo,
+          jumlahAfkir: parseInt(rtx.rejected || rtx.jumlahDitolak || 0),
+          status: 'PENDING_DECLARATION'
+        });
       }
     }
   });
 
-  // 3. data reject dari budding_transactions (Okulasi)
+  // Sinkronisasi data reject dari budding_transactions (Okulasi Grafting & Regrafting)
   const allBuddingForSel = storage.get('budding_transactions', []);
   allBuddingForSel.forEach((btx, i) => {
-    if (parseInt(btx.jumlahDitolak || 0) > 0) {
-      const poolDocNo = `SEL/REJ/2026/0${i + 1}`;
-      if (!culledPoolDocs.has(poolDocNo) && !selectionPool.some(s => s.docNo === poolDocNo && s.status === 'DECLARED_CULLED')) {
-        pendingSelectionCount++;
+    const ditolak = parseInt(btx.jumlahDitolak || 0);
+    if (ditolak > 0) {
+      const isRegraft = btx.type === 'REGRAFTING';
+      const originType = isRegraft ? 'REJECT_REGRAFTING' : 'REJECT_OKULASI';
+      if (!selectionPool.some(s => s.buddingDocNo === btx.docNo && s.originType === originType)) {
+        selectionPool.push({
+          docNo: formatStandardDocNo(2026, 'CULL', selectionPool.length + 1),
+          originType,
+          buddingDocNo: btx.docNo,
+          jumlahAfkir: ditolak,
+          status: 'PENDING_DECLARATION'
+        });
       }
+    }
+  });
+
+  // Sinkronisasi data gagal periksa dari inspection_transactions
+  const allInspectionForSel = storage.get('inspection_transactions', []);
+  allInspectionForSel.forEach((insp, i) => {
+    const gagal = parseInt(insp.jumlahGagal || 0);
+    const toRegraft = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : gagal;
+    const toSelection = insp.totalToSelection !== undefined ? parseInt(insp.totalToSelection || 0) : Math.max(0, gagal - toRegraft);
+    if (toSelection > 0) {
+      if (!selectionPool.some(s => s.inspectionDocNo === insp.docNo && s.originType === 'REJECT_PEMERIKSAAN')) {
+        selectionPool.push({
+          docNo: formatStandardDocNo(2026, 'CULL', selectionPool.length + 1),
+          originType: 'REJECT_PEMERIKSAAN',
+          inspectionDocNo: insp.docNo,
+          jumlahAfkir: toSelection,
+          status: 'PENDING_DECLARATION'
+        });
+      }
+    }
+  });
+
+  storage.set('selection_pool', selectionPool);
+
+  // Hitung seluruh item selection_pool yang belum dideklarasikan
+  selectionPool.forEach(s => {
+    if (s.status !== 'DECLARED_CULLED' && !culledPoolDocs.has(s.docNo)) {
+      pendingSelectionCount++;
     }
   });
 

@@ -1,18 +1,34 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
+import { formatStandardDocNo } from '../../core/utils.js';
 
 export function renderInspectionLanding() {
   const app = document.getElementById('app');
 
   // Load all budding transactions (both Grafting & Regrafting) and inspection transactions
   const buddingTxs = storage.get('budding_transactions', []);
-  const inspectionTxs = storage.get('inspection_transactions', []);
+  let rawInspectionTxs = storage.get('inspection_transactions', []);
 
-  // Group or map budding transactions with cumulative inspection stats
+  // Normalize legacy doc numbers to 2026/INS/xxx
+  let hasMigration = false;
+  const inspectionTxs = rawInspectionTxs.map((insp, i) => {
+    let doc = insp.docNo || formatStandardDocNo(2026, 'INS', i + 1);
+    if (doc.includes('/PRK/') || doc.includes('/INSP/')) {
+      doc = doc.replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
+      hasMigration = true;
+    }
+    return { ...insp, docNo: doc };
+  });
+
+  if (hasMigration) {
+    storage.set('inspection_transactions', inspectionTxs);
+  }
+
+  // Group or map budding transactions with cumulative inspection stats (Strict per Dokumen Okulasi)
   const items = buddingTxs.map((btx, idx) => {
     const populasiDiokulasi = parseInt(btx.jumlah || 0);
     const isRegrafting = btx.type === 'REGRAFTING';
-    const relatedInspections = inspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo || insp.buddingIndex === idx || (insp.batchNo === btx.batchNo && (insp.buddingType === btx.type || (!insp.buddingType && !isRegrafting))));
+    const relatedInspections = inspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo);
     
     let totalDiperiksa = 0;
     let totalJadi = 0;
@@ -44,7 +60,18 @@ export function renderInspectionLanding() {
 
     const sisaBelumDiperiksa = Math.max(0, populasiDiokulasi - totalDiperiksa);
     
-    // Perhitungan persentase akurat
+    // Perhitungan persentase progres pemeriksaan (Total Diperiksa / Populasi Diokulasi)
+    const progressPercent = populasiDiokulasi > 0 ? (totalDiperiksa / populasiDiokulasi) * 100 : 0;
+    let progressDiperiksaDisplay = '0%';
+    if (progressPercent >= 100) {
+      progressDiperiksaDisplay = '100%';
+    } else if (progressPercent % 1 === 0) {
+      progressDiperiksaDisplay = `${progressPercent}%`;
+    } else {
+      progressDiperiksaDisplay = `${progressPercent.toFixed(1)}%`;
+    }
+
+    // Perhitungan persentase keberhasilan (% Jadi) untuk rincian detail transaksi
     let persenJadiDisplay = '0%';
     let rawPercent = 0;
     if (totalDiperiksa > 0) {
@@ -68,7 +95,7 @@ export function renderInspectionLanding() {
       statusBg = '#E53935';
       statusColor = '#FFFFFF';
     } else if (sisaBelumDiperiksa <= 0) {
-      statusText = `Selesai (${persenJadiDisplay})`;
+      statusText = `Selesai (${progressDiperiksaDisplay})`;
       statusBg = '#E8F5E9';
       statusColor = '#116834';
       statusBorder = '1px solid #116834';
@@ -156,6 +183,20 @@ export function renderInspectionLanding() {
               Okulasi Janda (${regraftingCount})
             </button>
           </div>
+        </div>
+
+        <!-- EMPTY STATE CONTAINER UNTUK DAFTAR OKULASI SIAP PERIKSA -->
+        <div id="insp-empty-state" style="display: ${items.length === 0 ? 'block' : 'none'}; background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 32px 16px; text-align: center; margin-top: 16px; margin-bottom: 20px;">
+          <div style="width: 48px; height: 48px; border-radius: 50%; background: #E8F5E9; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; color: #116834;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+          <h3 id="insp-empty-title" style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Belum Ada Data Okulasi</h3>
+          <p id="insp-empty-desc" style="font-size: 0.78rem; color: #757575; margin: 0; line-height: 1.4;">
+            ${items.length === 0 ? 'Lakukan proses <strong>Okulasi (Grafting)</strong> terlebih dahulu agar data batch otomatis masuk ke tahap Pemeriksaan.' : 'Tidak ditemukan dokumen okulasi untuk diperiksa'}
+          </p>
         </div>
 
         ${items.length > 0 ? `
@@ -319,36 +360,24 @@ export function renderInspectionLanding() {
               `;
             }).join('')}
           </div>
-        ` : `
-          <div style="background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 32px 16px; text-align: center; margin-top: 24px;">
-            <div style="width: 48px; height: 48px; border-radius: 50%; background: #E8F5E9; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; color: #116834;">
-              <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            </div>
-            <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Belum Ada Data Okulasi</h3>
-            <p style="font-size: 0.78rem; color: #757575; margin: 0; line-height: 1.4;">
-              Lakukan proses <strong>Okulasi (Grafting)</strong> terlebih dahulu agar data batch otomatis masuk ke tahap Pemeriksaan.
-            </p>
-          </div>
-        `}
+        ` : ''}
 
         <!-- HISTORI PEMERIKSAAN DENGAN MENU AKSI 3-DOTS (...) -->
         ${inspectionTxs.length > 0 ? `
-          <div style="margin: 20px 0 10px 0;">
-            <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0;">Ringkasan Data Pemeriksaan (${inspectionTxs.length})</h2>
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${inspectionTxs.map((insp, idx) => {
-              const workerStats = insp.workers || [];
-              const inspGagal = parseInt(insp.jumlahGagal || 0);
-              const regraftTotal = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : inspGagal;
-              const selectionTotal = insp.totalToSelection !== undefined ? parseInt(insp.totalToSelection || 0) : Math.max(0, inspGagal - regraftTotal);
-              const isRegraftInsp = insp.buddingType === 'REGRAFTING';
+          <div id="insp-summary-section" style="margin: 20px 0 10px 0;">
+            <div id="insp-summary-header" style="margin-bottom: 10px;">
+              <h2 id="insp-summary-title" style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0;">Ringkasan Data Pemeriksaan (${inspectionTxs.length})</h2>
+            </div>
+            <div id="insp-summary-cards-container" style="display: flex; flex-direction: column; gap: 8px;">
+              ${inspectionTxs.map((insp, idx) => {
+                const workerStats = insp.workers || [];
+                const inspGagal = parseInt(insp.jumlahGagal || 0);
+                const regraftTotal = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : inspGagal;
+                const selectionTotal = insp.totalToSelection !== undefined ? parseInt(insp.totalToSelection || 0) : Math.max(0, inspGagal - regraftTotal);
+                const isRegraftInsp = insp.buddingType === 'REGRAFTING';
 
-              return `
-                <div class="card-insp-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); box-sizing: border-box; position: relative;">
+                return `
+                  <div class="card-insp-summary-wrapper" data-type="${isRegraftInsp ? 'REGRAFTING' : 'GRAFTING'}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); box-sizing: border-box; position: relative;">
                   
                   <!-- BARIS 1: JUDUL BATCH & TOMBOL AKSI 3-DOTS -->
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
@@ -419,7 +448,7 @@ export function renderInspectionLanding() {
                     <div style="display: flex; flex-direction: column; gap: 4px;">
                       <div style="display: flex; justify-content: space-between;">
                         <span style="color: #6B7280;">No. Dokumen:</span>
-                        <span style="font-weight: 700; color: #111;">${insp.docNo || `INSP/2026/0${idx+1}`}</span>
+                        <span style="font-weight: 700; color: #111;">${insp.docNo || formatStandardDocNo(2026, 'INS', idx + 1)}</span>
                       </div>
                       <div style="display: flex; justify-content: space-between;">
                         <span style="color: #6B7280;">Dokumen Okulasi:</span>
@@ -441,6 +470,16 @@ export function renderInspectionLanding() {
                         <div style="display: flex; justify-content: space-between; margin-top: 2px;">
                           <span style="color: #6B7280;">Catatan:</span>
                           <span style="color: #374151; font-style: italic; text-align: right;">${insp.catatan}</span>
+                        </div>
+                      ` : ''}
+                      ${(insp.photos && insp.photos.length > 0) ? `
+                        <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E5E7EB;">
+                          <span style="color: #6B7280; display: block; margin-bottom: 4px; font-weight: 600;">Foto Dokumentasi (${insp.photos.length}):</span>
+                          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            ${insp.photos.map((p, pIdx) => `
+                              <img src="${p.image || p}" style="width: 52px; height: 52px; object-fit: cover; border-radius: 4px; border: 1px solid #D1D5DB;" alt="Foto ${pIdx + 1}" />
+                            `).join('')}
+                          </div>
                         </div>
                       ` : ''}
                     </div>
@@ -489,6 +528,7 @@ export function renderInspectionLanding() {
                 </div>
               `;
             }).join('')}
+            </div>
           </div>
         ` : ''}
 
@@ -544,7 +584,7 @@ export function renderInspectionLanding() {
     navigate('/home');
   });
 
-  // Event Listener: Category Filter Tabs
+  // Event Listener: Category Filter Tabs (Sinkron untuk Batch Siap Periksa & Ringkasan Pemeriksaan)
   app.querySelectorAll('.btn-filter-insp-tab').forEach(tab => {
     tab.addEventListener('click', (e) => {
       const filter = e.currentTarget.dataset.filter;
@@ -556,14 +596,66 @@ export function renderInspectionLanding() {
         t.style.border = isSelected ? '1px solid #116834' : '1px solid #D1D5DB';
       });
 
+      // 1. Filter Batch Siap Periksa Cards
+      let visibleCardCount = 0;
       app.querySelectorAll('.card-inspection-wrapper').forEach(card => {
         const cardType = card.dataset.type;
         if (filter === 'ALL' || cardType === filter) {
           card.style.display = 'block';
+          visibleCardCount++;
         } else {
           card.style.display = 'none';
         }
       });
+
+      // Update Empty State UI for Siap Periksa Cards
+      const emptyStateEl = app.querySelector('#insp-empty-state');
+      const emptyTitleEl = app.querySelector('#insp-empty-title');
+      const emptyDescEl = app.querySelector('#insp-empty-desc');
+
+      if (emptyStateEl) {
+        if (visibleCardCount === 0) {
+          emptyStateEl.style.display = 'block';
+          if (filter === 'REGRAFTING') {
+            if (emptyTitleEl) emptyTitleEl.textContent = 'Belum Ada Data Okulasi Janda';
+            if (emptyDescEl) emptyDescEl.textContent = 'Tidak ditemukan dokumen okulasi janda untuk diperiksa';
+          } else if (filter === 'GRAFTING') {
+            if (emptyTitleEl) emptyTitleEl.textContent = 'Belum Ada Data Okulasi';
+            if (emptyDescEl) emptyDescEl.textContent = 'Tidak ditemukan dokumen okulasi untuk diperiksa';
+          } else {
+            if (emptyTitleEl) emptyTitleEl.textContent = 'Belum Ada Data Okulasi';
+            if (emptyDescEl) emptyDescEl.textContent = 'Tidak ditemukan dokumen okulasi untuk diperiksa';
+          }
+        } else {
+          emptyStateEl.style.display = 'none';
+        }
+      }
+
+      // 2. Filter Ringkasan Pemeriksaan Cards
+      let visibleSummaryCount = 0;
+      app.querySelectorAll('.card-insp-summary-wrapper').forEach(card => {
+        const cardType = card.dataset.type;
+        if (filter === 'ALL' || cardType === filter) {
+          card.style.display = 'block';
+          visibleSummaryCount++;
+        } else {
+          card.style.display = 'none';
+        }
+      });
+
+      // Update Section Ringkasan Pemeriksaan Header Title & Visibility
+      const summarySection = app.querySelector('#insp-summary-section');
+      const summaryTitle = app.querySelector('#insp-summary-title');
+      if (summarySection) {
+        if (visibleSummaryCount > 0) {
+          summarySection.style.display = 'block';
+          if (summaryTitle) {
+            summaryTitle.textContent = `Ringkasan Data Pemeriksaan (${visibleSummaryCount})`;
+          }
+        } else {
+          summarySection.style.display = 'none';
+        }
+      }
     });
   });
 
@@ -636,8 +728,11 @@ export function renderInspectionLanding() {
 
       const idx = e.currentTarget.dataset.index;
       storage.remove('editing_inspection_index');
+      storage.remove('inspection_qr_verified');
+      storage.remove('inspection_verified_at');
+      storage.remove('inspection_verified_batch');
       storage.set('selected_inspection_budding_index', idx);
-      navigate('/inspection/form');
+      navigate('/inspection/scan');
     });
   });
 
@@ -692,7 +787,7 @@ export function renderInspectionLanding() {
       const targetInsp = inspectionTxs[idx];
       let bIdx = 0;
       if (targetInsp) {
-        const found = buddingTxs.findIndex(b => b.docNo === targetInsp.buddingDocNo || b.batchNo === targetInsp.batchNo);
+        const found = buddingTxs.findIndex(b => b.docNo === targetInsp.buddingDocNo);
         if (found !== -1) bIdx = found;
         else if (targetInsp.buddingIndex !== undefined) bIdx = targetInsp.buddingIndex;
       }

@@ -8,10 +8,102 @@ export function renderSelectionLanding() {
   const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan' };
   const today = formatDate(new Date().toISOString());
 
-  // 1. Ambil selection pool eksisting
-  let selectionPool = storage.get('selection_pool', []);
-  const buddingTxs = storage.get('budding_transactions', []);
+  // Helper to standardize selection doc numbers
+  function standardizeSelectionDocNo(rawDocNo, index = 1) {
+    if (!rawDocNo || typeof rawDocNo !== 'string') {
+      return formatStandardDocNo(2026, 'CULL', index);
+    }
+    const clean = rawDocNo.trim();
+    if (clean.startsWith('2026/CULL/')) {
+      return clean;
+    }
+    const match = clean.match(/(\d+)(?:_\d+)?$/);
+    const seq = match ? parseInt(match[1], 10) : index;
+    return formatStandardDocNo(2026, 'CULL', seq > 0 ? seq : index);
+  }
+
   const receiptTxs = storage.get('receipt_transactions', []);
+  const rawBuddingTxs = storage.get('budding_transactions', []);
+  const buddingTxs = rawBuddingTxs.map((btx, i) => {
+    let doc = btx.docNo;
+    if (doc) {
+      if (btx.type === 'REGRAFTING' && (doc.includes('/OKJ/') || doc.includes('/OKL/') || doc.includes('/REG/'))) {
+        doc = doc.replace('/OKJ/', '/RGRF/').replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/');
+      } else if (btx.type !== 'REGRAFTING' && (doc.includes('/OKL/') || doc.includes('/OKU/'))) {
+        doc = doc.replace('/OKL/', '/GRF/').replace('/OKU/', '/GRF/');
+      }
+    }
+    return { ...btx, docNo: doc || formatStandardDocNo(2026, btx.type === 'REGRAFTING' ? 'RGRF' : 'GRF', i + 1) };
+  });
+
+  const rawInspectionTxs = storage.get('inspection_transactions', []);
+  const inspectionTxs = rawInspectionTxs.map((insp, i) => {
+    let doc = insp.docNo;
+    if (doc && (doc.includes('/PRK/') || doc.includes('/INSP/'))) {
+      doc = doc.replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
+    }
+    let budDoc = insp.buddingDocNo;
+    if (budDoc && (budDoc.includes('/OKJ/') || budDoc.includes('/OKL/') || budDoc.includes('/REG/'))) {
+      budDoc = budDoc.replace('/OKJ/', '/RGRF/').replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/');
+    }
+    return { ...insp, docNo: doc || formatStandardDocNo(2026, 'INS', i + 1), buddingDocNo: budDoc };
+  });
+
+  // 1. Ambil data transaksi dari seluruh modul hulu & auto-migrate ke 2026/CULL/NNN
+  let rawSelectionPool = storage.get('selection_pool', []);
+  let hasPoolUpdate = false;
+  let selectionPool = rawSelectionPool.map((s, idx) => {
+    let updated = { ...s };
+    const stdDoc = standardizeSelectionDocNo(s.docNo, idx + 1);
+    if (s.docNo !== stdDoc) {
+      updated.docNo = stdDoc;
+      hasPoolUpdate = true;
+    }
+    if (s.inspectionDocNo && (s.inspectionDocNo.includes('/PRK/') || s.inspectionDocNo.includes('/INSP/'))) {
+      updated.inspectionDocNo = s.inspectionDocNo.replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
+      hasPoolUpdate = true;
+    }
+    if (s.buddingDocNo && (s.buddingDocNo.includes('/OKJ/') || s.buddingDocNo.includes('/OKL/') || s.buddingDocNo.includes('/REG/'))) {
+      updated.buddingDocNo = s.buddingDocNo.replace('/OKJ/', '/RGRF/').replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/');
+      hasPoolUpdate = true;
+    }
+    // Backfill buddingDocNo if missing for REJECT_PEMERIKSAAN
+    if (s.originType === 'REJECT_PEMERIKSAAN' && (!updated.buddingDocNo || updated.buddingDocNo === '-')) {
+      const matchInsp = inspectionTxs.find(insp => insp.docNo === updated.inspectionDocNo);
+      if (matchInsp && matchInsp.buddingDocNo && matchInsp.buddingDocNo !== '-') {
+        updated.buddingDocNo = matchInsp.buddingDocNo;
+        hasPoolUpdate = true;
+      } else {
+        const matchBud = buddingTxs.find(b => b.batchNo === s.batchNo);
+        if (matchBud && matchBud.docNo) {
+          updated.buddingDocNo = matchBud.docNo;
+          hasPoolUpdate = true;
+        } else {
+          updated.buddingDocNo = formatStandardDocNo(2026, 'GRF', idx + 1);
+          hasPoolUpdate = true;
+        }
+      }
+    }
+    // Backfill sourceDocNo / receiptDocNo for REJECT_OKULASI if missing
+    if (s.originType === 'REJECT_OKULASI' && (!updated.sourceDocNo || updated.sourceDocNo === '-')) {
+      const matchBud = buddingTxs.find(b => b.docNo === updated.buddingDocNo || b.batchNo === s.batchNo);
+      if (matchBud && matchBud.sourceDocNo) {
+        updated.sourceDocNo = matchBud.sourceDocNo;
+        hasPoolUpdate = true;
+      } else {
+        updated.sourceDocNo = formatStandardDocNo(2026, 'APR', 1);
+        hasPoolUpdate = true;
+      }
+    }
+    if (s.sumberAsal && (s.originType !== 'REJECT_PENERIMAAN' || s.sumberAsal.includes('Okulasi') || s.sumberAsal.includes('Regrafting') || s.sumberAsal.includes('Pemeriksaan'))) {
+      delete updated.sumberAsal;
+      hasPoolUpdate = true;
+    }
+    return updated;
+  });
+  if (hasPoolUpdate) {
+    storage.set('selection_pool', selectionPool);
+  }
 
   // 2. Sinkronisasi Data Seleksi / Reject dari Transaksi Penerimaan Benih / Bibit (APM)
   receiptTxs.forEach((rtx, i) => {
@@ -25,7 +117,7 @@ export function renderSelectionLanding() {
       rows.forEach((row, rIdx) => {
         const rejected = parseInt(row.rejected || 0);
         if (rejected > 0) {
-          const poolDocNo = `SEL/RCV/2026/0${i + 1}_${rIdx + 1}`;
+          const poolDocNo = formatStandardDocNo(2026, 'CULL', selectionPool.length + 1);
           const exists = selectionPool.some(s => s.receiptDocNo === rcvDocNo && s.originType === 'REJECT_PENERIMAAN' && s.klon === (row.klon || rtx.klon));
           if (!exists) {
             selectionPool.push({
@@ -51,7 +143,7 @@ export function renderSelectionLanding() {
       // Direct receipt qty rejection check
       const rejected = parseInt(rtx.rejected || rtx.jumlahDitolak || 0);
       if (rejected > 0) {
-        const poolDocNo = `SEL/RCV/2026/0${i + 1}`;
+        const poolDocNo = formatStandardDocNo(2026, 'CULL', selectionPool.length + 1);
         const exists = selectionPool.some(s => s.receiptDocNo === rcvDocNo && s.originType === 'REJECT_PENERIMAAN');
         if (!exists) {
           selectionPool.push({
@@ -75,33 +167,85 @@ export function renderSelectionLanding() {
     }
   });
 
-  // 3. Sinkronisasi Data Bibit Ditolak saat Okulasi
+  // 3. Sinkronisasi Data Bibit Ditolak saat Okulasi (Grafting & Regrafting)
   buddingTxs.forEach((btx, i) => {
     const ditolak = parseInt(btx.jumlahDitolak || 0);
     if (ditolak > 0) {
-      const exists = selectionPool.some(s => s.buddingDocNo === btx.docNo && s.originType === 'REJECT_OKULASI');
+      const isRegraft = btx.type === 'REGRAFTING';
+      const originType = isRegraft ? 'REJECT_REGRAFTING' : 'REJECT_OKULASI';
+      const exists = selectionPool.some(s => s.buddingDocNo === btx.docNo && s.originType === originType);
       if (!exists) {
         selectionPool.push({
-          docNo: `SEL/REJ/2026/0${selectionPool.length + 1}`,
-          originType: 'REJECT_OKULASI',
+          docNo: formatStandardDocNo(2026, 'CULL', selectionPool.length + 1),
+          originType,
           batchNo: btx.batchNo || `Batch-0${i + 1}`,
           receiptDocNo: '-',
           buddingDocNo: btx.docNo,
-          inspectionDocNo: '-',
-          klon: btx.klonRootstock || 'GT-01',
+          inspectionDocNo: btx.inspectionDocNo || '-',
+          sourceDocNo: btx.sourceDocNo || formatStandardDocNo(2026, 'APR', 1),
+          klon: btx.klonRootstock || btx.klonEntres || 'GT-01',
           bedengan: btx.bedengan || 'Bedengan 01',
           program: btx.program || 'PRG/NUR/01/2026',
           tahapan: btx.tahapan || 'Rubber Main Nursery',
-          sumberAsal: 'Proses Okulasi Lapangan',
           jumlahAfkir: ditolak,
-          alasan: 'Bibit Ditolak saat Proses Okulasi (Grafting)',
+          alasan: btx.alasan || (isRegraft ? 'Bibit Ditolak saat Okulasi Janda (Regrafting)' : 'Bibit Ditolak saat Proses Okulasi (Grafting)'),
           status: 'PENDING_DECLARATION'
         });
       }
     }
   });
 
-  const culledTxs = storage.get('selection_transactions', []);
+  // 4. Sinkronisasi Data Gagal Okulasi / Mati dari Transaksi Pemeriksaan
+  inspectionTxs.forEach((insp, i) => {
+    const gagal = parseInt(insp.jumlahGagal || 0);
+    const toRegraft = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : gagal;
+    const toSelection = insp.totalToSelection !== undefined ? parseInt(insp.totalToSelection || 0) : Math.max(0, gagal - toRegraft);
+    if (toSelection > 0) {
+      const exists = selectionPool.some(s => s.inspectionDocNo === insp.docNo && s.originType === 'REJECT_PEMERIKSAAN');
+      if (!exists) {
+        selectionPool.push({
+          docNo: formatStandardDocNo(2026, 'CULL', selectionPool.length + 1),
+          originType: 'REJECT_PEMERIKSAAN',
+          batchNo: insp.batchNo || `Batch-0${i + 1}`,
+          receiptDocNo: '-',
+          buddingDocNo: insp.buddingDocNo || formatStandardDocNo(2026, 'GRF', i + 1),
+          inspectionDocNo: insp.docNo,
+          klon: insp.klonEntres || 'PB 260',
+          bedengan: insp.bedengan || 'Bedengan 01',
+          program: 'PRG/NUR/01/2026',
+          tahapan: 'Rubber Main Nursery',
+          jumlahAfkir: toSelection,
+          alasan: insp.catatan || 'Gagal Okulasi (Mati/Afkir)',
+          status: 'PENDING_DECLARATION'
+        });
+      }
+    }
+  });
+
+  // Persist sinkronisasi selection pool
+  storage.set('selection_pool', selectionPool);
+
+  const rawCulledTxs = storage.get('selection_transactions', []);
+  let hasCulledUpdate = false;
+  const culledTxs = rawCulledTxs.map((ctx, idx) => {
+    let updated = { ...ctx };
+    const stdDoc = standardizeSelectionDocNo(ctx.docNo, idx + 1);
+    if (ctx.docNo !== stdDoc) {
+      updated.docNo = stdDoc;
+      hasCulledUpdate = true;
+    }
+    if (ctx.selectionPoolDocNo) {
+      const stdPoolDoc = standardizeSelectionDocNo(ctx.selectionPoolDocNo, idx + 1);
+      if (ctx.selectionPoolDocNo !== stdPoolDoc) {
+        updated.selectionPoolDocNo = stdPoolDoc;
+        hasCulledUpdate = true;
+      }
+    }
+    return updated;
+  });
+  if (hasCulledUpdate) {
+    storage.set('selection_transactions', culledTxs);
+  }
 
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -131,12 +275,51 @@ export function renderSelectionLanding() {
           <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
             ${selectionPool.map((item, idx) => {
               const isDeclared = item.status === 'DECLARED_CULLED';
-              const isRejectPenerimaan = item.originType === 'REJECT_PENERIMAAN';
-              const isRejectOkulasi = item.originType === 'REJECT_OKULASI';
-              
-              const sourceLabel = isRejectPenerimaan ? 'Penerimaan Bibit' : (isRejectOkulasi ? 'Reject Okulasi' : 'Gagal Periksa');
-              const sourceColor = isRejectPenerimaan ? '#0369A1' : (isRejectOkulasi ? '#C2410C' : '#B91C1C');
-              const originDocNo = isRejectPenerimaan ? (item.receiptDocNo || '-') : (isRejectOkulasi ? (item.buddingDocNo || '-') : (item.inspectionDocNo || '-'));
+              const displayDocNo = standardizeSelectionDocNo(item.docNo, idx + 1);
+              let sourceLabel = 'Gagal Periksa';
+              let sourceColor = '#B91C1C';
+              let originDocNo = item.inspectionDocNo || '-';
+              let relatedDocLabel = '';
+              let relatedDocValue = '';
+
+              if (item.originType === 'REJECT_PENERIMAAN') {
+                sourceLabel = 'Penerimaan Bibit';
+                sourceColor = '#0369A1';
+                originDocNo = item.receiptDocNo || '-';
+                if (item.program && item.program !== '-') {
+                  relatedDocLabel = 'Dok. Program:';
+                  relatedDocValue = item.program;
+                } else if (item.sumberAsal && item.sumberAsal !== '-') {
+                  relatedDocLabel = 'Asal Rekanan/Kebun:';
+                  relatedDocValue = item.sumberAsal;
+                }
+              } else if (item.originType === 'REJECT_OKULASI') {
+                sourceLabel = 'Reject Okulasi';
+                sourceColor = '#C2410C';
+                originDocNo = item.buddingDocNo || '-';
+                const srcDoc = (item.sourceDocNo && item.sourceDocNo !== '-') ? item.sourceDocNo : (item.receiptDocNo && item.receiptDocNo !== '-' ? item.receiptDocNo : null);
+                if (srcDoc) {
+                  relatedDocLabel = 'Dok. Penerimaan:';
+                  relatedDocValue = srcDoc;
+                }
+              } else if (item.originType === 'REJECT_REGRAFTING') {
+                sourceLabel = 'Reject Regrafting';
+                sourceColor = '#D97706';
+                originDocNo = (item.buddingDocNo && item.buddingDocNo !== '-') ? item.buddingDocNo : (item.inspectionDocNo || '-');
+                if (item.inspectionDocNo && item.inspectionDocNo !== '-' && item.inspectionDocNo !== originDocNo) {
+                  relatedDocLabel = 'Dok. Pemeriksaan:';
+                  relatedDocValue = item.inspectionDocNo;
+                }
+              } else if (item.originType === 'REJECT_PEMERIKSAAN') {
+                sourceLabel = 'Gagal Periksa';
+                sourceColor = '#B91C1C';
+                originDocNo = item.inspectionDocNo || item.sourceBuddingDocNo || '-';
+                const budDoc = (item.buddingDocNo && item.buddingDocNo !== '-') ? item.buddingDocNo : (item.sourceBuddingDocNo && item.sourceBuddingDocNo !== '-' ? item.sourceBuddingDocNo : null);
+                if (budDoc) {
+                  relatedDocLabel = 'Dok. Okulasi:';
+                  relatedDocValue = budDoc;
+                }
+              }
 
               return `
                 <div class="card-selection-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); box-sizing: border-box;">
@@ -157,7 +340,7 @@ export function renderSelectionLanding() {
                       ${item.bedengan && item.bedengan !== '-' ? `<span>${item.bedengan}</span>` : `<span>${item.tahapan || 'Pembibitan'}</span>`}
                     </div>
                     <div style="font-weight: 600; color: #9CA3AF; white-space: nowrap;">
-                      Dok: ${item.docNo || `SEL-POOL/2026/0${idx+1}`}
+                      Dok: ${displayDocNo}
                     </div>
                   </div>
 
@@ -181,10 +364,10 @@ export function renderSelectionLanding() {
                     </div>
                   </div>
 
-                  <!-- BARIS 4: KETERANGAN & INFORMASI ASAL REKANAN -->
+                  <!-- BARIS 4: KETERANGAN & INFORMASI DOKUMEN HULU -->
                   <div style="background: #FFFFFF; border-top: 1px dashed #E5E7EB; padding-top: 8px; margin-bottom: ${!isDeclared ? '10px' : '0'}; font-size: 0.72rem; color: #4B5563; display: flex; flex-direction: column; gap: 3px;">
                     <div><span style="font-weight: 700; color: #374151;">Keterangan:</span> ${item.alasan || 'Tidak Berhasil Okulasi'}</div>
-                    ${item.sumberAsal ? `<div><span style="font-weight: 700; color: #374151;">Asal Rekanan/Kebun:</span> ${item.sumberAsal}</div>` : ''}
+                    ${relatedDocValue ? `<div><span style="font-weight: 700; color: #374151;">${relatedDocLabel}</span> ${relatedDocValue}</div>` : ''}
                   </div>
 
                   ${!isDeclared ? `
@@ -274,11 +457,11 @@ export function renderSelectionLanding() {
                   <div style="display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between;">
                       <span style="color: #6B7280;">No. Dokumen:</span>
-                      <span style="font-weight: 700; color: #111;">${ctx.docNo || `DEC-CUL/2026/0${idx+1}`}</span>
+                      <span style="font-weight: 700; color: #111;">${standardizeSelectionDocNo(ctx.docNo, idx + 1)}</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
                       <span style="color: #6B7280;">Dokumen Alokasi:</span>
-                      <span style="font-weight: 700; color: #111;">${ctx.selectionPoolDocNo || '-'}</span>
+                      <span style="font-weight: 700; color: #111;">${standardizeSelectionDocNo(ctx.selectionPoolDocNo, idx + 1)}</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
                       <span style="color: #6B7280;">Pengurangan Stok:</span>
@@ -431,8 +614,8 @@ export function renderSelectionLanding() {
 
       const culled = storage.get('selection_transactions', []);
       culled.push({
-        docNo: `DEC-CUL/2026/0${culled.length + 1}`,
-        selectionPoolDocNo: targetPoolItem.docNo,
+        docNo: formatStandardDocNo(2026, 'CULL', culled.length + 1),
+        selectionPoolDocNo: standardizeSelectionDocNo(targetPoolItem.docNo, pendingDeclareIndex + 1),
         batchNo: targetPoolItem.batchNo,
         klon: targetPoolItem.klon,
         bedengan: targetPoolItem.bedengan,

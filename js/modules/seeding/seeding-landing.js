@@ -164,11 +164,13 @@ export function renderSeedingLanding() {
         <div style="padding: 24px 16px;">
           <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 24px 0;">Ringkasan Penyemaian (${seedingTxs.length})</h2>
           
-          ${seedingTxs.length > 0 ? seedingTxs.map((tx, idx) => `
+          ${seedingTxs.length > 0 ? seedingTxs.map((tx, idx) => {
+            const seedingDocNo = (tx.docNo ? tx.docNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', idx + 1));
+            return `
             <div style="border: 1px solid #D9D9D9; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #FFFFFF; position: relative;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                 <div style="flex: 1; min-width: 0;">
-                  <div style="font-weight: 700; font-size: 0.95rem; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${tx.docNo || 'DOC-UNAVAILABLE'}</div>
+                  <div style="font-weight: 700; font-size: 0.95rem; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${seedingDocNo}</div>
                   <div style="font-size: 0.8rem; color: #999999; margin-top: 4px;">Penyemaian, ${tx.date || '28/08/2026'}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0; position: relative;">
@@ -236,7 +238,8 @@ export function renderSeedingLanding() {
                 </div>
               </div>
             </div>
-          `).join('') : `
+            `;
+          }).join('') : `
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 0;">
               <div style="margin-bottom: 16px;">
                 <svg viewBox="0 0 24 24" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
