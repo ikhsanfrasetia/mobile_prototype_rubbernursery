@@ -17,7 +17,7 @@ export const ROLES = Object.freeze({
 });
 
 export const ROLE_LABELS = Object.freeze({
-  MANTRI_TANAMAN: 'Mantri Tanaman',
+  MANTRI_TANAMAN: 'Mantri Bibitan',
   ASISTEN: 'Asisten',
   ASISTEN_BIBITAN: 'Asisten Bibitan',
   ASKEP: 'Askep',
@@ -72,7 +72,7 @@ export const permissions = {
     return this.hasCapability(role || session.getRole(), capability);
   },
 
-  /** CanMantri: role aktif adalah Mantri Tanaman */
+  /** CanMantri: role aktif adalah Mantri Bibitan */
   isMantri(role) {
     return (role || session.getRole()) === ROLES.MANTRI_TANAMAN;
   },

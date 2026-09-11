@@ -15,7 +15,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate, todayISO, uid } from '../../core/utils.js';
+import { formatDate, todayISO, uid, formatStandardDocNo, generateUniqueDocNo, getModuleDocCode, MODULE_DOC_CODES } from '../../core/utils.js';
 import { openDrawer } from '../../components/drawer.js';
 import { toast } from '../../components/toast.js';
 import {
@@ -25,10 +25,14 @@ import {
   buddingRepository,
   inspectionRepository,
   selectionRepository,
+  entresRepository,
+  nurseryActivityRepository,
+  warehouseStockRepository,
+  requestRepository,
   syncQueueRepository
 } from '../../db/repositories.js';
 
-// Konfigurasi 8 Modul Transaksi
+// Konfigurasi 12 Modul Transaksi Pembibitan
 const MODULE_CONFIGS = {
   attendance: {
     id: 'attendance',
@@ -62,7 +66,7 @@ const MODULE_CONFIGS = {
   },
   budding: {
     id: 'budding',
-    title: 'Okulasi Pokok',
+    title: 'Okulasi',
     subtitle: 'Grafting Mata Tunas Unggul',
     icon: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path></svg>`,
     storageKey: 'budding_transactions',
@@ -100,6 +104,46 @@ const MODULE_CONFIGS = {
     qtyField: 'jumlahAfkir',
     unit: 'Pkk'
   },
+  entres: {
+    id: 'entres',
+    title: 'Kebun Entres',
+    subtitle: 'Aktivitas Menunas & Topping Entres',
+    icon: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 10v12M12 10c0-3.5 2.5-6 6-6s6 2.5 6 6-2.5 6-6 6c-2 0-3.8-.9-5-2.3M12 10C12 6.5 9.5 4 6 4S0 6.5 0 10s2.5 6 6 6c2 0 3.8-.9 5-2.3"></path></svg>`,
+    storageKey: 'entres_transactions',
+    repo: entresRepository,
+    qtyField: 'jumlahPokok',
+    unit: 'Pkk'
+  },
+  nurseryActivity: {
+    id: 'nurseryActivity',
+    title: 'Rekam Pemeliharaan',
+    subtitle: 'Pemupukan, Penyemprotan & Rawat',
+    icon: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>`,
+    storageKey: 'nursery_activity_records',
+    repo: nurseryActivityRepository,
+    qtyField: 'volumePkk',
+    unit: 'Pkk'
+  },
+  material: {
+    id: 'material',
+    title: 'Material & Logistik',
+    subtitle: 'Stok Pupuk, Polibag & Kimia',
+    icon: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>`,
+    storageKey: 'materials_transactions',
+    repo: warehouseStockRepository,
+    qtyField: 'currentStock',
+    unit: 'Unit'
+  },
+  request: {
+    id: 'request',
+    title: 'Pengeluaran Bibit',
+    subtitle: 'Permintaan & Dispatch Bibit',
+    icon: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>`,
+    storageKey: 'requests_transactions',
+    repo: requestRepository,
+    qtyField: 'qtyDispatched',
+    unit: 'Pkk'
+  },
   syncQueue: {
     id: 'syncQueue',
     title: 'Sinkronisasi',
@@ -115,9 +159,40 @@ const MODULE_CONFIGS = {
 let activeTab = 'reception';
 let searchQuery = '';
 
+export function parseTxNumericQty(val) {
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (!val) return 0;
+  const cleaned = String(val).replace(/[^0-9.-]+/g, '');
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+export function getTxItemUnit(item, modId) {
+  if (!item) return MODULE_CONFIGS[modId]?.unit || '';
+  if (item.unit) return item.unit;
+  if (item.satuan) return item.satuan;
+  if (typeof item.qty === 'string') {
+    const match = item.qty.match(/[0-9.,\s]+([a-zA-Z]+)/);
+    if (match && match[1]) {
+      const u = match[1].trim();
+      return u.charAt(0).toUpperCase() + u.slice(1).toLowerCase();
+    }
+  }
+  if (modId === 'reception') {
+    const jenis = (item.jenis || item.rawState?.jenisPenerimaan || item.jenisPenerimaan || '').toLowerCase();
+    if (jenis.includes('benih') || jenis.includes('biji')) return 'Butir';
+    if (jenis.includes('bibit') || jenis.includes('tanaman')) return 'Pkk';
+    if (jenis.includes('entres') || jenis.includes('kayu')) return 'Btg';
+  }
+  if (modId === 'seeding') {
+    return 'Butir';
+  }
+  return MODULE_CONFIGS[modId]?.unit || 'Pkk';
+}
+
 export async function renderTransactionManager() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: 'Mandor Semprot' };
+  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: 'Mantri Bibitan' };
 
   // Ambil data untuk tab aktif
   const currentConfig = MODULE_CONFIGS[activeTab] || MODULE_CONFIGS.reception;
@@ -133,9 +208,10 @@ export async function renderTransactionManager() {
 
   // Hitung Metrik Ringkasan
   const totalCount = items.length;
+  const dominantUnit = items.length > 0 ? getTxItemUnit(items[0], activeTab) : (currentConfig.unit || '');
   let totalVolume = 0;
   if (currentConfig.qtyField) {
-    totalVolume = items.reduce((sum, it) => sum + (parseInt(it[currentConfig.qtyField] || it.qty || 0) || 0), 0);
+    totalVolume = items.reduce((sum, it) => sum + parseTxNumericQty(it[currentConfig.qtyField] || it.qty || 0), 0);
   }
 
   app.innerHTML = `
@@ -149,7 +225,7 @@ export async function renderTransactionManager() {
           </button>
           <div>
             <h1 style="font-size: 1.05rem; font-weight: 700; margin: 0; line-height: 1.2;">Katalog & Data Transaksi</h1>
-            <div style="font-size: 0.72rem; opacity: 0.85;">Manajemen Lengkap CRUD (8 Modul)</div>
+            <div style="font-size: 0.72rem; opacity: 0.85;">Manajemen Lengkap CRUD (12 Modul)</div>
           </div>
         </div>
 
@@ -165,7 +241,7 @@ export async function renderTransactionManager() {
         </div>
       </header>
 
-      <!-- TAB MENU HORIZONTAL (8 MODUL) -->
+      <!-- TAB MENU HORIZONTAL (12 MODUL) -->
       <nav style="display: flex; overflow-x: auto; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 8px; flex-shrink: 0; scrollbar-width: none;">
         ${Object.values(MODULE_CONFIGS).map(cfg => {
           const isActive = cfg.id === activeTab;
@@ -200,7 +276,7 @@ export async function renderTransactionManager() {
           </div>
           ${currentConfig.qtyField ? `
             <div style="display: inline-flex; align-items: center; gap: 6px; background: #FEF3C7; border: 1px solid #FDE68A; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; color: #92400E; font-weight: 600;">
-              <span>Volume: ${totalVolume.toLocaleString('id-ID')} ${currentConfig.unit}</span>
+              <span>Volume: ${totalVolume.toLocaleString('id-ID')} ${dominantUnit}</span>
             </div>
           ` : ''}
         </div>
@@ -214,15 +290,8 @@ export async function renderTransactionManager() {
               ${currentConfig.icon}
             </div>
             <h3 style="font-size: 0.95rem; font-weight: 700; color: #1E293B; margin: 0 0 6px;">Belum Ada Data Transaksi</h3>
-            <p style="font-size: 0.8rem; color: #64748B; margin: 0 0 16px;">Belum ada catatan pada modul ${currentConfig.title}. Anda dapat menambah transaksi baru atau memuat sampel demo.</p>
-            <div style="display: flex; justify-content: center; gap: 8px;">
-              <button id="btn-empty-add" style="background: #116834; color: #FFFFFF; border: none; font-size: 0.8rem; font-weight: 600; padding: 7px 14px; border-radius: 6px; cursor: pointer;">
-                + Tambah Transaksi
-              </button>
-              <button id="btn-empty-sample" style="background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; font-size: 0.8rem; font-weight: 600; padding: 7px 14px; border-radius: 6px; cursor: pointer;">
-                Muat Sampel Data
-              </button>
-            </div>
+            <p style="font-size: 0.78rem; color: #64748B; margin: 0 0 16px;">Silakan buat transaksi baru menggunakan tombol di bawah ini.</p>
+            <button class="btn-empty-add" style="background: #116834; color: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; padding: 8px 16px; border-radius: 6px; cursor: pointer;">+ Tambah Transaksi</button>
           </div>
         ` : `
           <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -242,7 +311,7 @@ export async function renderTransactionManager() {
 
 // Render Satu Kartu Transaksi
 function renderTransactionCard(item, index, tab, config) {
-  let docNo = item.docNo || item.nomorDokumen || item.id || `TX-${index + 1}`;
+  let docNo = item.docNo || item.nomorDokumen || formatStandardDocNo(2026, getModuleDocCode(tab), index + 1);
   let title = docNo;
   let subtitle = item.program || item.tahapan || config.subtitle;
   let date = item.tanggal || item.date || item.createdAt || todayISO();
@@ -270,40 +339,70 @@ function renderTransactionCard(item, index, tab, config) {
   let col3 = { label: 'Jumlah', val: '-' };
 
   if (tab === 'attendance') {
-    title = item.name || item.userName || 'Pekerja';
-    subtitle = item.position || item.role || item.type || 'Pekerja Bibitan';
+    title = item.workerName || item.name || item.userName || 'Pekerja';
+    subtitle = item.position || item.jabatan || (item.type === 'SUPERVISOR' || item.role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : 'Pekerja Bibitan');
     col1 = { label: 'Tipe', val: item.type || 'WORKER' };
     col2 = { label: 'Waktu', val: item.time || '-' };
     col3 = { label: 'Status', val: item.status || 'HADIR' };
   } else if (tab === 'reception') {
+    const unit = getTxItemUnit(item, 'reception');
     col1 = { label: 'Sumber Asal', val: item.sumber || item.tipeAsal || 'Supplier' };
     col2 = { label: 'Klon', val: item.klon || '-' };
-    col3 = { label: 'Stok Diterima', val: `${(parseInt(item.qty || 0)).toLocaleString('id-ID')} Pkk` };
+    col3 = { label: 'Stok Diterima', val: `${parseTxNumericQty(item.qty || 0).toLocaleString('id-ID')} ${unit}` };
   } else if (tab === 'seeding') {
+    const unit = getTxItemUnit(item, 'seeding');
     title = `${docNo} (${item.batchNo || 'Batch-01'})`;
     col1 = { label: 'Bedengan', val: item.bedengan || '-' };
     col2 = { label: 'Klon Rootstock', val: item.klonAwal || item.klon || '-' };
-    col3 = { label: 'Bibit Disemai', val: `${(parseInt(item.totalDisemai || item.qty || 0)).toLocaleString('id-ID')} Pkk` };
+    col3 = { label: 'Disemai', val: `${parseTxNumericQty(item.totalDisemai || item.qty || 0).toLocaleString('id-ID')} ${unit}` };
   } else if (tab === 'budding') {
+    const unit = getTxItemUnit(item, 'budding');
     title = `${docNo} (${item.batchNo || 'Batch-01'})`;
     col1 = { label: 'Mata Entres', val: item.klonEntres || '-' };
     col2 = { label: 'Rootstock', val: item.klonRootstock || '-' };
-    col3 = { label: 'Diokulasi', val: `${(parseInt(item.jumlah || 0)).toLocaleString('id-ID')} Pkk` };
+    col3 = { label: 'Diokulasi', val: `${parseTxNumericQty(item.jumlah || item.qty || 0).toLocaleString('id-ID')} ${unit}` };
   } else if (tab === 'inspection') {
+    const unit = getTxItemUnit(item, 'inspection');
     title = `${docNo} (Ref: ${item.buddingDocNo || '-'})`;
-    col1 = { label: 'Total Periksa', val: `${(parseInt(item.totalDiperiksa || 0)).toLocaleString('id-ID')} Pkk` };
-    col2 = { label: 'Hasil Jadi', val: `${(parseInt(item.jumlahJadi || 0)).toLocaleString('id-ID')} Pkk (${item.persenJadi || 0}%)` };
-    col3 = { label: 'Gagal / Mati', val: `${(parseInt(item.jumlahGagal || 0)).toLocaleString('id-ID')} Pkk` };
+    col1 = { label: 'Total Periksa', val: `${parseTxNumericQty(item.totalDiperiksa || 0).toLocaleString('id-ID')} ${unit}` };
+    col2 = { label: 'Hasil Jadi', val: `${parseTxNumericQty(item.jumlahJadi || 0).toLocaleString('id-ID')} ${unit} (${item.persenJadi || 0}%)` };
+    col3 = { label: 'Gagal / Mati', val: `${parseTxNumericQty(item.jumlahGagal || 0).toLocaleString('id-ID')} ${unit}` };
   } else if (tab === 'regrafting') {
+    const unit = getTxItemUnit(item, 'regrafting');
     title = `${docNo} (${item.batchNo || 'Batch-01'})`;
     col1 = { label: 'Bedengan', val: item.bedengan || '-' };
     col2 = { label: 'Klon Entres', val: item.klonEntres || '-' };
-    col3 = { label: 'Siap Regraft', val: `${(parseInt(item.jumlah || 0)).toLocaleString('id-ID')} Pkk` };
+    col3 = { label: 'Siap Regraft', val: `${parseTxNumericQty(item.jumlah || item.qty || 0).toLocaleString('id-ID')} ${unit}` };
   } else if (tab === 'selection') {
+    const unit = getTxItemUnit(item, 'selection');
     title = `${docNo} (${item.batchNo || '-'})`;
     col1 = { label: 'Alasan', val: item.alasan || 'Tidak Berhasil' };
     col2 = { label: 'Klon', val: item.klon || '-' };
-    col3 = { label: 'Diafkir (-OUT)', val: `(${parseInt(item.jumlahAfkir || 0).toLocaleString('id-ID')}) Pkk` };
+    col3 = { label: 'Diafkir (-OUT)', val: `(${parseTxNumericQty(item.jumlahAfkir || 0).toLocaleString('id-ID')}) ${unit}` };
+  } else if (tab === 'entres') {
+    const unit = getTxItemUnit(item, 'entres');
+    title = `${docNo} (${item.plotId || item.plotNo || 'Plot Entres'})`;
+    col1 = { label: 'Aktivitas', val: item.activityType || 'MENUNAS' };
+    col2 = { label: 'Klon', val: item.klon || '-' };
+    col3 = { label: 'Pokok Dikerjakan', val: `${parseTxNumericQty(item.jumlahPokok || item.qty || 0).toLocaleString('id-ID')} ${unit}` };
+  } else if (tab === 'nurseryActivity') {
+    const unit = getTxItemUnit(item, 'nurseryActivity');
+    title = `${docNo} (${item.activityType || 'Rawat'})`;
+    col1 = { label: 'Bedengan', val: item.bedengan || '-' };
+    col2 = { label: 'Bahan', val: item.materialName || item.dosis || '-' };
+    col3 = { label: 'Volume', val: `${parseTxNumericQty(item.volumePkk || item.qty || 0).toLocaleString('id-ID')} ${unit}` };
+  } else if (tab === 'material') {
+    const unit = getTxItemUnit(item, 'material');
+    title = `${item.materialCode || docNo} (${item.materialName || 'Material'})`;
+    col1 = { label: 'Kategori', val: item.category || 'Pupuk' };
+    col2 = { label: 'Mutasi', val: `+${parseTxNumericQty(item.qtyIn || 0)} / -${parseTxNumericQty(item.qtyOut || 0)}` };
+    col3 = { label: 'Stok Akhir', val: `${parseTxNumericQty(item.currentStock || item.stock || 0).toLocaleString('id-ID')} ${unit}` };
+  } else if (tab === 'request') {
+    const unit = getTxItemUnit(item, 'request');
+    title = `${docNo} (${item.targetDivision || 'Divisi'})`;
+    col1 = { label: 'Klon Bibit', val: item.klon || '-' };
+    col2 = { label: 'Diminta', val: `${parseTxNumericQty(item.qtyRequested || 0).toLocaleString('id-ID')} ${unit}` };
+    col3 = { label: 'Dikeluarkan', val: `${parseTxNumericQty(item.qtyDispatched || 0).toLocaleString('id-ID')} ${unit}` };
   } else if (tab === 'syncQueue') {
     title = `${item.id || `SYNC-${index + 1}`} (${item.entity || 'receptions'})`;
     col1 = { label: 'Aksi', val: item.action || 'CREATE' };
@@ -582,7 +681,7 @@ function renderDynamicFormFields(tab, item) {
           <input type="text" name="sumber" value="${escapeHtml(item?.sumber || 'Supplier Bibit Jaya')}" style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
         </div>
         <div>
-          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Diterima (Pkk)</label>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Diterima</label>
           <input type="number" name="qty" value="${escapeHtml(item?.qty || 5000)}" required style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
         </div>
       </div>
@@ -607,7 +706,7 @@ function renderDynamicFormFields(tab, item) {
           <input type="text" name="klonAwal" value="${escapeHtml(item?.klonAwal || item?.klon || 'GT 1')}" style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
         </div>
         <div>
-          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Total Disemai (Pkk)</label>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Total Disemai</label>
           <input type="number" name="totalDisemai" value="${escapeHtml(item?.totalDisemai || item?.qty || 3000)}" required style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
         </div>
       </div>
@@ -637,7 +736,7 @@ function renderDynamicFormFields(tab, item) {
         </div>
       </div>
       <div>
-        <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Diokulasi (Pkk)</label>
+        <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Diokulasi</label>
         <input type="number" name="jumlah" value="${escapeHtml(item?.jumlah || 1500)}" required style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
       </div>
     `;
@@ -657,7 +756,7 @@ function renderDynamicFormFields(tab, item) {
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
-          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Total Diperiksa (Pkk)</label>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Total Diperiksa</label>
           <input type="number" name="totalDiperiksa" value="${escapeHtml(item?.totalDiperiksa || 1500)}" required style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
         </div>
         <div>
@@ -667,7 +766,7 @@ function renderDynamicFormFields(tab, item) {
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
-          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Gagal / Mati (Pkk)</label>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Gagal / Mati</label>
           <input type="number" name="jumlahGagal" value="${escapeHtml(item?.jumlahGagal || 150)}" style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
         </div>
         <div>
@@ -700,7 +799,7 @@ function renderDynamicFormFields(tab, item) {
           <input type="text" name="klon" value="${escapeHtml(item?.klon || 'PB 260')}" style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
         </div>
         <div>
-          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Diafkir (Pkk)</label>
+          <label style="display: block; font-weight: 600; color: #334155; margin-bottom: 4px;">Jumlah Diafkir</label>
           <input type="number" name="jumlahAfkir" value="${escapeHtml(item?.jumlahAfkir || 50)}" required style="width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;">
         </div>
       </div>
@@ -938,7 +1037,7 @@ async function injectDemoTransactions(tab) {
         tahapan: 'Rubber Advance Planting Material',
         jenis: 'Bibit / Tanaman Muda',
         tipeAsal: 'Kebun Sendiri',
-        sumber: 'Divisi I Kebun Induk',
+        sumber: 'Tanah Besih - Divisi I',
         sir: 'SIR-2026-0895',
         klon: 'RRIM 600',
         qty: 2500,
@@ -1043,7 +1142,7 @@ async function injectDemoTransactions(tab) {
       {
         id: 'ATT-001',
         name: 'Wagiman',
-        position: 'Mandor Semprot',
+        position: 'Mantri Bibitan',
         type: 'SUPERVISOR',
         time: '06:55',
         status: 'HADIR',
@@ -1082,18 +1181,9 @@ async function injectDemoTransactions(tab) {
 }
 
 function generateNewDocNo(tab) {
-  const num = Math.floor(Math.random() * 899 + 100);
-  switch (tab) {
-    case 'reception': return `RCV/2026/${num}`;
-    case 'seeding': return `SEED/2026/${num}`;
-    case 'budding': return `OKL/2026/${num}`;
-    case 'inspection': return `INSP/2026/${num}`;
-    case 'regrafting': return `OKL/REG/2026/${num}`;
-    case 'selection': return `DEC-CUL/2026/${num}`;
-    case 'attendance': return `ATT-${num}`;
-    case 'syncQueue': return `SYNC-${num}`;
-    default: return `DOC/2026/${num}`;
-  }
+  const cfg = MODULE_CONFIGS[tab];
+  const list = storage.get(cfg?.storageKey || 'transactions', []);
+  return generateUniqueDocNo(tab, list, 2026);
 }
 
 function escapeHtml(str) {

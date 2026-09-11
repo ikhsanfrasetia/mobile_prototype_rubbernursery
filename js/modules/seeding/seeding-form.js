@@ -1,7 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
 
 export function renderSeedingForm() {
   const app = document.getElementById('app');
@@ -12,8 +12,8 @@ export function renderSeedingForm() {
   const sourceIdx = storage.get('seeding_source_index', null);
   const txs = storage.get('receipt_transactions', []);
   const sourceTx = txs[sourceIdx] || {};
-  const docIdxStr = (parseInt(sourceIdx) + 1).toString().padStart(2, '0');
-  const docNo = `RCV/SEEDS/2026/AGUS/${docIdxStr}`;
+  const sourceDocNo = sourceTx.docNo || sourceTx.nomorDokumen || formatStandardDocNo(2026, 'APR', (parseInt(sourceIdx || 0) + 1));
+  const docNo = sourceDocNo;
 
   // Check if we are in Edit mode
   const editIdx = storage.get('editing_seeding_index', null);
@@ -601,9 +601,12 @@ export function renderSeedingForm() {
 
     const bedenganDisplay = Array.from(new Set((state.tableRows || []).map(r => r.bedengan).filter(Boolean))).join(', ') || 'Bedengan 01';
 
+    const seedingDocNo = (editTx && editTx.docNo) ? editTx.docNo : generateUniqueDocNo('seeding', txs, 2026);
+
     const newTx = {
       date: today,
-      docNo: docNo,
+      docNo: seedingDocNo,
+      sourceDocNo: sourceDocNo,
       sourceIndex: sourceIdx,
       batchNo: state.batchNo || 'Batch-01',
       program: sourceTx.program || 'PRG/NUR/01/2026',

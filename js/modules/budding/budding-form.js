@@ -1,7 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
 
 const MASTER_WORKERS = [
   { id: 'W001', name: 'Ahmad Rifai', code: '104521' },
@@ -60,7 +60,7 @@ export function renderBuddingForm() {
   }
 
   let batchNo = 'Batch-01';
-  let docNo = 'RCV/SEEDS/2026/AGUS/01';
+  let docNo = formatStandardDocNo(2026, 'APR', 1);
   let totalDisemai = 2000;
   let bedenganDisplay = 'Bedengan 01';
   let klonRootstock = 'GT-01';
@@ -75,14 +75,14 @@ export function renderBuddingForm() {
     const regraftIdx = storage.get('selected_regraft_index', 0);
     const poolItem = regraftPool[regraftIdx] || {
       batchNo: 'Batch-01',
-      docNo: 'REG-POOL/2026/01',
-      inspectionDocNo: 'INSP/2026/01',
+      docNo: formatStandardDocNo(2026, 'OKJ', 1),
+      inspectionDocNo: formatStandardDocNo(2026, 'PRK', 1),
       jumlah: 50,
       bedengan: 'Bedengan 01',
       klonRootstock: 'GT-01'
     };
     batchNo = poolItem.batchNo || 'Batch-01';
-    docNo = poolItem.docNo || 'REG-POOL/2026/01';
+    docNo = poolItem.docNo || formatStandardDocNo(2026, 'OKJ', 1);
     poolDocNo = poolItem.docNo;
     inspectionDocNo = poolItem.inspectionDocNo;
     totalDisemai = parseInt(poolItem.jumlah || 0);
@@ -91,7 +91,7 @@ export function renderBuddingForm() {
   } else {
     const selectedBatch = seedingTxs[batchIdx] || {
       batchNo: 'Batch-01',
-      docNo: 'RCV/SEEDS/2026/AGUS/01',
+      docNo: formatStandardDocNo(2026, 'APR', 1),
       program: 'PRG/NUR/01/2026',
       tahapan: 'Rubber Main Nursery',
       klonAwal: 'GT-01',
@@ -99,7 +99,7 @@ export function renderBuddingForm() {
       rows: [{ bedengan: 'Bedengan 01', disemai: 2000 }]
     };
     batchNo = selectedBatch.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;
-    docNo = selectedBatch.docNo || 'RCV/SEEDS/2026/AGUS/01';
+    docNo = selectedBatch.docNo || selectedBatch.sourceDocNo || formatStandardDocNo(2026, 'APR', 1);
     totalDisemai = parseInt(selectedBatch.totalDisemai || 0);
     klonRootstock = selectedBatch.klonAwal || 'GT-01';
     const batchBedengan = (selectedBatch.rows || []).map(r => r.bedengan).filter(Boolean);
@@ -774,7 +774,10 @@ export function renderBuddingForm() {
       const ditolak = isDitolakDisabled ? 0 : parseInt(ditolakVal || 0);
 
       const txs = storage.get('budding_transactions', []);
-      const docNoBudding = isEditing && txs[parseInt(editingIdx)] ? txs[parseInt(editingIdx)].docNo : `${isRegrafting ? 'REG' : 'OKL'}/2026/0${txs.length + 1}`;
+      const docModKey = isRegrafting ? 'regrafting' : 'budding';
+      const docNoBudding = isEditing && txs[parseInt(editingIdx)] && txs[parseInt(editingIdx)].docNo
+        ? txs[parseInt(editingIdx)].docNo
+        : generateUniqueDocNo(docModKey, txs, 2026);
 
       if (isEditing && txs[parseInt(editingIdx)]) {
         txs[parseInt(editingIdx)] = {

@@ -7,6 +7,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
+import { formatStandardDocNo } from '../../core/utils.js';
 
 export function renderSeedingScan() {
   const app = document.getElementById('app');
@@ -14,8 +15,7 @@ export function renderSeedingScan() {
   const sourceIdx = storage.get('seeding_source_index', null);
   const txs = storage.get('receipt_transactions', []);
   const sourceTx = (sourceIdx !== null && txs[sourceIdx]) ? txs[sourceIdx] : {};
-  const docIdxStr = (parseInt(sourceIdx || 0) + 1).toString().padStart(2, '0');
-  const docNo = sourceTx.docNo || `RCV/SEEDS/2026/AGUS/${docIdxStr}`;
+  const docNo = sourceTx.docNo || sourceTx.nomorDokumen || formatStandardDocNo(2026, 'APR', (parseInt(sourceIdx || 0) + 1));
   const program = sourceTx.program || 'PRG/NUR/01/2026';
   const klon = sourceTx.klon || 'GT-01';
 

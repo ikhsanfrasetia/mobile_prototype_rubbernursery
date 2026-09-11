@@ -1,7 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate } from '../../core/utils.js';
+import { formatDate, generateUniqueDocNo } from '../../core/utils.js';
 
 export function renderReceiptBenih() {
   const app = document.getElementById('app');
@@ -23,7 +23,7 @@ export function renderReceiptBenih() {
   const originTypeRaw = storage.get('transaction_originType', 'KEBUN_SENDIRI');
   let originTypeDisplay = 'Kebun Sendiri';
   if (originTypeRaw === 'PIHAK_KE_III') originTypeDisplay = 'Pihak Ke-III';
-  if (originTypeRaw === 'LAINNYA') originTypeDisplay = 'Lainnya';
+  if (originTypeRaw === 'LAINNYA' || originTypeRaw === 'KEBUN_SEPUPU') originTypeDisplay = 'Kebun Sepupu';
 
   // State from storage to persist across navigations (like opening camera)
   const state = {
@@ -942,7 +942,17 @@ export function renderReceiptBenih() {
        state.tableRows.forEach(r => totalQtyTable += parseInt(r.qty || 0));
     }
     
+    const txs = storage.get('receipt_transactions', []);
+    const editingIdx = storage.get('editing_transaction_index', null);
+
+    const docNo = (editingIdx !== null && txs[editingIdx]?.docNo)
+      ? txs[editingIdx].docNo
+      : generateUniqueDocNo('reception', txs, 2026);
+    
     const newTx = {
+      id: docNo,
+      docNo: docNo,
+      nomorDokumen: docNo,
       jenis: state.jenisPenerimaan,
       tahapan: state.tahapanPertumbuhan,
       program: state.programNurseryCode,
@@ -969,9 +979,6 @@ export function renderReceiptBenih() {
         selectedKlon
       }
     };
-    
-    const txs = storage.get('receipt_transactions', []);
-    const editingIdx = storage.get('editing_transaction_index', null);
     
     if (editingIdx !== null) {
       txs[editingIdx] = newTx;

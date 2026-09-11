@@ -1,7 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
 
 export function renderInspectionForm() {
   const app = document.getElementById('app');
@@ -19,8 +19,8 @@ export function renderInspectionForm() {
   const buddingIdx = storage.get('selected_inspection_budding_index', 0);
   const selectedBudding = buddingTxs[buddingIdx] || {
     batchNo: 'Batch-01',
-    docNo: 'OKL/2026/01',
-    sourceDocNo: 'RCV/SEEDS/2026/AGUS/01',
+    docNo: formatStandardDocNo(2026, 'OKL', 1),
+    sourceDocNo: formatStandardDocNo(2026, 'APR', 1),
     type: 'GRAFTING',
     klonEntres: 'PB 260',
     klonRootstock: 'GT-01',
@@ -608,7 +608,9 @@ export function renderInspectionForm() {
     }
 
     const txs = storage.get('inspection_transactions', []);
-    const docNoInsp = isEditing && targetInsp ? targetInsp.docNo : `INSP/2026/0${txs.length + 1}`;
+    const docNoInsp = isEditing && targetInsp && targetInsp.docNo
+      ? targetInsp.docNo
+      : generateUniqueDocNo('inspection', txs, 2026);
     const persenTotal = grandDiperiksa > 0 ? Math.round((grandBerhasil / grandDiperiksa) * 100) : 0;
 
     const inspectionRecord = {
@@ -647,7 +649,7 @@ export function renderInspectionForm() {
     }
     if (totalToRegrafting > 0) {
       regraftPool.push({
-        docNo: `REG-POOL/2026/0${regraftPool.length + 1}`,
+        docNo: generateUniqueDocNo('regrafting', regraftPool, 2026),
         inspectionDocNo: docNoInsp,
         batchNo,
         sourceBuddingDocNo: docNo,

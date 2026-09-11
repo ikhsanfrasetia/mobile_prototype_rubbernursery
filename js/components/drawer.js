@@ -81,9 +81,9 @@ const SVGS = {
 export function openDrawer() {
   closeDrawer();
 
-  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', divisionName: 'Divisi I' };
-  const displayName = (user.name && user.name !== 'Mantri Tanaman') ? user.name : 'Wagiman';
-  const displayRole = user.role === 'MANTRI_TANAMAN' ? 'Mandor Semprot' : (ROLE_LABELS[user.role] || user.role);
+  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', divisionName: 'Tanah Besih - Divisi I' };
+  const displayName = (user.name && user.name !== 'Mantri Tanaman' && user.name !== 'Mantri Bibitan') ? user.name : 'Wagiman';
+  const displayRole = user.role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : (ROLE_LABELS[user.role] || user.role);
   const currentPath = (getCurrent().route || '/home');
 
   drawerEl = document.createElement('div');
@@ -156,7 +156,7 @@ export function openDrawer() {
       <div class="drawer-demo-switch">
         <div class="drawer-demo-head">Mode Demo — Ganti Role</div>
         <div class="drawer-demo-pills">
-          <button class="demo-pill ${user.role === 'MANTRI_TANAMAN' ? 'active' : ''}" data-role="MANTRI_TANAMAN">Mantri</button>
+          <button class="demo-pill ${user.role === 'MANTRI_TANAMAN' ? 'active' : ''}" data-role="MANTRI_TANAMAN">Mantri Bibitan</button>
           <button class="demo-pill ${user.role === 'ASISTEN' ? 'active' : ''}" data-role="ASISTEN">Asisten</button>
           <button class="demo-pill ${user.role === 'ASISTEN_BIBITAN' ? 'active' : ''}" data-role="ASISTEN_BIBITAN">Ast. Bibitan</button>
           <button class="demo-pill ${user.role === 'ASKEP' ? 'active' : ''}" data-role="ASKEP">Askep</button>
@@ -218,8 +218,9 @@ export function openDrawer() {
           userId: targetUser.id,
           role: targetUser.role,
           name: targetUser.name,
+          position: targetUser.position || (targetUser.role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : targetUser.role),
           divisionId: targetUser.divisionId,
-          divisionName: targetUser.divisionId,
+          divisionName: 'Tanah Besih - Divisi I',
           isDemoSession: true
         });
         toast(`Beralih ke role ${ROLE_LABELS[targetRole]}`, 'info');

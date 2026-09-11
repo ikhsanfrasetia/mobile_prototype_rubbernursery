@@ -37,7 +37,7 @@ Buka `http://localhost:8080`.
 
 - Login dummy tersedia dari halaman Login (mode demo).
 - **Role Switcher** (prototype-only) terdapat di Drawer → menu "Mode Demo",
-  untuk berpindah role tanpa logout: Mantri Tanaman / Asisten / Askep / Pengurus.
+  untuk berpindah role tanpa logout: Mantri Bibitan / Asisten / Askep / Pengurus.
 - Semua role membaca IndexedDB lokal yang sama.
 
 ## Struktur

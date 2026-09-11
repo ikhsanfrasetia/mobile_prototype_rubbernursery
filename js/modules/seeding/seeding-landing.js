@@ -1,5 +1,6 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
+import { formatStandardDocNo } from '../../core/utils.js';
 
 export function renderSeedingLanding() {
   const app = document.getElementById('app');
@@ -26,17 +27,16 @@ export function renderSeedingLanding() {
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <h1 style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 0 8px;">Penyemaian</h1>
+          <span style="margin-left: 8px; font-size: 1.15rem; font-weight: 700; color: #116834;">Penyemaian Benih</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <button type="button" style="background: none; border: none; cursor: pointer; padding: 4px;">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#116834" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <polyline points="1 20 1 14 7 14"></polyline>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button id="btn-search" type="button" aria-label="Cari" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#999999" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
           </button>
-          <button type="button" style="background: none; border: none; cursor: pointer; padding: 4px;">
+          <button id="btn-filter" type="button" aria-label="Filter Kalender" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;">
             <svg viewBox="0 0 24 24" width="20" height="20" stroke="#999999" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="16" y1="2" x2="16" y2="6"></line>
@@ -52,8 +52,7 @@ export function renderSeedingLanding() {
         <!-- PENDING SEEDING CARDS -->
         <div style="padding: 12px 16px; background: #FFFFFF; border-bottom: 1px solid #D9D9D9;">
           ${benihTxs.length > 0 ? benihTxs.map((tx, idx) => {
-            const docIdxStr = (idx + 1).toString().padStart(2, '0');
-            const docNo = `RCV/SEEDS/2026/AGUS/${docIdxStr}`;
+            const docNo = tx.docNo || tx.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
             
             // Accumulate values
             let ttlDisemaiSDHI = 0;

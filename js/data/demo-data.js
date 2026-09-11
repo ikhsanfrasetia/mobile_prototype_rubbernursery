@@ -25,6 +25,7 @@ export const DEMO_USERS = [
     code: 'AST001',
     name: 'Asisten',
     role: 'ASISTEN',
+    position: 'Asisten Lapangan',
     divisionId: 'DIV-001',
     password: 'demo',
     active: true
@@ -44,6 +45,7 @@ export const DEMO_USERS = [
     code: 'ASK001',
     name: 'Askep',
     role: 'ASKEP',
+    position: 'Asisten Kepala',
     divisionId: 'DIV-001',
     password: 'demo',
     active: true
@@ -53,6 +55,7 @@ export const DEMO_USERS = [
     code: 'PGS001',
     name: 'Pengurus',
     role: 'PENGURUS',
+    position: 'Pengurus Kebun',
     divisionId: 'DIV-001',
     password: 'demo',
     active: true
@@ -80,14 +83,14 @@ export const DEMO_USERS = [
 ];
 
 export const DEMO_DIVISIONS = [
-  { id: 'DIV-001', code: 'DIV-001', name: 'Divisi I', estateId: 'EST-001' },
-  { id: 'DIV-002', code: 'DIV-002', name: 'Divisi Kantor', estateId: 'EST-001' },
-  { id: 'DIV-003', code: 'DIV-003', name: 'Divisi Pabrik', estateId: 'EST-002' }
+  { id: 'DIV-001', code: 'DIV-001', name: 'Tanah Besih - Divisi I', estateId: 'EST-001' },
+  { id: 'DIV-002', code: 'DIV-002', name: 'Tanah Besih - Divisi Kantor', estateId: 'EST-001' },
+  { id: 'DIV-003', code: 'DIV-003', name: 'Tanah Besih - Divisi Pabrik', estateId: 'EST-002' }
 ];
 
 export const DEMO_ESTATES = [
-  { id: 'EST-001', code: 'EST-001', name: 'Kebun Induk 1' },
-  { id: 'EST-002', code: 'EST-002', name: 'Kebun Induk 2' }
+  { id: 'EST-001', code: 'EST-001', name: 'Tanah Besih' },
+  { id: 'EST-002', code: 'EST-002', name: 'Tanah Besih' }
 ];
 
 export const DEMO_PROGRAM_REPLANTING = [
@@ -220,7 +223,7 @@ export function buildSeedData() {
 /* Re-export master statis sebagai objek seed agar konsisten satu sumber. */
 function ROLES_DEMO() {
   return [
-    { id: 'MANTRI_TANAMAN', code: 'MANTRI_TANAMAN', name: 'Mantri Tanaman' },
+    { id: 'MANTRI_TANAMAN', code: 'MANTRI_TANAMAN', name: 'Mantri Bibitan' },
     { id: 'ASISTEN', code: 'ASISTEN', name: 'Asisten' },
     { id: 'ASISTEN_BIBITAN', code: 'ASISTEN_BIBITAN', name: 'Asisten Bibitan' },
     { id: 'ASKEP', code: 'ASKEP', name: 'Askep' },

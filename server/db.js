@@ -48,7 +48,7 @@ const DEFAULT_NOTES = [
     number: 3,
     createdAt: '26/08/2026',
     author: 'Wagiman',
-    creatorRole: 'Mandor Semprot',
+    creatorRole: 'Mantri Bibitan',
     email: 'wagiman@example.com',
     page: '/home',
     pageTitle: 'Beranda',

@@ -1,5 +1,6 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
+import { formatStandardDocNo } from '../../core/utils.js';
 
 export function renderReceiptSummary() {
   const app = document.getElementById('app');
@@ -8,9 +9,8 @@ export function renderReceiptSummary() {
   const viewingIdx = storage.get('viewing_transaction_index', 0);
   const summaryData = txs[viewingIdx] || {};
   
-  // Format No. Dokumen
-  const docIdxStr = (parseInt(viewingIdx) + 1).toString().padStart(2, '0');
-  const noDoc = `RCV/SEEDS/2026/AGUS/${docIdxStr}`;
+  // Format No. Dokumen Standar: 2026/APR/001
+  const noDoc = summaryData.docNo || summaryData.nomorDokumen || formatStandardDocNo(2026, 'APR', parseInt(viewingIdx) + 1);
   
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: sans-serif;">

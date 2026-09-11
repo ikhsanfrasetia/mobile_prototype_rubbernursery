@@ -6,6 +6,7 @@
  */
 
 import { session } from '../../core/session.js';
+import { storage } from '../../core/storage.js';
 import { workerRepository, attendanceRepository, photoRepository } from '../../db/repositories.js';
 import { todayISO, nowISO, nowTimeWithSeconds, uid, esc } from '../../core/utils.js';
 import { navigate } from '../../core/router.js';
@@ -376,8 +377,11 @@ export async function renderAttendanceWorkers() {
           type: 'WORKER',
           userId: user.id || 'MNT001',
           workerId: w.id,
-          workerCode: w.code || '1405739',
+          name: w.name,
           workerName: w.name,
+          code: w.code || '1405739',
+          workerCode: w.code || '1405739',
+          position: w.position || 'Pekerja Bibitan',
           workerRole: 'Pekerja Bibitan',
           supervisorId: user.id || 'MNT001',
           attendanceType: attType,
@@ -386,12 +390,14 @@ export async function renderAttendanceWorkers() {
           photo: photoData,
           capturedAt: state?.iso || nowISO(),
           date: today,
+          tanggal: today,
           time: state?.time || nowTimeWithSeconds(),
+          location: 'Tanah Besih - Divisi I',
           latitude: state?.latitude || '3.1943859',
           longitude: state?.longitude || '11.2312083',
           createdAt: nowISO(),
           createdBy: user.id || 'MNT001',
-          status: 'READY'
+          status: 'HADIR'
         });
 
         if (photoData) {
@@ -409,6 +415,18 @@ export async function renderAttendanceWorkers() {
       for (const record of recordsToSave) {
         await attendanceRepository.create(record);
       }
+
+      // Sinkronkan ke storage agar tampil instan di katalog transaksi
+      const storedAtts = storage.get('attendance_transactions', []);
+      for (const record of recordsToSave) {
+        const existingIdx = storedAtts.findIndex((a) => a.id === record.id);
+        if (existingIdx >= 0) {
+          storedAtts[existingIdx] = record;
+        } else {
+          storedAtts.push(record);
+        }
+      }
+      storage.set('attendance_transactions', storedAtts);
 
       // Non-blocking simpan foto
       if (photosToSave.length > 0) {

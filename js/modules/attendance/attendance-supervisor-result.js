@@ -5,6 +5,7 @@
  */
 
 import { session } from '../../core/session.js';
+import { storage } from '../../core/storage.js';
 import { attendanceRepository, photoRepository } from '../../db/repositories.js';
 import { lastSupervisorCapture } from './attendance-supervisor.js';
 import { getAttendanceTypeByHour } from './attendance-landing.js';
@@ -155,27 +156,44 @@ export async function renderAttendanceSupervisorResult() {
       const recordId = uid('ATT-SUP-');
       const photoId = `PHOTO-${recordId}`;
 
-      // Simpan record presensi ke IndexedDB
-      await attendanceRepository.create({
+      const supervisorRecord = {
         id: recordId,
         type: 'SUPERVISOR',
         userId: user.id || 'MNT001',
-        workerCode: capture.userCode || '1405482',
-        workerName: capture.userName || 'Wagiman',
+        name: capture.userName || user.name || 'Wagiman',
+        workerName: capture.userName || user.name || 'Wagiman',
+        code: capture.userCode || user.code || '1405482',
+        workerCode: capture.userCode || user.code || '1405482',
         role: user.role || 'MANTRI_TANAMAN',
+        position: user.position || 'Mantri Bibitan',
         attendanceType: attType,
         method: 'REKAM_DATA_WAJAH',
         photoId,
         photo: capture.photo,
         capturedAt: capture.iso || nowISO(),
         date: today,
+        tanggal: today,
         time: capture.time || nowTimeWithSeconds(),
+        location: 'Tanah Besih - Divisi I',
         latitude: capture.latitude || '3.1943859',
         longitude: capture.longitude || '11.2312083',
         createdAt: nowISO(),
         createdBy: user.id || 'MNT001',
-        status: 'READY'
-      });
+        status: 'HADIR'
+      };
+
+      // Simpan record presensi ke IndexedDB
+      await attendanceRepository.create(supervisorRecord);
+
+      // Sinkronkan langsung ke storage agar tampil instan di katalog
+      const storedAtts = storage.get('attendance_transactions', []);
+      const existingIdx = storedAtts.findIndex((a) => a.id === recordId);
+      if (existingIdx >= 0) {
+        storedAtts[existingIdx] = supervisorRecord;
+      } else {
+        storedAtts.unshift(supervisorRecord);
+      }
+      storage.set('attendance_transactions', storedAtts);
 
       // Simpan referensi foto ke photo store jika ada
       try {

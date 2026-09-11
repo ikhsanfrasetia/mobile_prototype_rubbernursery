@@ -32,8 +32,8 @@ export const session = {
       role,
       name,
       position: position || (role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : role),
-      divisionId: divisionId || null,
-      divisionName: divisionName || null,
+      divisionId: divisionId || 'DIV-001',
+      divisionName: divisionName || 'Tanah Besih - Divisi I',
       isDemoSession: isDemoSession === true,
       loginAt: new Date().toISOString(),
       isAuthenticated: true
@@ -52,8 +52,8 @@ export const session = {
       role,
       name,
       position: position || (role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : role),
-      divisionId: divisionId || null,
-      divisionName: divisionName || null,
+      divisionId: divisionId || 'DIV-001',
+      divisionName: divisionName || 'Tanah Besih - Divisi I',
       ...base,
       switchedAt: new Date().toISOString(),
       isAuthenticated: true

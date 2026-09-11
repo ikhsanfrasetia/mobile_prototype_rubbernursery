@@ -1,7 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo } from '../../core/utils.js';
 
 export function renderSelectionLanding() {
   const app = document.getElementById('app');
@@ -15,7 +15,7 @@ export function renderSelectionLanding() {
 
   // 2. Sinkronisasi Data Seleksi / Reject dari Transaksi Penerimaan Benih / Bibit (APM)
   receiptTxs.forEach((rtx, i) => {
-    const rcvDocNo = rtx.docNo || rtx.nomorDokumen || (rtx.jenis === 'Benih / Biji Kelatak' ? `RCV/SEEDS/2026/0${i + 1}` : `RCV/SEEDLINGS/2026/0${i + 1}`);
+    const rcvDocNo = rtx.docNo || rtx.nomorDokumen || formatStandardDocNo(2026, 'APR', i + 1);
     const rows = (rtx.rawState && rtx.rawState.tableRows) || [];
     const sourceName = rtx.sumber || rtx.tipeAsal || (rtx.rawState && rtx.rawState.sourceName) || 'Kebun Sendiri';
     const batchNo = rtx.batchNo || (rtx.rawState && rtx.rawState.batchCode) || `Batch-0${i + 1}`;

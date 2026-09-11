@@ -20,7 +20,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo } from '../../core/utils.js';
 
 let selectedProgramFilter = 'ALL';
 let selectedStageFilter = 'ALL'; // 'ALL' | 'Rubber Main Nursery' | 'Rubber Advance Planting Material'
@@ -29,7 +29,7 @@ let searchQuery = '';
 
 export function renderNurseryHistory() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: 'Mandor Semprot' };
+  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: 'Mantri Bibitan' };
   const today = formatDate(new Date().toISOString());
 
   // 1. Ambil data real transaksi dari storage
@@ -65,7 +65,7 @@ export function renderNurseryHistory() {
       badgeBg: isAPM ? '#EFF6FF' : '#E0F2FE',
       badgeColor: isAPM ? '#1E40AF' : '#0369A1',
       badgeBorder: isAPM ? '#BFDBFE' : '#BAE6FD',
-      docNo: tx.docNo || tx.nomorDokumen || `RCV/2026/0${idx + 1}`,
+      docNo: tx.docNo || tx.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1),
       batchNo: tx.batchNo || (tx.rawState && tx.rawState.batchCode) || '-',
       klon: tx.klon || tx.jenisBenih || tx.klonRootstock || '-',
       bedengan: tx.bedengan || '-',
@@ -106,7 +106,7 @@ export function renderNurseryHistory() {
       badgeBg: '#F3E8FF',
       badgeColor: '#6B21A8',
       badgeBorder: '#E9D5FF',
-      docNo: tx.docNo || `SEED/2026/0${idx + 1}`,
+      docNo: tx.docNo || formatStandardDocNo(2026, 'SEM', idx + 1),
       batchNo: tx.batchNo || `Batch-0${idx + 1}`,
       klon: tx.klonAwal || tx.klonRootstock || tx.klon || 'GT-01',
       bedengan: (tx.rows && tx.rows.map(r => r.bedengan).filter(Boolean).join(', ')) || tx.bedengan || 'Bedengan 01',
@@ -143,13 +143,13 @@ export function renderNurseryHistory() {
     allHistoryItems.push({
       id: `OKL-${idx}`,
       category: 'BUDDING',
-      categoryLabel: isRegraft ? 'Okulasi Janda' : 'Okulasi (Grafting)',
+      categoryLabel: isRegraft ? 'Okulasi Janda' : 'Okulasi',
       program: itemProgram,
       stage: itemStage,
       badgeBg: isRegraft ? '#FEF3C7' : '#DCFCE7',
       badgeColor: isRegraft ? '#92400E' : '#116834',
       badgeBorder: isRegraft ? '#FDE68A' : '#BBF7D0',
-      docNo: tx.docNo || (isRegraft ? `OKL/REG/2026/0${idx + 1}` : `OKL/2026/0${idx + 1}`),
+      docNo: tx.docNo || formatStandardDocNo(2026, isRegraft ? 'OKJ' : 'OKL', idx + 1),
       batchNo: tx.batchNo || 'Batch-01',
       klon: `${tx.klonEntres || 'PB 260'} / ${tx.klonRootstock || 'GT1'}`,
       bedengan: tx.bedengan || 'Bedengan 01',
@@ -195,7 +195,7 @@ export function renderNurseryHistory() {
       badgeBg: '#E0E7FF',
       badgeColor: '#3730A3',
       badgeBorder: '#C7D2FE',
-      docNo: tx.docNo || `INSP/2026/0${idx + 1}`,
+      docNo: tx.docNo || formatStandardDocNo(2026, 'PRK', idx + 1),
       batchNo: tx.batchNo || 'Batch-01',
       klon: tx.klonEntres || 'PB 260',
       bedengan: tx.bedengan || 'Bedengan 01',
@@ -238,7 +238,7 @@ export function renderNurseryHistory() {
       badgeBg: '#FEE2E2',
       badgeColor: '#B91C1C',
       badgeBorder: '#FCA5A5',
-      docNo: tx.docNo || `DEC-CUL/2026/0${idx + 1}`,
+      docNo: tx.docNo || formatStandardDocNo(2026, 'SEL', idx + 1),
       batchNo: tx.batchNo || 'Batch-01',
       klon: tx.klon || 'PB 260',
       bedengan: tx.bedengan || 'Bedengan 01',

@@ -1,5 +1,6 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
+import { formatStandardDocNo } from '../../core/utils.js';
 
 export function renderBuddingGrafting() {
   const app = document.getElementById('app');
@@ -11,7 +12,7 @@ export function renderBuddingGrafting() {
   // Process and sort batches: yang belum selesai (Perlu Diokulasi) di ATAS, yang sudah selesai (Selesai Diokulasi) di BAWAH
   const processedBatchList = seedingTxs.map((stx, idx) => {
     const batchNo = stx.batchNo || `Batch-0${idx + 1}`;
-    const docNo = stx.docNo || `RCV/SEEDS/2026/AGUS/0${(stx.sourceIndex || 0) + 1}`;
+    const docNo = stx.docNo || stx.sourceDocNo || formatStandardDocNo(2026, 'APR', (stx.sourceIndex || 0) + 1);
     const populasiBibit = parseInt(stx.totalDisemai || 0);
 
     // Calculate accumulated budding for this batch

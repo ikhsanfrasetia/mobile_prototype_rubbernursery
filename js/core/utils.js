@@ -103,3 +103,77 @@ export function debounce(fn, ms = 250) {
     t = setTimeout(() => fn(...args), ms);
   };
 }
+
+/**
+ * Standard Document Numbering System
+ * Format: <YEAR>/<DOC_CODE>/<SEQUENCE>
+ * Example: 2026/APR/001
+ */
+export const MODULE_DOC_CODES = {
+  reception: 'APR',
+  seeding: 'SEM',
+  budding: 'OKL',
+  inspection: 'PRK',
+  regrafting: 'OKJ',
+  selection: 'SEL',
+  entres: 'ENT',
+  nurseryActivity: 'RAW',
+  material: 'MAT',
+  request: 'PGL',
+  attendance: 'PRS',
+  syncQueue: 'SYN'
+};
+
+export function getModuleDocCode(modId) {
+  return MODULE_DOC_CODES[modId] || (String(modId || 'DOC').slice(0, 3).toUpperCase());
+}
+
+export function formatStandardDocNo(year, docCode, sequence) {
+  const y = year || 2026;
+  const c = (MODULE_DOC_CODES[docCode] || String(docCode || 'APR')).toUpperCase();
+  const s = String(sequence || 1).padStart(3, '0');
+  return `${y}/${c}/${s}`;
+}
+
+export function generateUniqueDocNo(modIdOrCode, existingList = [], targetYear = 2026) {
+  const docCode = MODULE_DOC_CODES[modIdOrCode] || String(modIdOrCode || 'APR').toUpperCase();
+  const year = targetYear || 2026;
+  const prefix = `${year}/${docCode}/`;
+
+  const existingSet = new Set();
+  let maxSeq = 0;
+
+  const checkAndAdd = (rawDoc) => {
+    if (!rawDoc || typeof rawDoc !== 'string') return;
+    const cleanDoc = rawDoc.trim();
+    existingSet.add(cleanDoc);
+    if (cleanDoc.startsWith(prefix)) {
+      const part = cleanDoc.slice(prefix.length);
+      const n = parseInt(part, 10);
+      if (!isNaN(n) && n > maxSeq) {
+        maxSeq = n;
+      }
+    }
+  };
+
+  (existingList || []).forEach(item => {
+    if (typeof item === 'string') {
+      checkAndAdd(item);
+    } else if (item && typeof item === 'object') {
+      checkAndAdd(item.docNo);
+      checkAndAdd(item.nomorDokumen);
+      checkAndAdd(item.id);
+      checkAndAdd(item.code);
+    }
+  });
+
+  let nextSeq = maxSeq + 1;
+  let candidate = formatStandardDocNo(year, docCode, nextSeq);
+  while (existingSet.has(candidate)) {
+    nextSeq += 1;
+    candidate = formatStandardDocNo(year, docCode, nextSeq);
+  }
+
+  return candidate;
+}
+
