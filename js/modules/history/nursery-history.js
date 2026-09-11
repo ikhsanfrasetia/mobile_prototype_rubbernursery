@@ -20,6 +20,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
+import { ROLE_LABELS } from '../../core/permissions.js';
 import { formatDate, formatStandardDocNo } from '../../core/utils.js';
 
 let selectedProgramFilter = 'ALL';
@@ -29,7 +30,7 @@ let searchQuery = '';
 
 export function renderNurseryHistory() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: 'Mantri Bibitan' };
+  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: ROLE_LABELS.MANTRI_TANAMAN };
   const today = formatDate(new Date().toISOString());
 
   // 1. Ambil data real transaksi dari storage

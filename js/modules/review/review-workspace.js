@@ -10,6 +10,7 @@ import { toast } from '../../components/toast.js';
 import { esc, todayISO, uid, formatStandardDocNo, generateUniqueDocNo, getModuleDocCode, MODULE_DOC_CODES } from '../../core/utils.js';
 import { session } from '../../core/session.js';
 import { storage } from '../../core/storage.js';
+import { ROLE_LABELS } from '../../core/permissions.js';
 import {
   attendanceRepository,
   receptionRepository,
@@ -1743,7 +1744,7 @@ function openAddFeedbackModal(markerCoords = null) {
   const currentRoute = (getCurrent().route || '/login').split('?')[0];
   const user = session.get() || {};
   const defaultAuthor = user.name && user.name !== 'Mantri Tanaman' && user.name !== 'Mantri Bibitan' ? user.name : 'Pengunjung / User';
-  const defaultRole = user.role ? (user.role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : user.role) : 'Customer / User Field';
+  const defaultRole = user.role ? (ROLE_LABELS[user.role] || user.role) : 'Customer / User Field';
 
   const defaultCoords = markerCoords || { x: 50.0, y: 40.0 };
 

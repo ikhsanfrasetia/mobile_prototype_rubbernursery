@@ -83,8 +83,13 @@ export function openDrawer() {
 
   const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', divisionName: 'Tanah Besih - Divisi I' };
   const displayName = (user.name && user.name !== 'Mantri Tanaman' && user.name !== 'Mantri Bibitan') ? user.name : 'Wagiman';
-  const displayRole = user.role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : (ROLE_LABELS[user.role] || user.role);
+  const displayRole = ROLE_LABELS[user.role] || user.role;
   const currentPath = (getCurrent().route || '/home');
+
+  const DEMO_ROLES = ['MANTRI_TANAMAN', 'ASISTEN', 'ASISTEN_BIBITAN', 'ASKEP', 'PENGURUS', 'TEKNIKER_I', 'KTU'];
+  const demoPillsHtml = DEMO_ROLES.map((r) => `
+    <button class="demo-pill ${user.role === r ? 'active' : ''}" data-role="${r}">${esc(ROLE_LABELS[r] || r)}</button>
+  `).join('');
 
   drawerEl = document.createElement('div');
   drawerEl.className = 'drawer-overlay';
@@ -156,13 +161,7 @@ export function openDrawer() {
       <div class="drawer-demo-switch">
         <div class="drawer-demo-head">Mode Demo — Ganti Role</div>
         <div class="drawer-demo-pills">
-          <button class="demo-pill ${user.role === 'MANTRI_TANAMAN' ? 'active' : ''}" data-role="MANTRI_TANAMAN">Mantri Bibitan</button>
-          <button class="demo-pill ${user.role === 'ASISTEN' ? 'active' : ''}" data-role="ASISTEN">Asisten</button>
-          <button class="demo-pill ${user.role === 'ASISTEN_BIBITAN' ? 'active' : ''}" data-role="ASISTEN_BIBITAN">Ast. Bibitan</button>
-          <button class="demo-pill ${user.role === 'ASKEP' ? 'active' : ''}" data-role="ASKEP">Askep</button>
-          <button class="demo-pill ${user.role === 'PENGURUS' ? 'active' : ''}" data-role="PENGURUS">Pengurus</button>
-          <button class="demo-pill ${user.role === 'TEKNIKER_I' ? 'active' : ''}" data-role="TEKNIKER_I">Tekniker I</button>
-          <button class="demo-pill ${user.role === 'KTU' ? 'active' : ''}" data-role="KTU">KTU</button>
+          ${demoPillsHtml}
         </div>
       </div>
 
@@ -218,12 +217,12 @@ export function openDrawer() {
           userId: targetUser.id,
           role: targetUser.role,
           name: targetUser.name,
-          position: targetUser.position || (targetUser.role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : targetUser.role),
+          position: targetUser.position || (ROLE_LABELS[targetUser.role] || targetUser.role),
           divisionId: targetUser.divisionId,
           divisionName: 'Tanah Besih - Divisi I',
           isDemoSession: true
         });
-        toast(`Beralih ke role ${ROLE_LABELS[targetRole]}`, 'info');
+        toast(`Beralih ke role ${ROLE_LABELS[targetRole] || targetRole}`, 'info');
         closeDrawer();
         navigate('/splash', { replace: true });
       }

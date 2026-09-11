@@ -10,6 +10,7 @@ import { toast } from '../../components/toast.js';
 import { attendanceRepository } from '../../db/repositories.js';
 import { nowISO, nowTimeWithSeconds, todayISO } from '../../core/utils.js';
 import { getAttendanceTypeByHour } from './attendance-landing.js';
+import { ROLE_LABELS } from '../../core/permissions.js';
 
 // State sementara hasil capture untuk diteruskan ke result page
 export let lastSupervisorCapture = null;
@@ -25,7 +26,7 @@ export function stopCamera() {
 
 export async function renderAttendanceSupervisor() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', code: '1405482', position: 'Mantri Bibitan', id: 'MNT001' };
+  const user = session.get() || { name: 'Wagiman', code: '1405482', position: ROLE_LABELS.MANTRI_TANAMAN, id: 'MNT001' };
   const userCode = user.code || user.id || '1405482';
   const userName = user.name || 'Wagiman';
   const identityText = `${userCode}-${userName}`;
@@ -186,7 +187,7 @@ export async function renderAttendanceSupervisor() {
       user,
       userCode,
       userName,
-      position: user.position || 'Mantri Bibitan',
+      position: user.position || ROLE_LABELS.MANTRI_TANAMAN,
       photo: capturedPhotoData,
       time: captureTime,
       date: captureDate,

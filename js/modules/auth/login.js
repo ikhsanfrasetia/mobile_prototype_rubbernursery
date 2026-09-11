@@ -22,7 +22,7 @@ function startSession(user, { demo = false } = {}) {
     code: user.code || user.id || '1405482',
     role: user.role,
     name: user.name,
-    position: user.position || (user.role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : (ROLE_LABELS[user.role] || user.role)),
+    position: user.position || (ROLE_LABELS[user.role] || user.role),
     divisionId: user.divisionId,
     divisionName: 'Tanah Besih - Divisi I',
     isDemoSession: demo

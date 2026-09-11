@@ -60,8 +60,62 @@ const MENU_ITEMS = [
   { id: 'kebun-entres', title: 'Kebun<br>Entres', icon: ICONS.entres, route: '/entres' },
   { id: 'material', title: 'Material &<br>Bahan', icon: ICONS.sprout, route: '/material' },
   { id: 'pemeliharaan', title: 'Rekam<br>Pemeliharaan', icon: ICONS.documentPlus, route: '/nursery-activity' },
-  { id: 'pengeluaran', title: 'Pengeluaran', icon: ICONS.sprout, route: '/request' }
+  { id: 'pengeluaran', title: 'Pengeluaran', icon: ICONS.sprout, route: '/dispatch' }
 ];
+
+const PENGURUS_MENU_ITEMS = [
+  { id: 'penerimaan', title: 'Penerimaan', icon: ICONS.documentPlus, route: '/reception' },
+  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' },
+  { id: 'pengeluaran-bibit', title: 'Pengeluaran<br>Bibit', icon: ICONS.sprout, route: '/dispatch' }
+];
+
+function renderBerandaPengurus() {
+  const app = document.getElementById('app');
+
+  const menuCards = PENGURUS_MENU_ITEMS.map((item) => `
+    <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button">
+      <div class="beranda-card-icon">${item.icon}</div>
+      <div class="beranda-card-title">${item.title}</div>
+    </button>
+  `).join('');
+
+  app.innerHTML = `
+    <div class="page beranda-page">
+      <header class="beranda-header">
+        <button class="beranda-menu-btn" id="beranda-drawer-btn" type="button" aria-label="Menu">
+          <svg viewBox="0 0 24 24" width="26" height="26" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <h1 class="beranda-header-title">Beranda</h1>
+      </header>
+
+      <main class="beranda-body">
+        <div class="beranda-grid">
+          ${menuCards}
+        </div>
+      </main>
+    </div>
+  `;
+
+  // Drawer Toggle
+  app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
+
+  // Menu clicks
+  app.querySelectorAll('.beranda-menu-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const route = card.dataset.route;
+      if (route) {
+        navigate(route);
+      } else {
+        const title = card.querySelector('.beranda-card-title')?.textContent.trim() || 'Modul';
+        toast(`Modul ${title} akan segera dibuka`, 'info');
+      }
+    });
+  });
+}
 
 function renderRoleDevelopmentHome(user) {
   const app = document.getElementById('app');
@@ -99,6 +153,11 @@ function renderRoleDevelopmentHome(user) {
 export function renderBeranda() {
   const app = document.getElementById('app');
   const user = session.get();
+
+  if (user?.role === ROLES.PENGURUS) {
+    renderBerandaPengurus();
+    return;
+  }
 
   if (user?.role !== ROLES.MANTRI_TANAMAN) {
     renderRoleDevelopmentHome(user);

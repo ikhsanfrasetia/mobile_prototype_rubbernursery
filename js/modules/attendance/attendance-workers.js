@@ -13,6 +13,7 @@ import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
 import { confirmDialog, openModal, closeModal } from '../../components/modal.js';
 import { getAttendanceTypeByHour } from './attendance-landing.js';
+import { ROLE_LABELS } from '../../core/permissions.js';
 
 // Module-level persistent state
 const workerSessionAttendance = new Map();
@@ -88,7 +89,7 @@ function updateWorkerRowInDOM(workerId, photoData, isChecked) {
 
 export async function renderAttendanceWorkers() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', code: '1405482', position: 'Mantri Bibitan', id: 'MNT001' };
+  const user = session.get() || { name: 'Wagiman', code: '1405482', position: ROLE_LABELS.MANTRI_TANAMAN, id: 'MNT001' };
   const today = todayISO();
   const attType = getAttendanceTypeByHour();
 
@@ -202,7 +203,7 @@ export async function renderAttendanceWorkers() {
         <div class="workers-mantri-card">
           <div class="mantri-left">
             <h2 class="mantri-name">${esc(user.name || 'Wagiman')}</h2>
-            <div class="mantri-sub">${esc(user.code || '1405482')}-${esc(user.position || 'Mantri Bibitan')}</div>
+            <div class="mantri-sub">${esc(user.code || '1405482')}-${esc(user.position || (ROLE_LABELS[user.role] || ROLE_LABELS.MANTRI_TANAMAN))}</div>
           </div>
           <div class="mantri-right">
             <span class="mantri-total-num">${totalPekerja}</span>

@@ -13,10 +13,11 @@ import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
 import { formatFullDateIndonesian, nowISO, todayISO, nowTimeWithSeconds, uid, esc } from '../../core/utils.js';
+import { ROLE_LABELS } from '../../core/permissions.js';
 
 export async function renderAttendanceSupervisorResult() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', code: '1405482', position: 'Mantri Bibitan', id: 'MNT001' };
+  const user = session.get() || { name: 'Wagiman', code: '1405482', position: ROLE_LABELS.MANTRI_TANAMAN, id: 'MNT001' };
   const attType = getAttendanceTypeByHour();
   const sessionLabel = attType === 'PULANG' ? 'Presensi Pulang' : 'Presensi Datang';
   const pageTitle = `Presensi Supervisor ${attType === 'PULANG' ? 'Pulang' : 'Datang'}`;
@@ -26,7 +27,7 @@ export async function renderAttendanceSupervisorResult() {
     user,
     userCode: user.code || user.id || '1405482',
     userName: user.name || 'Wagiman',
-    position: user.position || 'Mantri Bibitan',
+    position: user.position || ROLE_LABELS.MANTRI_TANAMAN,
     photo: 'assets/icons/supervisor_wagiman.jpg',
     time: nowTimeWithSeconds(),
     date: todayISO(),
@@ -165,7 +166,7 @@ export async function renderAttendanceSupervisorResult() {
         code: capture.userCode || user.code || '1405482',
         workerCode: capture.userCode || user.code || '1405482',
         role: user.role || 'MANTRI_TANAMAN',
-        position: user.position || 'Mantri Bibitan',
+        position: user.position || (ROLE_LABELS[user.role] || ROLE_LABELS.MANTRI_TANAMAN),
         attendanceType: attType,
         method: 'REKAM_DATA_WAJAH',
         photoId,

@@ -4,6 +4,7 @@
  */
 
 import { storage, KEYS } from './storage.js';
+import { ROLE_LABELS } from './permissions.js';
 
 export const session = {
   get() {
@@ -31,7 +32,7 @@ export const session = {
       code: code || userId,
       role,
       name,
-      position: position || (role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : role),
+      position: position || (ROLE_LABELS[role] || role),
       divisionId: divisionId || 'DIV-001',
       divisionName: divisionName || 'Tanah Besih - Divisi I',
       isDemoSession: isDemoSession === true,
@@ -51,7 +52,7 @@ export const session = {
       code: code || (current ? current.code : userId),
       role,
       name,
-      position: position || (role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : role),
+      position: position || (ROLE_LABELS[role] || role),
       divisionId: divisionId || 'DIV-001',
       divisionName: divisionName || 'Tanah Besih - Divisi I',
       ...base,

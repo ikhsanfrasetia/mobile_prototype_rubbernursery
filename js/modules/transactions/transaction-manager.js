@@ -15,6 +15,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
+import { ROLE_LABELS } from '../../core/permissions.js';
 import { formatDate, todayISO, uid, formatStandardDocNo, generateUniqueDocNo, getModuleDocCode, MODULE_DOC_CODES } from '../../core/utils.js';
 import { openDrawer } from '../../components/drawer.js';
 import { toast } from '../../components/toast.js';
@@ -192,7 +193,7 @@ export function getTxItemUnit(item, modId) {
 
 export async function renderTransactionManager() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: 'Mantri Bibitan' };
+  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: ROLE_LABELS.MANTRI_TANAMAN };
 
   // Ambil data untuk tab aktif
   const currentConfig = MODULE_CONFIGS[activeTab] || MODULE_CONFIGS.reception;
@@ -340,7 +341,7 @@ function renderTransactionCard(item, index, tab, config) {
 
   if (tab === 'attendance') {
     title = item.workerName || item.name || item.userName || 'Pekerja';
-    subtitle = item.position || item.jabatan || (item.type === 'SUPERVISOR' || item.role === 'MANTRI_TANAMAN' ? 'Mantri Bibitan' : 'Pekerja Bibitan');
+    subtitle = item.position || item.jabatan || (item.type === 'SUPERVISOR' || item.role === 'MANTRI_TANAMAN' ? (ROLE_LABELS[item.role] || ROLE_LABELS.MANTRI_TANAMAN) : 'Pekerja Bibitan');
     col1 = { label: 'Tipe', val: item.type || 'WORKER' };
     col2 = { label: 'Waktu', val: item.time || '-' };
     col3 = { label: 'Status', val: item.status || 'HADIR' };
