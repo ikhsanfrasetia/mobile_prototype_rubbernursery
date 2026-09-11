@@ -11,7 +11,9 @@ export const ROLES = Object.freeze({
   ASISTEN: 'ASISTEN',
   ASISTEN_BIBITAN: 'ASISTEN_BIBITAN',
   ASKEP: 'ASKEP',
-  PENGURUS: 'PENGURUS'
+  PENGURUS: 'PENGURUS',
+  TEKNIKER_I: 'TEKNIKER_I',
+  KTU: 'KTU'
 });
 
 export const ROLE_LABELS = Object.freeze({
@@ -19,7 +21,9 @@ export const ROLE_LABELS = Object.freeze({
   ASISTEN: 'Asisten',
   ASISTEN_BIBITAN: 'Asisten Bibitan',
   ASKEP: 'Askep',
-  PENGURUS: 'Pengurus'
+  PENGURUS: 'Pengurus',
+  TEKNIKER_I: 'Tekniker I',
+  KTU: 'KTU'
 });
 
 /**
@@ -49,7 +53,9 @@ const CAPABILITIES = {
     'monitor:process'
   ],
   [ROLES.ASKEP]: ['transaction:view', 'monitor:process', 'approval:future'],
-  [ROLES.PENGURUS]: ['transaction:view', 'monitor:process', 'approval:future']
+  [ROLES.PENGURUS]: ['transaction:view', 'monitor:process', 'approval:future'],
+  [ROLES.TEKNIKER_I]: ['transaction:view', 'monitor:process'],
+  [ROLES.KTU]: ['transaction:view', 'monitor:process']
 };
 
 /** Route → kapabilitas minimum yang dibutuhkan. */
@@ -77,7 +83,7 @@ export const permissions = {
 
   isViewer(role) {
     const r = role || session.getRole();
-    return [ROLES.ASKEP, ROLES.PENGURUS].includes(r);
+    return [ROLES.ASKEP, ROLES.PENGURUS, ROLES.TEKNIKER_I, ROLES.KTU].includes(r);
   },
 
   canAccessHome(role) {

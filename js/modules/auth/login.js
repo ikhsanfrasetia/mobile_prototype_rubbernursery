@@ -13,7 +13,7 @@ import { openModal, closeModal } from '../../components/modal.js';
 import { seedDatabase } from '../../db/seed.js';
 import { DEMO_USERS } from '../../data/demo-data.js';
 
-const ROLE_ORDER = ['MANTRI_TANAMAN', 'ASISTEN', 'ASISTEN_BIBITAN', 'ASKEP', 'PENGURUS'];
+const ROLE_ORDER = ['MANTRI_TANAMAN', 'ASISTEN', 'ASISTEN_BIBITAN', 'ASKEP', 'PENGURUS', 'TEKNIKER_I', 'KTU'];
 const VPN_KEY = 'vpn';
 
 function startSession(user, { demo = false } = {}) {

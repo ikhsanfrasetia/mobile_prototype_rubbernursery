@@ -161,6 +161,8 @@ export function openDrawer() {
           <button class="demo-pill ${user.role === 'ASISTEN_BIBITAN' ? 'active' : ''}" data-role="ASISTEN_BIBITAN">Ast. Bibitan</button>
           <button class="demo-pill ${user.role === 'ASKEP' ? 'active' : ''}" data-role="ASKEP">Askep</button>
           <button class="demo-pill ${user.role === 'PENGURUS' ? 'active' : ''}" data-role="PENGURUS">Pengurus</button>
+          <button class="demo-pill ${user.role === 'TEKNIKER_I' ? 'active' : ''}" data-role="TEKNIKER_I">Tekniker I</button>
+          <button class="demo-pill ${user.role === 'KTU' ? 'active' : ''}" data-role="KTU">KTU</button>
         </div>
       </div>
 
@@ -222,7 +224,7 @@ export function openDrawer() {
         });
         toast(`Beralih ke role ${ROLE_LABELS[targetRole]}`, 'info');
         closeDrawer();
-        navigate('/home');
+        navigate('/splash', { replace: true });
       }
     });
   });

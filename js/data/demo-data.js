@@ -56,6 +56,26 @@ export const DEMO_USERS = [
     divisionId: 'DIV-001',
     password: 'demo',
     active: true
+  },
+  {
+    id: 'TKI001',
+    code: 'TKI001',
+    name: 'Tekniker I',
+    role: 'TEKNIKER_I',
+    position: 'Tekniker I',
+    divisionId: 'DIV-001',
+    password: 'demo',
+    active: true
+  },
+  {
+    id: 'KTU001',
+    code: 'KTU001',
+    name: 'KTU',
+    role: 'KTU',
+    position: 'Kepala Tata Usaha',
+    divisionId: 'DIV-001',
+    password: 'demo',
+    active: true
   }
 ];
 
@@ -204,7 +224,9 @@ function ROLES_DEMO() {
     { id: 'ASISTEN', code: 'ASISTEN', name: 'Asisten' },
     { id: 'ASISTEN_BIBITAN', code: 'ASISTEN_BIBITAN', name: 'Asisten Bibitan' },
     { id: 'ASKEP', code: 'ASKEP', name: 'Askep' },
-    { id: 'PENGURUS', code: 'PENGURUS', name: 'Pengurus' }
+    { id: 'PENGURUS', code: 'PENGURUS', name: 'Pengurus' },
+    { id: 'TEKNIKER_I', code: 'TEKNIKER_I', name: 'Tekniker I' },
+    { id: 'KTU', code: 'KTU', name: 'KTU' }
   ];
 }
 

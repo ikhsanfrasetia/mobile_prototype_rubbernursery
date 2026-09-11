@@ -10,6 +10,7 @@ import { storage } from '../../core/storage.js';
 import { openDrawer } from '../../components/drawer.js';
 import { toast } from '../../components/toast.js';
 import { navigate } from '../../core/router.js';
+import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
 
 /* SVG Icons sesuai desain acuan - proporsional & tajam */
 const ICONS = {
@@ -61,8 +62,47 @@ const MENU_ITEMS = [
   { id: 'pengeluaran', title: 'Pengeluaran', icon: ICONS.sprout, route: '/request' }
 ];
 
+function renderRoleDevelopmentHome(user) {
+  const app = document.getElementById('app');
+  const roleLabel = ROLE_LABELS[user?.role] || user?.position || 'Pengguna';
+  const userName = user?.name || roleLabel;
+
+  app.innerHTML = `
+    <div class="page beranda-page">
+      <header class="beranda-header">
+        <button class="beranda-menu-btn" id="beranda-drawer-btn" type="button" aria-label="Menu">
+          <svg viewBox="0 0 24 24" width="26" height="26" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <h1 class="beranda-header-title">Beranda</h1>
+      </header>
+
+      <main class="beranda-body" style="display: flex; align-items: center; justify-content: center; padding: 24px;">
+        <section style="width: 100%; max-width: 340px; text-align: center;">
+          <div style="width: 88px; height: 88px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #E8F3EC; color: #116834; font-size: 42px;">🛠️</div>
+          <div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; margin-bottom: 16px; border: 1px solid #FDE68A; border-radius: 999px; background: #FEF3C7; color: #92400E; font-size: 0.78rem; font-weight: 700;">DALAM PENGEMBANGAN</div>
+          <h2 style="margin: 0 0 10px; color: #111827; font-size: 1.3rem; line-height: 1.35;">Beranda ${roleLabel}</h2>
+          <p style="margin: 0 0 8px; color: #374151; font-size: 0.95rem; line-height: 1.55;">Halo, ${userName}.</p>
+          <p style="margin: 0; color: #6B7280; font-size: 0.9rem; line-height: 1.55;">Navigasi dan fitur khusus untuk role ini sedang disiapkan untuk kebutuhan review prototype.</p>
+        </section>
+      </main>
+    </div>
+  `;
+
+  app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
+}
+
 export function renderBeranda() {
   const app = document.getElementById('app');
+  const user = session.get();
+
+  if (user?.role !== ROLES.MANTRI_TANAMAN) {
+    renderRoleDevelopmentHome(user);
+    return;
+  }
   
   const txs = storage.get('receipt_transactions', []);
   const seedingTxs = storage.get('seeding_transactions', []);

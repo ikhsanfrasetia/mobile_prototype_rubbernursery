@@ -8,7 +8,9 @@ export const ROLES_MASTER = [
   { id: 'ASISTEN', code: 'ASISTEN', name: 'Asisten', desc: 'Verifikasi & review/koreksi transaksi' },
   { id: 'ASISTEN_BIBITAN', code: 'ASISTEN_BIBITAN', name: 'Asisten Bibitan', desc: 'Verifikasi & approval bibitan' },
   { id: 'ASKEP', code: 'ASKEP', name: 'Askep', desc: 'Monitoring & approval sesuai kewenangan' },
-  { id: 'PENGURUS', code: 'PENGURUS', name: 'Pengurus', desc: 'Monitoring & approval/penentuan sumber' }
+  { id: 'PENGURUS', code: 'PENGURUS', name: 'Pengurus', desc: 'Monitoring & approval/penentuan sumber' },
+  { id: 'TEKNIKER_I', code: 'TEKNIKER_I', name: 'Tekniker I', desc: 'Monitoring teknis kegiatan nursery' },
+  { id: 'KTU', code: 'KTU', name: 'KTU', desc: 'Monitoring administrasi kegiatan nursery' }
 ];
 
 export const CLONES = [
