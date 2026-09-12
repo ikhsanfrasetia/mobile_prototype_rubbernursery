@@ -1,14 +1,16 @@
 /**
  * modules/request/request-landing.js — Landing Page Permintaan Bibit (Role Pengurus).
- * Sesuai baseline: Grid 2x2 Menu Card (Buat Permintaan Bibit Kebun Sepupu,
- * Buat Permintaan Mata Entres, Persetujuan Permintaan Bibit Kebun Sepupu,
- * Persetujuan Permintaan Bibit Kebun Asal).
+ * Menu: Permintaan Bibit Kebun Sepupu (Hub), Buat Permintaan Mata Entres.
  */
 
 import { session } from '../../core/session.js';
+import { storage } from '../../core/storage.js';
 import { ROLES } from '../../core/permissions.js';
 import { toast } from '../../components/toast.js';
 import { navigate } from '../../core/router.js';
+import { getCurrentUserContext, resolveUserContext, normalizeRole } from '../../core/user-context.js';
+import { requestRepository } from '../../db/repositories.js';
+import { filterIncomingRequests, getActionableIncomingCount } from './request-kebun-sepupu-landing.js';
 
 /* SVG Icons sesuai visual baseline approved — proporsional & rapi #116834 */
 const ICONS = {
@@ -39,62 +41,113 @@ const ICONS = {
       <path d="M21 7.5 L22.5 9 L25.5 6" stroke="#ffffff" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   `,
-  approvalAsal: `
-    <svg viewBox="3 2 26 27" width="38" height="38" fill="#116834">
-      <rect x="5" y="4" width="22" height="24" rx="4.5" fill="#116834"/>
-      <line x1="9" y1="13" x2="19" y2="13" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-      <line x1="9" y1="18" x2="19" y2="18" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="23" cy="7.5" r="4.2" fill="#116834" stroke="#ffffff" stroke-width="1.5"/>
-      <path d="M21 7.5 L22.5 9 L25.5 6" stroke="#ffffff" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `
 };
 
-const SUB_MENU_ITEMS = [
-  {
-    id: 'ksp-bibit',
-    title: 'Buat Permintaan<br>Bibit Kebun<br>Sepupu',
-    rawTitle: 'Buat Permintaan Bibit Kebun Sepupu',
-    icon: ICONS.spbBibit,
-    route: '/request/kebun-sepupu/form'
-  },
-  {
-    id: 'me-bibit',
-    title: 'Buat Permintaan<br>Mata Entres',
-    rawTitle: 'Buat Permintaan Mata Entres',
-    icon: ICONS.spbEntres,
-    route: null
-  },
-  {
-    id: 'ksp-approval',
-    title: 'Persetujuan<br>Permintaan Bibit<br>Kebun Sepupu',
-    rawTitle: 'Persetujuan Permintaan Bibit Kebun Sepupu',
-    icon: ICONS.approvalKsp,
-    route: null
-  },
-  {
-    id: 'asal-approval',
-    title: 'Persetujuan<br>Permintaan Bibit<br>Kebun Asal',
-    rawTitle: 'Persetujuan Permintaan Bibit Kebun Asal',
-    icon: ICONS.approvalAsal,
-    route: null
+export function getSubMenuItemsForRole(userRole) {
+  const role = normalizeRole(userRole);
+  if (role === 'ASISTEN_BIBITAN' || role === 'ASISTEN') {
+    return [
+      {
+        id: 'ksp-bibit-sendiri',
+        title: 'Melanjutkan Permintaan<br>dari Kebun Sendiri',
+        rawTitle: 'Melanjutkan Permintaan dari Kebun Sendiri',
+        icon: ICONS.spbBibit,
+        route: null
+      },
+      {
+        id: 'ksp-bibit',
+        title: 'Melanjutkan Permintaan<br>dari Kebun Sepupu',
+        rawTitle: 'Melanjutkan Permintaan dari Kebun Sepupu',
+        icon: ICONS.spbBibit,
+        route: '/request/kebun-sepupu'
+      },
+      {
+        id: 'ksp-bibit-divisi',
+        title: 'Buat Permintaan<br>Bibit Divisi Sendiri',
+        rawTitle: 'Buat Permintaan Bibit Divisi Sendiri',
+        icon: ICONS.spbEntres,
+        route: null
+      }
+    ];
   }
-];
 
-export function renderRequestLanding() {
+  if (role === 'ASKEP' || role === 'ASISTEN_KEPALA') {
+    return [
+      {
+        id: 'ksp-bibit',
+        title: 'Melanjutkan Permintaan<br>Kebun Sepupu',
+        rawTitle: 'Melanjutkan Permintaan Kebun Sepupu',
+        icon: ICONS.spbBibit,
+        route: '/request/kebun-sepupu'
+      },
+      {
+        id: 'me-bibit',
+        title: 'Buat Permintaan<br>Mata Entres',
+        rawTitle: 'Buat Permintaan Mata Entres',
+        icon: ICONS.spbEntres,
+        route: null
+      }
+    ];
+  }
+
+  // Default / PENGURUS
+  return [
+    {
+      id: 'ksp-bibit',
+      title: 'Permintaan Bibit<br>Kebun Sepupu',
+      rawTitle: 'Permintaan Bibit Kebun Sepupu',
+      icon: ICONS.spbBibit,
+      route: '/request/kebun-sepupu'
+    },
+    {
+      id: 'me-bibit',
+      title: 'Buat Permintaan<br>Mata Entres',
+      rawTitle: 'Buat Permintaan Mata Entres',
+      icon: ICONS.spbEntres,
+      route: null
+    }
+  ];
+}
+
+export async function renderRequestLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
   const user = session.get();
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
+  const activeSubMenuItems = getSubMenuItemsForRole(userCtx?.role || userCtx?.rawRole);
 
-  const menuCards = SUB_MENU_ITEMS.map((item) => `
-    <button class="beranda-menu-card request-menu-card" data-sub-id="${item.id}" ${item.route ? `data-route="${item.route}"` : ''} type="button" style="height: 120px; padding: 10px 4px 6px;">
-      <div class="beranda-card-icon" style="width: 40px; height: 40px; margin-bottom: 6px;">${item.icon}</div>
-      <div class="beranda-card-title" style="font-size: 0.68rem; line-height: 1.18; min-height: 38px; display: flex; align-items: center; justify-content: center; text-align: center;">
-        ${item.title}
-      </div>
-    </button>
-  `).join('');
+  let allRequests = [];
+  try {
+    allRequests = await requestRepository.list();
+  } catch (err) {
+    allRequests = storage.get('requests_transactions', []);
+  }
+  if (!allRequests || allRequests.length === 0) {
+    allRequests = storage.get('requests_transactions', []);
+  }
+
+  const incomingReqs = filterIncomingRequests(allRequests, userCtx);
+  const hasActionableRequest = getActionableIncomingCount(incomingReqs, userCtx) > 0;
+
+  const menuCards = activeSubMenuItems.map((item) => {
+    let badgeHtml = '';
+    if (item.id === 'ksp-bibit' && hasActionableRequest) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 10px; right: 10px; width: 10px; height: 10px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    }
+
+    return `
+      <button class="beranda-menu-card request-menu-card" data-sub-id="${item.id}" ${item.route ? `data-route="${item.route}"` : ''} type="button" style="height: 120px; padding: 10px 4px 6px; position: relative;">
+        <div class="beranda-card-icon" style="width: 40px; height: 40px; margin-bottom: 6px;">${item.icon}</div>
+        <div class="beranda-card-title" style="font-size: 0.68rem; line-height: 1.18; min-height: 38px; display: flex; align-items: center; justify-content: center; text-align: center;">
+          ${item.title}
+        </div>
+        ${badgeHtml}
+      </button>
+    `;
+  }).join('');
 
   app.innerHTML = `
     <div class="page request-landing-page" style="display: flex; flex-direction: column; height: 100%; background: #FAFAFA; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; position: relative;">
@@ -155,7 +208,7 @@ export function renderRequestLanding() {
     card.addEventListener('click', () => {
       const subId = card.dataset.subId;
       const targetRoute = card.dataset.route;
-      const item = SUB_MENU_ITEMS.find((m) => m.id === subId);
+      const item = activeSubMenuItems.find((m) => m.id === subId);
       const title = item ? item.rawTitle : 'Sub-menu';
 
       if (targetRoute) {

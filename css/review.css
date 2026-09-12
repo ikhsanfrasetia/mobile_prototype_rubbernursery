@@ -30,9 +30,9 @@
   justify-content: flex-start;
   background: #f1f5f9;
   border-right: 1px solid #e2e8f0;
-  padding: 20px 16px;
+  padding: 20px 14px;
   width: 420px;
-  min-width: 400px;
+  min-width: 380px;
   max-width: 440px;
   flex-shrink: 0;
   height: 100%;
@@ -55,13 +55,14 @@
 
 /* Kolom Kanan: Review Panel & Workflow Workspace */
 .workspace-review-column {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  width: 0;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   background: #f8fafc;
-  padding: 24px 32px 48px;
+  padding: 24px 28px 48px;
   box-sizing: border-box;
 }
 
@@ -220,11 +221,6 @@
 /* Kolom Kanan: Review Panel */
 .workspace-review-column {
   background: var(--white);
-  padding: 28px 32px;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  max-height: 100vh;
 }
 
 /* ---------- Marker Layer (Relative to Mobile Screen) ---------- */
@@ -351,18 +347,25 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 14px;
+  margin-bottom: 18px;
   flex-wrap: wrap;
+  width: 100%;
+}
+
+.review-title-group {
+  flex: 1 1 220px;
+  min-width: 0;
 }
 
 .review-title-group h2 {
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   font-weight: 800;
   color: var(--text);
   letter-spacing: 0.02em;
   text-transform: uppercase;
   margin-bottom: 2px;
+  overflow-wrap: break-word;
 }
 
 .server-status-pill {
@@ -484,18 +487,20 @@
 .review-filter-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 18px;
+  gap: 10px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: #f8fafc;
   border: 1px solid var(--border);
   border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .filter-search-wrap {
-  flex: 1;
-  min-width: 180px;
+  flex: 1 1 180px;
+  min-width: 140px;
   position: relative;
 }
 
@@ -531,9 +536,12 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   background: #ffffff;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
   font-weight: 500;
   color: var(--text);
+  flex: 0 1 auto;
+  min-width: 120px;
+  max-width: 100%;
 }
 
 .filter-select:focus {
@@ -592,10 +600,10 @@
 
 .review-table {
   width: 100%;
-  min-width: 980px;
+  min-width: 720px;
   border-collapse: collapse;
   text-align: left;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
 }
 
 .review-table th {
@@ -930,30 +938,57 @@
   border-radius: 10px;
 }
 
-/* Tablet (768px – 1023px): Side-by-Side Adaptif */
-@media (min-width: 768px) and (max-width: 1023px) {
+/* Tablet & Split-Screen Desktop (768px – 1199px): Side-by-Side Adaptif */
+@media (min-width: 768px) and (max-width: 1199px) {
   .workspace-layout {
-    display: grid;
-    grid-template-columns: 360px 1fr;
+    display: flex;
+    flex-direction: row;
+    width: 100vw;
+    max-width: 100vw;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
   }
 
   .workspace-preview-column {
-    padding: 16px 10px;
+    flex: 0 0 350px;
+    width: 350px;
+    min-width: 320px;
+    max-width: 360px;
+    padding: 16px 8px;
     background: #e8eaed;
     overflow-y: auto;
-    height: 100vh;
+    overflow-x: hidden;
+    height: 100%;
+  }
+
+  .workspace-preview-column .device-frame {
+    width: 330px;
+    height: 680px;
+    max-height: calc(100dvh - 32px);
+    border-radius: 36px;
+    padding: 10px;
+  }
+
+  .workspace-preview-column .device-toolbar-container {
+    width: 330px;
   }
 
   .workspace-review-column {
-    padding: 18px 20px;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 0;
+    padding: 18px 20px 36px;
     overflow-y: auto;
-    height: 100vh;
+    overflow-x: hidden;
+    height: 100%;
   }
 
   .review-table-container {
     display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   .review-mobile-list {
@@ -1174,20 +1209,24 @@
 .workspace-main-tabs {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-bottom: 2px solid #e2e8f0;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   padding-bottom: 0;
+  width: 100%;
+  max-width: 100%;
+  scrollbar-width: thin;
 }
 
 .workspace-main-tab-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  font-size: 0.95rem;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: 0.88rem;
   font-weight: 700;
   color: #64748b;
   background: transparent;
@@ -1197,6 +1236,8 @@
   cursor: pointer;
   border-radius: 6px 6px 0 0;
   transition: all 0.18s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .workspace-main-tab-btn:hover {

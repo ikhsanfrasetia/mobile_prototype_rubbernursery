@@ -130,7 +130,10 @@ export const MODULE_DOC_CODES = {
   entres: 'ENT',
   nurseryActivity: 'RAW',
   material: 'MAT',
-  request: 'PGL',
+  request: 'NIR',
+  NIR: 'NIR',
+  KEBUN_SEPUPU: 'NIR',
+  PGL: 'PGL',
   attendance: 'PRS',
   syncQueue: 'SYN'
 };

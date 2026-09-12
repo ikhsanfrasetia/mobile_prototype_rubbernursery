@@ -4,11 +4,10 @@ import { getCurrentUserContext } from '../../core/user-context.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { openModal, closeModal } from '../../components/modal.js';
-import {
-  programReplantingRepository,
-  requestRepository
-} from '../../db/repositories.js';
+import { requestRepository } from '../../db/repositories.js';
 import { getActiveKlons, resolveKlon } from '../../data/klon-master.js';
+import { getActiveCfnaMaster, getCfnaByCode } from '../../data/cfna-master.js';
+import { getActiveEstates, resolveEstate } from '../../data/estate-master.js';
 import {
   formatDate,
   formatFullDateIndonesian,
@@ -22,7 +21,7 @@ export async function renderRequestKebunSepupuForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const user = getCurrentUserContext() || session.get() || { name: 'Junaidi', role: 'PENGURUS', position: 'Pengurus Kebun' };
+  const user = getCurrentUserContext() || session.get() || { name: 'Junaidi', role: 'PENGURUS', position: 'Pengurus Kebun', estateId: 'EST-TBS' };
   const today = formatFullDateIndonesian(new Date());
 
   // Load existing requests for unique document numbering
@@ -34,29 +33,21 @@ export async function renderRequestKebunSepupuForm() {
   }
   const docNo = generateUniqueDocNo('request', existingRequests);
 
-  // Load Master Data (Replanting Programs)
-  let programs = [];
-  try {
-    programs = await programReplantingRepository.list();
-  } catch (err) {
-    console.warn('[request-form] Gagal memuat master data program:', err);
-  }
-
-  // Fallback jika database belum berisi master program
-  if (!programs || programs.length === 0) {
-    programs = [
-      { id: 'PRP-2026-01', code: 'PRP-2026-01', name: 'Program Replanting 2026' },
-      { id: 'PRP-2026-02', code: 'PRP-2026-02', name: 'Program Replanting 2026 Tahap 2' }
-    ];
-  }
-
-  // Master Klon Terpusat (57 Klon Aktif Resmi)
-  const activeKlons = getActiveKlons();
-
-  const programOptions = programs.map(p => `
-    <option value="${esc(p.name || p.code)}">${esc(p.name || p.code)}</option>
+  // 1. Pilih Kebun Dituju
+  const allEstates = getActiveEstates();
+  const targetEstates = allEstates.filter(e => e.estate_id !== user.estateId);
+  const estateOptions = targetEstates.map(e => `
+    <option value="${esc(e.estate_id)}">${esc(e.estate_name)}</option>
   `).join('');
 
+  // 2. Kode Alokasi
+  const activeCfna = getActiveCfnaMaster();
+  const cfnaOptions = activeCfna.map(c => `
+    <option value="${esc(c.code)}">${esc(c.code)} - ${esc(c.name)}</option>
+  `).join('');
+
+  // 3. Klon yang Diminta
+  const activeKlons = getActiveKlons();
   const cloneOptions = activeKlons.map(c => `
     <option value="${esc(c.canonicalName)}">${esc(c.canonicalName)}</option>
   `).join('');
@@ -100,21 +91,29 @@ export async function renderRequestKebunSepupuForm() {
         <form id="form-request-ksp" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
           <h2 style="font-size: 0.9rem; font-weight: 800; color: #0F172A; margin: 0 0 14px 0;">Rincian Kebutuhan Permintaan</h2>
 
-          <!-- FIELD 1: RENCANA TANAM -->
+          <!-- FIELD 1: PILIH KEBUN DITUJU -->
           <div class="field" style="margin-bottom: 14px;">
             <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
-              Rencana Tanam <span style="color: #EF4444;">*</span>
+              Pilih Kebun Dituju <span style="color: #EF4444;">*</span>
             </label>
-            <select id="input-program" class="field-control" required style="width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; font-size: 0.88rem; color: #0F172A;">
-              <option value="">-- Pilih Rencana Tanam --</option>
-              ${programOptions}
+            <select id="input-target-estate" class="field-control" required style="width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; font-size: 0.88rem; color: #0F172A;">
+              <option value="">-- Pilih Kebun --</option>
+              ${estateOptions}
             </select>
-            <div class="field-hint" style="font-size: 0.72rem; color: #64748B; margin-top: 4px;">
-              Kebutuhan bibit sesuai luas areal tanam.
-            </div>
           </div>
 
-          <!-- FIELD 2: KLON YANG DIMINTA -->
+          <!-- FIELD 2: KODE ALOKASI -->
+          <div class="field" style="margin-bottom: 14px;">
+            <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
+              Kode Alokasi <span style="color: #EF4444;">*</span>
+            </label>
+            <select id="input-allocation" class="field-control" required style="width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; font-size: 0.88rem; color: #0F172A;">
+              <option value="">-- Pilih Kode Alokasi --</option>
+              ${cfnaOptions}
+            </select>
+          </div>
+
+          <!-- FIELD 3: KLON YANG DIMINTA -->
           <div class="field" style="margin-bottom: 14px;">
             <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
               Klon yang Diminta <span style="color: #EF4444;">*</span>
@@ -125,24 +124,65 @@ export async function renderRequestKebunSepupuForm() {
             </select>
           </div>
 
-          <!-- FIELD 3: JUMLAH BIBIT -->
-          <div class="field" style="margin-bottom: 20px;">
+          <!-- FIELD 4: KATEGORI -->
+          <div class="field" style="margin-bottom: 14px;">
             <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
-              Jumlah Bibit (Pkk) <span style="color: #EF4444;">*</span>
+              Kategori <span style="color: #EF4444;">*</span>
+            </label>
+            <select id="input-category" class="field-control" required style="width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; font-size: 0.88rem; color: #0F172A;">
+              <option value="">-- Pilih Kategori --</option>
+              <option value="APM">APM</option>
+              <option value="Seedlings">Seedlings</option>
+            </select>
+          </div>
+
+          <!-- FIELD 5: TAHAPAN PERTUMBUHAN -->
+          <div class="field" style="margin-bottom: 14px;">
+            <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
+              Tahapan Pertumbuhan <span style="color: #EF4444;">*</span>
+            </label>
+            <select id="input-growth-stage" class="field-control" required style="width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; font-size: 0.88rem; color: #0F172A;">
+              <option value="">-- Pilih Tahapan Pertumbuhan --</option>
+              <option value="Rubber Main Nursery">Rubber Main Nursery</option>
+              <option value="Rubber Advance Planting Material">Rubber Advance Planting Material</option>
+            </select>
+          </div>
+
+          <!-- FIELD 6: BANYAKNYA (PKK) -->
+          <div class="field" style="margin-bottom: 14px;">
+            <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
+              Banyaknya (Pkk) <span style="color: #EF4444;">*</span>
             </label>
             <div style="position: relative; display: flex; align-items: center;">
               <input 
                 id="input-qty" 
                 class="field-control" 
                 type="number" 
-                min="1" 
+                min="0" 
                 step="1" 
-                placeholder="Masukkan jumlah bibit (misal: 1500)" 
+                placeholder="Masukkan jumlah bibit" 
                 required 
                 style="width: 100%; min-height: 44px; padding: 10px 50px 10px 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.95rem; font-weight: 700; color: #0F172A;"
               />
               <span style="position: absolute; right: 14px; font-size: 0.82rem; font-weight: 700; color: #64748B;">Pkk</span>
             </div>
+            <div class="field-hint" style="font-size: 0.72rem; color: #64748B; margin-top: 4px;">
+              Jumlah tidak boleh lebih kecil dari 0
+            </div>
+          </div>
+
+          <!-- FIELD 7: TANGGAL DIBUTUHKAN -->
+          <div class="field" style="margin-bottom: 20px;">
+            <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
+              Tanggal Dibutuhkan <span style="color: #EF4444;">*</span>
+            </label>
+            <input 
+              id="input-required-date" 
+              class="field-control" 
+              type="date" 
+              required 
+              style="width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; font-size: 0.88rem; color: #0F172A;"
+            />
           </div>
 
           <!-- BUTTON ACTION -->
@@ -156,43 +196,72 @@ export async function renderRequestKebunSepupuForm() {
 
   // Back button
   app.querySelector('#btn-back')?.addEventListener('click', () => {
-    navigate('/request');
+    navigate('/request/kebun-sepupu');
   });
 
   // Review button handler
   app.querySelector('#btn-review')?.addEventListener('click', () => {
-    const program = app.querySelector('#input-program')?.value?.trim();
+    const targetEstateId = app.querySelector('#input-target-estate')?.value?.trim();
+    const allocationCode = app.querySelector('#input-allocation')?.value?.trim();
     const klon = app.querySelector('#input-klon')?.value?.trim();
+    const category = app.querySelector('#input-category')?.value?.trim();
+    const growthStage = app.querySelector('#input-growth-stage')?.value?.trim();
     const qtyStr = app.querySelector('#input-qty')?.value?.trim();
+    const requiredDate = app.querySelector('#input-required-date')?.value?.trim();
+    
     const qty = parseInt(qtyStr, 10);
 
-    // Validasi input form
-    if (!program) {
-      toast('Silakan pilih Rencana Tanam. Revisi permohonan.', 'warning');
-      app.querySelector('#input-program')?.focus();
+    // Validasi
+    if (!targetEstateId) {
+      toast('Silakan pilih Kebun Dituju.', 'warning');
       return;
     }
-
+    if (targetEstateId === user.estateId) {
+      toast('Kebun Dituju tidak boleh sama dengan kebun asal pemohon.', 'warning');
+      return;
+    }
+    if (!allocationCode) {
+      toast('Silakan pilih Kode Alokasi.', 'warning');
+      return;
+    }
     if (!klon) {
-      toast('Silakan pilih Klon yang diminta. Revisi permohonan.', 'warning');
-      app.querySelector('#input-klon')?.focus();
+      toast('Silakan pilih Klon yang diminta.', 'warning');
+      return;
+    }
+    if (!category) {
+      toast('Silakan pilih Kategori.', 'warning');
+      return;
+    }
+    if (!growthStage) {
+      toast('Silakan pilih Tahapan Pertumbuhan.', 'warning');
+      return;
+    }
+    if (!qtyStr || isNaN(qty) || qty < 0) {
+      toast('Jumlah bibit harus berupa angka dan minimal 0.', 'warning');
+      return;
+    }
+    if (!requiredDate) {
+      toast('Silakan isi Tanggal Dibutuhkan.', 'warning');
       return;
     }
 
-    if (!qtyStr || isNaN(qty) || qty <= 0) {
-      toast('Jumlah bibit harus berupa angka positif. Revisi permohonan.', 'warning');
-      app.querySelector('#input-qty')?.focus();
-      return;
-    }
-
+    const resolvedTargetEstate = resolveEstate(targetEstateId);
+    const purpose = 'Penanaman / Bibit Tanam';
+    
     // Tampilkan Modal Review Pengajuan
     openReviewModal({
       docNo,
       today,
       user,
-      program,
+      targetEstateId,
+      targetEstateName: resolvedTargetEstate ? resolvedTargetEstate.estate_name : targetEstateId,
+      purpose,
+      allocationCode,
       klon,
-      qty
+      category,
+      growthStage,
+      qty,
+      requiredDate
     });
   });
 }
@@ -208,33 +277,72 @@ function openReviewModal(data) {
         </p>
 
         <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; font-size: 0.82rem;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #E2E8F0;">
-            <span style="color: #64748B;">No. Dokumen</span>
-            <span style="font-weight: 800; color: #116834;">${esc(data.docNo)}</span>
+          <!-- 1. NO. DOKUMEN -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #E2E8F0;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">No. Dokumen</span>
+            <span style="font-weight: 800; color: #116834; font-size: 0.85rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.docNo)}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-            <span style="color: #64748B;">Pemohon</span>
-            <span style="font-weight: 700; color: #1E293B;">${esc(data.user.name || 'Pengurus')}</span>
+
+          <!-- 2. PEMOHON -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Pemohon</span>
+            <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.user.name || 'Pengurus')}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-            <span style="color: #64748B;">Rencana Tanam</span>
-            <span style="font-weight: 700; color: #1E293B;">${esc(data.program)}</span>
+
+          <!-- 3. KEBUN DITUJU -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Kebun Dituju</span>
+            <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.targetEstateName)}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-            <span style="color: #64748B;">Klon yang Diminta</span>
-            <span style="font-weight: 700; color: #1E293B;">${esc(data.klon)}</span>
+
+          <!-- 4. TUJUAN PERMINTAAN -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Tujuan Permintaan</span>
+            <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.purpose || 'Penanaman / Bibit Tanam')}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 6px; border-top: 1px solid #E2E8F0;">
-            <span style="color: #64748B; font-weight: 600;">Jumlah Diminta</span>
-            <span style="font-weight: 800; font-size: 0.95rem; color: #116834;">${data.qty.toLocaleString('id-ID')} Pkk</span>
+
+          <!-- 5. KODE ALOKASI -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Kode Alokasi</span>
+            <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.allocationCode)}</span>
+          </div>
+
+          <!-- 6. KLON -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Klon</span>
+            <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.klon)}</span>
+          </div>
+
+          <!-- 7. KATEGORI -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Kategori</span>
+            <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.category)}</span>
+          </div>
+
+          <!-- 8. TAHAPAN PERTUMBUHAN -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Tahapan Pertumbuhan</span>
+            <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.growthStage)}</span>
+          </div>
+
+          <!-- 9. TANGGAL DIBUTUHKAN -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Tanggal Dibutuhkan</span>
+            <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(formatDate(data.requiredDate))}</span>
+          </div>
+
+          <!-- 10. BANYAKNYA -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: baseline; margin-top: 8px; padding-top: 6px; border-top: 1px solid #E2E8F0;">
+            <span style="color: #64748B; font-weight: 600; font-size: 0.82rem; line-height: 1.35; text-align: left;">Banyaknya</span>
+            <span style="font-weight: 800; font-size: 0.95rem; color: #116834; line-height: 1.35; text-align: right; min-width: 0;">${data.qty.toLocaleString('id-ID')} Pkk</span>
           </div>
         </div>
       </div>
     `,
     footer: `
-      <div style="display: flex; gap: 10px; width: 100%;">
-        <button class="btn btn-ghost" id="btn-cancel-modal" style="flex: 1; border: 1px solid #CBD5E1; color: #475569;">Ubah Data</button>
-        <button class="btn btn-primary" id="btn-confirm-submit" style="flex: 1.4; background: #116834; color: #FFFFFF;">Submit Pengajuan</button>
+      <div style="display: grid; grid-template-columns: 1fr 1.3fr; gap: 10px; width: 100%;">
+        <button class="btn btn-ghost" id="btn-cancel-modal" style="width: 100%; min-height: 42px; border: 1px solid #CBD5E1; color: #475569; font-weight: 600; font-size: 0.88rem; padding: 8px 12px; white-space: nowrap; cursor: pointer;">Ubah Data</button>
+        <button class="btn btn-primary" id="btn-confirm-submit" style="width: 100%; min-height: 42px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; padding: 8px 12px; white-space: nowrap; cursor: pointer;">Kirim Permintaan</button>
       </div>
     `
   });
@@ -252,33 +360,48 @@ function openReviewModal(data) {
 async function submitRequest(data) {
   const resolvedKlon = resolveKlon(data.klon);
   const canonicalKlon = resolvedKlon ? resolvedKlon.canonicalName : (data.klon || '');
+  const resolvedCfna = getCfnaByCode(data.allocationCode);
+  const canonicalAllocation = resolvedCfna ? resolvedCfna.code : (data.allocationCode || '');
 
   const newRecord = {
-    id: `REQ-${Date.now()}`,
+    id: 'REQ-' + Date.now(),
     docNo: data.docNo,
-    nomorDokumen: data.docNo,
+    nomorDokumen: data.docNo, // for legacy compatibility if needed
     type: 'KEBUN_SEPUPU',
-    category: 'BIBIT_KEBUN_SEPUPU',
-    requestType: 'BIBIT',
-    program: data.program,
+    category: data.category,
+    status: 'DIAJUKAN',
+    statusLabel: 'Diajukan',
+
+    // Transaction Date Context
+    createdAt: nowISO(),
+    date: todayISO(),
+    tanggal: todayISO(),
+
+    // Requester Identity
+    userId: data.user.userId || data.user.id || 'PGS001',
+    role: data.user.role || 'PENGURUS',
+    requestedBy: data.user.name || 'Junaidi',
+    position: data.user.position || 'Pengurus Kebun',
+    divisionName: data.user.divisionName || 'Tanah Besih - Divisi I',
+    estateId: data.user.estateId || 'EST-TBS', // Source Estate
+
+    // Target Estate
+    targetEstateId: data.targetEstateId,
+    targetEstateName: data.targetEstateName,
+
+    // Payload Final
+    purpose: data.purpose || 'Penanaman / Bibit Tanam',
+    allocationCode: canonicalAllocation,
     klon: canonicalKlon,
+    growthStage: data.growthStage,
     qty: data.qty,
     requestedQty: data.qty,
     unit: 'Pkk',
-    status: 'DIAJUKAN',
-    statusLabel: 'Diajukan',
-    requestedBy: data.user.name || 'Junaidi',
-    userId: data.user.userId || data.user.id || 'PGS001',
-    role: data.user.role || 'PENGURUS',
-    position: data.user.position || 'Pengurus Kebun',
-    divisionName: data.user.divisionName || 'Tanah Besih - Divisi I',
-    createdAt: nowISO(),
-    date: todayISO(),
-    tanggal: todayISO()
+    requiredDate: data.requiredDate
   };
 
   try {
-    // 1. Simpan ke IndexedDB requests store (dengan actor snapshot otomatis)
+    // 1. Simpan ke IndexedDB requests store
     const savedRecord = await requestRepository.create(newRecord, data.user);
 
     // 2. Simpan ke LocalStorage fallback agar kompatibel dengan transaction-manager
@@ -288,8 +411,8 @@ async function submitRequest(data) {
 
     toast('Dokumen Permintaan Bibit diajukan.', 'success');
 
-    // Kembali ke Landing Page Permintaan Bibit
-    navigate('/request');
+    // Kembali ke Hub Permintaan Bibit Kebun Sepupu
+    navigate('/request/kebun-sepupu');
   } catch (err) {
     console.error('[submitRequest] Gagal menyimpan permintaan:', err);
     toast('Gagal mengajukan permohonan. Revisi permohonan.', 'danger');

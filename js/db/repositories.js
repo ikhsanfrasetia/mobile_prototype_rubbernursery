@@ -45,12 +45,13 @@ export function createRepository(storeName) {
       return record;
     },
 
-    async update(id, patch, userContext = null, actionType = AUDIT_EVENT_TYPES.UPDATE) {
+    async update(id, patch, userContext = null, actionType = AUDIT_EVENT_TYPES.UPDATE, details = null) {
       const existing = await getRecord(storeName, id);
       if (!existing) throw new Error(`Record tidak ditemukan: ${id}`);
       const updatedData = { ...existing, ...patch, id };
+      const auditDetail = details || patch?.auditDetails || patch?.details || null;
       const updated = TRANSACTION_STORES.has(storeName)
-        ? applyTransactionActor(updatedData, actionType, userContext)
+        ? applyTransactionActor(updatedData, actionType, userContext, auditDetail)
         : updatedData;
       await putRecord(storeName, updated);
       return updated;

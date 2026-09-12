@@ -11,6 +11,8 @@
   background-color: #f8fafc;
   line-height: 1.5;
   width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   box-sizing: border-box;
 }
 
@@ -30,17 +32,21 @@
   flex-wrap: wrap;
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
-  padding: 10px 24px;
-  gap: 16px;
+  padding: 10px 18px;
+  gap: 12px;
   position: sticky;
   top: 0;
   z-index: 40;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .pm-header-left {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .pm-brand {
@@ -853,7 +859,9 @@
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #ffffff;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
   margin-top: 20px;
 }
 
@@ -1363,15 +1371,9 @@
    10. Responsive Breakpoints
    ------------------------------------------------------------ */
 @media (max-width: 1280px) {
-  .pm-detail-panel {
-    width: 300px;
-    min-width: 300px;
-  }
-}
-
-@media (max-width: 1024px) {
   .pm-layout {
     flex-direction: column;
+    width: 100%;
   }
 
   .pm-sidebar {
@@ -1380,11 +1382,13 @@
     max-width: 100%;
     border-right: none;
     border-bottom: 1px solid #e2e8f0;
+    padding: 14px 16px;
   }
 
   .pm-module-nav {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 6px;
   }
 
   .pm-detail-panel {
@@ -1393,6 +1397,7 @@
     max-width: 100%;
     border-left: none;
     border-top: 1px solid #e2e8f0;
+    padding: 16px;
   }
 }
 

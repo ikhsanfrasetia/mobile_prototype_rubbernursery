@@ -2080,7 +2080,7 @@ function renderTransactionsWorkspaceTab() {
     </div>
 
     <!-- 12 MODUL SUB-TABS -->
-    <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 14px; border-bottom: 1px solid #e2e8f0; margin-bottom: 16px; scrollbar-width: none;">
+    <div style="display: flex; gap: 8px; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; margin-bottom: 16px; scrollbar-width: thin; -webkit-overflow-scrolling: touch; width: 100%; max-width: 100%;">
       ${Object.values(TX_MODULES)
         .map((m) => {
           const isActive = m.id === activeTxTab;
@@ -2090,7 +2090,7 @@ function renderTransactionsWorkspaceTab() {
             isActive ? '700' : '600'
           }; background: ${isActive ? '#116834' : '#f1f5f9'}; color: ${isActive ? '#ffffff' : '#475569'}; border: 1px solid ${
             isActive ? '#116834' : '#cbd5e1'
-          }; cursor: pointer; white-space: nowrap; transition: all 0.15s ease;">
+          }; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all 0.15s ease;">
             <span>${m.icon}</span>
             <span>${m.title}</span>
             <span style="font-size: 0.72rem; padding: 1px 6px; border-radius: 10px; background: ${
@@ -2103,8 +2103,8 @@ function renderTransactionsWorkspaceTab() {
     </div>
 
     <!-- FILTER BAR & METRICS -->
-    <div class="review-filter-bar" style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-      <div style="display: flex; align-items: center; gap: 10px; flex-1; min-width: 260px;">
+    <div class="review-filter-bar" style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 8px; flex: 1 1 240px; min-width: 0; flex-wrap: wrap;">
         <div class="filter-search-wrap" style="flex: 1;">
           <span class="filter-search-icon">🔍</span>
           <input class="filter-search-input" id="tx-search-input" type="text" placeholder="Cari no. dokumen, batch, klon, bedengan..." value="${esc(

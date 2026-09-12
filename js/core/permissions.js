@@ -101,6 +101,8 @@ export const permissions = {
     if (route.startsWith('/home')) return this.canAccessHome(r);
     if (route.startsWith('/splash')) return true; // Splash setelah login: semua role
     if (route.startsWith('/sync')) return true; // Sinkronisasi: semua role
+    if (route.startsWith('/profile')) return true; // Profil: semua role
+    if (route.startsWith('/history') || route.startsWith('/transactions')) return true;
     if (route.startsWith('/attendance')) return this.can(r, 'transaction:create') || this.can(r, 'transaction:view') || this.can(r, 'transaction:view-submitted');
     if (route.startsWith('/reception')) {
       if (route.includes('/review')) {
@@ -111,8 +113,8 @@ export const permissions = {
       }
       return this.can(r, 'transaction:create') || this.can(r, 'transaction:view-submitted') || this.can(r, 'transaction:view');
     }
-    // Modul transaksi fase berikutnya: akses dibatasi sesuai kapabilitas
-    return this.can(r, 'transaction:create') || this.can(r, 'transaction:view');
+    // Modul transaksi: akses diperbolehkan jika role memiliki izin create, view, view-submitted, atau approve
+    return this.can(r, 'transaction:create') || this.can(r, 'transaction:view') || this.can(r, 'transaction:view-submitted') || this.can(r, 'transaction:approve');
   }
 };
 

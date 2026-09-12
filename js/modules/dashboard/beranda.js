@@ -63,21 +63,237 @@ const MENU_ITEMS = [
   { id: 'pengeluaran', title: 'Pengeluaran', icon: ICONS.sprout, route: '/dispatch' }
 ];
 
+import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
+import { requestRepository } from '../../db/repositories.js';
+import { filterIncomingRequests, getActionableIncomingCount } from '../request/request-kebun-sepupu-landing.js';
+
 const PENGURUS_MENU_ITEMS = [
   { id: 'penerimaan', title: 'Penerimaan', icon: ICONS.documentPlus, route: '/reception' },
   { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' },
   { id: 'pengeluaran-bibit', title: 'Pengeluaran<br>Bibit', icon: ICONS.sprout, route: '/dispatch' }
 ];
 
+const ASKEP_MENU_ITEMS = [
+  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' },
+  { id: 'pengeluaran-bibit', title: 'Pengeluaran<br>Bibit', icon: ICONS.sprout, route: '/dispatch' }
+];
+
+const ASISTEN_MENU_ITEMS = [
+  { id: 'penerimaan', title: 'Penerimaan', icon: ICONS.documentPlus, route: '/reception' },
+  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' },
+  { id: 'pemeriksaan', title: 'Pemeriksaan', icon: ICONS.documentPlus, route: '/inspection' },
+  { id: 'penyeleksian', title: 'Penyeleksian', icon: ICONS.sprout, route: '/selection' },
+  { id: 'pemeliharaan', title: 'Rekam<br>Pemeliharaan', icon: ICONS.documentPlus, route: '/nursery-activity' },
+  { id: 'pengeluaran-bibit', title: 'Pengeluaran<br>Bibit', icon: ICONS.sprout, route: '/dispatch' }
+];
+
+function renderBerandaAskep() {
+  const app = document.getElementById('app');
+  if (!app) return;
+
+  const user = session.get();
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
+
+  const allRequests = storage.get('requests_transactions', []);
+  const incomingReqs = filterIncomingRequests(allRequests, userCtx);
+  const hasActionableRequest = getActionableIncomingCount(incomingReqs, userCtx) > 0;
+
+  // Background sync from IndexedDB if available
+  requestRepository.list().then((dbList) => {
+    if (dbList && dbList.length > 0) {
+      const dbIncoming = filterIncomingRequests(dbList, userCtx);
+      const dbHasActionable = getActionableIncomingCount(dbIncoming, userCtx) > 0;
+      if (dbHasActionable !== hasActionableRequest) {
+        const badgeEl = app.querySelector('[data-menu-id="permintaan-bibit"] .notif-dot');
+        if (dbHasActionable && !badgeEl) {
+          renderBerandaAskep();
+        } else if (!dbHasActionable && badgeEl) {
+          renderBerandaAskep();
+        }
+      }
+    }
+  }).catch(() => {});
+
+  const menuCards = ASKEP_MENU_ITEMS.map((item) => {
+    let badgeHtml = '';
+    if (item.id === 'permintaan-bibit' && hasActionableRequest) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    }
+
+    return `
+      <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
+        <div class="beranda-card-icon">${item.icon}</div>
+        <div class="beranda-card-title">${item.title}</div>
+        ${badgeHtml}
+      </button>
+    `;
+  }).join('');
+
+  app.innerHTML = `
+    <div class="page beranda-page">
+      <header class="beranda-header">
+        <button class="beranda-menu-btn" id="beranda-drawer-btn" type="button" aria-label="Menu">
+          <svg viewBox="0 0 24 24" width="26" height="26" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <h1 class="beranda-header-title">Beranda</h1>
+      </header>
+
+      <main class="beranda-body">
+        <div class="beranda-grid">
+          ${menuCards}
+        </div>
+      </main>
+    </div>
+  `;
+
+  // Drawer Toggle
+  app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
+
+  // Menu clicks
+  app.querySelectorAll('.beranda-menu-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const route = card.dataset.route;
+      if (route) {
+        navigate(route);
+      } else {
+        const title = card.querySelector('.beranda-card-title')?.textContent.trim() || 'Modul';
+        toast(`Modul ${title} akan segera dibuka`, 'info');
+      }
+    });
+  });
+}
+
+function renderBerandaAsisten() {
+  const app = document.getElementById('app');
+  if (!app) return;
+
+  const user = session.get();
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
+
+  const allRequests = storage.get('requests_transactions', []);
+  const incomingReqs = filterIncomingRequests(allRequests, userCtx);
+  const hasActionableRequest = getActionableIncomingCount(incomingReqs, userCtx) > 0;
+
+  // Background sync from IndexedDB if available
+  requestRepository.list().then((dbList) => {
+    if (dbList && dbList.length > 0) {
+      const dbIncoming = filterIncomingRequests(dbList, userCtx);
+      const dbHasActionable = getActionableIncomingCount(dbIncoming, userCtx) > 0;
+      if (dbHasActionable !== hasActionableRequest) {
+        const badgeEl = app.querySelector('[data-menu-id="permintaan-bibit"] .notif-dot');
+        if (dbHasActionable && !badgeEl) {
+          renderBerandaAsisten();
+        } else if (!dbHasActionable && badgeEl) {
+          renderBerandaAsisten();
+        }
+      }
+    }
+  }).catch(() => {});
+
+  const menuCards = ASISTEN_MENU_ITEMS.map((item) => {
+    let badgeHtml = '';
+    if (item.id === 'permintaan-bibit' && hasActionableRequest) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    }
+
+    return `
+      <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
+        <div class="beranda-card-icon">${item.icon}</div>
+        <div class="beranda-card-title">${item.title}</div>
+        ${badgeHtml}
+      </button>
+    `;
+  }).join('');
+
+  app.innerHTML = `
+    <div class="page beranda-page">
+      <header class="beranda-header">
+        <button class="beranda-menu-btn" id="beranda-drawer-btn" type="button" aria-label="Menu">
+          <svg viewBox="0 0 24 24" width="26" height="26" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <h1 class="beranda-header-title">Beranda</h1>
+      </header>
+
+      <main class="beranda-body">
+        <div class="beranda-grid">
+          ${menuCards}
+        </div>
+      </main>
+    </div>
+  `;
+
+  // Drawer Toggle
+  app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
+
+  // Menu clicks
+  app.querySelectorAll('.beranda-menu-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const route = card.dataset.route;
+      if (route) {
+        navigate(route);
+      } else {
+        const title = card.querySelector('.beranda-card-title')?.textContent.trim() || 'Modul';
+        toast(`Modul ${title} akan segera dibuka`, 'info');
+      }
+    });
+  });
+}
+
 function renderBerandaPengurus() {
   const app = document.getElementById('app');
+  if (!app) return;
 
-  const menuCards = PENGURUS_MENU_ITEMS.map((item) => `
-    <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button">
-      <div class="beranda-card-icon">${item.icon}</div>
-      <div class="beranda-card-title">${item.title}</div>
-    </button>
-  `).join('');
+  const user = session.get();
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
+
+  const allRequests = storage.get('requests_transactions', []);
+  const incomingReqs = filterIncomingRequests(allRequests, userCtx);
+  const hasActionableRequest = getActionableIncomingCount(incomingReqs, userCtx) > 0;
+
+  // Background sync from IndexedDB if available
+  requestRepository.list().then((dbList) => {
+    if (dbList && dbList.length > 0) {
+      const dbIncoming = filterIncomingRequests(dbList, userCtx);
+      const dbHasActionable = getActionableIncomingCount(dbIncoming, userCtx) > 0;
+      if (dbHasActionable !== hasActionableRequest) {
+        const badgeEl = app.querySelector('[data-menu-id="permintaan-bibit"] .notif-dot');
+        if (dbHasActionable && !badgeEl) {
+          renderBerandaPengurus();
+        } else if (!dbHasActionable && badgeEl) {
+          renderBerandaPengurus();
+        }
+      }
+    }
+  }).catch(() => {});
+
+  const menuCards = PENGURUS_MENU_ITEMS.map((item) => {
+    let badgeHtml = '';
+    if (item.id === 'permintaan-bibit' && hasActionableRequest) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    }
+
+    return `
+      <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
+        <div class="beranda-card-icon">${item.icon}</div>
+        <div class="beranda-card-title">${item.title}</div>
+        ${badgeHtml}
+      </button>
+    `;
+  }).join('');
 
   app.innerHTML = `
     <div class="page beranda-page">
@@ -156,6 +372,16 @@ export function renderBeranda() {
 
   if (user?.role === ROLES.PENGURUS || user?.role === ROLES.PENGURUS_KEBUN_SEPUPU) {
     renderBerandaPengurus();
+    return;
+  }
+
+  if (user?.role === ROLES.ASKEP || user?.role === 'ASISTEN_KEPALA') {
+    renderBerandaAskep();
+    return;
+  }
+
+  if (user?.role === ROLES.ASISTEN || user?.role === ROLES.ASISTEN_BIBITAN) {
+    renderBerandaAsisten();
     return;
   }
 
@@ -334,6 +560,20 @@ export function renderBeranda() {
     }
   });
 
+  // Hitung pending pengeluaran bibit untuk Mantri Bibitan
+  const allRequests = storage.get('requests_transactions', []);
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
+  const mantriPendingRequests = allRequests.filter(tx => {
+    const isTargetEstate = (tx.targetEstateId === userCtx?.estateId || tx.targetNextEstateId === userCtx?.estateId);
+    const targetDivision = tx.targetNextDivisionId || tx.targetDivisionId;
+    const isTargetDivision = !targetDivision || !userCtx?.divisionId || targetDivision === userCtx?.divisionId;
+    const status = (tx.status || '').toUpperCase();
+    const isActionable = status === 'TERVERIFIKASI' || status === 'MENUNGGU_PENGELUARAN_BIBIT' || status === 'PENGELUARAN_BERJALAN';
+    const remainingQty = (tx.approvedQty || 0) - (tx.totalIssuedQty || tx.actualIssuedQty || 0);
+    return isTargetEstate && isTargetDivision && isActionable && remainingQty > 0;
+  });
+  const hasPendingPengeluaran = mantriPendingRequests.length > 0;
+
   const menuCards = MENU_ITEMS.map((item) => {
     let badgeHtml = '';
     if (item.id === 'penyeleksian' && pendingSelectionCount > 0) {
@@ -342,7 +582,7 @@ export function renderBeranda() {
           ${pendingSelectionCount}
         </div>
       `;
-    } else if ((item.id === 'penyemaian' && hasPendingBenih) || (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting)) || (item.id === 'pemeriksaan' && hasPendingPemeriksaan)) {
+    } else if ((item.id === 'penyemaian' && hasPendingBenih) || (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting)) || (item.id === 'pemeriksaan' && hasPendingPemeriksaan) || (item.id === 'pengeluaran' && hasPendingPengeluaran)) {
       badgeHtml = `
         <div style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;

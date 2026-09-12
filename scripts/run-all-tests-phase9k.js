@@ -7,6 +7,10 @@
 import { execSync } from 'child_process';
 
 const suites = [
+  { name: 'Division Routing: Estate + Division + Role', file: 'scripts/test-division-routing.js' },
+  { name: 'Dispatch Module: Mantri Execution Suite', file: 'scripts/test-dispatch-mantri-execution.js' },
+  { name: 'Request Kebun Sepupu: Hub & Isolation Suite', file: 'scripts/test-request-kebun-sepupu-hub.js' },
+  { name: 'Request Kebun Sepupu: Form & Review Suite', file: 'scripts/test-request-kebun-sepupu.js' },
   { name: 'Nursery Activity: Block Master Integration (New)', file: 'scripts/test-nursery-activity-block-master.js' },
   { name: 'Block Master: Centralized Foundation Suite', file: 'scripts/test-block-master-foundation.js' },
   { name: 'History & TM: Final Integration Validation', file: 'scripts/test-history-transaction-integration.js' },
