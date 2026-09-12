@@ -1,7 +1,10 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
+import { getWorkersForUserContext, getWorkerById, isWorkerInScope } from '../../data/worker-master.js';
+import { getActiveKlons, getKlonsForUsage, KLON_USAGE, normalizeKlonName, resolveKlon } from '../../data/klon-master.js';
 
 const MASTER_WORKERS = [
   { id: 'W001', name: 'Ahmad Rifai', code: '104521' },
@@ -18,27 +21,7 @@ const MASTER_WORKERS = [
   { id: 'W012', name: 'Lukman Hakim', code: '104532' }
 ];
 
-const KLON_ENTRES_LIST = [
-  'IRR 215',
-  'RRIM 911',
-  'IRCA 317',
-  'IRR 100',
-  'IRR 112',
-  'PB 330',
-  'RRIM 712',
-  'PB 340',
-  'IRR 104',
-  'PB 260',
-  'IRR 207',
-  'PB 217',
-  'IRR 118',
-  'IRR 219',
-  'IRR 220',
-  'IRCA 19',
-  'IRR 107',
-  'IRCA 101',
-  'IRR 221'
-];
+
 
 export function renderBuddingForm() {
   const app = document.getElementById('app');
@@ -63,7 +46,7 @@ export function renderBuddingForm() {
   let docNo = formatStandardDocNo(2026, 'APR', 1);
   let totalDisemai = 2000;
   let bedenganDisplay = 'Bedengan 01';
-  let klonRootstock = 'GT-01';
+  let klonRootstock = 'GT 1';
   let poolDocNo = '';
   let inspectionDocNo = '';
 
@@ -79,7 +62,7 @@ export function renderBuddingForm() {
       inspectionDocNo: formatStandardDocNo(2026, 'INS', 1),
       jumlah: 50,
       bedengan: 'Bedengan 01',
-      klonRootstock: 'GT-01'
+      klonRootstock: 'GT 1'
     };
     batchNo = poolItem.batchNo || 'Batch-01';
     docNo = poolItem.docNo || formatStandardDocNo(2026, 'RGRF', 1);
@@ -87,21 +70,21 @@ export function renderBuddingForm() {
     inspectionDocNo = poolItem.inspectionDocNo;
     totalDisemai = parseInt(poolItem.jumlah || 0);
     bedenganDisplay = poolItem.bedengan || 'Bedengan 01';
-    klonRootstock = poolItem.klonRootstock || 'GT-01';
+    klonRootstock = poolItem.klonRootstock ? normalizeKlonName(poolItem.klonRootstock) : 'GT 1';
   } else {
     const selectedBatch = seedingTxs[batchIdx] || {
       batchNo: 'Batch-01',
       docNo: formatStandardDocNo(2026, 'SOW', 1),
       program: 'PRG/NUR/01/2026',
       tahapan: 'Rubber Main Nursery',
-      klonAwal: 'GT-01',
+      klonAwal: 'GT 1',
       totalDisemai: 2000,
       rows: [{ bedengan: 'Bedengan 01', disemai: 2000 }]
     };
     batchNo = selectedBatch.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;
     docNo = selectedBatch.docNo || (selectedBatch.sourceDocNo ? selectedBatch.sourceDocNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', 1));
     totalDisemai = parseInt(selectedBatch.totalDisemai || 0);
-    klonRootstock = selectedBatch.klonAwal || 'GT-01';
+    klonRootstock = selectedBatch.klonAwal ? normalizeKlonName(selectedBatch.klonAwal) : 'GT 1';
     const batchBedengan = (selectedBatch.rows || []).map(r => r.bedengan).filter(Boolean);
     bedenganDisplay = batchBedengan.length > 0 ? Array.from(new Set(batchBedengan)).join(', ') : 'Bedengan 01';
   }
@@ -123,11 +106,17 @@ export function renderBuddingForm() {
 
   const sisaBelumDiokulasi = Math.max(0, totalDisemai - totalDiokulasiSDHI);
 
+  // Current user context & available worker scope
+  const userCtx = getCurrentUserContext();
+  const availableScopedWorkers = getWorkersForUserContext(userCtx);
+
   // State
   let selectedKlon = editingTx ? (editingTx.klonEntres || editingTx.klon || '') : '';
   let selectedWorkers = editingTx && editingTx.workers && editingTx.workers.length > 0
     ? editingTx.workers.map(w => ({ id: w.id, name: w.name, code: w.code, qty: parseInt(w.qty || 0) }))
-    : [{ id: 'W001', name: 'Ahmad Rifai', code: '104521', qty: 0 }];
+    : (availableScopedWorkers.length > 0
+        ? [{ id: availableScopedWorkers[0].id, name: availableScopedWorkers[0].name, code: availableScopedWorkers[0].code, qty: 0 }]
+        : []);
 
   function renderPage() {
     app.innerHTML = `
@@ -453,7 +442,13 @@ export function renderBuddingForm() {
 
     function renderKlonList(query) {
       const container = app.querySelector('#list-klon-items');
-      const filtered = KLON_ENTRES_LIST.filter(k => k.toLowerCase().includes(query.toLowerCase()));
+      const activeEntresKlons = getKlonsForUsage(KLON_USAGE.ENTRES);
+      const q = (query || '').trim().toLowerCase();
+      const filtered = activeEntresKlons.filter(k => 
+        k.canonicalName.toLowerCase().includes(q) ||
+        k.code.toLowerCase().includes(q) ||
+        k.aliases.some(a => a.toLowerCase().includes(q))
+      );
       
       if (filtered.length === 0) {
         container.innerHTML = `<div style="padding: 16px; text-align: center; color: #9CA3AF; font-size: 0.78rem;">Klon "${query}" tidak ditemukan</div>`;
@@ -461,10 +456,13 @@ export function renderBuddingForm() {
       }
 
       container.innerHTML = filtered.map(k => {
-        const isSel = k === selectedKlon;
+        const isSel = k.canonicalName === selectedKlon || k.code === selectedKlon;
         return `
-          <button type="button" class="btn-select-klon-item" data-klon="${k}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${isSel ? '#E8F5E9' : '#FFFFFF'}; border: 1px solid ${isSel ? '#116834' : '#E5E7EB'}; border-radius: 6px; cursor: pointer; text-align: left;">
-            <span style="font-size: 0.82rem; font-weight: ${isSel ? '700' : '500'}; color: ${isSel ? '#116834' : '#111827'};">${k}</span>
+          <button type="button" class="btn-select-klon-item" data-klon="${k.canonicalName}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${isSel ? '#E8F5E9' : '#FFFFFF'}; border: 1px solid ${isSel ? '#116834' : '#E5E7EB'}; border-radius: 6px; cursor: pointer; text-align: left;">
+            <div>
+              <span style="font-size: 0.82rem; font-weight: ${isSel ? '700' : '500'}; color: ${isSel ? '#116834' : '#111827'};">${k.canonicalName}</span>
+              <span style="font-size: 0.72rem; color: #9CA3AF; margin-left: 6px;">(${k.code})</span>
+            </div>
             ${isSel ? '<span style="color: #116834; font-weight: 700;">✓</span>' : ''}
           </button>
         `;
@@ -503,13 +501,14 @@ export function renderBuddingForm() {
 
     function renderWorkerList(query) {
       const container = app.querySelector('#list-worker-items');
-      const filtered = MASTER_WORKERS.filter(w => 
+      const currentAvailable = getWorkersForUserContext(getCurrentUserContext());
+      const filtered = currentAvailable.filter(w => 
         w.name.toLowerCase().includes(query.toLowerCase()) || 
         w.code.toLowerCase().includes(query.toLowerCase())
       );
 
       if (filtered.length === 0) {
-        container.innerHTML = `<div style="padding: 16px; text-align: center; color: #9CA3AF; font-size: 0.78rem;">Pekerja "${query}" tidak ditemukan</div>`;
+        container.innerHTML = `<div style="padding: 16px; text-align: center; color: #9CA3AF; font-size: 0.78rem;">Pekerja "${query}" tidak ditemukan pada unit kerja Anda</div>`;
         return;
       }
 
@@ -519,7 +518,7 @@ export function renderBuddingForm() {
           <button type="button" class="btn-select-worker-item" data-id="${w.id}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${isAdded ? '#E8F5E9' : '#FFFFFF'}; border: 1px solid ${isAdded ? '#116834' : '#E5E7EB'}; border-radius: 6px; cursor: pointer; text-align: left;">
             <div>
               <div style="font-size: 0.82rem; font-weight: 700; color: ${isAdded ? '#116834' : '#111827'};">${w.name}</div>
-              <div style="font-size: 0.70rem; color: #6B7280; margin-top: 1px;">NIK: ${w.code}</div>
+              <div style="font-size: 0.70rem; color: #6B7280; margin-top: 1px;">Kode: ${w.code} • ${w.divisionName || ''}</div>
             </div>
             ${isAdded ? '<span style="font-size: 0.72rem; color: #116834; font-weight: 700; background: #C8E6C9; padding: 3px 8px; border-radius: 4px;">✓ Terpilih</span>' : '<span style="color: #116834; font-size: 0.80rem; font-weight: 700; background: #F0FDF4; border: 1px solid #DCFCE7; padding: 3px 8px; border-radius: 4px;">+ Tambah</span>'}
           </button>
@@ -534,8 +533,8 @@ export function renderBuddingForm() {
             // Deselect / Remove
             selectedWorkers = selectedWorkers.filter(sw => sw.id !== wid);
           } else {
-            // Add
-            const wObj = MASTER_WORKERS.find(m => m.id === wid);
+            // Add canonical record from worker-master
+            const wObj = getWorkerById(wid) || currentAvailable.find(m => m.id === wid);
             if (wObj) {
               selectedWorkers.push({ id: wObj.id, name: wObj.name, code: wObj.code, qty: 0 });
             }
@@ -748,6 +747,22 @@ export function renderBuddingForm() {
         validationErrors.push('Pekerja belum dipilih.');
       } else if (selectedWorkers.some(w => !w.qty || w.qty <= 0)) {
         validationErrors.push('Jumlah pekerja belum diisi dengan benar.');
+      } else {
+        // Validasi master worker & scope untuk worker non-legacy
+        const currentCtx = getCurrentUserContext();
+        for (const sw of selectedWorkers) {
+          const isLegacyWorker = sw.id && sw.id.startsWith('W') && !sw.id.startsWith('WRK');
+          if (!isLegacyWorker) {
+            const masterRec = getWorkerById(sw.id);
+            if (!masterRec) {
+              validationErrors.push(`Pekerja ${sw.name || sw.id} tidak terdaftar di Master Pekerja.`);
+            } else if (masterRec.status !== 'ACTIVE' || masterRec.active === false) {
+              validationErrors.push(`Pekerja ${masterRec.name} berstatus tidak aktif.`);
+            } else if (currentCtx && currentCtx.scopeType === 'DIVISION' && (masterRec.estateId !== currentCtx.estateId || masterRec.divisionId !== currentCtx.divisionId)) {
+              validationErrors.push(`Pekerja ${masterRec.name} berada di luar cakupan unit kerja Anda.`);
+            }
+          }
+        }
       }
 
       // Validasi Total
@@ -773,6 +788,17 @@ export function renderBuddingForm() {
       const kayu = parseInt(kayuVal || 0);
       const ditolak = isDitolakDisabled ? 0 : parseInt(ditolakVal || 0);
 
+      // Pastikan data worker menggunakan data canonical master
+      const canonicalWorkers = selectedWorkers.map(w => {
+        const masterRec = getWorkerById(w.id);
+        return {
+          id: masterRec ? masterRec.id : w.id,
+          name: masterRec ? masterRec.name : w.name,
+          code: masterRec ? masterRec.code : w.code,
+          qty: parseInt(w.qty || 0)
+        };
+      });
+
       const txs = storage.get('budding_transactions', []);
       const docModKey = isRegrafting ? 'regrafting' : 'budding';
       const docNoBudding = isEditing && txs[parseInt(editingIdx)] && txs[parseInt(editingIdx)].docNo
@@ -782,8 +808,8 @@ export function renderBuddingForm() {
       if (isEditing && txs[parseInt(editingIdx)]) {
         txs[parseInt(editingIdx)] = {
           ...txs[parseInt(editingIdx)],
-          klonEntres: selectedKlon,
-          workers: selectedWorkers.map(w => ({ id: w.id, name: w.name, code: w.code, qty: w.qty })),
+          klonEntres: normalizeKlonName(selectedKlon),
+          workers: canonicalWorkers,
           jumlah: totalDiokulasi,
           jumlahKayu: kayu,
           jumlahDitolak: ditolak,
@@ -802,9 +828,9 @@ export function renderBuddingForm() {
           sourceDocNo: docNo,
           tanggal: today,
           bedengan: bedenganDisplay,
-          klonEntres: selectedKlon,
-          klonRootstock: klonRootstock || 'GT-01',
-          workers: selectedWorkers.map(w => ({ id: w.id, name: w.name, code: w.code, qty: w.qty })),
+          klonEntres: normalizeKlonName(selectedKlon),
+          klonRootstock: klonRootstock ? normalizeKlonName(klonRootstock) : 'GT 1',
+          workers: canonicalWorkers,
           jumlah: totalDiokulasi,
           jumlahKayu: kayu,
           jumlahDitolak: ditolak,

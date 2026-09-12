@@ -12,6 +12,7 @@ export const ROLES = Object.freeze({
   ASISTEN_BIBITAN: 'ASISTEN_BIBITAN',
   ASKEP: 'ASKEP',
   PENGURUS: 'PENGURUS',
+  PENGURUS_KEBUN_SEPUPU: 'PENGURUS_KEBUN_SEPUPU',
   TEKNIKER_I: 'TEKNIKER_I',
   KTU: 'KTU'
 });
@@ -22,6 +23,7 @@ export const ROLE_LABELS = Object.freeze({
   ASISTEN_BIBITAN: 'Asisten Bibitan',
   ASKEP: 'Askep',
   PENGURUS: 'Pengurus',
+  PENGURUS_KEBUN_SEPUPU: 'Pengurus Kebun Sepupu',
   TEKNIKER_I: 'Tekniker I',
   KTU: 'KTU'
 });
@@ -54,6 +56,7 @@ const CAPABILITIES = {
   ],
   [ROLES.ASKEP]: ['transaction:view', 'monitor:process', 'approval:future'],
   [ROLES.PENGURUS]: ['transaction:view', 'monitor:process', 'approval:future'],
+  [ROLES.PENGURUS_KEBUN_SEPUPU]: ['transaction:view', 'monitor:process', 'approval:future'],
   [ROLES.TEKNIKER_I]: ['transaction:view', 'monitor:process'],
   [ROLES.KTU]: ['transaction:view', 'monitor:process']
 };
@@ -83,7 +86,7 @@ export const permissions = {
 
   isViewer(role) {
     const r = role || session.getRole();
-    return [ROLES.ASKEP, ROLES.PENGURUS, ROLES.TEKNIKER_I, ROLES.KTU].includes(r);
+    return [ROLES.ASKEP, ROLES.PENGURUS, ROLES.PENGURUS_KEBUN_SEPUPU, ROLES.TEKNIKER_I, ROLES.KTU].includes(r);
   },
 
   canAccessHome(role) {

@@ -17,6 +17,7 @@ import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { toast } from '../../components/toast.js';
 import { todayISO, formatDate } from '../../core/utils.js';
+import { resolvePlot, getAllBudwoodPlots } from '../../data/budwood-plot-master.js';
 
 function formatDateDDMMYYYY(val) {
   if (!val) return '-';
@@ -32,13 +33,47 @@ export function renderToppingForm() {
   if (!app) return;
 
   const user = session.get() || { name: 'Mantri Entres', id: 'MTR-01' };
-  const selectedPlot = storage.get('selected_topping_plot', null) || storage.get('selected_entres_plot', null) || {
-    kodePlot: 'PLOT-ENT-01',
-    namaKlon: 'PB 260',
-    jlhPokok: 200,
-    lokasi: 'Kebun Entres Blok A1',
-    verifiedMethod: 'MANUAL_SELECT'
-  };
+  const rawPlot = storage.get('selected_topping_plot', null) || storage.get('selected_entres_plot', null);
+  let selectedPlot = null;
+
+  if (rawPlot) {
+    const resolved = resolvePlot(rawPlot.kodePlot || rawPlot.plotName || rawPlot.id || rawPlot);
+    if (resolved) {
+      selectedPlot = {
+        id: resolved.id,
+        kodePlot: `Plot ${resolved.plotName}`,
+        plotName: resolved.plotName,
+        namaKlon: resolved.cloneName,
+        jlhPokok: resolved.numberOfPlants,
+        lokasi: `Kebun Entres - Plot ${resolved.plotName}`,
+        tahunTanam: resolved.yearOfPlanting,
+        budwoodCode: resolved.budwoodCode,
+        verifiedMethod: rawPlot.verifiedMethod || 'MANUAL'
+      };
+    } else {
+      selectedPlot = {
+        kodePlot: rawPlot.kodePlot || 'Plot IA',
+        namaKlon: rawPlot.namaKlon || 'IRCA331',
+        jlhPokok: rawPlot.jlhPokok || 425,
+        lokasi: rawPlot.lokasi || 'Kebun Entres - Plot IA',
+        budwoodCode: rawPlot.budwoodCode || '2021/BWG/001',
+        verifiedMethod: rawPlot.verifiedMethod || 'MANUAL'
+      };
+    }
+  } else {
+    const defaultPlot = getAllBudwoodPlots()[0];
+    selectedPlot = {
+      id: defaultPlot.id,
+      kodePlot: `Plot ${defaultPlot.plotName}`,
+      plotName: defaultPlot.plotName,
+      namaKlon: defaultPlot.cloneName,
+      jlhPokok: defaultPlot.numberOfPlants,
+      lokasi: `Kebun Entres - Plot ${defaultPlot.plotName}`,
+      tahunTanam: defaultPlot.yearOfPlanting,
+      budwoodCode: defaultPlot.budwoodCode,
+      verifiedMethod: 'MANUAL_SELECT'
+    };
+  }
 
   const editingIdx = storage.get('editing_topping_index', null);
   const txs = storage.get('entres_topping_transactions', []);
@@ -330,6 +365,7 @@ export function renderToppingForm() {
       kodePlot: selectedPlot.kodePlot,
       namaKlon: selectedPlot.namaKlon,
       jlhPokok: parseInt(selectedPlot.jlhPokok || 0),
+      budwoodCode: selectedPlot.budwoodCode || '2021/BWG/001',
       tanggal: tgl,
       jumlahKayu: kayu,
       totalPanjangMeter: panjang,

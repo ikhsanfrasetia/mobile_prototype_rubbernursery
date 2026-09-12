@@ -9,7 +9,8 @@ import { ROLE_LABELS } from '../core/permissions.js';
 import { navigate, getCurrent } from '../core/router.js';
 import { toast } from './toast.js';
 import { esc } from '../core/utils.js';
-import { userRepository } from '../db/repositories.js';
+import { getDemoPersonas, getDemoPersonaByCode } from '../data/demo-personas.js';
+import { getCurrentUserContext } from '../core/user-context.js';
 
 let drawerEl = null;
 
@@ -82,14 +83,41 @@ export function openDrawer() {
   closeDrawer();
 
   const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', divisionName: 'Tanah Besih - Divisi I' };
+  const userCtx = getCurrentUserContext();
   const displayName = (user.name && user.name !== 'Mantri Tanaman' && user.name !== 'Mantri Bibitan') ? user.name : 'Wagiman';
-  const displayRole = ROLE_LABELS[user.role] || user.role;
+  const displayRole = user.position || ROLE_LABELS[user.role] || user.role;
   const currentPath = (getCurrent().route || '/home');
 
-  const DEMO_ROLES = ['MANTRI_TANAMAN', 'ASISTEN', 'ASISTEN_BIBITAN', 'ASKEP', 'PENGURUS', 'TEKNIKER_I', 'KTU'];
-  const demoPillsHtml = DEMO_ROLES.map((r) => `
-    <button class="demo-pill ${user.role === r ? 'active' : ''}" data-role="${r}">${esc(ROLE_LABELS[r] || r)}</button>
-  `).join('');
+  // Load all 14 personas from Master Persona Registry (Phase 3)
+  const allPersonas = getDemoPersonas();
+  const tbsPersonas = allPersonas.filter((p) => p.estateId === 'EST-TBS');
+  const apmPersonas = allPersonas.filter((p) => p.estateId === 'EST-APM');
+
+  const currentPersonaCode = user.code || user.userId || user.id;
+
+  const renderPersonaListHtml = (personas) =>
+    personas
+      .map((p) => {
+        const isActive =
+          p.code === currentPersonaCode ||
+          (p.name === user.name && (p.role === user.role || p.role === userCtx.role || (p.code === 'PGS002' && user.role === 'PENGURUS_KEBUN_SEPUPU')));
+        const isDivision = p.scopeType === 'DIVISION';
+        return `
+      <button class="persona-card ${isActive ? 'active' : ''}" data-code="${esc(p.code)}" type="button">
+        <div class="persona-card-top">
+          <span class="persona-card-name">${esc(p.name)}</span>
+          ${isActive ? '<span class="persona-badge-active">AKTIF</span>' : ''}
+        </div>
+        <div class="persona-card-meta">
+          <span class="persona-card-role">${esc(ROLE_LABELS[p.role] || p.role)} · ${esc(p.position)}</span>
+        </div>
+        <div class="persona-card-footer">
+          <span class="persona-card-scope ${isDivision ? 'scope-division' : 'scope-estate'}">${esc(p.divisionName)}</span>
+        </div>
+      </button>
+    `;
+      })
+      .join('');
 
   drawerEl = document.createElement('div');
   drawerEl.className = 'drawer-overlay';
@@ -137,7 +165,7 @@ export function openDrawer() {
           </div>
         </button>
 
-        <button class="drawer-nav-row" id="menu-profil" type="button">
+        <button class="drawer-nav-row ${currentPath === '/profile' ? 'is-active' : ''}" id="menu-profil" type="button">
           <div class="drawer-row-left">
             <span class="drawer-row-icon">${SVGS.profile}</span>
             <span class="drawer-row-label">Profil Saya</span>
@@ -159,9 +187,31 @@ export function openDrawer() {
       </div>
 
       <div class="drawer-demo-switch">
-        <div class="drawer-demo-head">Mode Demo — Ganti Role</div>
-        <div class="drawer-demo-pills">
-          ${demoPillsHtml}
+        <div class="drawer-demo-head">
+          <div class="drawer-demo-head-title">
+            <span class="drawer-demo-badge">MODE DEMO</span>
+            <span class="drawer-demo-sub">Persona Switcher</span>
+          </div>
+        </div>
+
+        <div class="drawer-estate-group">
+          <div class="drawer-estate-title">
+            <span class="drawer-estate-name">🏛️ Tanah Besih</span>
+            <span class="drawer-estate-count">${tbsPersonas.length} PERSONA</span>
+          </div>
+          <div class="drawer-persona-list">
+            ${renderPersonaListHtml(tbsPersonas)}
+          </div>
+        </div>
+
+        <div class="drawer-estate-group">
+          <div class="drawer-estate-title">
+            <span class="drawer-estate-name">🏛️ Aek Pamingke</span>
+            <span class="drawer-estate-count">${apmPersonas.length} PERSONA</span>
+          </div>
+          <div class="drawer-persona-list">
+            ${renderPersonaListHtml(apmPersonas)}
+          </div>
         </div>
       </div>
 
@@ -196,7 +246,8 @@ export function openDrawer() {
   });
 
   drawerEl.querySelector('#menu-profil').addEventListener('click', () => {
-    toast(`Profil: ${displayName} (${displayRole})`, 'info');
+    closeDrawer();
+    navigate('/profile');
   });
 
   drawerEl.querySelector('#menu-logout').addEventListener('click', () => {
@@ -206,23 +257,30 @@ export function openDrawer() {
     navigate('/login');
   });
 
-  // Demo role switcher pills
-  drawerEl.querySelectorAll('.demo-pill').forEach((pill) => {
-    pill.addEventListener('click', async () => {
-      const targetRole = pill.dataset.role;
-      const users = await userRepository.list();
-      const targetUser = users.find((u) => u.role === targetRole && u.active !== false);
-      if (targetUser) {
+  // Demo persona switcher card handlers
+  drawerEl.querySelectorAll('.persona-card').forEach((card) => {
+    card.addEventListener('click', async () => {
+      const code = card.dataset.code;
+      const targetPersona = getDemoPersonaByCode(code);
+      if (targetPersona) {
+        // Compatibility mapping: for PGS002 (Mukhsin Haji), preserve legacy role in raw session to protect existing request flow
+        const sessionRole = targetPersona.code === 'PGS002' ? 'PENGURUS_KEBUN_SEPUPU' : targetPersona.role;
+
         session.start({
-          userId: targetUser.id,
-          role: targetUser.role,
-          name: targetUser.name,
-          position: targetUser.position || (ROLE_LABELS[targetUser.role] || targetUser.role),
-          divisionId: targetUser.divisionId,
-          divisionName: 'Tanah Besih - Divisi I',
+          userId: targetPersona.code,
+          code: targetPersona.code,
+          role: sessionRole,
+          name: targetPersona.name,
+          position: targetPersona.position,
+          estateId: targetPersona.estateId,
+          estateName: targetPersona.estateName,
+          divisionId: targetPersona.divisionId,
+          divisionName: targetPersona.divisionName,
+          scopeType: targetPersona.scopeType,
           isDemoSession: true
         });
-        toast(`Beralih ke role ${ROLE_LABELS[targetRole] || targetRole}`, 'info');
+
+        toast(`Beralih ke persona ${targetPersona.name} (${targetPersona.position} - ${targetPersona.estateName})`, 'info');
         closeDrawer();
         navigate('/splash', { replace: true });
       }

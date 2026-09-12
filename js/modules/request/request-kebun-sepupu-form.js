@@ -1,19 +1,14 @@
-/**
- * modules/request/request-kebun-sepupu-form.js
- * Form Pengajuan SPB Permintaan Bibit Kebun Sepupu (Role: Pengurus Kebun Peminta).
- * Baseline Requirement: RN-RCV-KSP016.
- */
-
 import { navigate } from '../../core/router.js';
 import { session } from '../../core/session.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import {
   programReplantingRepository,
-  cloneRepository,
   requestRepository
 } from '../../db/repositories.js';
+import { getActiveKlons, resolveKlon } from '../../data/klon-master.js';
 import {
   formatDate,
   formatFullDateIndonesian,
@@ -27,7 +22,7 @@ export async function renderRequestKebunSepupuForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const user = session.get() || { name: 'Pengurus', role: 'PENGURUS', position: 'Pengurus Kebun' };
+  const user = getCurrentUserContext() || session.get() || { name: 'Junaidi', role: 'PENGURUS', position: 'Pengurus Kebun' };
   const today = formatFullDateIndonesian(new Date());
 
   // Load existing requests for unique document numbering
@@ -39,17 +34,15 @@ export async function renderRequestKebunSepupuForm() {
   }
   const docNo = generateUniqueDocNo('request', existingRequests);
 
-  // Load Master Data (Replanting Programs & Clones)
+  // Load Master Data (Replanting Programs)
   let programs = [];
-  let clones = [];
   try {
     programs = await programReplantingRepository.list();
-    clones = await cloneRepository.list();
   } catch (err) {
-    console.warn('[request-form] Gagal memuat master data:', err);
+    console.warn('[request-form] Gagal memuat master data program:', err);
   }
 
-  // Fallback jika database belum berisi master
+  // Fallback jika database belum berisi master program
   if (!programs || programs.length === 0) {
     programs = [
       { id: 'PRP-2026-01', code: 'PRP-2026-01', name: 'Program Replanting 2026' },
@@ -57,20 +50,15 @@ export async function renderRequestKebunSepupuForm() {
     ];
   }
 
-  if (!clones || clones.length === 0) {
-    clones = [
-      { id: 'CLONE-PB260', code: 'PB 260', name: 'PB 260' },
-      { id: 'CLONE-RRIM600', code: 'RRIM 600', name: 'RRIM 600' },
-      { id: 'CLONE-GT1', code: 'GT 1', name: 'GT 1' }
-    ];
-  }
+  // Master Klon Terpusat (57 Klon Aktif Resmi)
+  const activeKlons = getActiveKlons();
 
   const programOptions = programs.map(p => `
     <option value="${esc(p.name || p.code)}">${esc(p.name || p.code)}</option>
   `).join('');
 
-  const cloneOptions = clones.map(c => `
-    <option value="${esc(c.name || c.code)}">${esc(c.name || c.code)}</option>
+  const cloneOptions = activeKlons.map(c => `
+    <option value="${esc(c.canonicalName)}">${esc(c.canonicalName)}</option>
   `).join('');
 
   app.innerHTML = `
@@ -262,24 +250,27 @@ function openReviewModal(data) {
 
 /** Proses Penyimpanan Transaksi Permintaan */
 async function submitRequest(data) {
+  const resolvedKlon = resolveKlon(data.klon);
+  const canonicalKlon = resolvedKlon ? resolvedKlon.canonicalName : (data.klon || '');
+
   const newRecord = {
     id: `REQ-${Date.now()}`,
     docNo: data.docNo,
     nomorDokumen: data.docNo,
-    type: 'KEBUN_SEPUKU',
-    category: 'BIBIT_KEBUN_SEPUKU',
+    type: 'KEBUN_SEPUPU',
+    category: 'BIBIT_KEBUN_SEPUPU',
     requestType: 'BIBIT',
     program: data.program,
-    klon: data.klon,
+    klon: canonicalKlon,
     qty: data.qty,
     requestedQty: data.qty,
     unit: 'Pkk',
     status: 'DIAJUKAN',
     statusLabel: 'Diajukan',
-    requestedBy: data.user.name || 'Pengurus',
+    requestedBy: data.user.name || 'Junaidi',
     userId: data.user.userId || data.user.id || 'PGS001',
     role: data.user.role || 'PENGURUS',
-    position: data.user.position || 'Pengurus',
+    position: data.user.position || 'Pengurus Kebun',
     divisionName: data.user.divisionName || 'Tanah Besih - Divisi I',
     createdAt: nowISO(),
     date: todayISO(),
@@ -287,12 +278,12 @@ async function submitRequest(data) {
   };
 
   try {
-    // 1. Simpan ke IndexedDB requests store
-    await requestRepository.create(newRecord);
+    // 1. Simpan ke IndexedDB requests store (dengan actor snapshot otomatis)
+    const savedRecord = await requestRepository.create(newRecord, data.user);
 
     // 2. Simpan ke LocalStorage fallback agar kompatibel dengan transaction-manager
     const localList = storage.get('requests_transactions', []);
-    localList.unshift(newRecord);
+    localList.unshift(savedRecord);
     storage.set('requests_transactions', localList);
 
     toast('Dokumen Permintaan Bibit diajukan.', 'success');

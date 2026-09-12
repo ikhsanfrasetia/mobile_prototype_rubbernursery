@@ -46,6 +46,7 @@ import { renderRequestKebunSepupuForm } from './modules/request/request-kebun-se
 import { renderDispatchLanding } from './modules/dispatch/dispatch-landing.js';
 import { renderDispatchReport } from './modules/dispatch/dispatch-report.js';
 import { renderAnalysisPlaceholder } from './modules/placeholder/analysis-placeholder.js';
+import { renderProfile } from './modules/profile/profile.js';
 import { seedDatabase } from './db/seed.js';
 import { initExportScreenToolbar } from './core/export-screen.js';
 
@@ -103,6 +104,7 @@ registerRoute('/entres/menunas', renderMenunasScan);
 registerRoute('/entres/menunas/form', renderMenunasForm);
 registerRoute('/entres/topping', renderToppingScan);
 registerRoute('/entres/topping/form', renderToppingForm);
+registerRoute('/profile', renderProfile);
 
 /* Fallback Not Found */
 setNotFound(renderAnalysisPlaceholder);

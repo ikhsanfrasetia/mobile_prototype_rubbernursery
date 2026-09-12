@@ -11,6 +11,22 @@ import {
   deleteRecord,
   countStore
 } from './indexeddb.js';
+import { applyTransactionActor, AUDIT_EVENT_TYPES } from '../core/transaction-actor.js';
+
+export const TRANSACTION_STORES = new Set([
+  'attendance',
+  'receptions',
+  'seedings',
+  'buddings',
+  'inspections',
+  'selections',
+  'entresActivities',
+  'nurseryActivities',
+  'requests',
+  'batches',
+  'approvals',
+  'syncQueue'
+]);
 
 /**
  * Membuat repository generik untuk sebuah store.
@@ -20,16 +36,22 @@ export function createRepository(storeName) {
   return {
     storeName,
 
-    async create(data) {
-      const record = { ...data, id: data.id || `${storeName.toUpperCase()}:${Math.random().toString(36).slice(2, 8)}` };
+    async create(data, userContext = null) {
+      const base = { ...data, id: data.id || `${storeName.toUpperCase()}:${Math.random().toString(36).slice(2, 8)}` };
+      const record = TRANSACTION_STORES.has(storeName)
+        ? applyTransactionActor(base, AUDIT_EVENT_TYPES.CREATE, userContext)
+        : base;
       await putRecord(storeName, record);
       return record;
     },
 
-    async update(id, patch) {
+    async update(id, patch, userContext = null, actionType = AUDIT_EVENT_TYPES.UPDATE) {
       const existing = await getRecord(storeName, id);
       if (!existing) throw new Error(`Record tidak ditemukan: ${id}`);
-      const updated = { ...existing, ...patch, id };
+      const updatedData = { ...existing, ...patch, id };
+      const updated = TRANSACTION_STORES.has(storeName)
+        ? applyTransactionActor(updatedData, actionType, userContext)
+        : updatedData;
       await putRecord(storeName, updated);
       return updated;
     },

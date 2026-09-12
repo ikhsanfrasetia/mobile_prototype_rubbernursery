@@ -1,6 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
+import { normalizeKlonName } from '../../data/klon-master.js';
 
 export function renderBuddingGrafting() {
   const app = document.getElementById('app');
@@ -160,7 +161,7 @@ export function renderBuddingGrafting() {
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 10px;">
                     <div>
                       <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Klon Batang Bawah</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #111111;">${stx.klonAwal || 'GT-01'}</div>
+                      <div style="font-size: 0.82rem; font-weight: 700; color: #111111;">${stx.klonAwal ? normalizeKlonName(stx.klonAwal) : 'GT 1'}</div>
                     </div>
                     <div>
                       <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Lokasi Bedengan</div>
@@ -215,7 +216,7 @@ export function renderBuddingGrafting() {
                         <div style="display: flex; flex-direction: column; gap: 3px;">
                           ${rows.map(r => `
                             <div style="display: flex; justify-content: space-between; color: #4B5563;">
-                              <span>• ${r.bedengan || 'Bedengan'} (${r.klon || stx.klonAwal || 'GT-01'})</span>
+                              <span>• ${r.bedengan || 'Bedengan'} (${r.klon ? normalizeKlonName(r.klon) : (stx.klonAwal ? normalizeKlonName(stx.klonAwal) : 'GT 1')})</span>
                               <span style="font-weight: 700; color: #116834;">${parseInt(r.disemai || 0)} Pkk</span>
                             </div>
                           `).join('')}
@@ -367,7 +368,7 @@ export function renderBuddingGrafting() {
                     <!-- INFORMASI PENDUKUNG -->
                     <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;">
                       <div style="font-size: 0.70rem; color: #6B7280;">Batang Bawah:</div>
-                      <div style="font-size: 0.86rem; font-weight: 800; color: #111827; margin-top: 1px;">${tx.klonRootstock || 'GT1'}</div>
+                      <div style="font-size: 0.86rem; font-weight: 800; color: #111827; margin-top: 1px;">${tx.klonRootstock ? normalizeKlonName(tx.klonRootstock) : 'GT 1'}</div>
                       ${parseInt(tx.jumlahDitolak || 0) > 0 ? `
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E5E7EB;">
                           <span style="font-size: 0.70rem; color: #6B7280;">Bibit Ditolak:</span>

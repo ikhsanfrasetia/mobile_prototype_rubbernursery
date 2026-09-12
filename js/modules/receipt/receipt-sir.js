@@ -1,5 +1,6 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
+import { getActiveKlons } from '../../data/klon-master.js';
 
 export function renderReceiptSir() {
   const app = document.getElementById('app');
@@ -118,21 +119,14 @@ export function renderReceiptSir() {
   const listKlonContainer = app.querySelector('#list-klon');
   const inputSearchKlon = app.querySelector('#input-search-klon');
 
-  // Full Klon Data extracted from image
-  const klonNames = [
-    "BPM1", "BPM24", "CYT577", "GT1", "IRCA1007", "IRCA101", "IRCA109", "IRCA111", 
-    "IRCA130", "IRCA18", "IRCA19", "IRCA230", "IRCA317", "IRCA331", "IRCA41", "IRCA427", 
-    "IRCA733", "IRCA804", "IRCA807", "IRCA825", "IRCA986", "IRR104", "IRR112", "IRR118", 
-    "IRR205", "IRR206", "IRR207", "IRR208", "IRR220", "IRR221", "IRR230", "IRR425", 
-    "IRR428", "IRR429", "IRR434", "IRR440", "IRR5", "LBT94", "PB217", "PB235", "PB254", 
-    "PB260", "PB330", "PB340", "PC10", "PM10", "PR107", "PR300", "RRIC100", "RRIM2020", 
-    "RRIM600", "RRIM703", "RRIM712", "RRIM901", "RRIM908", "RRIM911", "RRIM921"
-  ];
-  
-  const klonData = klonNames.map((name, idx) => ({ 
-    id: 'K' + (idx + 1), 
-    title: name, 
-    sub: 'Klon-' + name.replace(/[^0-9]/g, '') || name 
+  // Master Data Klon Terpusat (57 Klon Aktif Resmi dari data/budwood-plot-klon.csv)
+  const activeKlons = getActiveKlons();
+  const klonData = activeKlons.map((k) => ({ 
+    id: k.id, 
+    title: k.canonicalName, 
+    code: k.code,
+    canonicalName: k.canonicalName,
+    sub: 'Klon-' + (k.canonicalName.replace(/[^0-9]/g, '') || k.code)
   }));
 
   function renderList() {
@@ -195,9 +189,11 @@ export function renderReceiptSir() {
   });
 
   function renderKlonList(filterText = '') {
+    const q = (filterText || '').trim().toLowerCase();
     const filtered = klonData.filter(k => 
-      k.title.toLowerCase().includes(filterText.toLowerCase()) || 
-      k.sub.toLowerCase().includes(filterText.toLowerCase())
+      k.title.toLowerCase().includes(q) || 
+      k.sub.toLowerCase().includes(q) ||
+      (k.code && k.code.toLowerCase().includes(q))
     );
 
     if (filtered.length === 0) {

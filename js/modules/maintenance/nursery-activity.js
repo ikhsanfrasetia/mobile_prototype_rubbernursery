@@ -19,6 +19,26 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
+import { getCfnaByCode, getCfnaActivityMappings, MAPPING_STATUS, CFNA_STATUS } from '../../data/cfna-master.js';
+import {
+  getWorkersForUserContext,
+  getWorkerById,
+  isWorkerInScope,
+  isWorkerActive
+} from '../../data/worker-master.js';
+import { applyTransactionActor, resolveTransactionActor } from '../../core/transaction-actor.js';
+import { getCurrentUserContext, resolveUserContext, ROLES, SCOPE_TYPES, normalizeRole } from '../../core/user-context.js';
+import {
+  BLOCK_MASTER,
+  BLOCK_STATUS,
+  getAllBlocks,
+  getActiveBlocks,
+  getBlockById,
+  getBlockByCode,
+  getBlocksByEstate,
+  getBlocksByDivision,
+  resolveBlock
+} from '../../data/block-master.js';
 
 export const MASTER_AKTIVITAS = [
   { kode: '122193', nama: 'Treatment & Pengemasan' },
@@ -52,28 +72,332 @@ export const MASTER_PROGRAM_PEMBIBITAN = [
   'PRG/NUR/08/2029'
 ];
 
-export const MASTER_LOKASI_BLOK = [
-  { blok: 'Block 031/04', luas: 39.68 },
-  { blok: 'Block 036G/19', luas: 0.45 },
-  { blok: 'Block 033/07', luas: 8.8 },
-  { blok: 'Block 026/20', luas: 2.35 },
-  { blok: 'Block 008/01', luas: 29 },
-  { blok: 'Block 016D/13', luas: 1.94 },
-  { blok: 'Block 036N/19', luas: 0.45 },
-  { blok: 'Block 036U/19', luas: 0.23 },
-  { blok: 'Block 013/14', luas: 38.05 },
-  { blok: 'Block 016C/13', luas: 1.94 }
-];
+/**
+ * @deprecated MASTER_LOKASI_BLOK sudah dinonaktifkan dari production logic. Gunakan js/data/block-master.js.
+ */
+export const MASTER_LOKASI_BLOK = Object.freeze([]);
 
-export const MASTER_PEKERJA_LIST = [
-  { id: 'PK-01', name: 'Fadilah Yusuf Purba', code: '1405739', role: 'Pekerja Bibitan' },
-  { id: 'PK-02', name: 'Adek Apria Syahputra', code: '1405739', role: 'Pekerja Bibitan' },
-  { id: 'PK-03', name: 'Bidara Iswanda', code: '1405739', role: 'Pekerja Bibitan' },
-  { id: 'PK-04', name: 'Tugiman', code: '1405739', role: 'Pekerja Bibitan' },
-  { id: 'PK-05', name: 'Budi Santoso', code: '1405810', role: 'Pekerja Bibitan' },
-  { id: 'PK-06', name: 'Andi Wijaya', code: '1405811', role: 'Pekerja Bibitan' },
-  { id: 'PK-07', name: 'Joko Prasetyo', code: '1405812', role: 'Pekerja Bibitan' }
-];
+/**
+ * Mengambil daftar Block aktif untuk modul Nursery Activity berdasarkan User Context.
+ * Mengutamakan Division scope jika tersedia, lalu Estate scope, atau seluruh Active Blocks.
+ * @param {Object} [userContext] - User context (default: getCurrentUserContext())
+ * @returns {Array<Object>} List of active block objects from Block Master
+ */
+export function getBlocksForNurseryActivity(userContext = null) {
+  if (userContext === null) {
+    return getActiveBlocks();
+  }
+  const ctx = resolveUserContext(userContext);
+  
+  if (ctx?.scopeType === SCOPE_TYPES.ESTATE && ctx.estateId) {
+    const estBlocks = getBlocksByEstate(ctx.estateId);
+    if (estBlocks && estBlocks.length > 0) {
+      return estBlocks.filter(b => b.status === BLOCK_STATUS.ACTIVE);
+    }
+  }
+
+  if (ctx?.divisionId && ctx.divisionId !== 'DIV-ALL' && ctx.divisionId !== 'DIV-APM' && ctx.scopeType !== SCOPE_TYPES.ESTATE) {
+    const divBlocks = getBlocksByDivision(ctx.divisionId);
+    if (divBlocks && divBlocks.length > 0) {
+      return divBlocks.filter(b => b.status === BLOCK_STATUS.ACTIVE);
+    }
+  }
+
+  if (ctx?.estateId) {
+    const estBlocks = getBlocksByEstate(ctx.estateId);
+    if (estBlocks && estBlocks.length > 0) {
+      return estBlocks.filter(b => b.status === BLOCK_STATUS.ACTIVE);
+    }
+  }
+
+  return getActiveBlocks();
+}
+
+/**
+ * Normalisasi dan resolusi informasi lokasi blok dari transaksi (legacy atau baru).
+ * @param {Object|string} lokasiBlok
+ * @returns {Object|null}
+ */
+export function resolveLokasiBlok(lokasiBlok) {
+  if (!lokasiBlok) return null;
+
+  // Jika sudah memiliki blockId, resolve dari Block Master
+  if (typeof lokasiBlok === 'object' && lokasiBlok.blockId) {
+    const master = getBlockById(lokasiBlok.blockId);
+    if (master) {
+      const totalArea = Math.round(((master.maturedArea || 0) + (master.immatureArea || 0)) * 100) / 100;
+      return {
+        blockId: master.id,
+        blockCode: master.blockCode,
+        blockName: master.blockName,
+        divisionCode: master.divisionCode,
+        divisionName: master.divisionName,
+        estateCode: master.estateCode,
+        estateName: master.estateName,
+        cloneName: master.cloneName,
+        maturedArea: master.maturedArea,
+        immatureArea: master.immatureArea,
+        luas: totalArea || master.maturedArea,
+        luasHa: totalArea || master.maturedArea,
+        blok: master.blockName,
+        isLegacy: false
+      };
+    }
+    return { ...lokasiBlok, isLegacy: false };
+  }
+
+  // Jika string atau object legacy (mis. { blok: 'Block 031/04', luas: 39.68 })
+  const rawString = typeof lokasiBlok === 'string' ? lokasiBlok : (lokasiBlok.blok || lokasiBlok.blockCode || lokasiBlok.name || '');
+  const matchedMaster = resolveBlock(rawString);
+  if (matchedMaster) {
+    const totalArea = Math.round(((matchedMaster.maturedArea || 0) + (matchedMaster.immatureArea || 0)) * 100) / 100;
+    return {
+      blockId: matchedMaster.id,
+      blockCode: matchedMaster.blockCode,
+      blockName: matchedMaster.blockName,
+      divisionCode: matchedMaster.divisionCode,
+      divisionName: matchedMaster.divisionName,
+      estateCode: matchedMaster.estateCode,
+      estateName: matchedMaster.estateName,
+      cloneName: matchedMaster.cloneName,
+      maturedArea: matchedMaster.maturedArea,
+      immatureArea: matchedMaster.immatureArea,
+      luas: totalArea || matchedMaster.maturedArea,
+      luasHa: totalArea || matchedMaster.maturedArea,
+      blok: matchedMaster.blockName,
+      isLegacy: false
+    };
+  }
+
+  // Fallback data legacy yang tidak terpetakan di master aktif
+  return {
+    blockId: null,
+    blockCode: rawString || '-',
+    blockName: rawString || '-',
+    divisionCode: typeof lokasiBlok === 'object' ? (lokasiBlok.divisionCode || null) : null,
+    divisionName: typeof lokasiBlok === 'object' ? (lokasiBlok.divisionName || null) : null,
+    estateCode: typeof lokasiBlok === 'object' ? (lokasiBlok.estateCode || null) : null,
+    estateName: typeof lokasiBlok === 'object' ? (lokasiBlok.estateName || null) : null,
+    cloneName: typeof lokasiBlok === 'object' ? (lokasiBlok.cloneName || null) : null,
+    luas: typeof lokasiBlok === 'object' ? (lokasiBlok.luas || 0) : 0,
+    luasHa: typeof lokasiBlok === 'object' ? (lokasiBlok.luas || 0) : 0,
+    blok: rawString || '-',
+    isLegacy: true
+  };
+}
+
+
+/**
+ * Mengambil daftar CFNA yang terkonfirmasi (CONFIRMED) dan aktif untuk aktivitas tertentu.
+ * @param {Object|string} activity
+ * @returns {Array<Object>}
+ */
+export function getConfirmedCfnaForActivity(activity) {
+  if (!activity) return [];
+  const actName = (typeof activity === 'string' ? activity : (activity.nama || activity.name || '')).trim().toLowerCase();
+  
+  let targetType = null;
+  if (actName.includes('penyiraman')) {
+    targetType = 'PENYIRAMAN';
+  } else if (actName.includes('seleksi')) {
+    targetType = 'SELEKSI_BIBIT';
+  } else if (actName.includes('pemupukan')) {
+    targetType = 'PEMUPUKAN';
+  } else if (actName.includes('gulma')) {
+    targetType = 'PENGENDALIAN_GULMA';
+  } else if (actName.includes('hama') || actName.includes('penyakit')) {
+    targetType = 'PENGENDALIAN_HAMA_PENYAKIT';
+  }
+
+  if (!targetType) return [];
+
+  const mappings = getCfnaActivityMappings();
+  const confirmedMappings = mappings.filter(
+    (m) => m.targetActivityType === targetType && m.mappingStatus === MAPPING_STATUS.CONFIRMED
+  );
+
+  const results = [];
+  for (const map of confirmedMappings) {
+    const master = getCfnaByCode(map.cfnaCode);
+    if (master && master.status === CFNA_STATUS.ACTIVE) {
+      results.push(master);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Memeriksa apakah suatu transaksi dimiliki oleh user context tertentu (Primary Key: createdByUserId).
+ * @param {Object} record - Transaction record
+ * @param {Object} [userContext] - User context (default: getCurrentUserContext())
+ * @returns {boolean}
+ */
+export function isTransactionOwnedByUser(record, userContext = null) {
+  if (!record || typeof record !== 'object') return false;
+  
+  const ctx = userContext ? resolveUserContext(userContext) : getCurrentUserContext();
+  const actor = resolveTransactionActor(record);
+
+  // Legacy record tanpa explicit creator snapshot tidak dianggap dimiliki
+  if (actor.isLegacy || !record.createdByUserId) {
+    return false;
+  }
+
+  // Set ID valid untuk user saat ini
+  const validUserIds = new Set([
+    ctx.id,
+    ctx.code,
+    ctx.userId,
+    ctx.loginCode
+  ].filter(Boolean));
+
+  // Identitas pembuat transaksi
+  const recordCreatorIds = [
+    record.createdByUserId,
+    record.createdByLoginCode,
+    actor.userId,
+    actor.loginCode
+  ].filter(Boolean);
+
+  const isOwner = recordCreatorIds.some(id => validUserIds.has(id));
+  if (!isOwner) return false;
+
+  // Secondary safety check: Estate mismatch
+  if (record.createdByEstateId && ctx.estateId && record.createdByEstateId !== ctx.estateId) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Memeriksa apakah suatu transaksi berhak dilihat oleh user context tertentu berdasarkan kepemilikan dan scope role.
+ * @param {Object} record - Transaction record
+ * @param {Object} [userContext] - User context (default: getCurrentUserContext())
+ * @returns {boolean}
+ */
+export function isTransactionVisibleToUser(record, userContext = null) {
+  if (!record || typeof record !== 'object') return false;
+  
+  const ctx = userContext ? resolveUserContext(userContext) : getCurrentUserContext();
+  const normalizedRole = normalizeRole(ctx.role || ctx.rawRole);
+
+  // Role operasional / input lapangan (MANTRI_TANAMAN, ASISTEN_BIBITAN, ASISTEN):
+  // Default adalah personal ownership (hanya transaksi milik sendiri)
+  if (
+    normalizedRole === ROLES.MANTRI_TANAMAN ||
+    normalizedRole === ROLES.ASISTEN_BIBITAN ||
+    normalizedRole === ROLES.ASISTEN
+  ) {
+    return isTransactionOwnedByUser(record, ctx);
+  }
+
+  // Role pengawas / manajerial (PENGURUS, ASKEP, KTU):
+  // Scope Estate: melihat transaksi dalam satu Estate mereka
+  if (
+    normalizedRole === ROLES.PENGURUS ||
+    normalizedRole === ROLES.ASKEP ||
+    normalizedRole === ROLES.KTU
+  ) {
+    const actor = resolveTransactionActor(record);
+    if (!actor.isLegacy && actor.estateId && ctx.estateId) {
+      return actor.estateId === ctx.estateId;
+    }
+    return false;
+  }
+
+  return isTransactionOwnedByUser(record, ctx);
+}
+
+/**
+ * Mengambil daftar transaksi pemeliharaan yang berhak dilihat oleh user saat ini.
+ * @param {Array<Object>} records - Raw list of records
+ * @param {Object} [userContext] - Opsional, default getCurrentUserContext()
+ * @returns {Array<Object>} Filtered visible records
+ */
+export function getVisibleMaintenanceRecords(records, userContext = null) {
+  if (!Array.isArray(records)) return [];
+  const ctx = userContext ? resolveUserContext(userContext) : getCurrentUserContext();
+  return records.filter((rec) => isTransactionVisibleToUser(rec, ctx));
+}
+
+/**
+ * Mencari transaksi pemeliharaan berdasarkan query teks dengan isolasi hak akses data.
+ * @param {Array<Object>} records - Raw list of records
+ * @param {string} query - Query pencarian
+ * @param {Object} [userContext] - User context
+ * @returns {Array<Object>} Filtered and matched records
+ */
+export function filterMaintenanceRecordsByQuery(records, query, userContext = null) {
+  const visible = getVisibleMaintenanceRecords(records, userContext);
+  if (!query || typeof query !== 'string' || !query.trim()) {
+    return visible;
+  }
+  const q = query.trim().toLowerCase();
+  return visible.filter((r) => {
+    const doc = (r.docNo || '').toLowerCase();
+    const aktName = (r.aktivitas?.nama || '').toLowerCase();
+    const aktCode = (r.aktivitas?.kode || '').toLowerCase();
+    const cfnaName = (r.allocationName || '').toLowerCase();
+    const cfnaCode = (r.allocationCode || '').toLowerCase();
+    const prog = (r.program || '').toLowerCase();
+    const blok = (r.lokasiBlok?.blok || r.lokasiBlok?.blockName || r.lokasiBlok?.blockCode || '').toLowerCase();
+    const clone = (r.lokasiBlok?.cloneName || '').toLowerCase();
+    return (
+      doc.includes(q) ||
+      aktName.includes(q) ||
+      aktCode.includes(q) ||
+      cfnaName.includes(q) ||
+      cfnaCode.includes(q) ||
+      prog.includes(q) ||
+      blok.includes(q) ||
+      clone.includes(q)
+    );
+  });
+}
+
+/**
+ * Mengambil satu record transaksi pemeliharaan secara aman dengan validasi izin akses/detail.
+ * @param {string} idOrDocNo - ID atau No Dokumen transaksi
+ * @param {Object} [userContext] - User context
+ * @returns {Object|null} Record transaksi jika berhak, atau null jika ditolak/tidak ditemukan
+ */
+export function getMaintenanceRecordById(idOrDocNo, userContext = null) {
+  if (!idOrDocNo) return null;
+  const ctx = userContext ? resolveUserContext(userContext) : getCurrentUserContext();
+  const allRecords = storage.get('nursery_activity_records', []);
+  const record = allRecords.find((r) => r.id === idOrDocNo || r.docNo === idOrDocNo);
+  if (!record) return null;
+
+  if (isTransactionVisibleToUser(record, ctx)) {
+    return record;
+  }
+  return null;
+}
+
+/**
+ * Menghapus record transaksi pemeliharaan dengan validasi kepemilikan.
+ * @param {string} idOrDocNo - ID atau No Dokumen transaksi
+ * @param {Object} [userContext] - User context
+ * @returns {boolean} True jika berhasil dihapus, false jika gagal/tidak berhak
+ */
+export function deleteMaintenanceRecord(idOrDocNo, userContext = null) {
+  if (!idOrDocNo) return false;
+  const ctx = userContext ? resolveUserContext(userContext) : getCurrentUserContext();
+  const allRecords = storage.get('nursery_activity_records', []);
+  const targetIdx = allRecords.findIndex((r) => r.id === idOrDocNo || r.docNo === idOrDocNo);
+  if (targetIdx === -1) return false;
+
+  const targetRecord = allRecords[targetIdx];
+  if (!isTransactionOwnedByUser(targetRecord, ctx)) {
+    return false;
+  }
+
+  allRecords.splice(targetIdx, 1);
+  storage.set('nursery_activity_records', allRecords);
+  return true;
+}
 
 function formatDateDDMMYYYY(val) {
   if (!val) return '-';
@@ -91,7 +415,9 @@ export function renderNurseryActivityLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const records = storage.get('nursery_activity_records', []);
+  const userCtx = getCurrentUserContext();
+  const allRecords = storage.get('nursery_activity_records', []);
+  const records = getVisibleMaintenanceRecords(allRecords, userCtx);
 
   app.innerHTML = `
     <div class="page nursery-activity-landing-page" style="position: relative; display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden;">
@@ -147,7 +473,9 @@ export function renderNurseryActivityLanding() {
             Ringkasan Data Transaksi (${records.length})
           </h2>
 
-          ${records.length > 0 ? records.map((rec, idx) => `
+          ${records.length > 0 ? records.map((rec, idx) => {
+            const actor = resolveTransactionActor(rec);
+            return `
             <div style="border: 1px solid #D9D9D9; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #FFFFFF; position: relative;">
               
               <!-- HEADER BARIS 1: NO DOKUMEN & BADGE -->
@@ -172,7 +500,7 @@ export function renderNurseryActivityLanding() {
                     </svg>
                   </button>
                   <div class="card-popover-activity" id="popover-activity-${idx}" style="display: none; position: absolute; top: 28px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
-                    <button class="btn-popover-activity-hapus" data-index="${idx}" data-doc="${rec.docNo || `ACT/NUR/2026/0${idx + 1}`}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 600; color: #D32F2F; cursor: pointer;">
+                    <button class="btn-popover-activity-hapus" data-index="${idx}" data-id="${rec.id || ''}" data-doc="${rec.docNo || `ACT/NUR/2026/0${idx + 1}`}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 600; color: #D32F2F; cursor: pointer;">
                       Hapus
                     </button>
                   </div>
@@ -196,6 +524,12 @@ export function renderNurseryActivityLanding() {
                   <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${rec.aktivitas?.kode || '-'}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
+                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Alokasi CFNA</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">
+                    ${rec.allocationCode ? `${rec.allocationCode} - ${rec.allocationName || '-'}` : 'Tidak ada alokasi CFNA'}
+                  </span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Lokasi Blok</span>
                   <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${rec.lokasiBlok?.blok || '-'} (${rec.lokasiBlok?.luas || '-'} HA)</span>
                 </div>
@@ -203,13 +537,19 @@ export function renderNurseryActivityLanding() {
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Pekerja</span>
                   <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${rec.pekerja?.length || 0} Orang</span>
                 </div>
+                ${actor && actor.name ? `
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
+                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Dicatat Oleh</span>
+                    <span style="font-size: 0.85rem; font-weight: 600; color: #475569; text-align: right;">${actor.name} (${actor.position})</span>
+                  </div>
+                ` : ''}
                 ${(rec.pekerja && rec.pekerja.length > 0) ? `
                   <div style="margin-top: 4px; padding-top: 8px; border-top: 1px dashed #E2E8F0;">
                     <div style="font-size: 0.78rem; font-weight: 700; color: #64748B; margin-bottom: 4px;">Pekerja:</div>
                     <div style="display: flex; flex-direction: column; gap: 4px;">
                       ${rec.pekerja.map(w => `
                         <div style="font-size: 0.84rem; font-weight: 600; color: #1E293B;">
-                          ${w.code}-${w.name}
+                          ${w.code || w.workerCode || ''}-${w.name || w.workerName || ''}
                         </div>
                       `).join('')}
                     </div>
@@ -235,7 +575,7 @@ export function renderNurseryActivityLanding() {
               </div>
 
             </div>
-          `).join('') : `
+          `;}).join('') : `
             <!-- EMPTY STATE -->
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 0;">
               <div style="margin-bottom: 16px;">
@@ -314,23 +654,26 @@ export function renderNurseryActivityLanding() {
   const deleteMsg = app.querySelector('#dialog-delete-activity-msg');
   const btnCancelDelete = app.querySelector('#btn-cancel-delete-act');
   const btnConfirmDelete = app.querySelector('#btn-confirm-delete-act');
-  let pendingDeleteIdx = null;
+  let pendingDeleteDocNo = null;
+  let pendingDeleteId = null;
 
   const closeDeleteDialog = () => {
     if (deleteOverlay) deleteOverlay.style.display = 'none';
     if (deleteDialog) deleteDialog.style.display = 'none';
-    pendingDeleteIdx = null;
+    pendingDeleteDocNo = null;
+    pendingDeleteId = null;
   };
 
   btnCancelDelete?.addEventListener('click', closeDeleteDialog);
   deleteOverlay?.addEventListener('click', closeDeleteDialog);
 
   btnConfirmDelete?.addEventListener('click', () => {
-    if (pendingDeleteIdx !== null) {
-      const currentList = storage.get('nursery_activity_records', []);
-      currentList.splice(pendingDeleteIdx, 1);
-      storage.set('nursery_activity_records', currentList);
+    const targetIdOrDoc = pendingDeleteId || pendingDeleteDocNo;
+    const success = deleteMaintenanceRecord(targetIdOrDoc, userCtx);
+    if (success) {
       toast('Dokumen aktivitas berhasil dihapus.', 'info');
+    } else {
+      toast('Anda tidak memiliki hak untuk menghapus dokumen ini.', 'error');
     }
     closeDeleteDialog();
     renderNurseryActivityLanding();
@@ -365,11 +708,11 @@ export function renderNurseryActivityLanding() {
         e.stopPropagation();
         cardPopovers.forEach(p => p.style.display = 'none');
 
-        pendingDeleteIdx = parseInt(e.currentTarget.dataset.index, 10);
-        const docNo = e.currentTarget.dataset.doc;
+        pendingDeleteDocNo = e.currentTarget.dataset.doc;
+        pendingDeleteId = e.currentTarget.dataset.id;
 
         if (deleteMsg) {
-          deleteMsg.textContent = `Apakah Anda yakin ingin menghapus data dokumen "${docNo}"? Data yang dihapus tidak dapat dipulihkan kembali.`;
+          deleteMsg.textContent = `Apakah Anda yakin ingin menghapus data dokumen "${pendingDeleteDocNo}"? Data yang dihapus tidak dapat dipulihkan kembali.`;
         }
         if (deleteOverlay) deleteOverlay.style.display = 'block';
         if (deleteDialog) deleteDialog.style.display = 'block';
@@ -408,17 +751,22 @@ export function renderNurseryActivityForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
+  const userCtx = getCurrentUserContext();
+  const activeWorkers = getWorkersForUserContext(userCtx, { activeOnly: true });
+  const availableBlocks = getBlocksForNurseryActivity(userCtx);
+
   let selectedAktivitasIndex = 0;
   let selectedProgram = MASTER_PROGRAM_PEMBIBITAN[0];
   let selectedBlokIndex = 0;
   let isInputManual = false;
   const workerSelectionState = {};
-  MASTER_PEKERJA_LIST.forEach((w) => {
+  activeWorkers.forEach((w) => {
     workerSelectionState[w.id] = false;
   });
 
   const currentAktivitas = MASTER_AKTIVITAS[selectedAktivitasIndex];
-  const currentBlok = MASTER_LOKASI_BLOK[selectedBlokIndex];
+  const currentBlok = availableBlocks[selectedBlokIndex] || availableBlocks[0] || null;
+  const availableCfna = getConfirmedCfnaForActivity(currentAktivitas);
 
   app.innerHTML = `
     <div class="page nursery-activity-page" style="position: relative; display: flex; flex-direction: column; height: 100%; background: #F8FAF9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden;">
@@ -460,6 +808,27 @@ export function renderNurseryActivityForm() {
           </div>
         </div>
 
+        <!-- CARD 1B: ALOKASI BIAYA (CFNA) -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+          <label for="select-cfna" style="display: block; font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 5px;">
+            Alokasi Biaya (CFNA)
+          </label>
+          <div style="position: relative;">
+            <select id="select-cfna" style="width: 100%; height: 42px; padding: 0 32px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #1F2937; appearance: none; outline: none; cursor: pointer;" ${availableCfna.length === 0 ? 'disabled' : ''}>
+              ${availableCfna.length > 0 ? availableCfna.map(c => `
+                <option value="${c.code}">
+                  ${c.code} - ${c.name}
+                </option>
+              `).join('') : `
+                <option value="">Belum tersedia mapping CFNA</option>
+              `}
+            </select>
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+        </div>
+
         <!-- CARD 2: NAMA PROGRAM PEMBIBITAN -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
           <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 5px;">
@@ -480,11 +849,13 @@ export function renderNurseryActivityForm() {
           </label>
           <div style="position: relative;">
             <select id="select-blok" style="width: 100%; height: 42px; padding: 0 32px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #1F2937; appearance: none; outline: none; cursor: pointer;">
-              ${MASTER_LOKASI_BLOK.map((b, i) => `
-                <option value="${i}" ${i === selectedBlokIndex ? 'selected' : ''}>
-                  ${b.blok}
+              ${availableBlocks.length > 0 ? availableBlocks.map((b, i) => `
+                <option value="${b.id}" ${i === selectedBlokIndex ? 'selected' : ''}>
+                  ${b.blockName} (${b.cloneName} - ${((b.maturedArea || 0) + (b.immatureArea || 0)).toFixed(2)} HA)
                 </option>
-              `).join('')}
+              `).join('') : `
+                <option value="">Tidak ada blok aktif</option>
+              `}
             </select>
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
               <polyline points="6 9 12 15 18 9"></polyline>
@@ -495,11 +866,15 @@ export function renderNurseryActivityForm() {
         <!-- CARD 4: PEKERJA (LIST PEKERJA DENGAN TOGGLE DI SISI KANAN) -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
           <div style="font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 10px;">
-            Pekerja Aktif (${MASTER_PEKERJA_LIST.length})
+            Pekerja Aktif (${activeWorkers.length})
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${MASTER_PEKERJA_LIST.map((worker) => {
+            ${activeWorkers.length === 0 ? `
+              <div style="font-size: 0.82rem; color: #64748B; padding: 12px; text-align: center; background: #F1F5F9; border-radius: 6px;">
+                Tidak ada pekerja aktif pada unit kerja ini
+              </div>
+            ` : activeWorkers.map((worker) => {
               const isChecked = !!workerSelectionState[worker.id];
               return `
                 <div class="worker-item-card" data-id="${worker.id}" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; gap: 8px;">
@@ -508,7 +883,7 @@ export function renderNurseryActivityForm() {
                       ${worker.name}
                     </div>
                     <div style="font-size: 0.72rem; color: #64748B; margin-top: 1px;">
-                      ${worker.code} • ${worker.role}
+                      ${worker.code} • ${worker.position || 'Pekerja Bibitan'}
                     </div>
                   </div>
                   <button class="worker-btn-toggle" type="button" data-worker-id="${worker.id}" aria-pressed="${isChecked}" style="position: relative; width: 44px; height: 24px; background: ${isChecked ? '#116834' : '#CBD5E1'}; border-radius: 14px; border: none; padding: 2px; cursor: pointer; transition: background 0.2s ease; display: inline-flex; align-items: center; flex-shrink: 0;">
@@ -562,14 +937,33 @@ export function renderNurseryActivityForm() {
     navigate('/nursery-activity');
   });
 
+  // Event Listener: Dynamic Aktivitas -> update CFNA options
+  const selectAktivitas = app.querySelector('#select-aktivitas');
+  const selectCfna = app.querySelector('#select-cfna');
+  selectAktivitas?.addEventListener('change', (e) => {
+    const idx = parseInt(e.target.value, 10);
+    const akt = MASTER_AKTIVITAS[idx] || MASTER_AKTIVITAS[0];
+    const cfnaOptions = getConfirmedCfnaForActivity(akt);
+    if (selectCfna) {
+      if (cfnaOptions.length > 0) {
+        selectCfna.disabled = false;
+        selectCfna.innerHTML = cfnaOptions.map(c => `<option value="${c.code}">${c.code} - ${c.name}</option>`).join('');
+      } else {
+        selectCfna.disabled = true;
+        selectCfna.innerHTML = '<option value="">Belum tersedia mapping CFNA</option>';
+      }
+    }
+  });
+
   // Event Listener: Dropdown Lokasi Blok Change
   const selectBlok = app.querySelector('#select-blok');
   const displayLuasBlok = app.querySelector('#display-luas-blok');
   selectBlok?.addEventListener('change', (e) => {
-    const idx = parseInt(e.target.value);
-    const blk = MASTER_LOKASI_BLOK[idx] || MASTER_LOKASI_BLOK[0];
-    if (displayLuasBlok) {
-      displayLuasBlok.textContent = `${blk.luas} HA`;
+    const chosenVal = e.target.value;
+    const blk = getBlockById(chosenVal) || availableBlocks[0] || null;
+    if (displayLuasBlok && blk) {
+      const totalLuas = ((blk.maturedArea || 0) + (blk.immatureArea || 0)).toFixed(2);
+      displayLuasBlok.textContent = `${totalLuas} HA`;
     }
   });
 
@@ -634,25 +1028,109 @@ export function renderNurseryActivityForm() {
   app.querySelector('#btn-simpan-hasil')?.addEventListener('click', () => {
     const selectAktivitasEl = app.querySelector('#select-aktivitas');
     const selectBlokEl = app.querySelector('#select-blok');
-    const aktIdx = parseInt(selectAktivitasEl?.value || '0');
+    const selectCfnaEl = app.querySelector('#select-cfna');
+    const aktIdx = parseInt(selectAktivitasEl?.value || '0', 10);
     const selectedAkt = MASTER_AKTIVITAS[aktIdx] || MASTER_AKTIVITAS[0];
     const selectedProg = selectedProgram || MASTER_PROGRAM_PEMBIBITAN[0];
-    const blkIdx = parseInt(selectBlokEl?.value || '0');
-    const selectedBlok = MASTER_LOKASI_BLOK[blkIdx] || MASTER_LOKASI_BLOK[0];
-    const selectedWorkers = MASTER_PEKERJA_LIST.filter(w => workerSelectionState[w.id]);
+
+    const chosenBlockId = selectBlokEl?.value;
+    const blockMasterRecord = getBlockById(chosenBlockId) || (availableBlocks.length > 0 ? availableBlocks[0] : null);
+
+    if (!blockMasterRecord) {
+      toast('Blok yang dipilih tidak valid dalam master data.', 'error');
+      return;
+    }
+
+    const totalLuas = Math.round(((blockMasterRecord.maturedArea || 0) + (blockMasterRecord.immatureArea || 0)) * 100) / 100;
+    const selectedBlok = {
+      blockId: blockMasterRecord.id,
+      blockCode: blockMasterRecord.blockCode,
+      blockName: blockMasterRecord.blockName,
+      divisionCode: blockMasterRecord.divisionCode,
+      divisionName: blockMasterRecord.divisionName,
+      estateCode: blockMasterRecord.estateCode,
+      estateName: blockMasterRecord.estateName,
+      cloneName: blockMasterRecord.cloneName,
+      maturedArea: blockMasterRecord.maturedArea,
+      immatureArea: blockMasterRecord.immatureArea,
+      luas: totalLuas,
+      luasHa: totalLuas,
+      blok: blockMasterRecord.blockName
+    };
+    const selectedWorkersList = activeWorkers.filter(w => workerSelectionState[w.id]);
+
+    // Validasi & Ambil Canonical Worker Data
+    const canonicalWorkers = [];
+    for (const w of selectedWorkersList) {
+      const canonical = getWorkerById(w.id);
+      if (!canonical) {
+        toast(`Pekerja ID ${w.id} tidak ditemukan dalam master data.`, 'error');
+        return;
+      }
+      if (!isWorkerActive(canonical.id)) {
+        toast(`Pekerja ${canonical.name} tidak berstatus aktif.`, 'error');
+        return;
+      }
+      if (userCtx?.estateId && !isWorkerInScope(canonical.id, userCtx.estateId, userCtx.divisionId)) {
+        toast(`Pekerja ${canonical.name} berada di luar cakupan Estate/Divisi pengguna.`, 'error');
+        return;
+      }
+      canonicalWorkers.push({
+        id: canonical.id,
+        workerId: canonical.id,
+        name: canonical.name,
+        workerName: canonical.name,
+        code: canonical.code,
+        workerCode: canonical.code,
+        position: canonical.position || 'Pekerja Bibitan',
+        role: canonical.position || 'Pekerja Bibitan'
+      });
+    }
+
+    // Validasi & Ambil Canonical CFNA Data
+    let allocationCode = null;
+    let allocationName = null;
+
+    if (selectCfnaEl && !selectCfnaEl.disabled && selectCfnaEl.value) {
+      const chosenCode = String(selectCfnaEl.value).trim();
+      const cfnaRecord = getCfnaByCode(chosenCode);
+
+      if (!cfnaRecord) {
+        toast('Kode CFNA tidak valid dalam master data.', 'error');
+        return;
+      }
+      if (cfnaRecord.status !== CFNA_STATUS.ACTIVE) {
+        toast('Status CFNA tidak aktif.', 'error');
+        return;
+      }
+      const isConfirmedForActivity = getConfirmedCfnaForActivity(selectedAkt).some(c => c.code === chosenCode);
+      if (!isConfirmedForActivity) {
+        toast('Kode CFNA tidak terkonfirmasi untuk aktivitas ini.', 'error');
+        return;
+      }
+
+      // Name MUST strictly come from master data
+      allocationCode = cfnaRecord.code;
+      allocationName = cfnaRecord.name;
+    }
 
     const existingRecords = storage.get('nursery_activity_records', []);
     const docNo = `ACT/NUR/2026/0${existingRecords.length + 1}`;
 
-    const record = {
+    let record = {
       id: `ACT-${Date.now()}`,
       docNo,
       aktivitas: selectedAkt,
       program: selectedProg,
       lokasiBlok: selectedBlok,
-      pekerja: selectedWorkers,
+      pekerja: canonicalWorkers,
+      allocationCode,
+      allocationName,
       createdAt: new Date().toISOString()
     };
+
+    // Apply immutable actor snapshot via Phase 8B transaction actor engine
+    record = applyTransactionActor(record, 'CREATE', userCtx);
 
     existingRecords.push(record);
     storage.set('nursery_activity_records', existingRecords);
@@ -661,3 +1139,5 @@ export function renderNurseryActivityForm() {
     navigate('/nursery-activity');
   });
 }
+
+

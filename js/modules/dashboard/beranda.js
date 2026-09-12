@@ -154,7 +154,7 @@ export function renderBeranda() {
   const app = document.getElementById('app');
   const user = session.get();
 
-  if (user?.role === ROLES.PENGURUS) {
+  if (user?.role === ROLES.PENGURUS || user?.role === ROLES.PENGURUS_KEBUN_SEPUPU) {
     renderBerandaPengurus();
     return;
   }

@@ -12,8 +12,9 @@ import { storage } from '../../core/storage.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { seedDatabase } from '../../db/seed.js';
 import { DEMO_USERS } from '../../data/demo-data.js';
+import { getDemoPersonas, getDemoPersonaByCode } from '../../data/demo-personas.js';
 
-const ROLE_ORDER = ['MANTRI_TANAMAN', 'ASISTEN', 'ASISTEN_BIBITAN', 'ASKEP', 'PENGURUS', 'TEKNIKER_I', 'KTU'];
+const ROLE_ORDER = ['MANTRI_TANAMAN', 'ASISTEN', 'ASISTEN_BIBITAN', 'ASKEP', 'PENGURUS', 'PENGURUS_KEBUN_SEPUPU', 'TEKNIKER_I', 'KTU'];
 const VPN_KEY = 'vpn';
 
 function startSession(user, { demo = false } = {}) {
@@ -24,7 +25,7 @@ function startSession(user, { demo = false } = {}) {
     name: user.name,
     position: user.position || (ROLE_LABELS[user.role] || user.role),
     divisionId: user.divisionId,
-    divisionName: 'Tanah Besih - Divisi I',
+    divisionName: user.divisionName || (user.divisionId === 'DIV-APM' ? 'Aek Pamingke - All Division' : 'Tanah Besih - Divisi I'),
     isDemoSession: demo
   });
 }
@@ -167,23 +168,55 @@ export async function renderLogin() {
 }
 
 function openRolePicker(users, showError) {
-  const roles = ROLE_ORDER.filter((r) => users.some((u) => u.role === r && u.active !== false));
-  const radios = roles
-    .map(
-      (r, i) => `
-      <label class="role-pick">
-        <input type="radio" name="demo-role" value="${esc(r)}" ${i === 0 ? 'checked' : ''} />
-        <span class="role-pick-label">${esc(ROLE_LABELS[r] || r)}</span>
-      </label>
-    `
-    )
-    .join('');
+  const allPersonas = getDemoPersonas();
+  const tbsPersonas = allPersonas.filter((p) => p.estateId === 'EST-TBS');
+  const apmPersonas = allPersonas.filter((p) => p.estateId === 'EST-APM');
+
+  const currentSession = session.get();
+  const currentCode = currentSession?.code || currentSession?.userId || currentSession?.id || 'MNT001';
+
+  const renderPersonaRadios = (personas) =>
+    personas
+      .map((p) => {
+        const isSelected = p.code === currentCode;
+        const roleLabel = ROLE_LABELS[p.role] || p.role;
+        const locationMeta = p.scopeType === 'DIVISION' ? `${p.estateName} · ${p.divisionName}` : p.estateName;
+        return `
+          <label class="role-pick persona-pick ${isSelected ? 'is-selected' : ''}">
+            <input type="radio" name="demo-role" value="${esc(p.code)}" ${isSelected ? 'checked' : ''} />
+            <div class="role-pick-info">
+              <div class="role-pick-name">${esc(p.name)}</div>
+              <div class="role-pick-meta">${esc(p.position)} · ${esc(roleLabel)}</div>
+              <div class="role-pick-location">${esc(locationMeta)}</div>
+            </div>
+          </label>
+        `;
+      })
+      .join('');
 
   openModal({
     title: 'Pilih Role Demo',
     body: `
-      <p class="role-pick-hint">Mode demo — pilih role untuk masuk tanpa kredensial.</p>
-      <div class="role-pick-list">${radios}</div>
+      <p class="role-pick-hint">Mode demo — pilih persona untuk masuk tanpa kredensial.</p>
+      <div class="demo-estate-group">
+        <div class="demo-estate-header">
+          <span class="demo-estate-name">🏛️ Tanah Besih</span>
+          <span class="demo-estate-count">${tbsPersonas.length} PERSONA</span>
+        </div>
+        <div class="role-pick-list">
+          ${renderPersonaRadios(tbsPersonas)}
+        </div>
+      </div>
+
+      <div class="demo-estate-group" style="margin-top: 14px;">
+        <div class="demo-estate-header">
+          <span class="demo-estate-name">🏛️ Aek Pamingke</span>
+          <span class="demo-estate-count">${apmPersonas.length} PERSONA</span>
+        </div>
+        <div class="role-pick-list">
+          ${renderPersonaRadios(apmPersonas)}
+        </div>
+      </div>
     `,
     footer: `
       <button class="btn btn-ghost" data-role-cancel>Batal</button>
@@ -208,11 +241,28 @@ function openRolePicker(users, showError) {
     }
 
     const sel = root.querySelector('input[name="demo-role"]:checked');
-    const role = sel?.value;
-    const user = users.find((u) => u.role === role && u.active !== false);
-    if (!role || !user) return;
-    startSession(user, { demo: true });
+    const code = sel?.value;
+    const targetPersona = getDemoPersonaByCode(code);
+    if (!code || !targetPersona) return;
+
+    // Compatibility mapping: for PGS002 (Mukhsin Haji), preserve legacy role in raw session to protect existing request flow
+    const sessionRole = targetPersona.code === 'PGS002' ? 'PENGURUS_KEBUN_SEPUPU' : targetPersona.role;
+
+    session.start({
+      userId: targetPersona.code,
+      code: targetPersona.code,
+      role: sessionRole,
+      name: targetPersona.name,
+      position: targetPersona.position,
+      estateId: targetPersona.estateId,
+      estateName: targetPersona.estateName,
+      divisionId: targetPersona.divisionId,
+      divisionName: targetPersona.divisionName,
+      scopeType: targetPersona.scopeType,
+      isDemoSession: true
+    });
+
     closeModal();
-    renderSuccess(user, { demo: true });
+    renderSuccess(targetPersona, { demo: true });
   });
 }

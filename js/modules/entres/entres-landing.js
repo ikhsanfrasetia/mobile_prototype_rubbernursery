@@ -142,7 +142,7 @@ export function renderEntresLanding() {
               <!-- IDENTITAS PLOT -->
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px;">
                 <span style="font-weight: 700; font-size: 0.95rem; color: #111111; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                  ${tx.kodePlot || 'PLOT-ENT-01'} • ${tx.namaKlon || 'PB 260'}
+                  ${tx.kodePlot || 'Plot IA'} • ${tx.namaKlon || 'IRCA331'}
                 </span>
               </div>
 

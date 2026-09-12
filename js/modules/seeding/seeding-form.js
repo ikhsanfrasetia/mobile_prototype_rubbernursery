@@ -2,6 +2,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
+import { getActiveKlons, normalizeKlonName, resolveKlon } from '../../data/klon-master.js';
 
 export function renderSeedingForm() {
   const app = document.getElementById('app');
@@ -35,7 +36,7 @@ export function renderSeedingForm() {
     ditolak: editTx ? editTx.ditolak : '',
     alasanDitolak: editTx ? editTx.alasanDitolak : 'Tidak Ada',
     tableRows: editTx ? JSON.parse(JSON.stringify(editTx.rows)) : [
-      { bedengan: scannedBedengan || 'Bedengan 01', klon: sourceTx.klon || 'GT-01', disemai: '', polybag: '' }
+      { bedengan: scannedBedengan || 'Bedengan 01', klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1', disemai: '', polybag: '' }
     ],
     photos: editTx ? JSON.parse(JSON.stringify(editTx.photos)) : []
   };
@@ -45,7 +46,8 @@ export function renderSeedingForm() {
     batchList.unshift(state.batchNo);
   }
 
-  const klonList = ['GT-01', 'PB-235', 'PB-260', 'PB-330', 'RRIM-600', 'IRR-300', 'BPM-24', 'PR-261'];
+  const activeKlons = getActiveKlons();
+  const klonList = activeKlons.map(k => k.canonicalName);
   const bedenganList = Array.from({length: 10}, (_, i) => `Bedengan ${(i + 1).toString().padStart(2, '0')}`);
   
   const totalPenerimaan = parseInt(sourceTx.qty || 0);
@@ -120,7 +122,7 @@ export function renderSeedingForm() {
           <div style="display: grid; grid-template-columns: 0.85fr 1fr 1.45fr; gap: 6px; text-align: center; align-items: flex-end;">
             <div>
               <div style="font-size: 0.72rem; font-weight: 600; color: #555555; margin-bottom: 6px;">Klon Awal</div>
-              <div style="font-size: 0.82rem; font-weight: 700; color: #111111; height: 30px; display: flex; align-items: center; justify-content: center;">${sourceTx.klon || 'GT-01'}</div>
+              <div style="font-size: 0.82rem; font-weight: 700; color: #111111; height: 30px; display: flex; align-items: center; justify-content: center;">${sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1'}</div>
             </div>
             <div>
               <div style="font-size: 0.72rem; font-weight: 600; color: #555555; margin-bottom: 6px;">Total Penerimaan</div>
@@ -409,7 +411,7 @@ export function renderSeedingForm() {
     tableBody.querySelectorAll('.btn-reset-row').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.currentTarget.dataset.index);
-        state.tableRows[idx] = { bedengan: '', klon: sourceTx.klon || 'GT-01', disemai: '', polybag: '' };
+        state.tableRows[idx] = { bedengan: '', klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1', disemai: '', polybag: '' };
         renderTableRows();
         calculateTotals();
         validateForm();
@@ -475,7 +477,7 @@ export function renderSeedingForm() {
 
   btnTambahData.addEventListener('click', () => {
     const currentBedengan = scannedBedengan || state.tableRows[0]?.bedengan || 'Bedengan 01';
-    state.tableRows.push({ bedengan: currentBedengan, klon: sourceTx.klon || 'GT-01', disemai: '', polybag: '' });
+    state.tableRows.push({ bedengan: currentBedengan, klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1', disemai: '', polybag: '' });
     renderTableRows();
     validateForm();
   });
@@ -611,7 +613,7 @@ export function renderSeedingForm() {
       batchNo: state.batchNo || 'Batch-01',
       program: sourceTx.program || 'PRG/NUR/01/2026',
       tahapan: sourceTx.tahapan || 'Rubber Main Nursery',
-      klonAwal: sourceTx.klon || 'GT-01',
+      klonAwal: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1',
       bedengan: bedenganDisplay,
       totalPenerimaan,
       ditolak: state.ditolak,

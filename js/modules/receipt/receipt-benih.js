@@ -2,6 +2,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, generateUniqueDocNo } from '../../core/utils.js';
+import { getActiveKlons } from '../../data/klon-master.js';
 
 export function renderReceiptBenih() {
   const app = document.getElementById('app');
@@ -607,17 +608,27 @@ export function renderReceiptBenih() {
 
   // TABLE LOGIC
   function renderTableRows() {
-    containerReceiptRows.innerHTML = state.tableRows.map((row, index) => `
+    const activeKlons = getActiveKlons();
+    containerReceiptRows.innerHTML = state.tableRows.map((row, index) => {
+      const isSelectedInActive = activeKlons.some(k => k.canonicalName === row.klon || k.code === row.klon || k.id === row.klon);
+      const legacyOption = (row.klon && !isSelectedInActive)
+        ? `<option value="${row.klon}" selected>${row.klon}</option>`
+        : '';
+      
+      const optionsHtml = activeKlons.map(k => {
+        const isSelected = row.klon === k.canonicalName || row.klon === k.code || row.klon === k.id;
+        return `<option value="${k.canonicalName}" ${isSelected ? 'selected' : ''}>${k.canonicalName}</option>`;
+      }).join('');
+
+      return `
       <div class="receipt-row" data-index="${index}" style="display: grid; grid-template-columns: 1.1fr 1fr 1.5fr; border-bottom: 1px solid #D1CDCD; align-items: center; position: relative; background: #FFFFFF;">
         
         <!-- Klon -->
         <div style="padding: 8px 6px; border-right: 1px solid #D1CDCD; position: relative;">
            <select class="input-klon" data-index="${index}" style="width: 100%; border: 1px solid #D1D5DB; border-radius: 4px; background: #FFFFFF; font-size: 0.80rem; outline: none; appearance: none; padding: 6px 18px 6px 6px; color: ${row.klon ? '#111' : '#999'}; box-sizing: border-box;">
              <option value="" disabled ${!row.klon ? 'selected' : ''} hidden>Pilih Klon</option>
-             <option value="IRCA120" ${row.klon === 'IRCA120' ? 'selected' : ''}>IRCA120</option>
-             <option value="IRR300" ${row.klon === 'IRR300' ? 'selected' : ''}>IRR300</option>
-             <option value="GT1" ${row.klon === 'GT1' ? 'selected' : ''}>GT1</option>
-             <option value="PB260" ${row.klon === 'PB260' ? 'selected' : ''}>PB260</option>
+             ${legacyOption}
+             ${optionsHtml}
            </select>
            <svg viewBox="0 0 24 24" width="12" height="12" stroke="#6B7280" stroke-width="2" fill="none" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </div>
@@ -652,7 +663,8 @@ export function renderReceiptBenih() {
         </button>
         ` : ''}
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     bindTableEvents();
     calculateTotals();
@@ -957,8 +969,8 @@ export function renderReceiptBenih() {
       tahapan: state.tahapanPertumbuhan,
       program: state.programNurseryCode,
       klon: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') 
-             ? (state.tableRows[0]?.klon || 'Klon GT-01') 
-             : (selectedKlon ? selectedKlon.title : 'Klon GT-01'),
+             ? (state.tableRows[0]?.klon || 'GT 1') 
+             : (selectedKlon ? (selectedKlon.title || selectedKlon.canonicalName || 'GT 1') : 'GT 1'),
       tanggal: formattedDate,
       tipeAsal: originTypeDisplay,
       sumber: state.sourceName || '-',

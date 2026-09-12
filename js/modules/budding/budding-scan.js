@@ -9,6 +9,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { formatStandardDocNo } from '../../core/utils.js';
+import { normalizeKlonName } from '../../data/klon-master.js';
 
 export function renderBuddingScan() {
   const app = document.getElementById('app');
@@ -20,7 +21,7 @@ export function renderBuddingScan() {
     docNo: formatStandardDocNo(2026, 'SOW', 1),
     program: 'PRG/NUR/01/2026',
     tahapan: 'Rubber Main Nursery',
-    klonAwal: 'GT-01',
+    klonAwal: 'GT 1',
     totalDisemai: 20000,
     rows: [{ bedengan: 'Bedengan 01', disemai: 20000 }]
   };
@@ -28,7 +29,7 @@ export function renderBuddingScan() {
   const batchNo = selectedBatch.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;
   const docNo = selectedBatch.docNo || (selectedBatch.sourceDocNo ? selectedBatch.sourceDocNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', 1));
   const program = selectedBatch.program || 'PRG/NUR/01/2026';
-  const klonRootstock = selectedBatch.klonAwal || selectedBatch.klon || 'GT1';
+  const klonRootstock = selectedBatch.klonAwal ? normalizeKlonName(selectedBatch.klonAwal) : (selectedBatch.klon ? normalizeKlonName(selectedBatch.klon) : 'GT 1');
   const batchBedengan = (selectedBatch.rows || []).map(r => r.bedengan).filter(Boolean);
   const bedenganDisplay = batchBedengan.length > 0 ? Array.from(new Set(batchBedengan)).join(', ') : 'Bedengan 01';
 

@@ -23,7 +23,7 @@ export const DEMO_USERS = [
   {
     id: 'AST001',
     code: 'AST001',
-    name: 'Asisten',
+    name: 'Nando',
     role: 'ASISTEN',
     position: 'Asisten Lapangan',
     divisionId: 'DIV-001',
@@ -33,7 +33,7 @@ export const DEMO_USERS = [
   {
     id: 'ASB001',
     code: 'ASB001',
-    name: 'Asisten Bibitan',
+    name: 'Annisa',
     role: 'ASISTEN_BIBITAN',
     position: 'Asisten Pembibitan',
     divisionId: 'DIV-001',
@@ -43,7 +43,7 @@ export const DEMO_USERS = [
   {
     id: 'ASK001',
     code: 'ASK001',
-    name: 'Askep',
+    name: 'Beny Sihotang',
     role: 'ASKEP',
     position: 'Asisten Kepala',
     divisionId: 'DIV-001',
@@ -53,7 +53,7 @@ export const DEMO_USERS = [
   {
     id: 'PGS001',
     code: 'PGS001',
-    name: 'Pengurus',
+    name: 'Junaidi',
     role: 'PENGURUS',
     position: 'Pengurus Kebun',
     divisionId: 'DIV-001',
@@ -61,9 +61,20 @@ export const DEMO_USERS = [
     active: true
   },
   {
+    id: 'PKS001',
+    code: 'PKS001',
+    name: 'Mukhsin Haji',
+    role: 'PENGURUS_KEBUN_SEPUPU',
+    position: 'Pengurus Kebun Sepupu',
+    divisionId: 'DIV-APM',
+    divisionName: 'Aek Pamingke - All Division',
+    password: 'demo',
+    active: true
+  },
+  {
     id: 'TKI001',
     code: 'TKI001',
-    name: 'Tekniker I',
+    name: 'Marihot',
     role: 'TEKNIKER_I',
     position: 'Tekniker I',
     divisionId: 'DIV-001',
@@ -73,7 +84,7 @@ export const DEMO_USERS = [
   {
     id: 'KTU001',
     code: 'KTU001',
-    name: 'KTU',
+    name: 'Kusnadi',
     role: 'KTU',
     position: 'Kepala Tata Usaha',
     divisionId: 'DIV-001',
@@ -85,12 +96,14 @@ export const DEMO_USERS = [
 export const DEMO_DIVISIONS = [
   { id: 'DIV-001', code: 'DIV-001', name: 'Tanah Besih - Divisi I', estateId: 'EST-001' },
   { id: 'DIV-002', code: 'DIV-002', name: 'Tanah Besih - Divisi Kantor', estateId: 'EST-001' },
-  { id: 'DIV-003', code: 'DIV-003', name: 'Tanah Besih - Divisi Pabrik', estateId: 'EST-002' }
+  { id: 'DIV-003', code: 'DIV-003', name: 'Tanah Besih - Divisi Pabrik', estateId: 'EST-002' },
+  { id: 'DIV-APM', code: 'DIV-APM', name: 'Aek Pamingke - All Division', estateId: 'EST-003' }
 ];
 
 export const DEMO_ESTATES = [
   { id: 'EST-001', code: 'EST-001', name: 'Tanah Besih' },
-  { id: 'EST-002', code: 'EST-002', name: 'Tanah Besih' }
+  { id: 'EST-002', code: 'EST-002', name: 'Tanah Besih' },
+  { id: 'EST-003', code: 'EST-003', name: 'Aek Pamingke' }
 ];
 
 export const DEMO_PROGRAM_REPLANTING = [
@@ -228,6 +241,7 @@ function ROLES_DEMO() {
     { id: 'ASISTEN_BIBITAN', code: 'ASISTEN_BIBITAN', name: 'Asisten Bibitan' },
     { id: 'ASKEP', code: 'ASKEP', name: 'Askep' },
     { id: 'PENGURUS', code: 'PENGURUS', name: 'Pengurus' },
+    { id: 'PENGURUS_KEBUN_SEPUPU', code: 'PENGURUS_KEBUN_SEPUPU', name: 'Pengurus Kebun Sepupu' },
     { id: 'TEKNIKER_I', code: 'TEKNIKER_I', name: 'Tekniker I' },
     { id: 'KTU', code: 'KTU', name: 'KTU' }
   ];

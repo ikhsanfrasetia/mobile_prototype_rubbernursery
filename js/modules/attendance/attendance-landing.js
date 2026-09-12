@@ -5,6 +5,8 @@
  */
 
 import { session } from '../../core/session.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
+import { getWorkersForUserContext } from '../../data/worker-master.js';
 import { attendanceRepository, workerRepository } from '../../db/repositories.js';
 import { todayISO, formatFullDateIndonesian } from '../../core/utils.js';
 import { navigate } from '../../core/router.js';
@@ -28,6 +30,7 @@ export function getAttendanceTypeByHour() {
 
 export async function renderAttendanceLanding() {
   const app = document.getElementById('app');
+  const userContext = getCurrentUserContext();
   const today = todayISO();
   const attType = getAttendanceTypeByHour();
   const pageTitle = attType === 'PULANG' ? 'Presensi Pulang' : 'Presensi Datang';
@@ -53,7 +56,8 @@ export async function renderAttendanceLanding() {
   const pekerjaHadir = todayAttendances.filter((a) => a.type === 'WORKER' && (a.attendanceType === attType || (!a.attendanceType && attType === 'DATANG'))).length;
   const totalHadir = supervisorHadir + pekerjaHadir;
 
-  const totalWorkersCount = workers.length > 0 ? workers.length : 5;
+  const scopedActiveWorkers = getWorkersForUserContext(userContext, { activeOnly: true });
+  const totalWorkersCount = scopedActiveWorkers.length > 0 ? scopedActiveWorkers.length : (workers.length > 0 ? workers.length : 5);
   const supervisorBelum = isSupervisorDone ? 0 : 1;
   const pekerjaBelum = Math.max(0, totalWorkersCount - pekerjaHadir);
   const totalBelum = supervisorBelum + pekerjaBelum;

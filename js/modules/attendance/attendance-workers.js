@@ -7,6 +7,13 @@
 
 import { session } from '../../core/session.js';
 import { storage } from '../../core/storage.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
+import {
+  getWorkersForUserContext,
+  getWorkerById,
+  isWorkerInScope,
+  isWorkerActive
+} from '../../data/worker-master.js';
 import { workerRepository, attendanceRepository, photoRepository } from '../../db/repositories.js';
 import { todayISO, nowISO, nowTimeWithSeconds, uid, esc } from '../../core/utils.js';
 import { navigate } from '../../core/router.js';
@@ -20,6 +27,12 @@ const workerSessionAttendance = new Map();
 let activeWorkersList = null;
 let absentWorkersList = null;
 let activeMediaStream = null;
+let currentContextKey = null;
+
+// Legacy fallback workers (Phase 9F-A backward compatibility)
+const LEGACY_FALLBACK_WORKERS = [
+  { id: 'WRK-001', code: '1405739', name: 'Fadilah Yusuf Purba', position: 'Pekerja Bibitan' }
+];
 
 function stopWorkerCamera() {
   if (activeMediaStream) {
@@ -90,10 +103,20 @@ function updateWorkerRowInDOM(workerId, photoData, isChecked) {
 export async function renderAttendanceWorkers() {
   const app = document.getElementById('app');
   const user = session.get() || { name: 'Wagiman', code: '1405482', position: ROLE_LABELS.MANTRI_TANAMAN, id: 'MNT001' };
+  const userContext = getCurrentUserContext();
   const today = todayISO();
   const attType = getAttendanceTypeByHour();
 
-  // Muat data master dari DB jika belum diinisialisasi
+  // Reset state jika terjadi pergantian context / persona
+  const contextKey = `${userContext?.estateId || ''}:${userContext?.divisionId || ''}:${user?.id || ''}`;
+  if (currentContextKey !== contextKey) {
+    activeWorkersList = null;
+    absentWorkersList = null;
+    workerSessionAttendance.clear();
+    currentContextKey = contextKey;
+  }
+
+  // Muat data master dari DB jika ada (backward compatibility) & presensi hari ini
   let allMasterWorkers = [];
   let existingAttendances = [];
 
@@ -125,36 +148,18 @@ export async function renderAttendanceWorkers() {
            (a.attendanceType === attType || (!a.attendanceType && attType === 'DATANG'))
   );
 
+  // Single Source of Truth dari worker-master.js untuk context aktif
+  const scopedActive = getWorkersForUserContext(userContext, { activeOnly: true });
+  const scopedAll = getWorkersForUserContext(userContext, { activeOnly: false });
+  const scopedAbsent = scopedAll.filter((w) => w.status !== 'ACTIVE' || w.active === false || !!w.absentType);
+
   // Inisialisasi daftar pekerja aktif jika belum ada
   if (!activeWorkersList) {
-    activeWorkersList = allMasterWorkers
-      .filter((w) => w.active !== false && !w.absentType)
-      .map((w) => ({ ...w, position: 'Pekerja Bibitan' }));
-
-    if (activeWorkersList.length === 0) {
-      activeWorkersList = [
-        { id: 'WRK-001', code: '1405739', name: 'Fadilah Yusuf Purba', position: 'Pekerja Bibitan', indicator: '1', defaultPhoto: 'assets/icons/worker_fadilah.jpg' },
-        { id: 'WRK-002', code: '1405739', name: 'Adek Apria Syahputra', position: 'Pekerja Bibitan', defaultPhoto: 'assets/icons/worker_adek.jpg' },
-        { id: 'WRK-003', code: '1405739', name: 'Bidara Iswanda', position: 'Pekerja Bibitan', defaultPhoto: 'assets/icons/worker_bidara.jpg' },
-        { id: 'WRK-004', code: '1405739', name: 'Tugiman', position: 'Pekerja Bibitan', defaultPhoto: 'assets/icons/worker_tugiman.jpg' },
-        { id: 'WRK-005', code: '1405810', name: 'Budi Santoso', position: 'Pekerja Bibitan', defaultPhoto: 'assets/icons/worker_fadilah.jpg' },
-        { id: 'WRK-006', code: '1405811', name: 'Andi Wijaya', position: 'Pekerja Bibitan', defaultPhoto: 'assets/icons/worker_adek.jpg' },
-        { id: 'WRK-007', code: '1405812', name: 'Joko Prasetyo', position: 'Pekerja Bibitan', defaultPhoto: 'assets/icons/worker_bidara.jpg' }
-      ];
-    }
+    activeWorkersList = scopedActive.map((w) => ({ ...w, position: w.position || 'Pekerja Bibitan' }));
   }
 
   if (!absentWorkersList) {
-    absentWorkersList = allMasterWorkers
-      .filter((w) => w.active === false || !!w.absentType)
-      .map((w) => ({ ...w, position: 'Pekerja Bibitan' }));
-
-    if (absentWorkersList.length === 0) {
-      absentWorkersList = [
-        { id: 'WRK-ABS-001', code: '1405739', name: 'Supriadi', position: 'Pekerja Bibitan', absentType: 'C', absentReason: 'Cuti' },
-        { id: 'WRK-ABS-002', code: '1405739', name: 'Pahrul', position: 'Pekerja Bibitan', absentType: 'P4', absentReason: 'P4' }
-      ];
-    }
+    absentWorkersList = scopedAbsent.map((w) => ({ ...w, position: w.position || 'Pekerja Bibitan' }));
   }
 
   // Sinkronisasi record IndexedDB ke state sementara jika ada
@@ -291,7 +296,8 @@ export async function renderAttendanceWorkers() {
   });
 
   app.querySelector('#btn-add-worker').addEventListener('click', () => {
-    openAddWorkerModal(allMasterWorkers);
+    const availablePool = getWorkersForUserContext(userContext, { activeOnly: true });
+    openAddWorkerModal(availablePool, userContext);
   });
 
   // Toggle Presensi Click Event
@@ -368,21 +374,40 @@ export async function renderAttendanceWorkers() {
       const photosToSave = [];
 
       for (const w of checkedInList) {
+        const canonical = getWorkerById(w.id);
+
+        // Validasi terhadap master data jika record merupakan worker master baru
+        if (canonical) {
+          if (!isWorkerActive(canonical.id)) {
+            throw new Error(`Pekerja ${canonical.name} tidak berstatus aktif.`);
+          }
+          if (userContext?.estateId && !isWorkerInScope(canonical.id, userContext.estateId, userContext.divisionId)) {
+            throw new Error(`Pekerja ${canonical.name} berada di luar cakupan Estate/Divisi pengguna.`);
+          }
+        }
+
         const state = workerSessionAttendance.get(w.id);
         const recordId = uid('ATT-WRK-');
         const photoId = `PHOTO-${recordId}`;
         const photoData = (state && state.photo) ? state.photo : (w.defaultPhoto || 'assets/icons/worker_fadilah.jpg');
 
+        const workerName = canonical ? canonical.name : w.name;
+        const workerCode = canonical ? canonical.code : (w.code || '1405739');
+        const workerId = canonical ? canonical.id : w.id;
+        const position = canonical?.position || w.position || 'Pekerja Bibitan';
+        const locationStr = `${userContext?.estateName || 'Tanah Besih'} - ${userContext?.divisionName || 'Divisi I'}`;
+
         recordsToSave.push({
           id: recordId,
           type: 'WORKER',
           userId: user.id || 'MNT001',
-          workerId: w.id,
-          name: w.name,
-          workerName: w.name,
-          code: w.code || '1405739',
-          workerCode: w.code || '1405739',
-          position: w.position || 'Pekerja Bibitan',
+          createdByUserId: user.id || 'MNT001',
+          workerId: w.id ? workerId : w.id,
+          name: workerName,
+          workerName: w.name ? workerName : w.name,
+          code: workerCode,
+          workerCode,
+          position,
           workerRole: 'Pekerja Bibitan',
           supervisorId: user.id || 'MNT001',
           attendanceType: attType,
@@ -393,7 +418,9 @@ export async function renderAttendanceWorkers() {
           date: today,
           tanggal: today,
           time: state?.time || nowTimeWithSeconds(),
-          location: 'Tanah Besih - Divisi I',
+          location: locationStr,
+          estateId: userContext?.estateId,
+          divisionId: userContext?.divisionId,
           latitude: state?.latitude || '3.1943859',
           longitude: state?.longitude || '11.2312083',
           createdAt: nowISO(),
@@ -412,9 +439,9 @@ export async function renderAttendanceWorkers() {
         }
       }
 
-      // Simpan batch ke IndexedDB dengan aman
+      // Simpan batch ke IndexedDB dengan aman via repository
       for (const record of recordsToSave) {
-        await attendanceRepository.create(record);
+        await attendanceRepository.create(record, userContext);
       }
 
       // Sinkronkan ke storage agar tampil instan di katalog transaksi
@@ -444,10 +471,10 @@ export async function renderAttendanceWorkers() {
       navigate('/attendance', { replace: true });
     } catch (err) {
       console.error('[Attendance Workers Save Error]', err);
-      toast.danger('Gagal menyimpan data presensi pekerja.');
+      toast.danger('Gagal menyimpan data presensi pekerja: ' + (err.message || ''));
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.textContent = 'Simpan Presensi Datang';
+        saveBtn.textContent = saveBtnLabel;
       }
     }
   });
@@ -499,9 +526,9 @@ function bindSwipeDelete() {
 }
 
 // Buka Modal Tambah Pekerja dari Master Data
-function openAddWorkerModal(allMasterWorkers) {
+function openAddWorkerModal(allAvailablePool, userContext) {
   const activeIds = new Set(activeWorkersList.map((w) => w.id));
-  const availableWorkers = allMasterWorkers.filter((w) => !activeIds.has(w.id));
+  const availableWorkers = (allAvailablePool || []).filter((w) => !activeIds.has(w.id));
 
   const modalBody = `
     <div class="add-worker-modal-wrap">
@@ -552,9 +579,17 @@ function openAddWorkerModal(allMasterWorkers) {
     document.querySelectorAll('[data-add-id]').forEach((item) => {
       item.addEventListener('click', () => {
         const wId = item.dataset.addId;
-        const found = allMasterWorkers.find((w) => w.id === wId);
+        const found = (allAvailablePool || []).find((w) => w.id === wId);
         if (found) {
-          activeWorkersList.push(found);
+          if (!isWorkerActive(found.id)) {
+            toast.warning(`Pekerja ${found.name} tidak aktif.`);
+            return;
+          }
+          if (userContext?.estateId && !isWorkerInScope(found.id, userContext.estateId, userContext.divisionId)) {
+            toast.warning(`Pekerja ${found.name} di luar cakupan Estate/Divisi.`);
+            return;
+          }
+          activeWorkersList.push({ ...found, position: 'Pekerja Bibitan' });
           closeModal();
           toast.success(`Pekerja ${found.name} ditambahkan.`);
           renderAttendanceWorkers();

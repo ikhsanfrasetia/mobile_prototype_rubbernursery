@@ -11,21 +11,23 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
-
-export const MASTER_PLOTS_ENTRES = [
-  { kodePlot: 'PLOT-ENT-01', namaKlon: 'PB 260', jlhPokok: 200, lokasi: 'Kebun Entres Blok A1', tahunTanam: 2022 },
-  { kodePlot: 'PLOT-ENT-02', namaKlon: 'IRCA 19', jlhPokok: 150, lokasi: 'Kebun Entres Blok A2', tahunTanam: 2022 },
-  { kodePlot: 'PLOT-ENT-03', namaKlon: 'IRR 112', jlhPokok: 250, lokasi: 'Kebun Entres Blok B1', tahunTanam: 2023 },
-  { kodePlot: 'PLOT-ENT-04', namaKlon: 'RRIM 911', jlhPokok: 180, lokasi: 'Kebun Entres Blok B2', tahunTanam: 2023 },
-  { kodePlot: 'PLOT-ENT-05', namaKlon: 'PB 330', jlhPokok: 220, lokasi: 'Kebun Entres Blok C1', tahunTanam: 2024 },
-  { kodePlot: 'PLOT-ENT-06', namaKlon: 'IRR 104', jlhPokok: 190, lokasi: 'Kebun Entres Blok C2', tahunTanam: 2024 }
-];
+import { getAllBudwoodPlots, resolvePlot } from '../../data/budwood-plot-master.js';
 
 export function renderToppingScan() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const plots = storage.get('entres_master_plots', MASTER_PLOTS_ENTRES);
+  const masterPlots = getAllBudwoodPlots();
+  const plots = masterPlots.map(p => ({
+    id: p.id,
+    kodePlot: `Plot ${p.plotName}`,
+    plotName: p.plotName,
+    namaKlon: p.cloneName,
+    jlhPokok: p.numberOfPlants,
+    lokasi: `Kebun Entres - Plot ${p.plotName}`,
+    tahunTanam: p.yearOfPlanting,
+    budwoodCode: p.budwoodCode
+  }));
 
   app.innerHTML = `
     <div class="page topping-scan-page" style="display: flex; flex-direction: column; height: 100%; background: #0F172A; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; position: relative; overflow: hidden;">
@@ -56,7 +58,7 @@ export function renderToppingScan() {
         <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 8px 14px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; backdrop-filter: blur(4px);">
           <div>
             <div style="font-size: 0.66rem; color: #94A3B8;">Target Kegiatan:</div>
-            <div style="font-size: 0.78rem; font-weight: 700; color: #F8FAFC;">Topping Kebun Entres</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #F8FAFC;">Topping Kebun Entres (${plots.length} Plot)</div>
           </div>
           <span style="font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: rgba(34, 197, 94, 0.2); color: #4ADE80; border: 1px solid rgba(34, 197, 94, 0.3);">Scan Plot</span>
         </div>
@@ -116,20 +118,18 @@ export function renderToppingScan() {
         <!-- SIMULATOR CONTROL (UNTUK UJI REVIEW & SELEKSI CEPAT) -->
         <div style="width: 100%; max-width: 320px; background: rgba(30, 41, 59, 0.9); border: 1px dashed rgba(255,255,255,0.2); border-radius: 8px; padding: 10px; box-sizing: border-box;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-size: 0.70rem; color: #94A3B8; font-weight: 600;">⚡ Quick Simulator (Uji Prototipe):</span>
+            <span style="font-size: 0.70rem; color: #94A3B8; font-weight: 600;">⚡ Quick Simulator (Master Plot):</span>
             <button id="btn-mock-fail-scan" type="button" style="background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.4); color: #F87171; border-radius: 4px; padding: 2px 6px; font-size: 0.65rem; font-weight: 700; cursor: pointer;">
               Simulasi Gagal (1x)
             </button>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-            <button class="btn-mock-qr-scan" data-plot="PLOT-ENT-01" type="button" style="background: #1E293B; border: 1px solid #334155; color: #E2E8F0; padding: 6px; border-radius: 6px; font-size: 0.70rem; cursor: pointer; text-align: left;">
-              <span style="display: block; font-weight: 700; color: #4ADE80;">Scan PLOT-ENT-01</span>
-              <span style="font-size: 0.62rem; color: #94A3B8;">PB 260 • 200 Pkk</span>
-            </button>
-            <button class="btn-mock-qr-scan" data-plot="PLOT-ENT-02" type="button" style="background: #1E293B; border: 1px solid #334155; color: #E2E8F0; padding: 6px; border-radius: 6px; font-size: 0.70rem; cursor: pointer; text-align: left;">
-              <span style="display: block; font-weight: 700; color: #4ADE80;">Scan PLOT-ENT-02</span>
-              <span style="font-size: 0.62rem; color: #94A3B8;">IRCA 19 • 150 Pkk</span>
-            </button>
+            ${plots.slice(0, 4).map(p => `
+              <button class="btn-mock-qr-scan" data-plot="${p.plotName}" type="button" style="background: #1E293B; border: 1px solid #334155; color: #E2E8F0; padding: 6px; border-radius: 6px; font-size: 0.70rem; cursor: pointer; text-align: left;">
+                <span style="display: block; font-weight: 700; color: #4ADE80;">Scan ${p.kodePlot}</span>
+                <span style="font-size: 0.62rem; color: #94A3B8;">${p.namaKlon} • ${p.jlhPokok} Pkk</span>
+              </button>
+            `).join('')}
           </div>
         </div>
 
@@ -142,7 +142,7 @@ export function renderToppingScan() {
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #E2E8F0;">
           <div>
             <div style="font-size: 0.95rem; font-weight: 700; color: #111827;">Pilih Plot Entres (Manual)</div>
-            <div style="font-size: 0.72rem; color: #64748B;">Pilih plot lokasi pengambilan kayu topping</div>
+            <div style="font-size: 0.72rem; color: #64748B;">Total 97 plot kebun entres resmi</div>
           </div>
           <button id="btn-close-manual-sheet" type="button" style="background: none; border: none; padding: 6px; cursor: pointer; color: #64748B;">
             <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -152,16 +152,21 @@ export function renderToppingScan() {
           </button>
         </div>
 
-        <div style="flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;">
+        <!-- SEARCH PLOT -->
+        <div style="padding: 10px 16px; border-bottom: 1px solid #F1F5F9; background: #F8FAFC;">
+          <input id="inp-search-plot" type="text" placeholder="🔍 Cari nama plot atau klon..." style="width: 100%; height: 38px; padding: 0 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.82rem; color: #1E293B; box-sizing: border-box; outline: none;" />
+        </div>
+
+        <div id="plot-list-container" style="flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;">
           ${plots.map(p => `
-            <div class="card-pick-manual-plot" data-plot="${p.kodePlot}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.15s ease;">
+            <div class="card-pick-manual-plot" data-plot="${p.plotName}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.15s ease;">
               <div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="font-weight: 700; font-size: 0.85rem; color: #0F172A;">${p.kodePlot}</span>
                   <span style="background: #E8F5E9; color: #116834; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">${p.namaKlon}</span>
                 </div>
                 <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
-                  ${p.lokasi} • Thn Tanam: ${p.tahunTanam || 2023}
+                  ${p.lokasi} • Thn Tanam: ${p.tahunTanam || 2019}
                 </div>
               </div>
               <div style="text-align: right;">
@@ -280,8 +285,8 @@ export function renderToppingScan() {
   // Mock Barcode Quick Scan Buttons
   app.querySelectorAll('.btn-mock-qr-scan').forEach(btn => {
     btn.addEventListener('click', () => {
-      const pCode = btn.dataset.plot;
-      const found = plots.find(p => p.kodePlot === pCode) || plots[0];
+      const pName = btn.dataset.plot;
+      const found = plots.find(p => p.plotName === pName || p.kodePlot === pName) || plots[0];
       proceedWithPlot(found, 'QR_SCAN');
     });
   });
@@ -289,6 +294,8 @@ export function renderToppingScan() {
   // Manual Sheet Logic
   const overlay = app.querySelector('#overlay-manual-sheet');
   const sheet = app.querySelector('#sheet-manual-plot');
+  const listContainer = app.querySelector('#plot-list-container');
+  const searchInput = app.querySelector('#inp-search-plot');
 
   const openSheet = () => {
     overlay.style.display = 'block';
@@ -304,12 +311,52 @@ export function renderToppingScan() {
   overlay?.addEventListener('click', closeSheet);
   app.querySelector('#btn-close-manual-sheet')?.addEventListener('click', closeSheet);
 
-  app.querySelectorAll('.card-pick-manual-plot').forEach(card => {
-    card.addEventListener('click', () => {
-      const pCode = card.dataset.plot;
-      const found = plots.find(p => p.kodePlot === pCode) || plots[0];
-      closeSheet();
-      proceedWithPlot(found, 'MANUAL');
+  const bindCardClicks = () => {
+    app.querySelectorAll('.card-pick-manual-plot').forEach(card => {
+      card.addEventListener('click', () => {
+        const pName = card.dataset.plot;
+        const found = plots.find(p => p.plotName === pName || p.kodePlot === pName) || plots[0];
+        closeSheet();
+        proceedWithPlot(found, 'MANUAL');
+      });
     });
+  };
+  bindCardClicks();
+
+  // Search plot filter
+  searchInput?.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    const filtered = plots.filter(p => 
+      p.kodePlot.toLowerCase().includes(q) || 
+      p.plotName.toLowerCase().includes(q) || 
+      p.namaKlon.toLowerCase().includes(q) ||
+      p.id.toLowerCase().includes(q)
+    );
+
+    if (listContainer) {
+      if (filtered.length === 0) {
+        listContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: #94A3B8; font-size: 0.82rem;">Plot "${q}" tidak ditemukan.</div>`;
+      } else {
+        listContainer.innerHTML = filtered.map(p => `
+          <div class="card-pick-manual-plot" data-plot="${p.plotName}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.15s ease;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: 700; font-size: 0.85rem; color: #0F172A;">${p.kodePlot}</span>
+                <span style="background: #E8F5E9; color: #116834; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">${p.namaKlon}</span>
+              </div>
+              <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
+                ${p.lokasi} • Thn Tanam: ${p.tahunTanam || 2019}
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 0.82rem; font-weight: 700; color: #116834;">${p.jlhPokok} Pkk</div>
+              <span style="font-size: 0.65rem; color: #2563EB; font-weight: 600;">Pilih Plot →</span>
+            </div>
+          </div>
+        `).join('');
+        bindCardClicks();
+      }
+    }
   });
 }
+

@@ -1,6 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
+import { normalizeKlonName } from '../../data/klon-master.js';
 
 export function renderBuddingRegrafting() {
   const app = document.getElementById('app');
@@ -72,8 +73,8 @@ export function renderBuddingRegrafting() {
           sourceBuddingDocNo: insp.buddingDocNo,
           tanggal: insp.tanggal || 'Hari ini',
           bedengan: insp.bedengan || 'Bedengan 01',
-          klonRootstock: insp.klonRootstock || 'GT-01',
-          klonAwal: insp.klonEntres || 'PB 260',
+          klonRootstock: insp.klonRootstock ? normalizeKlonName(insp.klonRootstock) : 'GT 1',
+          klonAwal: insp.klonEntres ? normalizeKlonName(insp.klonEntres) : 'PB 260',
           jumlah: toRegraft,
           sisaRegrafting: toRegraft,
           status: 'READY_TO_REGRAFT'
@@ -94,8 +95,8 @@ export function renderBuddingRegrafting() {
         sourceBuddingDocNo: rtx.sourceBuddingDocNo || `OKL/2026/0${i + 1}`,
         tanggal: rtx.tanggal || 'Hari ini',
         bedengan: rtx.bedengan || 'Bedengan 01',
-        klonRootstock: rtx.klonRootstock || 'GT-01',
-        klonAwal: rtx.klonAwal || rtx.klonEntres || 'PB 260',
+        klonRootstock: rtx.klonRootstock ? normalizeKlonName(rtx.klonRootstock) : 'GT 1',
+        klonAwal: rtx.klonAwal ? normalizeKlonName(rtx.klonAwal) : (rtx.klonEntres ? normalizeKlonName(rtx.klonEntres) : 'PB 260'),
         jumlah: totalPop,
         sisaRegrafting: 0,
         status: 'READY_TO_REGRAFT'
@@ -244,7 +245,7 @@ export function renderBuddingRegrafting() {
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 10px;">
                     <div>
                       <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Klon Awal (Gagal)</div>
-                      <div style="font-size: 0.84rem; font-weight: 800; color: #D32F2F;">${poolItem.klonAwal || 'IRR 215'}</div>
+                      <div style="font-size: 0.84rem; font-weight: 800; color: #D32F2F;">${poolItem.klonAwal ? normalizeKlonName(poolItem.klonAwal) : 'PB 260'}</div>
                     </div>
                     <div>
                       <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Lokasi Bedengan</div>
@@ -277,7 +278,7 @@ export function renderBuddingRegrafting() {
                     <div style="display: flex; flex-direction: column; gap: 6px;">
                       <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="color: #6B7280;">Klon Batang Bawah:</span>
-                        <span style="font-weight: 700; color: #111827; text-align: right;">${poolItem.klonRootstock || 'GT1'}</span>
+                        <span style="font-weight: 700; color: #111827; text-align: right;">${poolItem.klonRootstock ? normalizeKlonName(poolItem.klonRootstock) : 'GT 1'}</span>
                       </div>
                       <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="color: #6B7280;">Dokumen Pemeriksaan:</span>

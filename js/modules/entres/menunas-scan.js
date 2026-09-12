@@ -11,21 +11,23 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
-
-export const MASTER_PLOTS_ENTRES = [
-  { kodePlot: 'PLOT-ENT-01', namaKlon: 'PB 260', jlhPokok: 200, lokasi: 'Kebun Entres Blok A1', tahunTanam: 2022 },
-  { kodePlot: 'PLOT-ENT-02', namaKlon: 'IRCA 19', jlhPokok: 150, lokasi: 'Kebun Entres Blok A2', tahunTanam: 2022 },
-  { kodePlot: 'PLOT-ENT-03', namaKlon: 'IRR 112', jlhPokok: 250, lokasi: 'Kebun Entres Blok B1', tahunTanam: 2023 },
-  { kodePlot: 'PLOT-ENT-04', namaKlon: 'RRIM 911', jlhPokok: 180, lokasi: 'Kebun Entres Blok B2', tahunTanam: 2023 },
-  { kodePlot: 'PLOT-ENT-05', namaKlon: 'PB 330', jlhPokok: 220, lokasi: 'Kebun Entres Blok C1', tahunTanam: 2024 },
-  { kodePlot: 'PLOT-ENT-06', namaKlon: 'IRR 104', jlhPokok: 190, lokasi: 'Kebun Entres Blok C2', tahunTanam: 2024 }
-];
+import { getAllBudwoodPlots, resolvePlot } from '../../data/budwood-plot-master.js';
 
 export function renderMenunasScan() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const plots = storage.get('entres_master_plots', MASTER_PLOTS_ENTRES);
+  const masterPlots = getAllBudwoodPlots();
+  const plots = masterPlots.map(p => ({
+    id: p.id,
+    kodePlot: `Plot ${p.plotName}`,
+    plotName: p.plotName,
+    namaKlon: p.cloneName,
+    jlhPokok: p.numberOfPlants,
+    lokasi: `Kebun Entres - Plot ${p.plotName}`,
+    tahunTanam: p.yearOfPlanting,
+    budwoodCode: p.budwoodCode
+  }));
 
   app.innerHTML = `
     <div class="page menunas-scan-page" style="display: flex; flex-direction: column; height: 100%; background: #0F172A; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; position: relative; overflow: hidden;">
@@ -56,7 +58,7 @@ export function renderMenunasScan() {
         <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 8px 14px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; backdrop-filter: blur(4px);">
           <div>
             <div style="font-size: 0.66rem; color: #94A3B8;">Target Kegiatan:</div>
-            <div style="font-size: 0.78rem; font-weight: 700; color: #F8FAFC;">Menunas Kebun Entres</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #F8FAFC;">Menunas Kebun Entres (${plots.length} Plot)</div>
           </div>
           <span style="font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: rgba(34, 197, 94, 0.2); color: #4ADE80; border: 1px solid rgba(34, 197, 94, 0.3);">Scan Plot</span>
         </div>
@@ -103,7 +105,7 @@ export function renderMenunasScan() {
         <div style="width: 100%; max-width: 330px; background: rgba(30, 41, 59, 0.85); border: 1px dashed rgba(34, 197, 94, 0.4); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; box-sizing: border-box;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <span style="font-size: 0.70rem; font-weight: 700; color: #4ADE80; text-transform: uppercase; letter-spacing: 0.04em;">
-              ⚡ Simulasi Scan:
+              ⚡ Simulasi Scan (Master Plot):
             </span>
             <button type="button" id="btn-mock-fail-scan" title="Simulasi jika pemindaian QR gagal 1 kali" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #FCA5A5; font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
               ⚠️ Uji Gagal Scan
@@ -111,7 +113,7 @@ export function renderMenunasScan() {
           </div>
           <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
             ${plots.slice(0, 6).map(p => `
-              <button type="button" class="btn-mock-qr-scan" data-plot="${p.kodePlot}" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #F1F5F9; font-size: 0.72rem; font-weight: 600; padding: 5px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.15s ease;">
+              <button type="button" class="btn-mock-qr-scan" data-plot="${p.plotName}" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #F1F5F9; font-size: 0.72rem; font-weight: 600; padding: 5px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.15s ease;">
                 🏷️ ${p.kodePlot} (${p.namaKlon})
               </button>
             `).join('')}
@@ -148,14 +150,19 @@ export function renderMenunasScan() {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
           <div>
             <h2 style="font-size: 0.98rem; font-weight: 800; color: #111827; margin: 0 0 2px;">Pilih Plot Entres Manual</h2>
-            <p style="font-size: 0.72rem; color: #64748B; margin: 0;">Gunakan opsi ini bila patok fisik belum dipasang barcode QR.</p>
+            <p style="font-size: 0.72rem; color: #64748B; margin: 0;">Total 97 plot kebun entres resmi.</p>
           </div>
           <button id="btn-close-manual-sheet" type="button" style="background: #F1F5F9; border: none; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569;">✕</button>
         </div>
 
-        <div style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px;">
+        <!-- SEARCH PLOT -->
+        <div style="padding: 0 0 10px 0; border-bottom: 1px solid #F1F5F9;">
+          <input id="inp-search-plot-menunas" type="text" placeholder="🔍 Cari nama plot atau klon..." style="width: 100%; height: 38px; padding: 0 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.82rem; color: #1E293B; box-sizing: border-box; outline: none;" />
+        </div>
+
+        <div id="plot-menunas-list-container" style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 8px; padding-bottom: 10px;">
           ${plots.map((p) => `
-            <div class="card-pick-manual-plot" data-plot="${p.kodePlot}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.15s ease;">
+            <div class="card-pick-manual-plot" data-plot="${p.plotName}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.15s ease;">
               <div>
                 <div style="font-weight: 800; font-size: 0.88rem; color: #1E293B;">${p.kodePlot}</div>
                 <div style="font-size: 0.70rem; color: #116834; font-weight: 700; margin-top: 2px;">Klon: ${p.namaKlon} • Populasi: ${p.jlhPokok} Pkk</div>
@@ -294,8 +301,8 @@ export function renderMenunasScan() {
   // Mock Barcode Quick Scan Buttons
   app.querySelectorAll('.btn-mock-qr-scan').forEach(btn => {
     btn.addEventListener('click', () => {
-      const pCode = btn.dataset.plot;
-      const found = plots.find(p => p.kodePlot === pCode) || plots[0];
+      const pName = btn.dataset.plot;
+      const found = plots.find(p => p.plotName === pName || p.kodePlot === pName) || plots[0];
       proceedWithPlot(found, 'QR_SCAN');
     });
   });
@@ -303,6 +310,8 @@ export function renderMenunasScan() {
   // Manual Sheet Logic
   const overlay = app.querySelector('#overlay-manual-sheet');
   const sheet = app.querySelector('#sheet-manual-plot');
+  const listContainer = app.querySelector('#plot-menunas-list-container');
+  const searchInput = app.querySelector('#inp-search-plot-menunas');
 
   const openSheet = () => {
     overlay.style.display = 'block';
@@ -318,12 +327,48 @@ export function renderMenunasScan() {
   overlay?.addEventListener('click', closeSheet);
   app.querySelector('#btn-close-manual-sheet')?.addEventListener('click', closeSheet);
 
-  app.querySelectorAll('.card-pick-manual-plot').forEach(card => {
-    card.addEventListener('click', () => {
-      const pCode = card.dataset.plot;
-      const found = plots.find(p => p.kodePlot === pCode) || plots[0];
-      closeSheet();
-      proceedWithPlot(found, 'MANUAL');
+  const bindCardClicks = () => {
+    app.querySelectorAll('.card-pick-manual-plot').forEach(card => {
+      card.addEventListener('click', () => {
+        const pName = card.dataset.plot;
+        const found = plots.find(p => p.plotName === pName || p.kodePlot === pName) || plots[0];
+        closeSheet();
+        proceedWithPlot(found, 'MANUAL');
+      });
     });
+  };
+  bindCardClicks();
+
+  // Search Filter
+  searchInput?.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    const filtered = plots.filter(p => 
+      p.kodePlot.toLowerCase().includes(q) || 
+      p.plotName.toLowerCase().includes(q) || 
+      p.namaKlon.toLowerCase().includes(q) ||
+      p.id.toLowerCase().includes(q)
+    );
+
+    if (listContainer) {
+      if (filtered.length === 0) {
+        listContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: #94A3B8; font-size: 0.82rem;">Plot "${q}" tidak ditemukan.</div>`;
+      } else {
+        listContainer.innerHTML = filtered.map((p) => `
+          <div class="card-pick-manual-plot" data-plot="${p.plotName}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.15s ease;">
+            <div>
+              <div style="font-weight: 800; font-size: 0.88rem; color: #1E293B;">${p.kodePlot}</div>
+              <div style="font-size: 0.70rem; color: #116834; font-weight: 700; margin-top: 2px;">Klon: ${p.namaKlon} • Populasi: ${p.jlhPokok} Pkk</div>
+              <div style="font-size: 0.66rem; color: #64748B; margin-top: 1px;">${p.lokasi} • Tanam ${p.tahunTanam}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #DCFCE7; color: #15803D;">Tersedia</span>
+              <span style="font-size: 0.82rem; color: #116834; font-weight: 700;">Pilih →</span>
+            </div>
+          </div>
+        `).join('');
+        bindCardClicks();
+      }
+    }
   });
 }
+
