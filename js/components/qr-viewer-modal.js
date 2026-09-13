@@ -103,18 +103,6 @@ export function openQRViewerModal({
         </div>
       </div>
 
-      <!-- PAYLOAD JSON DATA QR -->
-      <div style="margin-bottom: 14px;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-          <span style="font-size: 0.70rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Payload JSON Data QR</span>
-          <button id="btn-copy-qr-payload" type="button" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 4px; padding: 3px 8px; font-size: 0.70rem; font-weight: 600; color: #334155; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2" fill="none"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-            <span>Salin Data</span>
-          </button>
-        </div>
-        <pre id="qr-payload-json" style="background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 10px; font-size: 0.70rem; font-family: monospace; color: #1E293B; margin: 0; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">${esc(payloadJson)}</pre>
-      </div>
-
       <!-- FOOTER -->
       <div style="display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid #E2E8F0; padding-top: 12px;">
         <button id="btn-close-qr-modal" type="button" style="flex: 1; padding: 9px 12px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem; font-weight: 600; color: #475569; cursor: pointer; text-align: center;">Tutup</button>
@@ -128,17 +116,6 @@ export function openQRViewerModal({
   openModal(html);
 
   document.getElementById('btn-close-qr-modal')?.addEventListener('click', closeModal);
-
-  document.getElementById('btn-copy-qr-payload')?.addEventListener('click', () => {
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(payloadJson);
-      }
-      toast('Payload JSON QR berhasil disalin.', 'success');
-    } catch {
-      toast('Payload JSON QR berhasil disalin.', 'success');
-    }
-  });
 
   document.getElementById('btn-print-qr')?.addEventListener('click', () => {
     toast('Dokumen QR siap dicetak.', 'info');

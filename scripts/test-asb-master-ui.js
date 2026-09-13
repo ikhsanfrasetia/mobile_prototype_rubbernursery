@@ -410,7 +410,7 @@ assert(qrBedModalHtml.includes('PT SOCFIN INDONESIA'), 'QR Viewer memuat Header 
 assert(qrBedModalHtml.includes('Identitas QR Code Bedengan &amp; Pembibitan Karet'), 'QR Viewer subtitle sesuai pola canonical');
 assert(qrBedModalHtml.includes('BED-APM-D2-001'), 'QR Viewer menampilkan Kode Bedengan');
 assert(qrBedModalHtml.includes('Bedengan 001'), 'QR Viewer menampilkan Nama Bedengan');
-assert(qrBedModalHtml.includes('Payload JSON Data QR'), 'QR Viewer memuat section Payload JSON');
+assert(!qrBedModalHtml.includes('Payload JSON Data QR'), 'QR Viewer TIDAK memuat section Payload JSON');
 assert(!qrBedModalHtml.includes('availableQty') && !qrBedModalHtml.includes('currentQty'), 'Bedengan QR payload TIDAK memuat stock/availableQty');
 
 // 5.2 Batch QR Modal
@@ -437,6 +437,7 @@ assert(qrBatchModalHtml.includes('PT SOCFIN INDONESIA'), 'Batch QR Viewer memuat
 assert(qrBatchModalHtml.includes('Identitas QR Code Batch &amp; Pembibitan Karet'), 'Batch QR Viewer subtitle sesuai pola canonical');
 assert(qrBatchModalHtml.includes('B-APM-02-001'), 'Batch QR Viewer menampilkan Kode Batch');
 assert(qrBatchModalHtml.includes('Batch 001'), 'Batch QR Viewer menampilkan Nama Batch');
+assert(!qrBatchModalHtml.includes('Payload JSON Data QR'), 'Batch QR Viewer TIDAK memuat section Payload JSON');
 assert(!qrBatchModalHtml.includes('availableQty') && !qrBatchModalHtml.includes('currentQty'), 'Batch QR payload TIDAK memuat stock/availableQty');
 
 // 5.3 Buttons Footer
