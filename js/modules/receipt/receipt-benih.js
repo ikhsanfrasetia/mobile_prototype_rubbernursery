@@ -3,6 +3,7 @@ import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, generateUniqueDocNo } from '../../core/utils.js';
 import { getActiveKlons } from '../../data/klon-master.js';
+import { getActivePrograms } from '../../data/program-master.js';
 
 export function renderReceiptBenih() {
   const app = document.getElementById('app');
@@ -358,12 +359,7 @@ export function renderReceiptBenih() {
     'Batch-01', 'Batch-02', 'Batch-03', 'Batch-04', 'Batch-05'
   ];
 
-  const programData = [
-    { id: '1', code: 'PRG/NUR/01/2026' },
-    { id: '2', code: 'PRG/NUR/02/2027' },
-    { id: '3', code: 'PRG/NUR/03/2028' },
-    { id: '4', code: 'PRG/NUR/08/2029' }
-  ];
+  const programData = getActivePrograms();
 
   let sumberData = [];
   if (originTypeRaw === 'KEBUN_SENDIRI') {

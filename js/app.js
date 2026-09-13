@@ -16,6 +16,7 @@ import { renderAttendanceWorkers } from './modules/attendance/attendance-workers
 import { renderAttendanceSummary } from './modules/attendance/attendance-summary.js';
 import { initReviewWorkspace } from './modules/review/review-workspace.js';
 import { renderReceiptLanding } from './modules/receipt/receipt-landing.js';
+import { renderReceiptKebunSepupuLanding } from './modules/receipt/receipt-kebun-sepupu-landing.js';
 import { renderReceiptBenih } from './modules/receipt/receipt-benih.js';
 import { renderReceiptSir } from './modules/receipt/receipt-sir.js';
 import { renderReceiptCamera } from './modules/receipt/receipt-camera.js';
@@ -46,10 +47,16 @@ import { renderRequestKebunSepupuLanding } from './modules/request/request-kebun
 import { renderRequestKebunSepupuForm } from './modules/request/request-kebun-sepupu-form.js';
 import { renderDispatchLanding } from './modules/dispatch/dispatch-landing.js';
 import { renderDispatchReport } from './modules/dispatch/dispatch-report.js';
+import { renderMasterBedengan } from './modules/master/master-bedengan.js';
+import { renderMasterBatch } from './modules/master/master-batch.js';
+import { renderDestructionLanding } from './modules/destruction/destruction-landing.js';
+import { renderConsolidationLanding } from './modules/consolidation/consolidation-landing.js';
+import { renderVerificationLanding } from './modules/verification/verification-landing.js';
 import { renderAnalysisPlaceholder } from './modules/placeholder/analysis-placeholder.js';
 import { renderProfile } from './modules/profile/profile.js';
 import { seedDatabase } from './db/seed.js';
 import { initExportScreenToolbar } from './core/export-screen.js';
+import { session } from './core/session.js';
 
 /* ---- PWA: service worker ---- */
 if ('serviceWorker' in navigator) {
@@ -71,7 +78,15 @@ registerRoute('/attendance/supervisor', renderAttendanceSupervisor);
 registerRoute('/attendance/supervisor/result', renderAttendanceSupervisorResult);
 registerRoute('/attendance/workers', renderAttendanceWorkers);
 registerRoute('/attendance/summary', renderAttendanceSummary);
-registerRoute('/reception', renderReceiptLanding);
+registerRoute('/reception', () => {
+  const r = session.getRole();
+  if (r === 'PENGURUS' || r === 'PENGURUS_KEBUN_SEPUPU' || r === 'ASKEP' || r === 'ASISTEN_KEPALA' || r === 'ASISTEN' || r === 'ASISTEN_DIVISI' || r === 'ASISTEN_LAPANGAN' || r === 'ASISTEN_BIBITAN') {
+    renderReceiptKebunSepupuLanding();
+  } else {
+    renderReceiptLanding();
+  }
+});
+registerRoute('/reception/kebun-sepupu', renderReceiptKebunSepupuLanding);
 registerRoute('/reception/benih', renderReceiptBenih);
 registerRoute('/reception/benih/sir', renderReceiptSir);
 registerRoute('/reception/benih/camera', renderReceiptCamera);
@@ -106,6 +121,12 @@ registerRoute('/entres/menunas', renderMenunasScan);
 registerRoute('/entres/menunas/form', renderMenunasForm);
 registerRoute('/entres/topping', renderToppingScan);
 registerRoute('/entres/topping/form', renderToppingForm);
+registerRoute('/master/bedengan', renderMasterBedengan);
+registerRoute('/master/batch', renderMasterBatch);
+registerRoute('/destruction', renderDestructionLanding);
+registerRoute('/selection/culling', renderDestructionLanding);
+registerRoute('/consolidation', renderConsolidationLanding);
+registerRoute('/verification', renderVerificationLanding);
 registerRoute('/profile', renderProfile);
 
 /* Fallback Not Found */

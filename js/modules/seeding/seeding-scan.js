@@ -9,6 +9,8 @@ import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
+import { getActiveBedengan, getBedenganByQR } from '../../data/bedengan-master.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 
 export function renderSeedingScan() {
   const app = document.getElementById('app');
@@ -20,16 +22,21 @@ export function renderSeedingScan() {
   const program = sourceTx.program || 'PRG/NUR/01/2026';
   const klon = sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1';
 
-  const bedenganList = Array.from({ length: 10 }, (_, i) => {
-    const num = (i + 1).toString().padStart(2, '0');
-    return {
-      name: `Bedengan ${num}`,
-      code: `BED-${num}`,
-      qrPayload: `SIGMA-BED-${num}`,
-      capacity: '1.000 Polybag',
-      status: i < 3 ? 'Tersedia' : (i === 3 ? 'Penuh' : 'Tersedia')
-    };
+  const userCtx = getCurrentUserContext();
+  const scopedBeds = getActiveBedengan({
+    estateId: userCtx?.estateId,
+    divisionId: userCtx?.divisionId
   });
+  const bedListSource = scopedBeds.length > 0 ? scopedBeds : getActiveBedengan();
+
+  const bedenganList = bedListSource.map(b => ({
+    id: b.bedenganId,
+    name: b.name,
+    code: b.bedenganCode,
+    qrPayload: b.qrCode,
+    capacity: `${Number(b.capacity).toLocaleString('id-ID')} Bibit`,
+    status: b.status === 'AVAILABLE' ? 'Tersedia' : (b.status === 'OCCUPIED' ? 'Penuh' : 'Pemeliharaan')
+  }));
 
   app.innerHTML = `
     <div class="page seeding-scan-page" style="display: flex; flex-direction: column; height: 100%; background: #0F172A; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; position: relative; overflow: hidden;">

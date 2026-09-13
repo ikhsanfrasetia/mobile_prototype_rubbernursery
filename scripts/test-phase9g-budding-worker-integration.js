@@ -124,18 +124,18 @@ assert(
   `5. Rahmad (AST002) resolves 5 active workers in Tanah Besih Divisi II`
 );
 
-switchPersona('MNT002'); // Supriono: Aek Pamingke Divisi I
-const suprionoPool = getWorkersForUserContext();
+switchPersona('AST001'); // Nando: Aek Pamingke Divisi I
+const nandoPool = getWorkersForUserContext();
 assert(
-  suprionoPool.length === 5 && suprionoPool.every((w) => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-01'),
-  `6. Supriono (MNT002) resolves 5 active workers in Aek Pamingke Divisi I`
+  nandoPool.length === 5 && nandoPool.every((w) => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-01'),
+  `6. Nando (AST001) resolves 5 active workers in Aek Pamingke Divisi I`
 );
 
-switchPersona('ASB002'); // Abdul Gofur: Aek Pamingke Divisi II
-const abdulPool = getWorkersForUserContext();
+switchPersona('MNT002'); // Supriono: Aek Pamingke Divisi II
+const suprionoPool = getWorkersForUserContext();
 assert(
-  abdulPool.length === 5 && abdulPool.every((w) => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-02'),
-  `7. Abdul Gofur (ASB002) resolves 5 active workers in Aek Pamingke Divisi II`
+  suprionoPool.length === 5 && suprionoPool.every((w) => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-02'),
+  `7. Supriono (MNT002) resolves 5 active workers in Aek Pamingke Divisi II`
 );
 
 // ----------------------------------------------------
@@ -145,8 +145,8 @@ console.log('\n--- C. Isolation Rules ---');
 
 const tbsD1Ids = new Set(wagimanPool.map((w) => w.id));
 const tbsD2Ids = new Set(rahmadPool.map((w) => w.id));
-const apmD1Ids = new Set(suprionoPool.map((w) => w.id));
-const apmD2Ids = new Set(abdulPool.map((w) => w.id));
+const apmD1Ids = new Set(nandoPool.map((w) => w.id));
+const apmD2Ids = new Set(suprionoPool.map((w) => w.id));
 
 assert([...tbsD1Ids].every((id) => !tbsD2Ids.has(id)), '8. TBS D1 does not see TBS D2 workers');
 assert([...tbsD1Ids].every((id) => !apmD1Ids.has(id)), '9. TBS D1 does not see APM D1 workers');

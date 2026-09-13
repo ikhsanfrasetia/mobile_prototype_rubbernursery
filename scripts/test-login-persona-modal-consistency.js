@@ -154,7 +154,7 @@ assert(rahmad.estateName === 'Tanah Besih' && rahmad.divisionName === 'Divisi II
 assert(rahmad.scopeType === SCOPE_TYPES.DIVISION, 'Rahmad scope is DIVISION');
 
 const supriono = getDemoPersonaByCode('MNT002');
-assert(supriono.estateName === 'Aek Pamingke' && supriono.divisionName === 'Divisi I', 'Supriono is Aek Pamingke Divisi I');
+assert(supriono.estateName === 'Aek Pamingke' && supriono.divisionName === 'Divisi II', 'Supriono is Aek Pamingke Divisi II');
 assert(supriono.scopeType === SCOPE_TYPES.DIVISION, 'Supriono scope is DIVISION');
 
 const abdulGofur = getDemoPersonaByCode('ASB002');
@@ -271,7 +271,7 @@ assert(ctx.code === 'MNT002', 'Supriono Login: code is MNT002');
 assert(ctx.name === 'Supriono', 'Supriono Login: name is Supriono');
 assert(ctx.role === 'MANTRI_TANAMAN', 'Supriono Login: role is MANTRI_TANAMAN');
 assert(ctx.estateName === 'Aek Pamingke', 'Supriono Login: estate is Aek Pamingke');
-assert(ctx.divisionName === 'Divisi I', 'Supriono Login: division is Divisi I');
+assert(ctx.divisionName === 'Divisi II', 'Supriono Login: division is Divisi II');
 
 // Test 4: Abdul Gofur Login
 simulateModalLogin('ASB002');

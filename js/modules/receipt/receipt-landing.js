@@ -219,9 +219,9 @@ export function renderReceiptLanding() {
     navigate('/reception/benih');
   });
 
-  // --- MENU 2: PENERIMAAN BIBIT (NAVIGASI PLACEHOLDER) ---
+  // --- MENU 2: PENERIMAAN BIBIT (NAVIGASI PENERIMAAN KEBUN SEPUPU) ---
   app.querySelector('#btn-bibit').addEventListener('click', () => {
-    navigate('/reception/placeholder');
+    navigate('/reception/kebun-sepupu');
   });
 
   // --- MENU 3: PENERIMAAN MATA ENTRES (NAVIGASI PLACEHOLDER) ---

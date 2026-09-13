@@ -8,6 +8,7 @@ import { requestRepository } from '../../db/repositories.js';
 import { getActiveKlons, resolveKlon } from '../../data/klon-master.js';
 import { getActiveCfnaMaster, getCfnaByCode } from '../../data/cfna-master.js';
 import { getActiveEstates, resolveEstate } from '../../data/estate-master.js';
+import { getActivePrograms, getProgramById } from '../../data/program-master.js';
 import {
   formatDate,
   formatFullDateIndonesian,
@@ -40,13 +41,19 @@ export async function renderRequestKebunSepupuForm() {
     <option value="${esc(e.estate_id)}">${esc(e.estate_name)}</option>
   `).join('');
 
-  // 2. Kode Alokasi
+  // 2. Program Pembibitan
+  const activePrograms = getActivePrograms();
+  const programOptions = activePrograms.map(p => `
+    <option value="${esc(p.id)}">${esc(p.code)} - ${esc(p.name)}</option>
+  `).join('');
+
+  // 3. Kode Alokasi
   const activeCfna = getActiveCfnaMaster();
   const cfnaOptions = activeCfna.map(c => `
     <option value="${esc(c.code)}">${esc(c.code)} - ${esc(c.name)}</option>
   `).join('');
 
-  // 3. Klon yang Diminta
+  // 4. Klon yang Diminta
   const activeKlons = getActiveKlons();
   const cloneOptions = activeKlons.map(c => `
     <option value="${esc(c.canonicalName)}">${esc(c.canonicalName)}</option>
@@ -102,7 +109,17 @@ export async function renderRequestKebunSepupuForm() {
             </select>
           </div>
 
-          <!-- FIELD 2: KODE ALOKASI -->
+          <!-- FIELD 2: PROGRAM PEMBIBITAN -->
+          <div class="field" style="margin-bottom: 14px;">
+            <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
+              Program Pembibitan <span style="color: #EF4444;">*</span>
+            </label>
+            <select id="input-program" class="field-control" required style="width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; font-size: 0.88rem; color: #0F172A;">
+              ${programOptions}
+            </select>
+          </div>
+
+          <!-- FIELD 3: KODE ALOKASI -->
           <div class="field" style="margin-bottom: 14px;">
             <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
               Kode Alokasi <span style="color: #EF4444;">*</span>
@@ -113,7 +130,7 @@ export async function renderRequestKebunSepupuForm() {
             </select>
           </div>
 
-          <!-- FIELD 3: KLON YANG DIMINTA -->
+          <!-- FIELD 4: KLON YANG DIMINTA -->
           <div class="field" style="margin-bottom: 14px;">
             <label class="field-label" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">
               Klon yang Diminta <span style="color: #EF4444;">*</span>
@@ -202,6 +219,7 @@ export async function renderRequestKebunSepupuForm() {
   // Review button handler
   app.querySelector('#btn-review')?.addEventListener('click', () => {
     const targetEstateId = app.querySelector('#input-target-estate')?.value?.trim();
+    const programId = app.querySelector('#input-program')?.value?.trim();
     const allocationCode = app.querySelector('#input-allocation')?.value?.trim();
     const klon = app.querySelector('#input-klon')?.value?.trim();
     const category = app.querySelector('#input-category')?.value?.trim();
@@ -236,8 +254,8 @@ export async function renderRequestKebunSepupuForm() {
       toast('Silakan pilih Tahapan Pertumbuhan.', 'warning');
       return;
     }
-    if (!qtyStr || isNaN(qty) || qty < 0) {
-      toast('Jumlah bibit harus berupa angka dan minimal 0.', 'warning');
+    if (!qtyStr || isNaN(qty) || qty <= 0) {
+      toast('Jumlah bibit harus berupa angka dan minimal lebih besar dari 0.', 'warning');
       return;
     }
     if (!requiredDate) {
@@ -247,6 +265,7 @@ export async function renderRequestKebunSepupuForm() {
 
     const resolvedTargetEstate = resolveEstate(targetEstateId);
     const purpose = 'Penanaman / Bibit Tanam';
+    const programObj = getProgramById(programId);
     
     // Tampilkan Modal Review Pengajuan
     openReviewModal({
@@ -255,6 +274,8 @@ export async function renderRequestKebunSepupuForm() {
       user,
       targetEstateId,
       targetEstateName: resolvedTargetEstate ? resolvedTargetEstate.estate_name : targetEstateId,
+      programId: programId || 'PRG-2026-001',
+      programName: programObj ? programObj.name : 'Program Nursery 2026 - Batch 1',
       purpose,
       allocationCode,
       klon,
@@ -295,43 +316,49 @@ function openReviewModal(data) {
             <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.targetEstateName)}</span>
           </div>
 
-          <!-- 4. TUJUAN PERMINTAAN -->
+          <!-- 4. PROGRAM -->
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Program Pembibitan</span>
+            <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.programName)}</span>
+          </div>
+
+          <!-- 5. TUJUAN PERMINTAAN -->
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
             <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Tujuan Permintaan</span>
             <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.purpose || 'Penanaman / Bibit Tanam')}</span>
           </div>
 
-          <!-- 5. KODE ALOKASI -->
+          <!-- 6. KODE ALOKASI -->
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
             <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Kode Alokasi</span>
             <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.allocationCode)}</span>
           </div>
 
-          <!-- 6. KLON -->
+          <!-- 7. KLON -->
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
             <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Klon</span>
             <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.klon)}</span>
           </div>
 
-          <!-- 7. KATEGORI -->
+          <!-- 8. KATEGORI -->
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
             <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Kategori</span>
             <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.category)}</span>
           </div>
 
-          <!-- 8. TAHAPAN PERTUMBUHAN -->
+          <!-- 9. TAHAPAN PERTUMBUHAN -->
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
             <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Tahapan Pertumbuhan</span>
             <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(data.growthStage)}</span>
           </div>
 
-          <!-- 9. TANGGAL DIBUTUHKAN -->
+          <!-- 10. TANGGAL DIBUTUHKAN -->
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
             <span style="color: #64748B; font-size: 0.82rem; line-height: 1.35; text-align: left;">Tanggal Dibutuhkan</span>
             <span style="font-weight: 700; color: #1E293B; font-size: 0.82rem; line-height: 1.35; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(formatDate(data.requiredDate))}</span>
           </div>
 
-          <!-- 10. BANYAKNYA -->
+          <!-- 11. BANYAKNYA -->
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: baseline; margin-top: 8px; padding-top: 6px; border-top: 1px solid #E2E8F0;">
             <span style="color: #64748B; font-weight: 600; font-size: 0.82rem; line-height: 1.35; text-align: left;">Banyaknya</span>
             <span style="font-weight: 800; font-size: 0.95rem; color: #116834; line-height: 1.35; text-align: right; min-width: 0;">${data.qty.toLocaleString('id-ID')} Pkk</span>
@@ -388,6 +415,10 @@ async function submitRequest(data) {
     // Target Estate
     targetEstateId: data.targetEstateId,
     targetEstateName: data.targetEstateName,
+
+    // Program Master
+    programId: data.programId || 'PRG-2026-001',
+    programName: data.programName || 'Program Nursery 2026 - Batch 1',
 
     // Payload Final
     purpose: data.purpose || 'Penanaman / Bibit Tanam',

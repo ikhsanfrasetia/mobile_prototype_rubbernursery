@@ -199,7 +199,10 @@ export function filterByStatus(requests, status) {
              s === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
              s === 'MENUNGGU_VERIFIKASI_ASISTEN' ||
              s === 'MENUNGGU_VERIFIKASI' ||
-             s === 'PERLU_REVISI_PENGURUS';
+             s === 'PERLU_REVISI_PENGURUS' ||
+             s === 'MENUNGGU_PENGELUARAN_BIBIT' ||
+             s === 'PENGELUARAN_BERJALAN' ||
+             s === 'MENUNGGU_PENERIMAAN_PENGURUS';
     });
   }
   if (status === 'SELESAI') {

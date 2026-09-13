@@ -39,6 +39,98 @@ export const REQUIREMENT_SOURCE = Object.freeze({
 });
 
 /**
+ * Canonical 7 Main Menus for Role ASISTEN_BIBITAN
+ * Single Source of Truth for Beranda and Sidebar Renderers.
+ */
+export const ASISTEN_BIBITAN_MAIN_MENUS = Object.freeze([
+  {
+    id: 'penerimaan',
+    key: 'PENERIMAAN_BIBIT',
+    title: 'Penerimaan<br>Bibit',
+    label: 'Penerimaan Bibit',
+    route: '/reception/kebun-sepupu',
+    iconName: 'documentPlus',
+    order: 1
+  },
+  {
+    id: 'permintaan-bibit',
+    key: 'PERMINTAAN_BIBIT',
+    title: 'Permintaan<br>Bibit',
+    label: 'Permintaan Bibit',
+    route: '/request',
+    iconName: 'documentPlus',
+    order: 2
+  },
+  {
+    id: 'pengeluaran-bibit',
+    key: 'PENGELUARAN_BIBIT',
+    title: 'Pengeluaran<br>Bibit',
+    label: 'Pengeluaran Bibit',
+    route: '/dispatch',
+    iconName: 'sprout',
+    order: 3
+  },
+  {
+    id: 'pemeriksaan-seleksi',
+    key: 'PEMERIKSAAN_HASIL_SELEKSI',
+    title: 'Pemeriksaan<br>Hasil Seleksi',
+    label: 'Pemeriksaan Hasil Seleksi',
+    route: '/selection',
+    iconName: 'sprout',
+    order: 4
+  },
+  {
+    id: 'pemusnahan-bibit',
+    key: 'PEMUSNAHAN_BIBIT',
+    title: 'Pemusnahan<br>Bibit',
+    label: 'Pemusnahan Bibit',
+    route: '/destruction',
+    iconName: 'documentPlus',
+    order: 5
+  },
+  {
+    id: 'konsolidasi-data',
+    key: 'KONSOLIDASI_DATA',
+    title: 'Konsolidasi<br>Data',
+    label: 'Konsolidasi Data',
+    route: '/consolidation',
+    iconName: 'documentPlus',
+    order: 6
+  },
+  {
+    id: 'verifikasi-data',
+    key: 'VERIFIKASI_DATA',
+    title: 'Verifikasi<br>Data',
+    label: 'Verifikasi Data',
+    route: '/verification',
+    iconName: 'documentPlus',
+    order: 7
+  }
+]);
+
+/**
+ * Data Master Group Menus for Role ASISTEN_BIBITAN (Sidebar only)
+ */
+export const ASISTEN_BIBITAN_DATA_MASTER_MENUS = Object.freeze([
+  {
+    id: 'master-bedengan',
+    key: 'MASTER_BEDENGAN',
+    label: 'Master Bedengan',
+    route: '/master/bedengan',
+    iconName: 'database',
+    order: 1
+  },
+  {
+    id: 'master-batch',
+    key: 'MASTER_BATCH',
+    label: 'Master Batch',
+    route: '/master/batch',
+    iconName: 'database',
+    order: 2
+  }
+]);
+
+/**
  * Master Menu Registry
  */
 export const MENU_REGISTRY = Object.freeze([
@@ -46,7 +138,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-PRESENSI',
     key: 'PRESENSI',
     label: 'Presensi',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN]),
     icon: '👷',
     order: 1,
     status: 'ACTIVE'
@@ -64,7 +156,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-PENYEMAIAN',
     key: 'PENYEMAIAN',
     label: 'Penyemaian',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN]),
     icon: '🌱',
     order: 3,
     status: 'ACTIVE'
@@ -73,7 +165,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-OKULASI',
     key: 'OKULASI',
     label: 'Okulasi',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN]),
     icon: '🌿',
     order: 4,
     status: 'ACTIVE'
@@ -82,7 +174,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-PEMERIKSAAN',
     key: 'PEMERIKSAAN',
     label: 'Pemeriksaan',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN, ROLES.ASISTEN_BIBITAN, ROLES.ASKEP]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN, ROLES.ASKEP]),
     icon: '🔍',
     order: 5,
     status: 'ACTIVE'
@@ -100,7 +192,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-KEBUN-ENTRES',
     key: 'KEBUN_ENTRES',
     label: 'Kebun Entres',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN]),
     icon: '🌳',
     order: 7,
     status: 'ACTIVE'
@@ -109,7 +201,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-KEGIATAN-BIBITAN',
     key: 'KEGIATAN_BIBITAN',
     label: 'Kegiatan Bibitan',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN]),
     icon: '🛠️',
     order: 8,
     status: 'ACTIVE'
@@ -118,7 +210,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-PERMINTAAN',
     key: 'PERMINTAAN',
     label: 'Permintaan',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.MANTRI_TANAMAN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
     icon: '📋',
     order: 9,
     status: 'ACTIVE'
@@ -127,7 +219,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-PENGIRIMAN',
     key: 'PENGIRIMAN',
     label: 'Pengiriman',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.KTU, ROLES.MANTRI_TANAMAN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.KTU, ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
     icon: '🚚',
     order: 10,
     status: 'ACTIVE'
@@ -136,7 +228,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-REVIEW-WORKSPACE',
     key: 'REVIEW_WORKSPACE',
     label: 'Review & Otorisasi',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN, ROLES.KTU]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN, ROLES.KTU, ROLES.ASISTEN_BIBITAN]),
     icon: '📝',
     order: 11,
     status: 'ACTIVE'
@@ -188,7 +280,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'PRESENSI_RINGKASAN',
     menuKey: 'PRESENSI',
     label: 'Ringkasan Presensi',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN]),
     order: 3,
     status: 'ACTIVE'
   },
@@ -208,7 +300,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'PENERIMAAN_BIBIT_ESTATE',
     menuKey: 'PENERIMAAN',
     label: 'Penerimaan Bibit Kebun',
-    roleKeys: Object.freeze([ROLES.PENGURUS]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASISTEN_BIBITAN]),
     order: 2,
     status: 'ACTIVE'
   },
@@ -219,7 +311,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'PENYEMAIAN_INPUT',
     menuKey: 'PENYEMAIAN',
     label: 'Input Penyemaian Kecambah',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN]),
     order: 1,
     status: 'ACTIVE'
   },
@@ -230,7 +322,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'OKULASI_GRAFTING',
     menuKey: 'OKULASI',
     label: 'Input Okulasi & Grafting',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN]),
     order: 1,
     status: 'ACTIVE'
   },
@@ -250,7 +342,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'PEMERIKSAAN_LAPANGAN',
     menuKey: 'PEMERIKSAAN',
     label: 'Inspeksi & Pemeriksaan Bibit',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN, ROLES.ASISTEN_BIBITAN, ROLES.ASKEP]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN, ROLES.ASKEP]),
     order: 1,
     status: 'ACTIVE'
   },
@@ -292,7 +384,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'KEGIATAN_PEMELIHARAAN',
     menuKey: 'KEGIATAN_BIBITAN',
     label: 'Pemeliharaan & Perawatan Bibitan',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN]),
     order: 1,
     status: 'ACTIVE'
   },
@@ -303,7 +395,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'PERMINTAAN_BIBIT_ESTATE',
     menuKey: 'PERMINTAAN',
     label: 'Permintaan Bibit Kebun Sepupu',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN_BIBITAN]),
     order: 1,
     status: 'ACTIVE'
   },
@@ -314,7 +406,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'PENGIRIMAN_BIBIT_ESTATE',
     menuKey: 'PENGIRIMAN',
     label: 'Pengiriman & Dispatch Bibit',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.KTU]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.KTU, ROLES.ASISTEN_BIBITAN]),
     order: 1,
     status: 'ACTIVE'
   },
@@ -325,7 +417,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'REVIEW_VERIFIKASI',
     menuKey: 'REVIEW_WORKSPACE',
     label: 'Verifikasi & Otorisasi Transaksi',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN, ROLES.KTU]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN, ROLES.KTU, ROLES.ASISTEN_BIBITAN]),
     order: 1,
     status: 'ACTIVE'
   },

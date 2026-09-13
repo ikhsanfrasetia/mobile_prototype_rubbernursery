@@ -229,11 +229,11 @@ runTest('5. Rahmad (AST002, Tanah Besih, Divisi II) has exactly 5 ACTIVE workers
   }
 });
 
-runTest('6. Supriono (MNT002, Aek Pamingke, Divisi I) has exactly 5 ACTIVE workers', () => {
-  const suprionoPersona = getDemoPersonaByCode('MNT002');
-  const userCtx = resolveUserContext(suprionoPersona);
+runTest('6. Nando (AST001, Aek Pamingke, Divisi I) has exactly 5 ACTIVE workers', () => {
+  const nandoPersona = getDemoPersonaByCode('AST001');
+  const userCtx = resolveUserContext(nandoPersona);
   const workers = getWorkersForUserContext(userCtx, { activeOnly: true });
-  assert.strictEqual(workers.length, 5, 'Supriono must have 5 active workers');
+  assert.strictEqual(workers.length, 5, 'Nando must have 5 active workers');
   for (const w of workers) {
     assert.strictEqual(w.estateId, 'EST-APM');
     assert.strictEqual(w.divisionId, 'DIV-APM-01');
@@ -285,7 +285,7 @@ runTest('10. Tanah Besih Divisi I strictly excludes Aek Pamingke Divisi II worke
 });
 
 runTest('11. Aek Pamingke Divisi I strictly excludes Aek Pamingke Divisi II workers', () => {
-  const apmD1Ctx = resolveUserContext(getDemoPersonaByCode('MNT002'));
+  const apmD1Ctx = resolveUserContext(getDemoPersonaByCode('AST001'));
   const workers = getWorkersForUserContext(apmD1Ctx, { activeOnly: true });
   for (const w of workers) {
     assert.strictEqual(w.divisionId, 'DIV-APM-01', `Worker ${w.id} must be DIV-APM-01`);
@@ -766,11 +766,11 @@ runTest('43. Search queries operate within scoped worker dataset', () => {
   const rahmadDarman = rahmadWorkers.filter(w => w.name.toLowerCase().includes('darman'));
   assert.strictEqual(rahmadDarman.length, 1, 'Darman must be found in Rahmad scope');
 
-  // Supriono (APM D1): "Herman" -> 1, Wagiman (TBS D1): "Herman" -> 0
-  const suprionoCtx = resolveUserContext(getDemoPersonaByCode('MNT002'));
-  const suprionoWorkers = getWorkersForUserContext(suprionoCtx, { activeOnly: true });
-  const suprionoHerman = suprionoWorkers.filter(w => w.name.toLowerCase().includes('herman'));
-  assert.strictEqual(suprionoHerman.length, 1, 'Herman must be found in Supriono scope');
+  // Nando (APM D1): "Herman" -> 1, Wagiman (TBS D1): "Herman" -> 0
+  const nandoCtx = resolveUserContext(getDemoPersonaByCode('AST001'));
+  const nandoWorkers = getWorkersForUserContext(nandoCtx, { activeOnly: true });
+  const nandoHerman = nandoWorkers.filter(w => w.name.toLowerCase().includes('herman'));
+  assert.strictEqual(nandoHerman.length, 1, 'Herman must be found in Nando scope');
 
   const wagimanHerman = wagimanWorkers.filter(w => w.name.toLowerCase().includes('herman'));
   assert.strictEqual(wagimanHerman.length, 0, 'Herman must not be found in Wagiman scope');
@@ -783,8 +783,8 @@ runTest('44. Context switch cleanly updates available worker and CFNA options wi
   let workers = getWorkersForUserContext(ctx, { activeOnly: true });
   assert.strictEqual(workers.length, 7);
 
-  // Switch: Supriono -> APM D1 (5 workers)
-  switchPersona('MNT002');
+  // Switch: Nando -> APM D1 (5 workers)
+  switchPersona('AST001');
   ctx = getCurrentUserContext();
   workers = getWorkersForUserContext(ctx, { activeOnly: true });
   assert.strictEqual(workers.length, 5);

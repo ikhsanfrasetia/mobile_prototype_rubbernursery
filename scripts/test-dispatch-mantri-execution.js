@@ -380,7 +380,7 @@ currentReq = res3.updatedRequest;
 assert(res3.dispatchRecord.parentRequestId === verifiedRequest1.id, '24. Pengeluaran ketiga tetap memakai parent request yang sama');
 assert(currentReq.totalIssuedQty === 10000, '25. Total pengeluaran mencapai tepat approvedQty (10.000 Pkk)');
 assert(currentReq.remainingQty === 0, '25b. Sisa kuota adalah 0 Pkk');
-assert(currentReq.status === 'SELESAI', '27. Setelah seluruh approvedQty terpenuhi, status menjadi SELESAI');
+assert(currentReq.status === 'MENUNGGU_PENERIMAAN_PENGURUS', '27. Setelah seluruh approvedQty terpenuhi, status parent request menjadi MENUNGGU_PENERIMAAN_PENGURUS');
 
 // ==========================================
 // TEST 28 - 30: Action & Notification Lifecycle

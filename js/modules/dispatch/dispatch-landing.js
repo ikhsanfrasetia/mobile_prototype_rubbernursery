@@ -29,6 +29,8 @@ import { requestRepository, batchRepository } from '../../db/repositories.js';
 import { resolveTransactionActor, applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 import { resolveEstate } from '../../data/estate-master.js';
 import { formatDate, formatStandardDocNo, esc } from '../../core/utils.js';
+import { createReceiptFromDispatch } from '../../core/receipt-ksp-manager.js';
+import { RECEIPT_KSP_STATUS, RECEIPT_KSP_STATUS_LABELS } from '../../core/receipt-ksp-constants.js';
 
 let activeStatusFilter = 'SEMUA'; // 'SEMUA' | 'TERVERIFIKASI' | 'PENGELUARAN_BERJALAN' | 'SELESAI'
 let expandedCardIndex = -1;
@@ -61,27 +63,17 @@ const ICONS = {
   `
 };
 
+import { DEFAULT_CANONICAL_BATCHES } from '../../data/batch-master.js';
+
 /**
- * Default Seed Batches untuk Nursery jika belum tersedia
+ * Default Seed Batches untuk Nursery (Canonical baseline)
  */
-const DEFAULT_NURSERY_BATCHES = [
-  // Aek Pamingke (EST-APM) Batches
-  { id: 'BATCH-APM-001', batchId: 'BATCH-APM-001', batchCode: 'B-001', batchNo: 'B-001', clone: 'IRCA 19', klon: 'IRCA 19', stage: 'Rubber Advance Planting Material', estateId: 'EST-APM', availableQty: 5000, initialQty: 5000, status: 'AVAILABLE' },
-  { id: 'BATCH-APM-002', batchId: 'BATCH-APM-002', batchCode: 'B-002', batchNo: 'B-002', clone: 'IRCA 19', klon: 'IRCA 19', stage: 'Rubber Advance Planting Material', estateId: 'EST-APM', availableQty: 4000, initialQty: 4000, status: 'AVAILABLE' },
-  { id: 'BATCH-APM-003', batchId: 'BATCH-APM-003', batchCode: 'B-003', batchNo: 'B-003', clone: 'IRCA 19', klon: 'IRCA 19', stage: 'Rubber Advance Planting Material', estateId: 'EST-APM', availableQty: 5000, initialQty: 5000, status: 'AVAILABLE' },
-  { id: 'BATCH-APM-007', batchId: 'BATCH-APM-007', batchCode: 'B-007', batchNo: 'B-007', clone: 'IRCA 19', klon: 'IRCA 19', stage: 'Rubber Advance Planting Material', estateId: 'EST-APM', availableQty: 6000, initialQty: 6000, status: 'AVAILABLE' },
-  { id: 'BATCH-APM-006', batchId: 'BATCH-APM-006', batchCode: 'B-006', batchNo: 'B-006', clone: 'IRCA 18', klon: 'IRCA 18', stage: 'Rubber Advance Planting Material', estateId: 'EST-APM', availableQty: 10000, initialQty: 10000, status: 'AVAILABLE' },
-  { id: 'BATCH-APM-004', batchId: 'BATCH-APM-004', batchCode: 'B-004', batchNo: 'B-004', clone: 'PB 260', klon: 'PB 260', stage: 'Rubber Main Nursery', estateId: 'EST-APM', availableQty: 10000, initialQty: 10000, status: 'AVAILABLE' },
-  { id: 'BATCH-APM-005', batchId: 'BATCH-APM-005', batchCode: 'B-005', batchNo: 'B-005', clone: 'GT 1', klon: 'GT 1', stage: 'Rubber Advance Planting Material', estateId: 'EST-APM', availableQty: 8000, initialQty: 8000, status: 'AVAILABLE' },
-  // Tanah Besih (EST-TBS) Batches
-  { id: 'BATCH-TBS-001', batchId: 'BATCH-TBS-001', batchCode: 'B-TBS-01', batchNo: 'B-TBS-01', clone: 'IRCA 19', klon: 'IRCA 19', stage: 'Rubber Advance Planting Material', estateId: 'EST-TBS', availableQty: 5000, initialQty: 5000, status: 'AVAILABLE' },
-  { id: 'BATCH-TBS-002', batchId: 'BATCH-TBS-002', batchCode: 'B-TBS-02', batchNo: 'B-TBS-02', clone: 'PB 260', klon: 'PB 260', stage: 'Rubber Main Nursery', estateId: 'EST-TBS', availableQty: 8000, initialQty: 8000, status: 'AVAILABLE' }
-];
+export const DEFAULT_NURSERY_BATCHES = DEFAULT_CANONICAL_BATCHES;
 
 /**
  * Mengambil daftar batch nursery yang tersedia di storage / DB
  */
-export function getNurseryBatches(estateId = null, clone = null, growthStage = null) {
+export function getNurseryBatches(estateId = null, clone = null, growthStage = null, divisionId = null, programId = null) {
   let batches = storage.get('nursery_batches', []);
   if (!batches || batches.length === 0) {
     batches = [...DEFAULT_NURSERY_BATCHES];
@@ -91,16 +83,18 @@ export function getNurseryBatches(estateId = null, clone = null, growthStage = n
   return batches.filter(b => {
     const isAvailable = (b.availableQty || 0) > 0 && b.status !== 'EMPTY' && b.status !== 'INACTIVE';
     const matchEstate = !estateId || b.estateId === estateId;
+    const matchDivision = !divisionId || b.divisionId === divisionId;
+    const matchProgram = !programId || b.programId === programId;
     const batchClone = (b.clone || b.klon || '').trim().toUpperCase();
     const targetClone = (clone || '').trim().toUpperCase();
-    const matchClone = !clone || batchClone === targetClone;
-    const matchStage = !growthStage || b.stage === growthStage;
-    return isAvailable && matchEstate && matchClone && matchStage;
+    const matchClone = !clone || batchClone === targetClone || (targetClone && batchClone.replace(/\s+/g, '') === targetClone.replace(/\s+/g, ''));
+    const matchStage = !growthStage || b.stage === growthStage || b.growthStage === growthStage;
+    return isAvailable && matchEstate && matchDivision && matchProgram && matchClone && matchStage;
   });
 }
 
 /**
- * Mengurangi stok batch setelah pengeluaran
+ * Mengurangi stok batch tunggal setelah pengeluaran
  */
 export function deductBatchStock(batchIdOrCode, qty) {
   const deductQty = parseInt(qty, 10);
@@ -121,11 +115,57 @@ export function deductBatchStock(batchIdOrCode, qty) {
   batches[batchIndex] = {
     ...batches[batchIndex],
     availableQty: newAvailable,
+    currentQty: newAvailable,
     status: newAvailable === 0 ? 'EMPTY' : 'AVAILABLE'
   };
 
   storage.set('nursery_batches', batches);
   return true;
+}
+
+/**
+ * Mengurangi stok multi-batch secara ATOMIK
+ * Jika salah satu batch gagal/tidak cukup, seluruh transaksi dibatalkan (0 commit).
+ */
+export function deductMultiBatchStock(allocations) {
+  if (!Array.isArray(allocations) || allocations.length === 0) {
+    return { success: false, error: 'Daftar alokasi batch tidak boleh kosong.' };
+  }
+
+  let batches = storage.get('nursery_batches', []);
+  if (!batches || batches.length === 0) {
+    batches = [...DEFAULT_NURSERY_BATCHES];
+  }
+
+  const updatedBatches = batches.map(b => ({ ...b }));
+
+  // 1. Validasi seluruh batch terlebih dahulu
+  for (const alloc of allocations) {
+    const bCode = alloc.batchIdOrCode || alloc.batchCode || alloc.batchId;
+    const deductQty = parseInt(alloc.qty, 10);
+    if (isNaN(deductQty) || deductQty <= 0) {
+      return { success: false, error: `Kuantitas alokasi (${deductQty}) tidak valid.` };
+    }
+
+    const idx = updatedBatches.findIndex(b => b.id === bCode || b.batchId === bCode || b.batchCode === bCode || b.batchNo === bCode);
+    if (idx === -1) {
+      return { success: false, error: `Batch ${bCode} tidak ditemukan di master batch nursery.` };
+    }
+
+    const currentAvailable = parseInt(updatedBatches[idx].availableQty || 0, 10);
+    if (currentAvailable < deductQty) {
+      return { success: false, error: `Stok batch ${bCode} (${currentAvailable.toLocaleString('id-ID')} Pkk) tidak mencukupi untuk alokasi ${deductQty.toLocaleString('id-ID')} Pkk.` };
+    }
+
+    const newAvailable = currentAvailable - deductQty;
+    updatedBatches[idx].availableQty = newAvailable;
+    updatedBatches[idx].currentQty = newAvailable;
+    updatedBatches[idx].status = newAvailable === 0 ? 'EMPTY' : 'AVAILABLE';
+  }
+
+  // 2. Commit atomic
+  storage.set('nursery_batches', updatedBatches);
+  return { success: true, updatedBatches };
 }
 
 /**
@@ -209,6 +249,7 @@ export function filterDispatchRequests(requests, currentUser) {
       status === 'TERVERIFIKASI' ||
       status === 'MENUNGGU_PENGELUARAN_BIBIT' ||
       status === 'PENGELUARAN_BERJALAN' ||
+      status === 'MENUNGGU_PENERIMAAN_PENGURUS' ||
       status === 'SELESAI'
     );
 
@@ -232,7 +273,7 @@ export function filterDispatchByStatus(requests, statusFilter) {
       return s === 'PENGELUARAN_BERJALAN';
     }
     if (statusFilter === 'SELESAI') {
-      return s === 'SELESAI' || s === 'APPROVED';
+      return s === 'SELESAI' || s === 'APPROVED' || s === 'MENUNGGU_PENERIMAAN_PENGURUS';
     }
     return s === statusFilter;
   });
@@ -242,35 +283,44 @@ export function filterDispatchByStatus(requests, statusFilter) {
  * Validasi form pengeluaran sebelum simpan (Transaction Level, Batch Level, Multi-user Check)
  */
 export function validateShipmentForm(req, formValues, availableBatches = null) {
-  if (!req) return { valid: false, error: 'Dokumen approval tidak valid' };
+  const makeError = (err) => ({
+    valid: false,
+    isValid: false,
+    error: err,
+    errors: [err]
+  });
+
+  if (!req) return makeError('Dokumen approval tidak valid');
 
   const approvedQty = parseInt(req.approvedQty || req.requestedQty || 0, 10);
   const totalIssuedSoFar = parseInt(req.totalIssuedQty || req.actualIssuedQty || 0, 10);
   const currentRemaining = approvedQty - totalIssuedSoFar;
 
   if (currentRemaining <= 0) {
-    return { valid: false, error: 'Seluruh kuota pengeluaran untuk dokumen ini sudah terpenuhi (Sisa 0 Pkk)' };
+    return makeError('Seluruh kuota pengeluaran untuk dokumen ini sudah terpenuhi (Sisa 0 Pkk)');
   }
 
-  const { issuedDate, shipmentQty, batchRows } = formValues;
+  const issuedDate = formValues.issuedDate || formValues.shipmentDate;
+  const shipmentQty = formValues.shipmentQty;
+  const batchRows = formValues.batchRows || formValues.batchDetails;
 
   // 1. Tanggal Pengeluaran
   if (!issuedDate || !issuedDate.trim()) {
-    return { valid: false, error: 'Tanggal pengeluaran wajib diisi' };
+    return makeError('Tanggal pengeluaran wajib diisi');
   }
 
   // 2. Banyaknya Pengeluaran (shipmentQty)
   const qty = parseInt(shipmentQty, 10);
   if (isNaN(qty) || qty <= 0) {
-    return { valid: false, error: 'Banyaknya pengeluaran harus berupa angka lebih besar dari 0' };
+    return makeError('Banyaknya pengeluaran harus berupa angka lebih besar dari 0');
   }
   if (qty > currentRemaining) {
-    return { valid: false, error: `Banyaknya pengeluaran (${qty.toLocaleString('id-ID')} Pkk) melebihi sisa belum dikeluarkan (${currentRemaining.toLocaleString('id-ID')} Pkk)` };
+    return makeError(`Banyaknya pengeluaran (${qty.toLocaleString('id-ID')} Pkk) melebihi sisa belum dikeluarkan (${currentRemaining.toLocaleString('id-ID')} Pkk)`);
   }
 
   // 3. Detail Batch Sumber
   if (!Array.isArray(batchRows) || batchRows.length === 0) {
-    return { valid: false, error: 'Minimal pilih satu batch sumber pengeluaran' };
+    return makeError('Minimal pilih satu batch sumber pengeluaran');
   }
 
   const allEstateBatches = getNurseryBatches(req.targetEstateId);
@@ -282,44 +332,44 @@ export function validateShipmentForm(req, formValues, availableBatches = null) {
     const row = batchRows[i];
     const bCode = (row.batchCode || row.batchId || row.batchNo || '').trim();
     if (!bCode) {
-      return { valid: false, error: `Baris batch ke-${i + 1}: Silakan pilih batch sumber` };
+      return makeError(`Baris batch ke-${i + 1}: Silakan pilih batch sumber`);
     }
 
     if (selectedBatchCodes.has(bCode)) {
-      return { valid: false, error: `Batch ${bCode} dipilih lebih dari satu kali dalam satu transaksi. Konsolidasikan jumlahnya.` };
+      return makeError(`Batch ${bCode} dipilih lebih dari satu kali dalam satu transaksi (duplikat). Konsolidasikan jumlahnya.`);
     }
     selectedBatchCodes.add(bCode);
 
     const bQty = parseInt(row.qty, 10);
     if (isNaN(bQty) || bQty <= 0) {
-      return { valid: false, error: `Baris batch ke-${i + 1} (${bCode}): Jumlah pengeluaran harus > 0` };
+      return makeError(`Baris batch ke-${i + 1} (${bCode}): Jumlah pengeluaran harus > 0`);
     }
 
     const batchObj = batchList.find(b => b.id === bCode || b.batchId === bCode || b.batchCode === bCode || b.batchNo === bCode);
     if (!batchObj) {
-      return { valid: false, error: `Batch ${bCode} tidak ditemukan atau tidak aktif` };
+      return makeError(`Batch ${bCode} tidak ditemukan atau tidak aktif`);
     }
 
     // Pastikan klon batch sesuai dengan approvedClone
     const batchClone = (batchObj.clone || batchObj.klon || '').trim().toUpperCase();
     const reqClone = (req.approvedClone || req.requestedClone || '').trim().toUpperCase();
     if (batchClone !== reqClone) {
-      return { valid: false, error: `Klon pada batch ${bCode} (${batchObj.clone}) tidak sesuai dengan klon yang disetujui (${req.approvedClone})` };
+      return makeError(`Klon pada batch ${bCode} (${batchObj.clone}) tidak sesuai dengan klon yang disetujui (${req.approvedClone})`);
     }
 
     if (batchObj.availableQty === undefined || batchObj.availableQty === null) {
-      return { valid: false, error: `Stok batch ${bCode} belum tersedia untuk divalidasi. Validasi stok wajib.` };
+      return makeError(`Stok batch ${bCode} belum tersedia untuk divalidasi. Validasi stok wajib.`);
     }
 
     const avail = parseInt(batchObj.availableQty || 0, 10);
     if (bQty > avail) {
-      return { valid: false, error: `Jumlah pengeluaran batch ${bCode} (${bQty.toLocaleString('id-ID')} Pkk) melebihi stok tersedia (${avail.toLocaleString('id-ID')} Pkk)` };
+      return makeError(`Jumlah pengeluaran batch ${bCode} (${bQty.toLocaleString('id-ID')} Pkk) melebihi stok tersedia (${avail.toLocaleString('id-ID')} Pkk)`);
     }
 
     const reqGrowthStage = (req.growthStage || '').trim().toUpperCase();
     const batchGrowthStage = (batchObj.stage || batchObj.growthStage || '').trim().toUpperCase();
     if (reqGrowthStage && batchGrowthStage && batchGrowthStage !== reqGrowthStage) {
-      return { valid: false, error: `Tahap pertumbuhan batch ${bCode} (${batchObj.stage}) tidak sesuai dengan dokumen (${req.growthStage})` };
+      return makeError(`Tahap pertumbuhan batch ${bCode} (${batchObj.stage}) tidak sesuai dengan dokumen (${req.growthStage})`);
     }
 
     totalBatchQty += bQty;
@@ -327,10 +377,17 @@ export function validateShipmentForm(req, formValues, availableBatches = null) {
 
   // 4. Konsistensi Total
   if (totalBatchQty !== qty) {
-    return { valid: false, error: `Total alokasi detail batch (${totalBatchQty.toLocaleString('id-ID')} Pkk) tidak sama dengan Banyaknya Pengeluaran (${qty.toLocaleString('id-ID')} Pkk)` };
+    return makeError(`Total alokasi detail batch (${totalBatchQty.toLocaleString('id-ID')} Pkk) tidak sama dengan Banyaknya Pengeluaran (${qty.toLocaleString('id-ID')} Pkk)`);
   }
 
-  return { valid: true, shipmentQty: qty, totalBatchQty, remainingAfter: currentRemaining - qty };
+  return {
+    valid: true,
+    isValid: true,
+    errors: [],
+    shipmentQty: qty,
+    totalBatchQty,
+    remainingAfter: currentRemaining - qty
+  };
 }
 
 /**
@@ -350,26 +407,39 @@ export async function processDispatchShipment(parentRequest, formValues, current
     throw new Error(val.error);
   }
 
-  const { issuedDate, shipmentQty, batchRows, vehiclePlate, photoEvidence } = formValues;
+  const issuedDate = formValues.issuedDate || formValues.shipmentDate;
+  const shipmentQty = parseInt(formValues.shipmentQty, 10);
+  const batchRows = formValues.batchRows || formValues.batchDetails;
+  const vehiclePlate = formValues.vehiclePlate || formValues.vehicleNo;
+  const driverName = formValues.driverName || null;
+  const remarks = formValues.remarks || null;
+  const photoEvidence = formValues.photoEvidence || null;
   const existingShipments = getDispatchTransactions(req.id);
   const shipmentNo = existingShipments.length + 1;
 
-  // 1. Kurangi stok setiap batch
+  // 1. Kurangi stok setiap batch secara ATOMIK
+  const allocations = batchRows.map(row => ({
+    batchIdOrCode: (row.batchCode || row.batchId || row.batchNo || '').trim(),
+    qty: parseInt(row.qty, 10)
+  }));
+
+  const multiDeductResult = deductMultiBatchStock(allocations);
+  if (!multiDeductResult.success) {
+    throw new Error(multiDeductResult.error || 'Gagal mengalokasikan stok batch.');
+  }
+
   const batchDetails = [];
   for (const row of batchRows) {
     const bCode = (row.batchCode || row.batchId || row.batchNo || '').trim();
     const bQty = parseInt(row.qty, 10);
     const batchObj = availableBatches.find(b => b.id === bCode || b.batchId === bCode || b.batchCode === bCode || b.batchNo === bCode);
 
-    const deducted = deductBatchStock(bCode, bQty);
-    if (!deducted) {
-      throw new Error(`Gagal mengalokasikan stok dari batch ${bCode}. Stok mungkin telah berubah.`);
-    }
-
     batchDetails.push({
-      batchId: batchObj ? batchObj.id : bCode,
+      batchId: batchObj ? (batchObj.batchId || batchObj.id) : bCode,
       batchCode: batchObj ? (batchObj.batchCode || batchObj.batchNo) : bCode,
       clone: batchObj ? (batchObj.clone || batchObj.klon) : (req.approvedClone || req.requestedClone),
+      growthStage: batchObj ? (batchObj.growthStage || batchObj.stage) : (req.growthStage || 'Rubber Advance Planting Material'),
+      category: batchObj ? batchObj.category : (req.category || 'Polibag Besar'),
       qty: bQty
     });
   }
@@ -378,10 +448,13 @@ export async function processDispatchShipment(parentRequest, formValues, current
   const allDispatches = storage.get('dispatch_transactions', []);
   const dispatchDocNo = formatStandardDocNo(2026, 'DSP', allDispatches.length + 1);
 
+  const dispatchId = `DSP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const newDispatchRecord = applyTransactionActor(
     {
-      id: `DSP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: dispatchId,
+      dispatchId: dispatchId,
       docNo: dispatchDocNo,
+      dispatchNo: dispatchDocNo,
       parentRequestId: req.id,
       parentRequestDocNo: req.docNo,
       transactionType: 'PENGELUARAN_BIBIT',
@@ -400,6 +473,8 @@ export async function processDispatchShipment(parentRequest, formValues, current
       vehiclePlate: vehiclePlate || null,
       photoEvidence: photoEvidence || null,
       details: batchDetails,
+      batchDetails: batchDetails,
+      batchAllocations: batchDetails,
       createdAt: new Date().toISOString()
     },
     AUDIT_EVENT_TYPES.CREATE,
@@ -410,14 +485,22 @@ export async function processDispatchShipment(parentRequest, formValues, current
   allDispatches.push(newDispatchRecord);
   storage.set('dispatch_transactions', allDispatches);
 
-  // 3. Update status dan akumulasi kuota pada Parent Request (Single Record)
+  // 3. Buat Dokumen Penerimaan otomatis untuk dispatch ini (1 Dispatch = 1 Receipt)
+  let receiptRecord = null;
+  try {
+    receiptRecord = createReceiptFromDispatch(newDispatchRecord, req, currentUser);
+  } catch (receiptErr) {
+    console.warn('[dispatch] createReceiptFromDispatch warning:', receiptErr);
+  }
+
+  // 4. Update status dan akumulasi kuota pada Parent Request (Single Record)
   const approvedQty = parseInt(req.approvedQty || req.requestedQty || 0, 10);
   const totalIssuedQty = parseInt(req.totalIssuedQty || req.actualIssuedQty || 0, 10) + shipmentQty;
   const remainingQty = approvedQty - totalIssuedQty;
   const isCompleted = remainingQty === 0;
 
-  const nextStatus = isCompleted ? 'SELESAI' : 'PENGELUARAN_BERJALAN';
-  const nextStatusLabel = isCompleted ? 'Selesai' : 'Pengeluaran Berjalan';
+  const nextStatus = isCompleted ? RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS : 'PENGELUARAN_BERJALAN';
+  const nextStatusLabel = isCompleted ? (RECEIPT_KSP_STATUS_LABELS[RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS] || 'Menunggu Penerimaan Pengurus') : 'Pengeluaran Berjalan';
 
   const batchSummaryStr = batchDetails.map(b => `${b.batchCode}: ${b.qty.toLocaleString('id-ID')} Pkk`).join(', ');
   const auditDetails = `Pengeluaran bibit #${shipmentNo} sebanyak ${shipmentQty.toLocaleString('id-ID')} Pkk (${batchSummaryStr}) telah diproses oleh Mantri Bibitan`;
@@ -433,8 +516,8 @@ export async function processDispatchShipment(parentRequest, formValues, current
       targetDivisionId: req.targetDivisionId,
       targetDivisionName: req.targetDivisionName,
       lastIssuedAt: new Date().toISOString(),
-      targetNextRole: isCompleted ? null : 'MANTRI_TANAMAN',
-      targetNextEstateId: isCompleted ? null : currentUser.estateId,
+      targetNextRole: isCompleted ? 'PENGURUS' : 'MANTRI_TANAMAN',
+      targetNextEstateId: isCompleted ? req.estateId : currentUser.estateId,
       targetNextDivisionId: isCompleted ? null : (req.targetDivisionId || currentUser.divisionId)
     },
     AUDIT_EVENT_TYPES.UPDATE,
@@ -461,6 +544,7 @@ export async function processDispatchShipment(parentRequest, formValues, current
 
   return {
     dispatchRecord: newDispatchRecord,
+    receiptRecord: receiptRecord,
     updatedRequest: updatedRequest,
     isCompleted: isCompleted,
     remainingQty: remainingQty
@@ -484,10 +568,14 @@ export function openDispatchModal(item, currentUser) {
 
   const todayStr = new Date().toISOString().split('T')[0];
   const requiredGrowthStage = item.growthStage;
-  const availableBatches = getNurseryBatches(item.targetEstateId, approvedClone, requiredGrowthStage);
+  const availableBatches = getNurseryBatches(item.targetEstateId, approvedClone, requiredGrowthStage, item.targetDivisionId, item.programId);
 
-  if (availableBatches.length === 0) {
-    toast(`Tidak ditemukan batch bibit aktif untuk klon ${approvedClone} dan tahap ${requiredGrowthStage} di kebun ini.`, 'error');
+  const totalEligibleStock = availableBatches.reduce((sum, b) => sum + parseInt(b.availableQty || 0, 10), 0);
+  const gapStock = Math.max(0, remainingQty - totalEligibleStock);
+  const maxDispatchable = Math.min(remainingQty, totalEligibleStock);
+
+  if (availableBatches.length === 0 || totalEligibleStock === 0) {
+    toast(`Tidak ada stok batch yang memenuhi kriteria pengeluaran (Klon: ${approvedClone}, Tahap: ${requiredGrowthStage || '-'}).`, 'error');
     return;
   }
 
@@ -504,33 +592,47 @@ export function openDispatchModal(item, currentUser) {
     body: `
       <div style="padding: 2px 0; font-size: 0.84rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; overflow-wrap: anywhere;">
         
-        <!-- SUMMARY KUOTA SECTION -->
+        <!-- SUMMARY KUOTA & SHORTAGE SECTION -->
         <div style="margin-bottom: 20px;">
           <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #E2E8F0;">
             <div>
-              <div style="font-size: 0.72rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Dokumen</div>
+              <div style="font-size: 0.72rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Dokumen Permintaan</div>
               <div style="font-size: 0.9rem; font-weight: 700; color: #1E293B;">${esc(docNo)}</div>
             </div>
             <div style="text-align: right;">
-              <div style="font-size: 0.72rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Klon</div>
-              <div style="font-size: 0.85rem; font-weight: 600; color: #1E293B;">${esc(approvedClone)}</div>
+              <div style="font-size: 0.72rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Klon & Program</div>
+              <div style="font-size: 0.85rem; font-weight: 600; color: #1E293B;">${esc(approvedClone)}${item.programName ? ` • ${esc(item.programName)}` : ''}</div>
             </div>
           </div>
           
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 12px; width: 100%; box-sizing: border-box;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; width: 100%; box-sizing: border-box; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px; border-radius: 8px;">
             <div>
-              <div style="font-size: 0.72rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Disetujui</div>
-              <div style="font-size: 0.85rem; font-weight: 600; color: #1E293B;">${approvedQty.toLocaleString('id-ID')} Pkk</div>
+              <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Approved</div>
+              <div style="font-size: 0.82rem; font-weight: 700; color: #1E293B;">${approvedQty.toLocaleString('id-ID')} Pkk</div>
             </div>
             <div>
-              <div style="font-size: 0.72rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Sudah Keluar</div>
-              <div style="font-size: 0.85rem; font-weight: 600; color: #1E293B;">${totalIssued.toLocaleString('id-ID')} Pkk</div>
+              <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Issued</div>
+              <div style="font-size: 0.82rem; font-weight: 700; color: #1E293B;">${totalIssued.toLocaleString('id-ID')} Pkk</div>
             </div>
             <div>
-              <div style="font-size: 0.72rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Sisa Belum Dikeluarkan</div>
-              <div style="font-size: 0.85rem; font-weight: 700; color: #DC2626;">${remainingQty.toLocaleString('id-ID')} Pkk</div>
+              <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Remaining</div>
+              <div style="font-size: 0.82rem; font-weight: 700; color: #D97706;">${remainingQty.toLocaleString('id-ID')} Pkk</div>
+            </div>
+            <div>
+              <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Eligible Stock</div>
+              <div style="font-size: 0.82rem; font-weight: 700; color: #116834;">${totalEligibleStock.toLocaleString('id-ID')} Pkk</div>
+            </div>
+            <div>
+              <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Gap</div>
+              <div style="font-size: 0.82rem; font-weight: 700; color: ${gapStock > 0 ? '#DC2626' : '#64748B'};">${gapStock.toLocaleString('id-ID')} Pkk</div>
             </div>
           </div>
+
+          ${gapStock > 0 ? `
+            <div style="margin-top: 8px; padding: 6px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.74rem; color: #991B1B;">
+              ⚠️ <strong>Perhatian:</strong> Stok bibit yang tersedia (${totalEligibleStock.toLocaleString('id-ID')} Pkk) kurang dari sisa permintaan (${remainingQty.toLocaleString('id-ID')} Pkk). Pengeluaran saat ini dibatasi maksimal <strong>${maxDispatchable.toLocaleString('id-ID')} Pkk</strong>.
+            </div>
+          ` : ''}
         </div>
 
         <!-- FORM PENGELUARAN -->
@@ -570,15 +672,15 @@ export function openDispatchModal(item, currentUser) {
                 Banyaknya Pengeluaran (Pkk) <span style="color: #DC2626;">*</span>
               </label>
               <button id="btn-fill-remaining" type="button" style="background: none; border: none; color: #116834; font-size: 0.75rem; font-weight: 600; cursor: pointer; padding: 0;">
-                Gunakan Sisa (${remainingQty.toLocaleString('id-ID')})
+                Gunakan Sisa (${maxDispatchable.toLocaleString('id-ID')})
               </button>
             </div>
             <input 
               type="number" 
               id="input-dispatch-qty" 
               min="1" 
-              max="${remainingQty}" 
-              placeholder="Maksimal ${remainingQty.toLocaleString('id-ID')}"
+              max="${maxDispatchable}" 
+              placeholder="Maksimal ${maxDispatchable.toLocaleString('id-ID')}"
               style="width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.86rem; font-weight: 700; color: #111111; font-family: inherit;"
               required
             />

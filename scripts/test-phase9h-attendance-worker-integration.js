@@ -105,7 +105,8 @@ console.log('\n--- Section B: Persona Context Scoping ---');
 
 const wagiman = getDemoPersonaByCode('MNT001');   // Wagiman, Tanah Besih Divisi I
 const rahmad = getDemoPersonaByCode('AST002');    // Rahmad, Tanah Besih Divisi II
-const supriono = getDemoPersonaByCode('MNT002');  // Supriono, Aek Pamingke Divisi I
+const nando = getDemoPersonaByCode('AST001');     // Nando, Aek Pamingke Divisi I
+const supriono = getDemoPersonaByCode('MNT002');  // Supriono, Aek Pamingke Divisi II
 const abdulGofur = getDemoPersonaByCode('ASB002');// Abdul Gofur, Aek Pamingke Divisi II
 
 runTest('4. Wagiman (TBS D1) resolves exactly 7 active workers + 2 absent workers', () => {
@@ -131,7 +132,18 @@ runTest('5. Rahmad (TBS D2) resolves exactly 5 active workers and 0 absent worke
   assert(activeWorkers.every(w => w.estateId === 'EST-TBS' && w.divisionId === 'DIV-002' && w.active === true));
 });
 
-runTest('6. Supriono (APM D1) resolves exactly 5 active workers and 0 absent workers', () => {
+runTest('6. Nando (APM D1) resolves exactly 5 active workers and 0 absent workers', () => {
+  const ctx = resolveUserContext(nando);
+  const activeWorkers = getWorkersForUserContext(ctx, { activeOnly: true });
+  const allWorkers = getWorkersForUserContext(ctx, { activeOnly: false });
+  const absentWorkers = allWorkers.filter(w => !w.active || w.status !== WORKER_STATUS.ACTIVE || w.absentType);
+
+  assert.strictEqual(activeWorkers.length, 5, 'Nando must have exactly 5 active workers');
+  assert.strictEqual(absentWorkers.length, 0, 'Nando must have 0 absent workers');
+  assert(activeWorkers.every(w => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-01' && w.active === true));
+});
+
+runTest('7. Supriono (APM D2) resolves exactly 5 active workers and 0 absent workers', () => {
   const ctx = resolveUserContext(supriono);
   const activeWorkers = getWorkersForUserContext(ctx, { activeOnly: true });
   const allWorkers = getWorkersForUserContext(ctx, { activeOnly: false });
@@ -139,17 +151,6 @@ runTest('6. Supriono (APM D1) resolves exactly 5 active workers and 0 absent wor
 
   assert.strictEqual(activeWorkers.length, 5, 'Supriono must have exactly 5 active workers');
   assert.strictEqual(absentWorkers.length, 0, 'Supriono must have 0 absent workers');
-  assert(activeWorkers.every(w => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-01' && w.active === true));
-});
-
-runTest('7. Abdul Gofur (APM D2) resolves exactly 5 active workers and 0 absent workers', () => {
-  const ctx = resolveUserContext(abdulGofur);
-  const activeWorkers = getWorkersForUserContext(ctx, { activeOnly: true });
-  const allWorkers = getWorkersForUserContext(ctx, { activeOnly: false });
-  const absentWorkers = allWorkers.filter(w => !w.active || w.status !== WORKER_STATUS.ACTIVE || w.absentType);
-
-  assert.strictEqual(activeWorkers.length, 5, 'Abdul Gofur must have exactly 5 active workers');
-  assert.strictEqual(absentWorkers.length, 0, 'Abdul Gofur must have 0 absent workers');
   assert(activeWorkers.every(w => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-02' && w.active === true));
 });
 
@@ -176,20 +177,20 @@ runTest('10. Wagiman (TBS D1) excludes APM D2 workers', () => {
   assert(!workers.some(w => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-02'), 'TBS D1 must exclude APM D2');
 });
 
-runTest('11. Supriono (APM D1) excludes TBS D1 workers', () => {
-  const ctx = resolveUserContext(supriono);
+runTest('11. Nando (APM D1) excludes TBS D1 workers', () => {
+  const ctx = resolveUserContext(nando);
   const workers = getWorkersForUserContext(ctx, { activeOnly: true });
   assert(!workers.some(w => w.estateId === 'EST-TBS'), 'APM D1 must exclude TBS');
 });
 
-runTest('12. Supriono (APM D1) excludes TBS D2 workers', () => {
-  const ctx = resolveUserContext(supriono);
+runTest('12. Nando (APM D1) excludes TBS D2 workers', () => {
+  const ctx = resolveUserContext(nando);
   const workers = getWorkersForUserContext(ctx, { activeOnly: true });
   assert(!workers.some(w => w.estateId === 'EST-TBS' && w.divisionId === 'DIV-002'), 'APM D1 must exclude TBS D2');
 });
 
-runTest('13. Supriono (APM D1) excludes APM D2 workers', () => {
-  const ctx = resolveUserContext(supriono);
+runTest('13. Nando (APM D1) excludes APM D2 workers', () => {
+  const ctx = resolveUserContext(nando);
   const workers = getWorkersForUserContext(ctx, { activeOnly: true });
   assert(!workers.some(w => w.divisionId === 'DIV-APM-02'), 'APM D1 must exclude APM D2');
 });
@@ -425,12 +426,12 @@ runTest('27. Search is scoped: Rahmad searching "Darman" returns 1 result', () =
   assert.strictEqual(searchResults[0].id, 'WRK-TBS-D2-001');
 });
 
-runTest('28. Search is scoped: Supriono searching "Herman" returns 1 result', () => {
-  const ctx = resolveUserContext(supriono); // APM D1
+runTest('28. Search is scoped: Nando searching "Herman" returns 1 result', () => {
+  const ctx = resolveUserContext(nando); // APM D1
   const visibleWorkers = getWorkersForUserContext(ctx, { activeOnly: true });
   const q = 'herman'.toLowerCase();
   const searchResults = visibleWorkers.filter(w => w.name.toLowerCase().includes(q) || w.code.toLowerCase().includes(q));
-  assert.strictEqual(searchResults.length, 1, 'Supriono must find Herman in APM D1');
+  assert.strictEqual(searchResults.length, 1, 'Nando must find Herman in APM D1');
   assert.strictEqual(searchResults[0].id, 'WRK-APM-D1-001');
 });
 
@@ -447,32 +448,32 @@ runTest('29. Search is scoped: Wagiman searching "Herman" returns 0 results', ()
 // -----------------------------------------------------------------------------
 console.log('\n--- Section J: Context Switch & Stale Data Prevention ---');
 
-runTest('30. Context switch from Wagiman (TBS D1) to Supriono (APM D1) refreshes worker list cleanly', () => {
+runTest('30. Context switch from Wagiman (TBS D1) to Nando (APM D1) refreshes worker list cleanly', () => {
   const ctxWagiman = resolveUserContext(wagiman);
   const workersWagiman = getWorkersForUserContext(ctxWagiman, { activeOnly: true });
 
-  const ctxSupriono = resolveUserContext(supriono);
-  const workersSupriono = getWorkersForUserContext(ctxSupriono, { activeOnly: true });
+  const ctxNando = resolveUserContext(nando);
+  const workersNando = getWorkersForUserContext(ctxNando, { activeOnly: true });
 
   assert.strictEqual(workersWagiman.length, 7);
-  assert.strictEqual(workersSupriono.length, 5);
+  assert.strictEqual(workersNando.length, 5);
   // Zero overlap
   const wagimanIds = new Set(workersWagiman.map(w => w.id));
-  assert(workersSupriono.every(w => !wagimanIds.has(w.id)), 'No TBS D1 worker IDs should exist in APM D1 list');
+  assert(workersNando.every(w => !wagimanIds.has(w.id)), 'No TBS D1 worker IDs should exist in APM D1 list');
 });
 
-runTest('31. Context switch from Supriono (APM D1) to Abdul Gofur (APM D2) refreshes worker list cleanly', () => {
+runTest('31. Context switch from Nando (APM D1) to Supriono (APM D2) refreshes worker list cleanly', () => {
+  const ctxNando = resolveUserContext(nando);
+  const workersNando = getWorkersForUserContext(ctxNando, { activeOnly: true });
+
   const ctxSupriono = resolveUserContext(supriono);
   const workersSupriono = getWorkersForUserContext(ctxSupriono, { activeOnly: true });
 
-  const ctxAbdulGofur = resolveUserContext(abdulGofur);
-  const workersAbdulGofur = getWorkersForUserContext(ctxAbdulGofur, { activeOnly: true });
-
+  assert.strictEqual(workersNando.length, 5);
   assert.strictEqual(workersSupriono.length, 5);
-  assert.strictEqual(workersAbdulGofur.length, 5);
   // Zero overlap between D1 and D2 of APM
-  const suprionoIds = new Set(workersSupriono.map(w => w.id));
-  assert(workersAbdulGofur.every(w => !suprionoIds.has(w.id)), 'No APM D1 worker IDs should exist in APM D2 list');
+  const nandoIds = new Set(workersNando.map(w => w.id));
+  assert(workersSupriono.every(w => !nandoIds.has(w.id)), 'No APM D1 worker IDs should exist in APM D2 list');
 });
 
 runTest('32. Code base preserves protected architecture files without edits', () => {

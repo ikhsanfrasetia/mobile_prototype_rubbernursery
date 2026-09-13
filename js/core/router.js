@@ -138,8 +138,10 @@ async function handleRouteChange() {
   // Reset state UI tiap render
   const modalRoot = document.getElementById('modal-root');
   const toastRoot = document.getElementById('toast-root');
+  const externalActionArea = document.getElementById('external-action-area');
   if (modalRoot) modalRoot.innerHTML = '';
   if (toastRoot) toastRoot.innerHTML = '';
+  if (externalActionArea) externalActionArea.remove();
 
   await result.handler({ params: currentParams, query });
 }

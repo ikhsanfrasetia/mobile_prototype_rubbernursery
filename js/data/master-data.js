@@ -1,5 +1,5 @@
 /**
- * data/master-data.js — master data statis (roles, clones, stages, reasons, growth stages).
+ * data/master-data.js — master data statis (roles, clones, stages, reasons, growth stages, program).
  * Data dummy; jangan ubah requirement tanpa konfirmasi.
  */
 
@@ -52,3 +52,66 @@ export const BEDS = [
   { id: 'BED-002', code: 'BED-002', name: 'Bedengan 002' },
   { id: 'BED-003', code: 'BED-003', name: 'Bedengan 003' }
 ];
+
+export {
+  PROGRAM_MASTER,
+  PROGRAM_MASTER as MASTER_PROGRAM_PEMBIBITAN,
+  PROGRAM_STATUS,
+  getAllPrograms,
+  getActivePrograms,
+  getProgramById,
+  getProgramByCode,
+  getProgramsByEstate,
+  getProgramsByDivision,
+  resolveProgram,
+  resolveProgramLegacy,
+  isProgramActive
+} from './program-master.js';
+
+export {
+  BEDENGAN_STATUS,
+  DEFAULT_BEDENGAN_MASTER,
+  DEFAULT_BEDENGAN_MASTER as BEDS_MASTER,
+  getAllBedengan,
+  getActiveBedengan,
+  getBedenganById,
+  getBedenganByCode,
+  getBedenganByQR,
+  getBedenganByProgram,
+  getBedenganByEstate,
+  getBedenganByDivision,
+  isBedenganActive,
+  createBedengan,
+  updateBedengan,
+  activateBedengan,
+  deactivateBedengan,
+  resolveBedenganLegacy
+} from './bedengan-master.js';
+
+export {
+  STORAGE_KEY_NURSERY_BATCHES,
+  BATCH_STATUS,
+  BATCH_CATEGORIES,
+  BATCH_GROWTH_STAGES,
+  DEFAULT_CANONICAL_BATCHES,
+  DEFAULT_CANONICAL_BATCHES as BATCH_MASTER,
+  getAllBatches,
+  getActiveBatches,
+  getBatchById,
+  getBatchByCode,
+  getBatchesByProgram,
+  getBatchesByEstate,
+  getBatchesByDivision,
+  getBatchesByClone,
+  getBatchesByGrowthStage,
+  getBatchesByBedengan,
+  isBatchActive,
+  getAvailableBatchStock,
+  createBatch,
+  updateBatch,
+  activateBatch,
+  deactivateBatch,
+  resolveBatchLegacy
+} from './batch-master.js';
+
+

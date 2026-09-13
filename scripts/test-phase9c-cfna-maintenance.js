@@ -168,7 +168,7 @@ const suprionoRecord = applyTransactionActor({
 
 assert(suprionoRecord.createdByName === 'Supriono', 'TEST 23: Supriono record creator is Supriono');
 assert(suprionoRecord.createdByEstateId === 'EST-APM', 'TEST 24: Supriono estate is EST-APM (Aek Pamingke)');
-assert(suprionoRecord.createdByDivisionId === 'DIV-APM-01', 'TEST 25: Supriono division is DIV-APM-01');
+assert(suprionoRecord.createdByDivisionId === 'DIV-APM-02', 'TEST 25: Supriono division is DIV-APM-02');
 assert(suprionoRecord.createdByEstateId !== enrichedRecord.createdByEstateId, 'TEST 26: Wagiman and Supriono transactions are strictly estate-isolated');
 
 // --------------------------------------------------

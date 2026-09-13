@@ -137,7 +137,7 @@ assert(suprionoRecord.createdByUserId === 'MNT002', 'Supriono createdByUserId is
 assert(suprionoRecord.createdByName === 'Supriono', 'Supriono createdByName is Supriono');
 assert(suprionoRecord.createdByRole === 'MANTRI_TANAMAN', 'Supriono createdByRole is MANTRI_TANAMAN');
 assert(suprionoRecord.createdByEstateId === 'EST-APM', 'Supriono createdByEstateId is EST-APM');
-assert(suprionoRecord.createdByDivisionId === 'DIV-APM-01', 'Supriono createdByDivisionId is DIV-APM-01');
+assert(suprionoRecord.createdByDivisionId === 'DIV-APM-02', 'Supriono createdByDivisionId is DIV-APM-02');
 assert(wagimanRecord.createdByUserId !== suprionoRecord.createdByUserId, 'Wagiman and Supriono user IDs are differentiated');
 assert(wagimanRecord.createdByEstateId !== suprionoRecord.createdByEstateId, 'Wagiman and Supriono estates are differentiated');
 
@@ -226,8 +226,8 @@ assert(aekPamingkeTxs.length === 2, `getTransactionsByEstate('EST-APM') returns 
 const div001Txs = getTransactionsByDivision(txDataset, 'DIV-001');
 assert(div001Txs.some((t) => t.id === 'ATT-2026-001'), 'getTransactionsByDivision finds Wagiman record in DIV-001');
 
-const divApmTxs = getTransactionsByDivision(txDataset, 'DIV-APM-01');
-assert(divApmTxs.some((t) => t.id === 'ATT-2026-002'), 'getTransactionsByDivision finds Supriono record in DIV-APM-01');
+const divApmTxs = getTransactionsByDivision(txDataset, 'DIV-APM-02');
+assert(divApmTxs.some((t) => t.id === 'ATT-2026-002'), 'getTransactionsByDivision finds Supriono record in DIV-APM-02');
 
 console.log('\n==================================================');
 console.log(`TOTAL TESTS RUN: ${passedTests + failedTests}`);

@@ -194,12 +194,12 @@ assert(
   `20. Rahmad (AST002, TBS Div II) resolves 5 active workers in Tanah Besih Divisi II`
 );
 
-// 21. Supriono -> APM/D1
+// 21. Supriono -> APM/D2
 switchPersona('MNT002');
 const suprionoWorkers = getWorkersForUserContext();
 assert(
-  suprionoWorkers.length === 5 && suprionoWorkers.every((w) => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-01'),
-  `21. Supriono (MNT002, APM Div I) resolves 5 active workers in Aek Pamingke Divisi I`
+  suprionoWorkers.length === 5 && suprionoWorkers.every((w) => w.estateId === 'EST-APM' && w.divisionId === 'DIV-APM-02'),
+  `21. Supriono (MNT002, APM Div II) resolves 5 active workers in Aek Pamingke Divisi II`
 );
 
 // 22. Abdul Gofur -> APM/D2

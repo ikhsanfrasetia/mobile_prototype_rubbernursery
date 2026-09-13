@@ -30,7 +30,9 @@ export function closeModal() {
   if (r) r.innerHTML = '';
 }
 
-export function openModal({ title, body, footer, onClose }) {
+export function openModal(opts) {
+  const options = typeof opts === 'string' ? { body: opts } : (opts || {});
+  const { title, body, footer, onClose } = options;
   renderModal({ title, body, footer });
   const r = root();
   const overlay = r?.querySelector('.modal-overlay');

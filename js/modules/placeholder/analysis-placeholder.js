@@ -14,7 +14,10 @@ const ROUTE_TITLE_MAP = {
   '/request': { title: 'Pengeluaran', desc: 'Pencatatan dan monitoring pengeluaran bibit & kebutuhan nursery.' },
   '/entres': { title: 'Kebun Entres', desc: 'Pengelolaan dan monitoring kebun mata entres.' },
   '/entres/menunas': { title: 'Menunas Entres', desc: 'Pencatatan kegiatan pembuangan tunas liar / menunas pada kebun entres.' },
-  '/entres/topping': { title: 'Topping Entres', desc: 'Pencatatan pemangkasan pucuk / topping tanaman kebun entres.' }
+  '/entres/topping': { title: 'Topping Entres', desc: 'Pencatatan pemangkasan pucuk / topping tanaman kebun entres.' },
+  '/master/bedengan': { title: 'Master Bedengan', desc: 'Pengelolaan data master bedengan pembibitan.' },
+  '/master/batch': { title: 'Master Batch', desc: 'Pengelolaan data master batch bibitan.' },
+  '/selection/culling': { title: 'Pemusnahan Bibit', desc: 'Pencatatan dan verifikasi pemusnahan bibit afkir.' }
 };
 
 export function renderAnalysisPlaceholder(context = {}) {

@@ -26,6 +26,7 @@ import {
 } from '../../db/repositories.js';
 import { resetDatabase } from '../../db/indexeddb.js';
 import { renderProcessMappingPortal } from '../process-mapping/process-mapping-ui.js';
+import { cleanAllTransactionalData } from '../../core/storage-registry.js';
 
 const STORAGE_KEY = 'sigma_feedback_notes';
 const API_URL = '/api/notes';
@@ -2753,62 +2754,11 @@ function attachTransactionsWorkspaceEvents(container) {
     const root = document.getElementById('modal-root');
     root.querySelector('[data-reset-cancel]')?.addEventListener('click', closeModal);
     root.querySelector('#btn-confirm-reset-all')?.addEventListener('click', async () => {
-      // 1. Kosongkan semua storage transaksi & pool
-      storage.set('selection_pool', []);
-      storage.set('selection_transactions', []);
-      storage.set('regrafting_pool', []);
-      storage.set('budding_transactions', []);
-      storage.set('inspection_transactions', []);
-      storage.set('receipt_transactions', []);
-      storage.set('seeding_transactions', []);
-      storage.set('attendance_transactions', []);
-      storage.set('sync_queue', []);
-
-      // 2. Kosongkan draft form cache
-      storage.set('receipt_photos', []);
-      storage.set('benih_table_rows', []);
-      storage.remove('editing_transaction_index');
-      storage.remove('viewing_transaction_index');
-      storage.remove('seeding_source_index');
-      storage.remove('editing_seeding_index');
-      storage.remove('selected_sir');
-      storage.remove('selected_klon');
-      storage.remove('benih_jenis');
-      storage.remove('benih_tahapan');
-      storage.remove('benih_program_id');
-      storage.remove('benih_program_code');
-      storage.remove('benih_source_id');
-      storage.remove('benih_source_name');
-      storage.remove('benih_batch_code');
-      storage.remove('transaction_originType');
-
-      // 3. Kosongkan IndexedDB khusus tabel transaksi (User, Role, dan Master Data tetap aman terjaga!)
-      try {
-        const txStores = [
-          'attendance', 'receptions', 'seedings', 'transplantations',
-          'buddings', 'inspections', 'regraftings', 'selections',
-          'batchTransfers', 'stageTransfers', 'entresActivities',
-          'nurseryActivities', 'requests', 'syncQueue', 'auditLogs', 'photos'
-        ];
-        const db = await (await import('../../db/indexeddb.js')).getDB();
-        const tx = db.transaction(txStores, 'readwrite');
-        for (const s of txStores) {
-          tx.objectStore(s).clear();
-        }
-      } catch (err) {
-        console.warn('[review] clear tx stores error:', err);
-      }
-
-      // Pastikan master data & akun role login selalu lengkap tersedia
-      try {
-        const { seedDatabase } = await import('../../db/seed.js');
-        await seedDatabase();
-      } catch (err) {
-        console.warn('[review] seedDatabase error:', err);
-      }
+      // Eksekusi pembersihan transaksi dinamis terpusat berbasis registry
+      await cleanAllTransactionalData();
 
       closeModal();
-      toast('Seluruh data transaksi dan bibit afkir telah dibersihkan!', 'success');
+      toast('Seluruh data transaksi dan testing telah dibersihkan!', 'success');
       renderReviewPanel();
 
       // Refresh frame HP jika sedang di halaman yang relevan
