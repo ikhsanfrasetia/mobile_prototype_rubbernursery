@@ -7,6 +7,11 @@
 import { execSync } from 'child_process';
 
 const suites = [
+  { name: 'Master Block Distribution: KEBUN_SENDIRI Distribution Items Suite', file: 'scripts/test-distribution-block-master.js' },
+  { name: 'Permintaan Bibit Kebun Sendiri: End-to-End Suite', file: 'scripts/test-permintaan-kebun-sendiri.js' },
+  { name: 'Mantri Create Guard: MANTRI_BIBITAN Request Create Block (PRE-UAT)', file: 'scripts/test-mantri-request-create-guard.js' },
+  { name: 'Role Separation: ASISTEN vs ASISTEN_BIBITAN (PRE-UAT)', file: 'scripts/test-request-role-separation.js' },
+  { name: 'Header ASB Cleanup: UI Scope Badge Removal Audit', file: 'scripts/test-asb-header-cleanup.js' },
   { name: 'Master Data ASB UI: Simplified Bedengan & Batch UI (PRE-UAT-03)', file: 'scripts/test-asb-master-ui.js' },
   { name: 'UAT End-to-End Modul Asisten Bibitan (ASB-15)', file: 'scripts/test-asb-uat.js' },
   { name: 'Mutasi Stok Pemusnahan ASB: Destruction Stock Suite (ASB-14)', file: 'scripts/test-asb-destruction-stock.js' },

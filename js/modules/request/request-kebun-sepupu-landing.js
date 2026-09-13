@@ -34,7 +34,8 @@ import { resolveEstate, getNurseryDivisionsByEstate, resolveNurseryDivision } fr
 import { getActiveKlons } from '../../data/klon-master.js';
 import { formatDate, esc } from '../../core/utils.js';
 
-let activeTab = 'MY_REQUESTS'; // 'MY_REQUESTS' | 'INCOMING_REQUESTS'
+let activeTab = null; // 'MY_REQUESTS' | 'INCOMING_REQUESTS'
+let lastUserRoleId = null; // Track current user role to set default tab on initial role change
 let activeStatusFilter = 'SEMUA'; // 'SEMUA' | 'DIAJUKAN' | 'DIPROSES' | 'SELESAI' | 'DITOLAK'
 let expandedCardIndex = -1; // Track which card is expanded (-1 = none)
 
@@ -83,13 +84,18 @@ export function canPerformAskepAction(tx, currentUser) {
 }
 
 /**
- * Cek apakah user berwenang melakukan aksi verifikasi Asisten (Asisten Bibitan Kebun Tujuan)
- * Otorisasi: Role (ASISTEN_BIBITAN) + Target Estate + Target Division
+ * Cek apakah user berwenang melakukan aksi verifikasi Asisten Bibitan (Kebun Tujuan)
+ * Otorisasi: Role ASISTEN_BIBITAN (EKSKLUSIF) + Target Estate + Target Division
+ * 
+ * CRITICAL FIX (PRE-UAT): Role ASISTEN (Asisten Lapangan) TIDAK LAGI
+ * diizinkan melakukan Verify/Return pada status MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN.
+ * Hanya ASISTEN_BIBITAN yang berwenang.
  */
 export function canPerformAsistenAction(tx, currentUser) {
   if (!tx || !currentUser) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
-  if (userRole !== 'ASISTEN_BIBITAN' && userRole !== 'ASISTEN') return false;
+  // STRICT: Hanya ASISTEN_BIBITAN. ASISTEN (Lapangan) TIDAK diizinkan.
+  if (userRole !== 'ASISTEN_BIBITAN') return false;
   
   const userEstateId = currentUser.estateId;
   const targetEstate = tx.targetNextEstateId || tx.targetEstateId;
@@ -128,7 +134,8 @@ export function getActionableIncomingCount(incomingRequests, currentUser) {
     }).length;
   }
 
-  if (userRole === 'ASISTEN_BIBITAN' || userRole === 'ASISTEN') {
+  // STRICT: Hanya ASISTEN_BIBITAN yang dihitung actionable count untuk verifikasi bibitan
+  if (userRole === 'ASISTEN_BIBITAN') {
     return incomingRequests.filter(tx => {
       return canPerformAsistenAction(tx, currentUser);
     }).length;
@@ -159,11 +166,15 @@ export function filterMyRequests(requests, currentUser) {
 
 /**
  * Filter permohonan masuk ke kebun aktif (Strict Role: PENGURUS, ASKEP & ASISTEN_BIBITAN & Target Estate + Division)
+ * 
+ * CRITICAL FIX (PRE-UAT): ASISTEN (Lapangan) tidak lagi termasuk dalam filter incoming.
+ * Jika bisnis memutuskan Asisten Lapangan butuh read-only, tambahkan kembali
+ * dengan filter division tanpa action buttons.
  */
 export function filterIncomingRequests(requests, currentUser) {
   if (!Array.isArray(requests) || !currentUser) return [];
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
-  if (userRole !== 'PENGURUS' && userRole !== 'ASKEP' && userRole !== 'ASISTEN_KEPALA' && userRole !== 'ASISTEN_BIBITAN' && userRole !== 'ASISTEN') return [];
+  if (userRole !== 'PENGURUS' && userRole !== 'ASKEP' && userRole !== 'ASISTEN_KEPALA' && userRole !== 'ASISTEN_BIBITAN') return [];
 
   return requests.filter(tx => {
     const isRequestType = tx.type === 'KEBUN_SEPUPU' || tx.type === 'KEBUN_SENDIRI' || !tx.type;
@@ -172,8 +183,8 @@ export function filterIncomingRequests(requests, currentUser) {
     const isTargetEstate = targetEstate === currentUser.estateId && tx.estateId !== currentUser.estateId;
     if (!isTargetEstate) return false;
 
-    // Jika role adalah Asisten, isolasi berdasarkan Divisi Target
-    if (userRole === 'ASISTEN_BIBITAN' || userRole === 'ASISTEN') {
+    // Jika role adalah Asisten Bibitan, isolasi berdasarkan Divisi Target
+    if (userRole === 'ASISTEN_BIBITAN') {
       const targetDivision = tx.targetNextDivisionId || tx.targetDivisionId;
       if (targetDivision && currentUser.divisionId && currentUser.divisionId !== targetDivision) {
         return false;
@@ -1027,11 +1038,15 @@ export async function renderRequestKebunSepupuLanding() {
   const myRequests = filterMyRequests(allRequests, currentUser);
   const incomingRequests = filterIncomingRequests(allRequests, currentUser);
 
-  // Default activeTab ke INCOMING_REQUESTS untuk role peninjau/verifikator (Askep & Asisten)
+  // Default activeTab ke INCOMING_REQUESTS untuk role peninjau/verifikator (Askep & Asisten Bibitan) hanya saat awal buka / ganti role
   const normalizedUserRole = normalizeRole(currentUser.role || currentUser.rawRole);
-  if (normalizedUserRole === 'ASKEP' || normalizedUserRole === 'ASISTEN_KEPALA' || normalizedUserRole === 'ASISTEN_BIBITAN' || normalizedUserRole === 'ASISTEN') {
-    if (activeTab === 'MY_REQUESTS') {
+  const currentActorKey = `${currentUser.userId || currentUser.id || ''}_${normalizedUserRole}`;
+  if (lastUserRoleId !== currentActorKey || !activeTab) {
+    lastUserRoleId = currentActorKey;
+    if (normalizedUserRole === 'ASKEP' || normalizedUserRole === 'ASISTEN_KEPALA' || normalizedUserRole === 'ASISTEN_BIBITAN') {
       activeTab = 'INCOMING_REQUESTS';
+    } else {
+      activeTab = 'MY_REQUESTS';
     }
   }
 
@@ -1151,12 +1166,14 @@ export async function renderRequestKebunSepupuLanding() {
         ${filteredItems.length === 0 ? renderEmptyState(activeTab) : renderRequestCards(filteredItems, currentUser)}
       </main>
 
-      <!-- FOOTER ACTION (inside .page flex container) -->
+      <!-- FOOTER ACTION: Create button hanya untuk PENGURUS -->
+      ${normalizedUserRole === 'PENGURUS' ? `
       <div style="flex-shrink: 0; background: #FFFFFF; border-top: 1px solid #E2E8F0; padding: 10px 16px;">
         <button id="btn-create-request" type="button" style="width: 100%; min-height: 42px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 -1px 4px rgba(17,104,52,0.12);">
           Buat Permintaan
         </button>
       </div>
+      ` : ''}
 
     </div>
   `;

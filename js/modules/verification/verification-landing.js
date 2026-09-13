@@ -38,7 +38,7 @@ function esc(str) {
 }
 
 export function renderVerificationLanding() {
-  const main = document.getElementById('main-content');
+  const main = document.getElementById('main-content') || document.getElementById('app');
   if (!main) return;
 
   const currentUser = session.getUser();
@@ -69,10 +69,6 @@ export function renderVerificationLanding() {
           <p style="margin: 0; color: #64748B; font-size: 0.9rem;">
             Pemeriksaan kelengkapan, validasi konsistensi rantai transaksi, dan persetujuan audit final.
           </p>
-          <div style="margin-top: 8px; font-size: 0.8rem; color: #475569; display: flex; gap: 16px;">
-            <span>🏢 <strong>Kebun:</strong> ${esc(estateLabel)}</span>
-            <span>📍 <strong>Divisi:</strong> ${esc(divisionLabel)}</span>
-          </div>
         </div>
 
         <div style="display: flex; gap: 8px;">

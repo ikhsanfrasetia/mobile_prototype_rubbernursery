@@ -179,19 +179,20 @@ export function getDispatchTransactions(parentRequestId = null) {
 
 /**
  * Validasi otorisasi Mantri Bibitan untuk memproses pengeluaran dokumen
- * Otorisasi: Role (MANTRI_TANAMAN) + Target Estate + Target Division
+ * Otorisasi: Role (MANTRI_TANAMAN) + Estate + Division
  */
 export function canPerformMantriDispatchAction(tx, currentUser) {
   if (!tx || !currentUser) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== 'MANTRI_TANAMAN') return false;
 
+  const isKebunSendiri = tx.type === 'KEBUN_SENDIRI' || tx.transactionType === 'KEBUN_SENDIRI';
   const userEstateId = currentUser.estateId;
-  const targetEstate = tx.targetNextEstateId || tx.targetEstateId;
+  const targetEstate = isKebunSendiri ? (tx.requesterEstateId || tx.estateId) : (tx.targetNextEstateId || tx.targetEstateId);
   if (!userEstateId || targetEstate !== userEstateId) return false;
 
   // Routing validation: Estate + Division + Role
-  const targetDivision = tx.targetNextDivisionId || tx.targetDivisionId;
+  const targetDivision = isKebunSendiri ? tx.fulfillmentDivisionId : (tx.targetNextDivisionId || tx.targetDivisionId);
   if (targetDivision && currentUser.divisionId && currentUser.divisionId !== targetDivision) {
     return false;
   }
@@ -228,17 +229,18 @@ export function filterDispatchRequests(requests, currentUser) {
   const isMantri = userRole === 'MANTRI_TANAMAN';
 
   return requests.filter(tx => {
-    const isRequestType = tx.type === 'KEBUN_SEPUPU' || tx.type === 'KEBUN_SENDIRI' || !tx.type;
+    const isKebunSendiri = tx.type === 'KEBUN_SENDIRI' || tx.transactionType === 'KEBUN_SENDIRI';
+    const isRequestType = tx.type === 'KEBUN_SEPUPU' || isKebunSendiri || !tx.type;
     if (!isRequestType) return false;
 
     const userEstateId = currentUser.estateId;
-    const targetEstate = tx.targetNextEstateId || tx.targetEstateId;
+    const targetEstate = isKebunSendiri ? (tx.requesterEstateId || tx.estateId) : (tx.targetNextEstateId || tx.targetEstateId);
     const isTarget = targetEstate === userEstateId;
     if (!isTarget) return false;
 
     // Jika Mantri, isolasi berdasarkan Divisi Target
     if (isMantri) {
-      const targetDivision = tx.targetNextDivisionId || tx.targetDivisionId;
+      const targetDivision = isKebunSendiri ? tx.fulfillmentDivisionId : (tx.targetNextDivisionId || tx.targetDivisionId);
       if (targetDivision && currentUser.divisionId && currentUser.divisionId !== targetDivision) {
         return false;
       }
@@ -249,6 +251,8 @@ export function filterDispatchRequests(requests, currentUser) {
       status === 'TERVERIFIKASI' ||
       status === 'MENUNGGU_PENGELUARAN_BIBIT' ||
       status === 'PENGELUARAN_BERJALAN' ||
+      status === 'MENUNGGU_VERIFIKASI_PENGELUARAN' ||
+      status === 'MENUNGGU_PENERIMAAN' ||
       status === 'MENUNGGU_PENERIMAAN_PENGURUS' ||
       status === 'SELESAI'
     );
@@ -399,7 +403,9 @@ export async function processDispatchShipment(parentRequest, formValues, current
   const req = allRequests.find(r => r.id === parentRequest.id) || parentRequest;
 
   // Re-fetch batch stok terbaru
-  const availableBatches = getNurseryBatches(req.targetEstateId, req.approvedClone || req.requestedClone);
+  const isKebunSendiri = req.type === 'KEBUN_SENDIRI' || req.transactionType === 'KEBUN_SENDIRI';
+  const estateForBatches = isKebunSendiri ? (req.requesterEstateId || req.estateId) : req.targetEstateId;
+  const availableBatches = getNurseryBatches(estateForBatches, req.approvedClone || req.requestedClone);
 
   // Validasi ketat
   const val = validateShipmentForm(req, formValues, availableBatches);
@@ -499,8 +505,15 @@ export async function processDispatchShipment(parentRequest, formValues, current
   const remainingQty = approvedQty - totalIssuedQty;
   const isCompleted = remainingQty === 0;
 
-  const nextStatus = isCompleted ? RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS : 'PENGELUARAN_BERJALAN';
-  const nextStatusLabel = isCompleted ? (RECEIPT_KSP_STATUS_LABELS[RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS] || 'Menunggu Penerimaan Pengurus') : 'Pengeluaran Berjalan';
+  let nextStatus;
+  let nextStatusLabel;
+  if (isKebunSendiri) {
+    nextStatus = isCompleted ? 'MENUNGGU_VERIFIKASI_PENGELUARAN' : 'PENGELUARAN_BERJALAN';
+    nextStatusLabel = isCompleted ? 'Menunggu Verifikasi Pengeluaran ASB' : 'Pengeluaran Berjalan';
+  } else {
+    nextStatus = isCompleted ? RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS : 'PENGELUARAN_BERJALAN';
+    nextStatusLabel = isCompleted ? (RECEIPT_KSP_STATUS_LABELS[RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS] || 'Menunggu Penerimaan Pengurus') : 'Pengeluaran Berjalan';
+  }
 
   const batchSummaryStr = batchDetails.map(b => `${b.batchCode}: ${b.qty.toLocaleString('id-ID')} Pkk`).join(', ');
   const auditDetails = `Pengeluaran bibit #${shipmentNo} sebanyak ${shipmentQty.toLocaleString('id-ID')} Pkk (${batchSummaryStr}) telah diproses oleh Mantri Bibitan`;
@@ -513,12 +526,18 @@ export async function processDispatchShipment(parentRequest, formValues, current
       remainingQty: remainingQty,
       status: nextStatus,
       statusLabel: nextStatusLabel,
-      targetDivisionId: req.targetDivisionId,
-      targetDivisionName: req.targetDivisionName,
+      targetDivisionId: isKebunSendiri ? null : req.targetDivisionId,
+      targetDivisionName: isKebunSendiri ? null : req.targetDivisionName,
       lastIssuedAt: new Date().toISOString(),
-      targetNextRole: isCompleted ? 'PENGURUS' : 'MANTRI_TANAMAN',
-      targetNextEstateId: isCompleted ? req.estateId : currentUser.estateId,
-      targetNextDivisionId: isCompleted ? null : (req.targetDivisionId || currentUser.divisionId)
+      targetNextRole: isKebunSendiri ? (isCompleted ? 'ASISTEN_BIBITAN' : 'MANTRI_TANAMAN') : (isCompleted ? 'PENGURUS' : 'MANTRI_TANAMAN'),
+      targetNextEstateId: isKebunSendiri ? null : (isCompleted ? req.estateId : currentUser.estateId),
+      targetNextDivisionId: isKebunSendiri ? null : (isCompleted ? null : (req.targetDivisionId || currentUser.divisionId)),
+      dispatchData: {
+        dispatchDocNo: newDispatchRecord.dispatchDocNo,
+        issuedQty: totalIssuedQty,
+        issuedAt: new Date().toISOString(),
+        batches: batchDetails
+      }
     },
     AUDIT_EVENT_TYPES.UPDATE,
     currentUser,

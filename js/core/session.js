@@ -12,6 +12,10 @@ export const session = {
     return storage.get(KEYS.SESSION, null);
   },
 
+  getUser() {
+    return this.get();
+  },
+
   isAuthenticated() {
     const s = this.get();
     return !!s && s.isAuthenticated === true;

@@ -683,23 +683,23 @@ assert(normalizeRole('ASISTEN_KEPALA') === 'ASKEP', 'UAT-3.4 normalizeRole("ASIS
 
 // 4. Role ASISTEN_BIBITAN menghasilkan submenu yang benar (3 items)
 assert(Array.isArray(asistenSubMenus) && asistenSubMenus.length === 3, 'UAT-3.5 Role ASISTEN_BIBITAN menghasilkan 3 submenu');
-assert(asistenSubMenus[0].rawTitle === 'Melanjutkan Permintaan dari Kebun Sendiri', 'UAT-3.6 Asisten Submenu 1: Melanjutkan Permintaan dari Kebun Sendiri');
+assert(asistenSubMenus[0].rawTitle === 'Permintaan Bibit Kebun Sendiri' && asistenSubMenus[0].route === '/request/kebun-sendiri', 'UAT-3.6 Asisten Submenu 1: Permintaan Bibit Kebun Sendiri -> /request/kebun-sendiri');
 assert(asistenSubMenus[1].rawTitle === 'Melanjutkan Permintaan dari Kebun Sepupu' && asistenSubMenus[1].route === '/request/kebun-sepupu', 'UAT-3.7 Asisten Submenu 2: Melanjutkan Permintaan dari Kebun Sepupu -> /request/kebun-sepupu');
 assert(asistenSubMenus[2].rawTitle === 'Buat Permintaan Bibit Divisi Sendiri', 'UAT-3.8 Asisten Submenu 3: Buat Permintaan Bibit Divisi Sendiri');
 
-// 5. Role ASISTEN_KEPALA menghasilkan submenu yang benar
+// 5. Role ASISTEN_KEPALA menghasilkan submenu yang benar (3 items)
 const askepSubMenus = getSubMenuItemsForRole('ASISTEN_KEPALA');
-assert(Array.isArray(askepSubMenus) && askepSubMenus.length === 2, 'UAT-3.9 Role ASISTEN_KEPALA menghasilkan 2 submenu');
-assert(askepSubMenus[0].rawTitle === 'Melanjutkan Permintaan Kebun Sepupu' && askepSubMenus[0].route === '/request/kebun-sepupu', 'UAT-3.10 Askep Submenu 1: Melanjutkan Permintaan Kebun Sepupu');
+assert(Array.isArray(askepSubMenus) && askepSubMenus.length === 3, 'UAT-3.9 Role ASISTEN_KEPALA menghasilkan 3 submenu');
+assert(askepSubMenus[0].rawTitle === 'Permintaan Bibit Kebun Sendiri' && askepSubMenus[0].route === '/request/kebun-sendiri', 'UAT-3.10 Askep Submenu 1: Permintaan Bibit Kebun Sendiri -> /request/kebun-sendiri');
 
-// 6. Role PENGURUS tetap menghasilkan submenu yang benar
+// 6. Role PENGURUS tetap menghasilkan submenu yang benar (3 items)
 const pengurusSubMenus = getSubMenuItemsForRole('PENGURUS');
-assert(Array.isArray(pengurusSubMenus) && pengurusSubMenus.length === 2, 'UAT-3.11 Role PENGURUS menghasilkan 2 submenu');
-assert(pengurusSubMenus[0].rawTitle === 'Permintaan Bibit Kebun Sepupu' && pengurusSubMenus[0].route === '/request/kebun-sepupu', 'UAT-3.12 Pengurus Submenu 1: Permintaan Bibit Kebun Sepupu');
+assert(Array.isArray(pengurusSubMenus) && pengurusSubMenus.length === 3, 'UAT-3.11 Role PENGURUS menghasilkan 3 submenu');
+assert(pengurusSubMenus[0].rawTitle === 'Permintaan Bibit Kebun Sendiri' && pengurusSubMenus[0].route === '/request/kebun-sendiri', 'UAT-3.12 Pengurus Submenu 1: Permintaan Bibit Kebun Sendiri -> /request/kebun-sendiri');
 
-// 7. Role MANTRI tetap menghasilkan submenu yang benar
+// 7. Role MANTRI menghasilkan submenu khusus (view-only, tanpa create request)
 const mantriSubMenus = getSubMenuItemsForRole('MANTRI_TANAMAN');
-assert(Array.isArray(mantriSubMenus) && mantriSubMenus.length === 2, 'UAT-3.13 Role MANTRI menghasilkan default valid submenus');
+assert(Array.isArray(mantriSubMenus) && mantriSubMenus.length === 1, 'UAT-3.13 Role MANTRI menghasilkan 1 submenu khusus (Daftar Permintaan, tanpa create)');
 
 // -------------------------------------------------------------------------------------
 // SUMMARY

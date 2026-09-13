@@ -2906,7 +2906,7 @@ export function renderReceiptKebunSepupuLanding() {
           </button>
           <div>
             <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0; line-height: 1.2;">Penerimaan Bibit</h1>
-            <div style="font-size: 0.70rem; color: #64748B;">Kebun Sepupu • ${esc(currentUser?.estateName || currentUser?.estateId || '-')}${currentUser?.divisionName ? ` • ${esc(currentUser.divisionName)}` : ''}</div>
+            ${isAsistenBibitan ? '' : `<div style="font-size: 0.70rem; color: #64748B;">Kebun Sepupu • ${esc(currentUser?.estateName || currentUser?.estateId || '-')}${currentUser?.divisionName ? ` • ${esc(currentUser.divisionName)}` : ''}</div>`}
           </div>
         </div>
         

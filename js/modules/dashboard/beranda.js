@@ -65,11 +65,29 @@ const MENU_ITEMS = [
 
 import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
 import { requestRepository } from '../../db/repositories.js';
-import { filterIncomingRequests, getActionableIncomingCount } from '../request/request-kebun-sepupu-landing.js';
+import { 
+  filterIncomingRequests as filterIncomingKspRequests, 
+  getActionableIncomingCount as getActionableIncomingKspCount 
+} from '../request/request-kebun-sepupu-landing.js';
+import {
+  filterIncomingRequests as filterIncomingSendiriRequests,
+  getActionableIncomingCount as getActionableIncomingSendiriCount
+} from '../request/request-kebun-sendiri-landing.js';
 import { filterReceiptKspRequests, getActionableReceiptCount } from '../receipt/receipt-kebun-sepupu-landing.js';
 import { getActionableSelectionCount } from '../selection/selection-manager.js';
 import { getActionableDestructionCount } from '../destruction/destruction-manager.js';
 import { ASISTEN_BIBITAN_MAIN_MENUS } from '../../core/menu-registry.js';
+
+function hasActionablePermintaan(requests, userCtx) {
+  if (!requests || !userCtx) return false;
+  const kspIncoming = filterIncomingKspRequests(requests, userCtx);
+  const kspCount = getActionableIncomingKspCount(kspIncoming, userCtx);
+
+  const sendiriIncoming = filterIncomingSendiriRequests(requests, userCtx);
+  const sendiriCount = getActionableIncomingSendiriCount(sendiriIncoming, userCtx);
+
+  return (kspCount + sendiriCount) > 0;
+}
 
 const PENGURUS_MENU_ITEMS = [
   { id: 'penerimaan', title: 'Penerimaan<br>Bibit', icon: ICONS.documentPlus, route: '/reception/kebun-sepupu' },
@@ -100,8 +118,7 @@ function renderBerandaAskep() {
   const userCtx = getCurrentUserContext() || resolveUserContext(user);
 
   const allRequests = storage.get('requests_transactions', []);
-  const incomingReqs = filterIncomingRequests(allRequests, userCtx);
-  const hasActionableRequest = getActionableIncomingCount(incomingReqs, userCtx) > 0;
+  const hasActionableRequest = hasActionablePermintaan(allRequests, userCtx);
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const estateReceipts = filterReceiptKspRequests(allReceipts, userCtx);
@@ -110,8 +127,7 @@ function renderBerandaAskep() {
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
     if (dbList && dbList.length > 0) {
-      const dbIncoming = filterIncomingRequests(dbList, userCtx);
-      const dbHasActionable = getActionableIncomingCount(dbIncoming, userCtx) > 0;
+      const dbHasActionable = hasActionablePermintaan(dbList, userCtx);
       if (dbHasActionable !== hasActionableRequest) {
         const badgeEl = app.querySelector('[data-menu-id="permintaan-bibit"] .notif-dot');
         if (dbHasActionable && !badgeEl) {
@@ -190,8 +206,7 @@ function renderBerandaAsisten() {
   const userCtx = getCurrentUserContext() || resolveUserContext(user);
 
   const allRequests = storage.get('requests_transactions', []);
-  const incomingReqs = filterIncomingRequests(allRequests, userCtx);
-  const hasActionableRequest = getActionableIncomingCount(incomingReqs, userCtx) > 0;
+  const hasActionableRequest = hasActionablePermintaan(allRequests, userCtx);
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const estateReceipts = filterReceiptKspRequests(allReceipts, userCtx);
@@ -200,8 +215,7 @@ function renderBerandaAsisten() {
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
     if (dbList && dbList.length > 0) {
-      const dbIncoming = filterIncomingRequests(dbList, userCtx);
-      const dbHasActionable = getActionableIncomingCount(dbIncoming, userCtx) > 0;
+      const dbHasActionable = hasActionablePermintaan(dbList, userCtx);
       if (dbHasActionable !== hasActionableRequest) {
         const badgeEl = app.querySelector('[data-menu-id="permintaan-bibit"] .notif-dot');
         if (dbHasActionable && !badgeEl) {
@@ -280,8 +294,7 @@ function renderBerandaPengurus() {
   const userCtx = getCurrentUserContext() || resolveUserContext(user);
 
   const allRequests = storage.get('requests_transactions', []);
-  const incomingReqs = filterIncomingRequests(allRequests, userCtx);
-  const hasActionableRequest = getActionableIncomingCount(incomingReqs, userCtx) > 0;
+  const hasActionableRequest = hasActionablePermintaan(allRequests, userCtx);
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const estateReceipts = filterReceiptKspRequests(allReceipts, userCtx);
@@ -290,8 +303,7 @@ function renderBerandaPengurus() {
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
     if (dbList && dbList.length > 0) {
-      const dbIncoming = filterIncomingRequests(dbList, userCtx);
-      const dbHasActionable = getActionableIncomingCount(dbIncoming, userCtx) > 0;
+      const dbHasActionable = hasActionablePermintaan(dbList, userCtx);
       if (dbHasActionable !== hasActionableRequest) {
         const badgeEl = app.querySelector('[data-menu-id="permintaan-bibit"] .notif-dot');
         if (dbHasActionable && !badgeEl) {
@@ -403,8 +415,7 @@ function renderBerandaAsistenBibitan() {
   const userCtx = getCurrentUserContext() || resolveUserContext(user);
 
   const allRequests = storage.get('requests_transactions', []);
-  const incomingReqs = filterIncomingRequests(allRequests, userCtx);
-  const hasActionableRequest = getActionableIncomingCount(incomingReqs, userCtx) > 0;
+  const hasActionableRequest = hasActionablePermintaan(allRequests, userCtx);
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const estateReceipts = filterReceiptKspRequests(allReceipts, userCtx);
@@ -419,8 +430,7 @@ function renderBerandaAsistenBibitan() {
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
     if (dbList && dbList.length > 0) {
-      const dbIncoming = filterIncomingRequests(dbList, userCtx);
-      const dbHasActionable = getActionableIncomingCount(dbIncoming, userCtx) > 0;
+      const dbHasActionable = hasActionablePermintaan(dbList, userCtx);
       if (dbHasActionable !== hasActionableRequest) {
         const badgeEl = app.querySelector('[data-menu-id="permintaan-bibit"] .notif-dot');
         if (dbHasActionable && !badgeEl) {

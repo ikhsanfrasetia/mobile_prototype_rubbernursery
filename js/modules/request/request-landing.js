@@ -10,7 +10,14 @@ import { toast } from '../../components/toast.js';
 import { navigate } from '../../core/router.js';
 import { getCurrentUserContext, resolveUserContext, normalizeRole } from '../../core/user-context.js';
 import { requestRepository } from '../../db/repositories.js';
-import { filterIncomingRequests, getActionableIncomingCount } from './request-kebun-sepupu-landing.js';
+import { 
+  filterIncomingRequests as filterIncomingKspRequests, 
+  getActionableIncomingCount as getActionableIncomingKspCount 
+} from './request-kebun-sepupu-landing.js';
+import {
+  filterIncomingRequests as filterIncomingSendiriRequests,
+  getActionableIncomingCount as getActionableIncomingSendiriCount
+} from './request-kebun-sendiri-landing.js';
 
 /* SVG Icons sesuai visual baseline approved — proporsional & rapi #116834 */
 const ICONS = {
@@ -49,10 +56,10 @@ export function getSubMenuItemsForRole(userRole) {
     return [
       {
         id: 'ksp-bibit-sendiri',
-        title: 'Melanjutkan Permintaan<br>dari Kebun Sendiri',
-        rawTitle: 'Melanjutkan Permintaan dari Kebun Sendiri',
+        title: 'Permintaan Bibit<br>Kebun Sendiri',
+        rawTitle: 'Permintaan Bibit Kebun Sendiri',
         icon: ICONS.spbBibit,
-        route: null
+        route: '/request/kebun-sendiri'
       },
       {
         id: 'ksp-bibit',
@@ -74,6 +81,13 @@ export function getSubMenuItemsForRole(userRole) {
   if (role === 'ASKEP' || role === 'ASISTEN_KEPALA') {
     return [
       {
+        id: 'ksp-bibit-sendiri',
+        title: 'Permintaan Bibit<br>Kebun Sendiri',
+        rawTitle: 'Permintaan Bibit Kebun Sendiri',
+        icon: ICONS.spbBibit,
+        route: '/request/kebun-sendiri'
+      },
+      {
         id: 'ksp-bibit',
         title: 'Melanjutkan Permintaan<br>Kebun Sepupu',
         rawTitle: 'Melanjutkan Permintaan Kebun Sepupu',
@@ -90,8 +104,29 @@ export function getSubMenuItemsForRole(userRole) {
     ];
   }
 
-  // Default / PENGURUS
+  // MANTRI_TANAMAN: Hanya melihat request yang eligible untuk Dispatch.
+  // TIDAK dapat membuat Permintaan Kebun Sepupu baru.
+  if (role === 'MANTRI_TANAMAN') {
+    return [
+      {
+        id: 'ksp-bibit',
+        title: 'Daftar Permintaan<br>Kebun Sepupu',
+        rawTitle: 'Daftar Permintaan Kebun Sepupu',
+        icon: ICONS.approvalKsp,
+        route: '/request/kebun-sepupu'
+      }
+    ];
+  }
+
+  // Default / PENGURUS — satu-satunya role yang membuat Permintaan Kebun Sepupu
   return [
+    {
+      id: 'ksp-bibit-sendiri',
+      title: 'Permintaan Bibit<br>Kebun Sendiri',
+      rawTitle: 'Permintaan Bibit Kebun Sendiri',
+      icon: ICONS.spbBibit,
+      route: '/request/kebun-sendiri'
+    },
     {
       id: 'ksp-bibit',
       title: 'Permintaan Bibit<br>Kebun Sepupu',
@@ -127,12 +162,19 @@ export async function renderRequestLanding() {
     allRequests = storage.get('requests_transactions', []);
   }
 
-  const incomingReqs = filterIncomingRequests(allRequests, userCtx);
-  const hasActionableRequest = getActionableIncomingCount(incomingReqs, userCtx) > 0;
+  const incomingKsp = filterIncomingKspRequests(allRequests, userCtx);
+  const hasActionableRequest = getActionableIncomingKspCount(incomingKsp, userCtx) > 0;
+
+  const incomingSendiri = filterIncomingSendiriRequests(allRequests, userCtx);
+  const hasActionableSendiri = getActionableIncomingSendiriCount(incomingSendiri, userCtx) > 0;
 
   const menuCards = activeSubMenuItems.map((item) => {
     let badgeHtml = '';
     if (item.id === 'ksp-bibit' && hasActionableRequest) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 10px; right: 10px; width: 10px; height: 10px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'ksp-bibit-sendiri' && hasActionableSendiri) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 10px; right: 10px; width: 10px; height: 10px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;

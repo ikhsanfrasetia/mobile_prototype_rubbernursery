@@ -45,6 +45,8 @@ import { renderNurseryActivityLanding, renderNurseryActivityForm } from './modul
 import { renderRequestLanding } from './modules/request/request-landing.js';
 import { renderRequestKebunSepupuLanding } from './modules/request/request-kebun-sepupu-landing.js';
 import { renderRequestKebunSepupuForm } from './modules/request/request-kebun-sepupu-form.js';
+import { renderRequestKebunSendiriLanding } from './modules/request/request-kebun-sendiri-landing.js';
+import { renderRequestKebunSendiriForm } from './modules/request/request-kebun-sendiri-form.js';
 import { renderDispatchLanding } from './modules/dispatch/dispatch-landing.js';
 import { renderDispatchReport } from './modules/dispatch/dispatch-report.js';
 import { renderMasterBedengan } from './modules/master/master-bedengan.js';
@@ -114,6 +116,8 @@ registerRoute('/nursery-activity/form', renderNurseryActivityForm);
 registerRoute('/request', renderRequestLanding);
 registerRoute('/request/kebun-sepupu', renderRequestKebunSepupuLanding);
 registerRoute('/request/kebun-sepupu/form', renderRequestKebunSepupuForm);
+registerRoute('/request/kebun-sendiri', renderRequestKebunSendiriLanding);
+registerRoute('/request/kebun-sendiri/form', renderRequestKebunSendiriForm);
 registerRoute('/dispatch', renderDispatchLanding);
 registerRoute('/dispatch/report', renderDispatchReport);
 registerRoute('/entres', renderEntresLanding);

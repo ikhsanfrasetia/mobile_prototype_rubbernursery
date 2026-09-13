@@ -47,9 +47,6 @@ export function renderConsolidationLanding() {
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 0 6px; letter-spacing: -0.01em;">Konsolidasi Data Pembibitan</h1>
         </div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #116834; background: #E8F3EC; padding: 4px 8px; border-radius: 6px;">
-          ${esc(currentUser.estateName || currentUser.estateId || 'Bibitan')}
-        </div>
       </header>
 
       <!-- NAVIGATION TABS -->

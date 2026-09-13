@@ -116,7 +116,6 @@ export function renderMasterBatch() {
                 </button>
                 <div>
                   <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0;">Master Batch</h1>
-                  <p style="font-size: 0.72rem; color: #64748B; margin: 0;">Batch bibit pada divisi aktif.</p>
                 </div>
               </div>
             </div>

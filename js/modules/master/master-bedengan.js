@@ -102,7 +102,6 @@ export function renderMasterBedengan() {
                 </button>
                 <div>
                   <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0;">Master Bedengan</h1>
-                  <p style="font-size: 0.72rem; color: #64748B; margin: 0;">Bedengan pembibitan pada divisi aktif.</p>
                 </div>
               </div>
             </div>

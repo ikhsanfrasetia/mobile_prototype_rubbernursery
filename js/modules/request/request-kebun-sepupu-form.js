@@ -1,6 +1,6 @@
 import { navigate } from '../../core/router.js';
 import { session } from '../../core/session.js';
-import { getCurrentUserContext } from '../../core/user-context.js';
+import { getCurrentUserContext, normalizeRole } from '../../core/user-context.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { openModal, closeModal } from '../../components/modal.js';
@@ -18,11 +18,29 @@ import {
   esc
 } from '../../core/utils.js';
 
+/**
+ * Daftar role yang diizinkan membuat Permintaan Kebun Sepupu.
+ * HANYA PENGURUS yang boleh create request.
+ */
+const ALLOWED_CREATE_ROLES = ['PENGURUS'];
+
 export async function renderRequestKebunSepupuForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
   const user = getCurrentUserContext() || session.get() || { name: 'Junaidi', role: 'PENGURUS', position: 'Pengurus Kebun', estateId: 'EST-TBS' };
+
+  // ========================================================================
+  // ROUTE GUARD: Hanya PENGURUS yang boleh mengakses form create request.
+  // MANTRI_TANAMAN, ASISTEN_BIBITAN, ASKEP, dan role lain ditolak.
+  // ========================================================================
+  const userRole = normalizeRole(user.role || user.rawRole);
+  if (!ALLOWED_CREATE_ROLES.includes(userRole)) {
+    toast('Anda tidak memiliki otorisasi untuk membuat Permintaan Kebun Sepupu.', 'error');
+    navigate('/request');
+    return;
+  }
+
   const today = formatFullDateIndonesian(new Date());
 
   // Load existing requests for unique document numbering
@@ -383,8 +401,19 @@ function openReviewModal(data) {
   });
 }
 
-/** Proses Penyimpanan Transaksi Permintaan */
+/**
+ * Proses Penyimpanan Transaksi Permintaan.
+ * SERVICE-LEVEL GUARD: Hanya PENGURUS yang dapat membuat request.
+ */
 async function submitRequest(data) {
+  // Service-level authorization: Reject non-PENGURUS
+  const creatorRole = normalizeRole(data.user?.role || data.user?.rawRole || '');
+  if (!ALLOWED_CREATE_ROLES.includes(creatorRole)) {
+    toast('Otorisasi ditolak: Hanya Pengurus Kebun yang dapat membuat Permintaan Bibit.', 'error');
+    console.error(`[submitRequest] ACCESS DENIED: role '${creatorRole}' tidak diizinkan membuat request.`);
+    return;
+  }
+
   const resolvedKlon = resolveKlon(data.klon);
   const canonicalKlon = resolvedKlon ? resolvedKlon.canonicalName : (data.klon || '');
   const resolvedCfna = getCfnaByCode(data.allocationCode);
