@@ -2,37 +2,31 @@
  * modules/auth/sync.js — Halaman Sinkronisasi (route /sync).
  * Flow: Login → Splash → Sinkronisasi.
  * 3 state: belum sinkron (A), proses sinkronisasi (B), berhasil (C).
- * Divisi diambil dari master existing (divisions). Last sync disimpan di meta.
+ *
+ * Integrasi Compact Dropdown Multiselect Scoped Division Resolver & Sync Engine (TASK-SYNC-FIX-03):
+ * 1. UI Ringkas: Mengembalikan kontrol "Pilih Divisi Kerja" ke desain dropdown ringkas (collapsed by default).
+ * 2. DEFAULT SELECTION: Divisi Role Aktif dari session otomatis terpilih saat halaman dibuka.
+ * 3. PERSISTENCE MERGE: Selection tersimpan tidak menghilangkan divisi role aktif (active division merged).
+ * 4. MULTISELECT LOGIC: Mendukung pemilihan multiple divisi saat dropdown dibuka.
+ * 5. ZERO SESSION POLLUTION: Pilihan multiselect sync TIDAK BOLEH mengubah session.divisionId atau session.estateId.
+ * 6. PENGURUS MULTI-ESTATE: Pengurus dapat memilih multiple divisi lintas kebun (grouped by estate saat dropdown dibuka).
+ * 7. SCOPED ACCESS: Mantri/ASB/Askep hanya dapat memilih divisi di kebun aktifnya.
  */
 
 import { session } from '../../core/session.js';
-import { storage, KEYS } from '../../core/storage.js';
-import { divisionRepository } from '../../db/repositories.js';
+import { resolveUserContext } from '../../core/user-context.js';
+import {
+  resolveSyncScope,
+  defaultSyncService,
+  SyncPersistenceAdapter,
+  SYNC_DATASET_CONFIG,
+  SYNC_STATUS
+} from '../../core/sync-engine.js';
 import { setMeta, getMeta } from '../../db/indexeddb.js';
 import { toast } from '../../components/toast.js';
 import { openDrawer } from '../../components/drawer.js';
 import { esc, pad } from '../../core/utils.js';
 import { navigate } from '../../core/router.js';
-
-const SYNC_ITEMS = [
-  { id: 'kebun', name: 'Kebun' },
-  { id: 'divisi', name: 'Divisi' },
-  { id: 'pekerja', name: 'Pekerja' },
-  { id: 'kode-kehadiran', name: 'Kode Kehadiran' },
-  { id: 'ketidakhadiran', name: 'Ketidakhadiran' },
-  { id: 'jam-kerja', name: 'Jam Kerja' },
-  { id: 'ganti-hari', name: 'Ganti Hari' },
-  { id: 'aset', name: 'Aset' },
-  { id: 'wajah', name: 'Wajah' },
-  { id: 'cuti-pekerja', name: 'Cuti Pekerja' },
-  { id: 'mangkir', name: 'Mangkir' },
-  { id: 'material', name: 'Material' },
-  { id: 'proyek', name: 'Proyek' },
-  { id: 'program-pembibitan', name: 'Program Pembibitan' },
-  { id: 'kebun-entres', name: 'Kebun Entres' },
-  { id: 'batch', name: 'Batch' },
-  { id: 'bedengan', name: 'Bedengan' }
-];
 
 const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const MONTH_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -41,16 +35,119 @@ function formatSyncTimestamp(d) {
   return `${DAY_NAMES[d.getDay()]}, ${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} WIB`;
 }
 
-function saveSyncDivision(divisionId, divisionName) {
-  const s = session.get();
-  if (s) {
-    storage.set(KEYS.SESSION, { ...s, divisionId, divisionName });
-  }
-}
-
 export async function renderSync() {
   const app = document.getElementById('app');
-  const divisions = await divisionRepository.list();
+
+  // 1. Ambil active user context (tanpa mutasi session)
+  const rawUser = session.get();
+  const user = resolveUserContext(rawUser);
+  const userId = user.userId || user.id || 'USR-001';
+
+  // 2. Ambil selection persisten sebelumnya (user-isolated)
+  let savedSelection = SyncPersistenceAdapter.getSelection(userId);
+  if (!savedSelection || savedSelection.length === 0) {
+    try {
+      if (typeof indexedDB !== 'undefined') {
+        const lastSync = await getMeta('lastSync');
+        if (lastSync && lastSync.userId === userId && Array.isArray(lastSync.divisionIds)) {
+          savedSelection = lastSync.divisionIds;
+        }
+      }
+    } catch {
+      savedSelection = null;
+    }
+  }
+
+  // 3. Resolve sync scope berbasis engine
+  const scope = resolveSyncScope(user);
+
+  // 4. Filter divisi operasional valid (tanpa aggregate placeholder DIV-APM)
+  const availableDivisions = (scope.allowedDivisions || []).filter(
+    (d) => d.id !== 'DIV-APM' && !d.name.includes('All Division')
+  );
+
+  // 5. Tentukan Default Division Role Aktif
+  let activeRoleDivId = null;
+  if (availableDivisions.some((d) => d.id === user.divisionId)) {
+    activeRoleDivId = user.divisionId;
+  } else {
+    // Jika session.divisionId berupa aggregate seperti DIV-TBS-EST / DIV-APM-EST, cari divisi utama di kebun aktif
+    const homeDiv = availableDivisions.find((d) => d.estateId === (user.estateId || scope.estateId));
+    if (homeDiv) {
+      activeRoleDivId = homeDiv.id;
+    } else if (availableDivisions.length > 0) {
+      activeRoleDivId = availableDivisions[0].id;
+    }
+  }
+
+  // 6. State lokal: Set of selected division IDs (ZERO SESSION POLLUTION)
+  // Aturan TASK-SYNC-FIX-03: Divisi role aktif SELALU ada di default selection & persisted selection di-merge
+  const selectedDivisionIds = new Set();
+  if (activeRoleDivId) {
+    selectedDivisionIds.add(activeRoleDivId);
+  }
+  if (Array.isArray(savedSelection)) {
+    savedSelection.forEach((id) => {
+      if (availableDivisions.some((d) => d.id === id)) {
+        selectedDivisionIds.add(id);
+      }
+    });
+  }
+  if (selectedDivisionIds.size === 0 && availableDivisions.length > 0) {
+    selectedDivisionIds.add(availableDivisions[0].id);
+  }
+
+  // 7. Grouping divisi berdasarkan Estate
+  const divisionsByEstate = new Map();
+  availableDivisions.forEach((d) => {
+    const estateName = d.estateName || (d.estateId === 'EST-APM' ? 'Aek Pamingke' : 'Tanah Besih');
+    if (!divisionsByEstate.has(estateName)) {
+      divisionsByEstate.set(estateName, []);
+    }
+    divisionsByEstate.get(estateName).push(d);
+  });
+
+  // Helper untuk mendapatkan teks label dropdown
+  const getDropdownLabelText = () => {
+    if (selectedDivisionIds.size === 1) {
+      const selectedId = Array.from(selectedDivisionIds)[0];
+      const div = availableDivisions.find((d) => d.id === selectedId);
+      return div ? div.name : selectedId;
+    }
+    if (selectedDivisionIds.size > 1) {
+      return `${selectedDivisionIds.size} Divisi Terpilih`;
+    }
+    return 'Pilih Divisi Kerja';
+  };
+
+  const renderDropdownMenuItems = () => {
+    let html = '';
+    for (const [estateName, divs] of divisionsByEstate.entries()) {
+      if (scope.allowCrossEstate || divisionsByEstate.size > 1) {
+        html += `<div class="sync-dropdown-estate-header">🏛️ ${esc(estateName)}</div>`;
+      }
+      for (const d of divs) {
+        const isChecked = selectedDivisionIds.has(d.id);
+        html += `
+          <label class="sync-dropdown-item" for="sync-cb-${esc(d.id)}">
+            <input
+              type="checkbox"
+              class="sync-dropdown-checkbox"
+              id="sync-cb-${esc(d.id)}"
+              name="sync-division-cb"
+              value="${esc(d.id)}"
+              ${isChecked ? 'checked' : ''}
+            />
+            <div class="sync-dropdown-item-text">
+              <span class="sync-dropdown-item-name">${esc(d.name)}</span>
+              <span class="sync-dropdown-item-sub">${esc(d.id)} · ${esc(estateName)}</span>
+            </div>
+          </label>
+        `;
+      }
+    }
+    return html;
+  };
 
   app.innerHTML = `
     <div class="page sync-page">
@@ -66,9 +163,22 @@ export async function renderSync() {
             <span class="sync-section-title">Pilih Divisi Kerja</span>
             <button class="sync-help-btn" id="sync-help" type="button" aria-label="Bantuan">?</button>
           </div>
-          <select class="field-control" id="sync-division">
-            ${divisions.map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}
-          </select>
+
+          <div class="sync-dropdown-wrap" id="sync-dropdown-wrap">
+            <button
+              type="button"
+              class="field-control sync-dropdown-trigger"
+              id="sync-dropdown-trigger"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+            >
+              <span class="sync-dropdown-label" id="sync-dropdown-label">${esc(getDropdownLabelText())}</span>
+              <span class="sync-dropdown-arrow" id="sync-dropdown-arrow">▼</span>
+            </button>
+            <div class="sync-dropdown-menu" id="sync-dropdown-menu" hidden>
+              ${renderDropdownMenuItems()}
+            </div>
+          </div>
         </section>
 
         <section class="sync-section">
@@ -92,40 +202,75 @@ export async function renderSync() {
     </div>
   `;
 
-  const divisionSelect = app.querySelector('#sync-division');
+  const dropdownWrapEl = app.querySelector('#sync-dropdown-wrap');
+  const dropdownTriggerEl = app.querySelector('#sync-dropdown-trigger');
+  const dropdownLabelEl = app.querySelector('#sync-dropdown-label');
+  const dropdownArrowEl = app.querySelector('#sync-dropdown-arrow');
+  const dropdownMenuEl = app.querySelector('#sync-dropdown-menu');
   const listEl = app.querySelector('#sync-list');
   const noticeEl = app.querySelector('#sync-notice');
   const noticeTimeEl = app.querySelector('#sync-notice-time');
   const nowBtn = app.querySelector('#sync-now');
 
-  // Preselect divisi: dari session, lalu lastSync, lalu opsi pertama.
-  const me = session.get();
-  let lastSync = null;
-  try {
-    lastSync = await getMeta('lastSync');
-  } catch {
-    lastSync = null;
-  }
-  const preferred = (me && me.divisionId) || (lastSync && lastSync.divisionId);
-  if (preferred && divisions.some((d) => d.id === preferred)) {
-    divisionSelect.value = preferred;
-  }
+  // Toggle Dropdown Menu (Open / Close)
+  const toggleDropdown = (open) => {
+    const isCurrentlyOpen = !dropdownMenuEl.hidden;
+    const shouldOpen = typeof open === 'boolean' ? open : !isCurrentlyOpen;
+    dropdownMenuEl.hidden = !shouldOpen;
+    dropdownTriggerEl.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    dropdownArrowEl.textContent = shouldOpen ? '▲' : '▼';
+  };
+
+  dropdownTriggerEl?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleDropdown();
+  });
+
+  // Tutup dropdown jika user klik di luar dropdown wrap
+  const handleOutsideClick = (e) => {
+    if (dropdownWrapEl && !dropdownWrapEl.contains(e.target)) {
+      toggleDropdown(false);
+    }
+  };
+  document.addEventListener('click', handleOutsideClick);
+
+  const updateSelectionState = () => {
+    dropdownLabelEl.textContent = getDropdownLabelText();
+    SyncPersistenceAdapter.saveSelection(userId, Array.from(selectedDivisionIds));
+    nowBtn.disabled = selectedDivisionIds.size === 0 || phase === 'syncing';
+  };
+
+  // Event handler untuk setiap checkbox divisi di dalam dropdown
+  const attachCheckboxListeners = () => {
+    const checkboxes = app.querySelectorAll('input[name="sync-division-cb"]');
+    checkboxes.forEach((cb) => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          selectedDivisionIds.add(cb.value);
+        } else {
+          selectedDivisionIds.delete(cb.value);
+        }
+        updateSelectionState();
+      });
+    });
+  };
+  attachCheckboxListeners();
 
   let phase = 'idle'; // 'idle' | 'syncing' | 'done'
   const doneIds = new Set();
   const GLYPH = { warn: '!', pending: '○', ok: '✓' };
 
-  const itemStatus = (id) => {
+  const itemStatus = (key) => {
     if (phase === 'done') return 'ok';
-    if (phase === 'syncing') return doneIds.has(id) ? 'ok' : 'pending';
+    if (phase === 'syncing') return doneIds.has(key) ? 'ok' : 'pending';
     return 'warn';
   };
 
-  const render = () => {
-    listEl.innerHTML = SYNC_ITEMS.map((it) => {
-      const s = itemStatus(it.id);
-      return `<li class="sync-item" data-id="${it.id}">
-        <span class="sync-item-name">${esc(it.name)}</span>
+  const renderList = () => {
+    listEl.innerHTML = SYNC_DATASET_CONFIG.map((ds) => {
+      const s = itemStatus(ds.key);
+      return `<li class="sync-item" data-id="${ds.key}">
+        <span class="sync-item-name">${esc(ds.label)}</span>
         <span class="sync-status ${s}">${GLYPH[s]}</span>
       </li>`;
     }).join('');
@@ -133,46 +278,59 @@ export async function renderSync() {
 
   const runSync = async () => {
     if (phase === 'syncing') return;
-    const divisionId = divisionSelect.value;
-    const div = divisions.find((d) => d.id === divisionId);
-    saveSyncDivision(divisionId, div ? div.name : null);
+
+    if (selectedDivisionIds.size === 0) {
+      toast('Pilih minimal 1 divisi kerja untuk sinkronisasi.', 'error');
+      return;
+    }
+
+    const divisionIdsArray = Array.from(selectedDivisionIds);
+
+    // Pastikan dropdown tertutup saat sync dimulai
+    toggleDropdown(false);
 
     phase = 'syncing';
     doneIds.clear();
     noticeEl.hidden = true;
     nowBtn.disabled = true;
-    render();
-
-    for (const it of SYNC_ITEMS) {
-      await new Promise((r) => setTimeout(r, 180));
-      doneIds.add(it.id);
-      render();
-    }
-
-    phase = 'done';
-    const syncedAt = new Date();
-    noticeTimeEl.textContent = formatSyncTimestamp(syncedAt);
-    noticeEl.hidden = false;
-    nowBtn.disabled = false;
-    render();
+    renderList();
 
     try {
-      await setMeta('lastSync', { divisionId, syncedAt: syncedAt.toISOString(), status: 'done' });
+      const result = await defaultSyncService.syncAllDatasets(
+        user,
+        divisionIdsArray,
+        (progress) => {
+          doneIds.add(progress.datasetKey);
+          renderList();
+        }
+      );
+
+      phase = 'done';
+      const syncedAt = result.syncedAt ? new Date(result.syncedAt) : new Date();
+      noticeTimeEl.textContent = formatSyncTimestamp(syncedAt);
+      noticeEl.hidden = false;
     } catch (err) {
-      console.error('[sync] simpan lastSync gagal:', err);
+      console.error('[sync] Eksekusi sinkronisasi gagal:', err);
+      toast('Sinkronisasi gagal: ' + (err.message || 'Terjadi kesalahan.'), 'error');
+      phase = 'idle';
+    } finally {
+      nowBtn.disabled = selectedDivisionIds.size === 0;
+      renderList();
     }
   };
 
-  divisionSelect.addEventListener('change', () => {
-    const div = divisions.find((d) => d.id === divisionSelect.value);
-    saveSyncDivision(divisionSelect.value, div ? div.name : null);
+  app.querySelector('#sync-menu')?.addEventListener('click', openDrawer);
+  app.querySelector('#sync-help')?.addEventListener('click', () => {
+    toast(
+      scope.allowCrossEstate
+        ? 'Pilih satu atau lebih divisi kerja (termasuk lintas kebun) untuk disinkronkan.'
+        : 'Pilih satu atau lebih divisi kerja dalam kebun aktif Anda untuk disinkronkan.',
+      'info'
+    );
   });
+  app.querySelector('#sync-more')?.addEventListener('click', () => toast('Sinkronisasi data Sigma Nursery', 'info'));
+  nowBtn?.addEventListener('click', runSync);
+  app.querySelector('#sync-home')?.addEventListener('click', () => navigate('/home'));
 
-  app.querySelector('#sync-menu').addEventListener('click', openDrawer);
-  app.querySelector('#sync-help').addEventListener('click', () => toast('Pilih divisi kerja untuk sinkronisasi', 'info'));
-  app.querySelector('#sync-more').addEventListener('click', () => toast('Sinkronisasi data Sigma Nursery', 'info'));
-  nowBtn.addEventListener('click', runSync);
-  app.querySelector('#sync-home').addEventListener('click', () => navigate('/home'));
-
-  render();
+  renderList();
 }

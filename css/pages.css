@@ -730,16 +730,122 @@
   cursor: pointer;
 }
 
-#sync-division {
+.sync-dropdown-wrap {
+  position: relative;
   width: 100%;
-  height: 48px;
+}
+
+.sync-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  width: 100%;
+  min-height: 46px;
   padding: 10px 14px;
-  border: 1px solid #d4d4d8;
-  border-radius: 6px;
-  background: var(--white);
-  font-size: 0.96rem;
+  border: 1px solid var(--border-strong, #d4d4d8);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--white, #fff);
+  font-size: 0.95rem;
+  color: #18181b;
+  transition: border-color var(--dur, 0.15s) var(--ease, ease), box-shadow var(--dur, 0.15s) var(--ease, ease);
+}
+
+.sync-dropdown-trigger:focus,
+.sync-dropdown-trigger:hover {
+  outline: none;
+  border-color: var(--primary, #059669);
+}
+
+.sync-dropdown-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 500;
-  color: #09090b;
+  font-size: 0.92rem;
+  color: #18181b;
+}
+
+.sync-dropdown-arrow {
+  font-size: 0.72rem;
+  color: #71717a;
+  margin-left: 8px;
+  transition: transform 0.2s ease;
+}
+
+.sync-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--white, #fff);
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.sync-dropdown-estate-header {
+  padding: 8px 14px;
+  background: #f8fafc;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #f1f5f9;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.sync-dropdown-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f8fafc;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  user-select: none;
+}
+
+.sync-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.sync-dropdown-item:hover {
+  background: #f8fafc;
+}
+
+.sync-dropdown-checkbox {
+  width: 17px;
+  height: 17px;
+  margin-right: 12px;
+  accent-color: var(--primary, #059669);
+  cursor: pointer;
+}
+
+.sync-dropdown-item-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.sync-dropdown-item-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #18181b;
+}
+
+.sync-dropdown-item-sub {
+  font-size: 0.75rem;
+  color: #71717a;
+  margin-top: 1px;
 }
 
 .sync-notice {

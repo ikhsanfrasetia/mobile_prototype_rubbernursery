@@ -351,7 +351,7 @@ const TX_MODULES = {
     id: 'attendance',
     title: 'Presensi',
     subtitle: 'Kehadiran Mandor & Pekerja',
-    icon: '👥',
+    icon: 'attendance',
     route: '/attendance',
     storageKey: 'attendance_transactions',
     repo: attendanceRepository,
@@ -362,7 +362,7 @@ const TX_MODULES = {
     id: 'reception',
     title: 'Penerimaan',
     subtitle: 'Stok Masuk Benih & Bibit',
-    icon: '📦',
+    icon: 'reception',
     route: '/reception',
     storageKey: 'receipt_transactions',
     repo: receptionRepository,
@@ -373,7 +373,7 @@ const TX_MODULES = {
     id: 'seeding',
     title: 'Penyemaian',
     subtitle: 'Penanaman & Batching Semai',
-    icon: '🌱',
+    icon: 'seeding',
     route: '/seeding',
     storageKey: 'seeding_transactions',
     repo: seedingRepository,
@@ -384,7 +384,7 @@ const TX_MODULES = {
     id: 'budding',
     title: 'Okulasi',
     subtitle: 'Grafting Mata Tunas Unggul',
-    icon: '🌿',
+    icon: 'budding',
     route: '/budding',
     storageKey: 'budding_transactions',
     repo: buddingRepository,
@@ -395,7 +395,7 @@ const TX_MODULES = {
     id: 'inspection',
     title: 'Pemeriksaan',
     subtitle: 'Inspeksi & Evaluasi Keberhasilan',
-    icon: '🔍',
+    icon: 'inspection',
     route: '/inspection',
     storageKey: 'inspection_transactions',
     repo: inspectionRepository,
@@ -406,7 +406,7 @@ const TX_MODULES = {
     id: 'regrafting',
     title: 'Okulasi Janda',
     subtitle: 'Regrafting Okulasi Gagal',
-    icon: '🔄',
+    icon: 'regrafting',
     route: '/budding/regrafting',
     storageKey: 'regrafting_pool',
     repo: buddingRepository,
@@ -417,7 +417,7 @@ const TX_MODULES = {
     id: 'selection',
     title: 'Penyeleksian',
     subtitle: 'Afkir & Pengurangan Fisik Stok',
-    icon: '✂️',
+    icon: 'selection',
     route: '/selection',
     storageKey: 'selection_pool',
     repo: selectionRepository,
@@ -428,7 +428,7 @@ const TX_MODULES = {
     id: 'entres',
     title: 'Kebun Entres',
     subtitle: 'Aktivitas Menunas & Topping Entres',
-    icon: '🌳',
+    icon: 'entres',
     route: '/entres',
     storageKey: 'entres_transactions',
     repo: entresRepository,
@@ -439,7 +439,7 @@ const TX_MODULES = {
     id: 'nurseryActivity',
     title: 'Rekam Pemeliharaan',
     subtitle: 'Pemupukan, Penyemprotan & Rawat',
-    icon: '🛠️',
+    icon: 'nurseryActivity',
     route: '/nursery-activity',
     storageKey: 'nursery_activity_records',
     repo: nurseryActivityRepository,
@@ -450,7 +450,7 @@ const TX_MODULES = {
     id: 'material',
     title: 'Material & Logistik',
     subtitle: 'Stok Pupuk, Polibag & Kimia',
-    icon: '📦',
+    icon: 'material',
     route: '/material',
     storageKey: 'materials_transactions',
     repo: warehouseStockRepository,
@@ -461,7 +461,7 @@ const TX_MODULES = {
     id: 'request',
     title: 'Pengeluaran Bibit',
     subtitle: 'Permintaan & Dispatch Bibit',
-    icon: '🚚',
+    icon: 'request',
     route: '/request',
     storageKey: 'requests_transactions',
     repo: requestRepository,
@@ -472,7 +472,7 @@ const TX_MODULES = {
     id: 'syncQueue',
     title: 'Sinkronisasi',
     subtitle: 'Antrean Transaksi Offline ERP',
-    icon: '⚡',
+    icon: 'syncQueue',
     route: '/sync',
     storageKey: 'sync_queue',
     repo: syncQueueRepository,
@@ -480,6 +480,38 @@ const TX_MODULES = {
     unit: 'Item'
   }
 };
+
+function getTxModuleIconSvg(modId, size = 16) {
+  const s = size;
+  switch (modId) {
+    case 'attendance':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`;
+    case 'reception':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>`;
+    case 'seeding':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10a6 6 0 0 0-6-6H3v2a6 6 0 0 0 6 6h3Z"></path><path d="M12 22V10"></path><path d="M12 8a5 5 0 0 1 5-5h3v2a5 5 0 0 1-5 5h-3Z"></path></svg>`;
+    case 'budding':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path></svg>`;
+    case 'inspection':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>`;
+    case 'regrafting':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>`;
+    case 'selection':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>`;
+    case 'entres':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>`;
+    case 'nurseryActivity':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>`;
+    case 'material':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="2" y="2" rx="1"></rect><rect width="8" height="8" x="14" y="2" rx="1"></rect><rect width="8" height="8" x="2" y="14" rx="1"></rect><rect width="8" height="8" x="14" y="14" rx="1"></rect></svg>`;
+    case 'request':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"></path><path d="M15 18H9"></path><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"></path><circle cx="17" cy="18" r="2"></circle><circle cx="7" cy="18" r="2"></circle></svg>`;
+    case 'syncQueue':
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>`;
+    default:
+      return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+  }
+}
 
 function loadTxList(modId) {
   const cfg = TX_MODULES[modId];
@@ -2054,115 +2086,134 @@ function renderTransactionsWorkspaceTab() {
     : 0;
 
   let html = `
-    <div class="review-panel-head" style="margin-bottom: 16px;">
-      <div class="review-title-group">
-        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-          <h2>Katalog & Manajemen Data Transaksi</h2>
-          <span class="server-status-pill online" style="background: #e0f2fe; color: #0369a1; border-color: #bae6fd;">
-            📊 12 Modul Pembibitan (Sinkronisasi HP Aktif)
-          </span>
+    <div class="tx-catalog-wrapper">
+      <!-- HEADER -->
+      <div class="tx-catalog-header">
+        <div class="tx-header-left">
+          <h2 class="tx-header-title">Katalog & Manajemen Data Transaksi</h2>
+          <p class="tx-header-subtitle">Kelola transaksi operasional pembibitan dari satu tempat.</p>
         </div>
-        <p>Kelola data seluruh transaksi operasional pembibitan: Presensi, Penerimaan, Penyemaian, Okulasi, Pemeriksaan, Okulasi Janda, Penyeleksian, Kebun Entres, Rekam Pemeliharaan, Material & Logistik, Pengeluaran Bibit, dan Sinkronisasi.</p>
-      </div>
-      <div class="review-actions-group">
-        <button class="btn-toggle-all-markers" id="btn-tx-reset-all" type="button" title="Kosongkan seluruh data transaksi & afkir di prototype" style="background: #fef2f2; border-color: #fecaca; color: #b91c1c; font-weight: 700;">
-          🗑️ Bersihkan Semua Data
-        </button>
-        <button class="btn-toggle-all-markers" id="btn-tx-open-screen" type="button" title="Buka modul terkait di layar HP" style="background: #f8fafc; border-color: #cbd5e1; color: #334155;">
-          📱 Buka Modul di HP
-        </button>
-        <button class="btn-toggle-all-markers" id="btn-tx-seed-sample" type="button" title="Tarik & sinkronkan data transaksi terbaru dari Frame HP" style="background: #f0fdf4; border-color: #bbf7d0; color: #166534; font-weight: 700;">
-          🔄 Muat Data Transaksi HP
-        </button>
-        <button class="btn-add-feedback" id="btn-tx-add-new" type="button">
-          <span>+</span> Tambah Transaksi
-        </button>
-      </div>
-    </div>
-
-    <!-- 12 MODUL SUB-TABS -->
-    <div style="display: flex; gap: 8px; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; margin-bottom: 16px; scrollbar-width: thin; -webkit-overflow-scrolling: touch; width: 100%; max-width: 100%;">
-      ${Object.values(TX_MODULES)
-        .map((m) => {
-          const isActive = m.id === activeTxTab;
-          const count = loadTxList(m.id).length;
-          return `
-          <button class="tx-sub-tab-btn" data-mod="${m.id}" type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 20px; font-size: 0.82rem; font-weight: ${
-            isActive ? '700' : '600'
-          }; background: ${isActive ? '#116834' : '#f1f5f9'}; color: ${isActive ? '#ffffff' : '#475569'}; border: 1px solid ${
-            isActive ? '#116834' : '#cbd5e1'
-          }; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all 0.15s ease;">
-            <span>${m.icon}</span>
-            <span>${m.title}</span>
-            <span style="font-size: 0.72rem; padding: 1px 6px; border-radius: 10px; background: ${
-              isActive ? 'rgba(255,255,255,0.25)' : '#e2e8f0'
-            }; color: ${isActive ? '#ffffff' : '#334155'}; font-weight: 700;">${count}</span>
+        <div class="tx-header-actions">
+          <button class="btn-tx-destructive" id="btn-tx-reset-all" type="button" title="Kosongkan seluruh data transaksi & afkir di prototype">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <span>Bersihkan Semua Data</span>
           </button>
-        `;
-        })
-        .join('')}
-    </div>
+          <button class="btn-tx-secondary" id="btn-tx-open-screen" type="button" title="Buka modul terkait di layar HP">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect><path d="M12 18h.01"></path></svg>
+            <span>Buka di HP</span>
+          </button>
+          <button class="btn-tx-secondary" id="btn-tx-seed-sample" type="button" title="Tarik & sinkronkan data transaksi terbaru dari Frame HP">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+            <span>Muat Data HP</span>
+          </button>
+          <button class="btn-tx-primary" id="btn-tx-add-new" type="button">
+            <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>Tambah Transaksi</span>
+          </button>
+        </div>
+      </div>
 
-    <!-- FILTER BAR & METRICS -->
-    <div class="review-filter-bar" style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-      <div style="display: flex; align-items: center; gap: 8px; flex: 1 1 240px; min-width: 0; flex-wrap: wrap;">
-        <div class="filter-search-wrap" style="flex: 1;">
-          <span class="filter-search-icon">🔍</span>
-          <input class="filter-search-input" id="tx-search-input" type="text" placeholder="Cari no. dokumen, batch, klon, bedengan..." value="${esc(
+      <!-- CONTEXT / SUMMARY STRIP -->
+      <div class="tx-context-strip">
+        <div class="tx-context-badge">
+          <span class="tx-context-dot"></span>
+          <span>12 Modul Pembibitan</span>
+        </div>
+        <span style="color: #cbd5e1;">•</span>
+        <span class="tx-context-desc">Sinkronisasi HP Aktif & Terintegrasi</span>
+      </div>
+
+      <!-- 12 MODUL SUB-TABS -->
+      <div class="tx-modules-nav-wrap">
+        ${Object.values(TX_MODULES)
+          .map((m) => {
+            const isActive = m.id === activeTxTab;
+            const count = loadTxList(m.id).length;
+            return `
+            <button class="tx-module-tab tx-sub-tab-btn ${isActive ? 'is-active' : ''}" data-mod="${m.id}" type="button">
+              <span class="tx-module-tab-icon">${getTxModuleIconSvg(m.id, 14)}</span>
+              <span>${esc(m.title)}</span>
+              <span class="tx-module-tab-count">${count}</span>
+            </button>
+          `;
+          })
+          .join('')}
+      </div>
+
+      <!-- FILTER BAR & METRICS -->
+      <div class="tx-toolbar">
+        <div class="tx-toolbar-left">
+          <div class="tx-search-box">
+            <span class="tx-search-icon">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </span>
+            <input class="tx-search-input" id="tx-search-input" type="text" placeholder="Cari no. dokumen, batch, klon, bedengan..." value="${esc(
+              txSearchQuery
+            )}" />
+          </div>
+          <select class="tx-status-select" id="tx-filter-status">
+            <option value="ALL" ${txStatusFilter === 'ALL' ? 'selected' : ''}>Semua Status</option>
+            <option value="APPROVED" ${txStatusFilter === 'APPROVED' ? 'selected' : ''}>Status: Approved</option>
+            <option value="SUBMITTED" ${txStatusFilter === 'SUBMITTED' ? 'selected' : ''}>Status: Submitted</option>
+            <option value="COMPLETED" ${txStatusFilter === 'COMPLETED' ? 'selected' : ''}>Status: Completed</option>
+            <option value="VERIFIED" ${txStatusFilter === 'VERIFIED' ? 'selected' : ''}>Status: Verified</option>
+            <option value="DRAFT" ${txStatusFilter === 'DRAFT' ? 'selected' : ''}>Status: Draft</option>
+            <option value="HADIR" ${txStatusFilter === 'HADIR' ? 'selected' : ''}>Status: Hadir</option>
+          </select>
+          ${
             txSearchQuery
-          )}" />
+              ? '<button class="tx-btn-reset-search" id="btn-tx-reset-search" type="button">Reset</button>'
+              : ''
+          }
         </div>
-        <select class="filter-select" id="tx-filter-status" style="min-width: 140px;">
-          <option value="ALL" ${txStatusFilter === 'ALL' ? 'selected' : ''}>Semua Status</option>
-          <option value="APPROVED" ${txStatusFilter === 'APPROVED' ? 'selected' : ''}>Status: Approved</option>
-          <option value="SUBMITTED" ${txStatusFilter === 'SUBMITTED' ? 'selected' : ''}>Status: Submitted</option>
-          <option value="COMPLETED" ${txStatusFilter === 'COMPLETED' ? 'selected' : ''}>Status: Completed</option>
-          <option value="VERIFIED" ${txStatusFilter === 'VERIFIED' ? 'selected' : ''}>Status: Verified</option>
-          <option value="DRAFT" ${txStatusFilter === 'DRAFT' ? 'selected' : ''}>Status: Draft</option>
-          <option value="HADIR" ${txStatusFilter === 'HADIR' ? 'selected' : ''}>Status: Hadir</option>
-        </select>
-        ${
-          txSearchQuery
-            ? '<button id="btn-tx-reset-search" style="padding: 6px 10px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.75rem; cursor: pointer;">Reset</button>'
-            : ''
-        }
+
+        <div class="tx-toolbar-right">
+          <span class="tx-metric-badge">
+            Total: ${filteredList.length} Record
+          </span>
+          ${
+            curMod.qtyField
+              ? `
+            <span class="tx-metric-badge volume">
+              Volume: ${totalVolume.toLocaleString('id-ID')} ${esc(dominantUnit)}
+            </span>
+          `
+              : ''
+          }
+        </div>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 0.78rem; font-weight: 700; background: #e0f2fe; color: #0369a1; padding: 6px 12px; border-radius: 6px; border: 1px solid #bae6fd;">
-          Total: ${filteredList.length} Record
-        </span>
+      <!-- CONTENT AREA: TABLE / EMPTY STATE -->
+      <div class="tx-content-card">
         ${
-          curMod.qtyField
+          filteredList.length === 0
             ? `
-          <span style="font-size: 0.78rem; font-weight: 700; background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 6px; border: 1px solid #fde68a;">
-            Volume: ${totalVolume.toLocaleString('id-ID')} ${esc(dominantUnit)}
-          </span>
+          <div class="tx-empty-state">
+            <div class="tx-empty-icon-wrap">
+              ${getTxModuleIconSvg(activeTxTab, 26)}
+            </div>
+            <h3 class="tx-empty-title">Belum ada data transaksi</h3>
+            <p class="tx-empty-desc">Belum ada transaksi pada modul ${esc(curMod.title)}. Tambahkan transaksi baru atau muat data dari HP.</p>
+            <div class="tx-empty-actions">
+              <button id="btn-tx-empty-add" class="btn-tx-primary" type="button">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Tambah Transaksi</span>
+              </button>
+              <button id="btn-tx-empty-sample" class="btn-tx-secondary" type="button">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                <span>Muat Data HP</span>
+              </button>
+            </div>
+          </div>
         `
-            : ''
+            : `
+          <div class="tx-table-responsive">
+            ${renderDynamicTxTable(activeTxTab, curMod, filteredList)}
+          </div>
+        `
         }
       </div>
     </div>
-
-    <!-- TABLE / CARD LIST -->
-    ${
-      filteredList.length === 0
-        ? `
-      <div class="review-empty-state" style="padding: 40px 16px; text-align: center; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px;">
-        <div style="font-size: 2rem; margin-bottom: 8px;">${curMod.icon}</div>
-        <h3 style="margin: 0 0 6px; font-size: 1rem; color: #1e293b;">Belum ada data transaksi pada modul ${curMod.title}</h3>
-        <p style="margin: 0 0 16px; font-size: 0.82rem; color: #64748b;">Gunakan tombol di bawah untuk menambah data transaksi baru atau menyinkronkan transaksi dari Frame HP.</p>
-        <div style="display: flex; gap: 8px; justify-content: center;">
-          <button id="btn-tx-empty-add" class="btn btn-primary" style="font-size: 0.8rem;">+ Tambah Transaksi</button>
-          <button id="btn-tx-empty-sample" class="btn btn-ghost" style="font-size: 0.8rem; border: 1px solid #cbd5e1; font-weight: 600;">🔄 Sinkronkan Data dari HP</button>
-        </div>
-      </div>
-    `
-        : `
-      <div class="review-table-wrap" style="background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; overflow-x: auto;">
-        ${renderDynamicTxTable(activeTxTab, curMod, filteredList)}
-      </div>
-    `}
   `;
 
   return html;
@@ -2172,20 +2223,25 @@ function getTxStatusBadge(status) {
   status = status || 'SUBMITTED';
   let bg = '#f1f5f9';
   let color = '#475569';
+  let border = '#cbd5e1';
   if (['APPROVED', 'VERIFIED', 'COMPLETED', 'HADIR', 'SYNCED'].includes(status)) {
-    bg = '#dcfce7';
+    bg = '#f0fdf4';
     color = '#15803d';
+    border = '#bbf7d0';
   } else if (['SUBMITTED', 'UNDER_REVIEW', 'PROCESS'].includes(status)) {
     bg = '#eff6ff';
     color = '#1d4ed8';
+    border = '#bfdbfe';
   } else if (['DRAFT', 'PENDING', 'REGRAFTING', 'PENDING_DECLARATION'].includes(status)) {
-    bg = '#fef3c7';
+    bg = '#fffbeb';
     color = '#b45309';
+    border = '#fde68a';
   } else if (['FAILED', 'AFKIR', 'REJECTED', 'MATI'].includes(status)) {
-    bg = '#fee2e2';
+    bg = '#fef2f2';
     color = '#b91c1c';
+    border = '#fecaca';
   }
-  return `<span style="display: inline-block; font-size: 0.7rem; font-weight: 700; background: ${bg}; color: ${color}; padding: 3px 8px; border-radius: 4px; text-transform: uppercase;">${esc(status)}</span>`;
+  return `<span style="display: inline-block; font-size: 0.68rem; font-weight: 700; background: ${bg}; color: ${color}; border: 1px solid ${border}; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.02em;">${esc(status)}</span>`;
 }
 
 function getTxCrudButtons(idx) {
@@ -2243,7 +2299,7 @@ function renderDynamicTxTable(modId, curMod, list) {
       const rawTime = item.time || (item.capturedAt ? item.capturedAt.slice(11, 19) : '07:15');
       const displayTime = rawTime.includes('WIB') ? rawTime : `${rawTime} WIB`;
       const displayLoc = item.location || item.kebun || 'Tanah Besih - Divisi I';
-      const displayMethod = item.method === 'REKAM_DATA_WAJAH' || item.type === 'SUPERVISOR' ? '📸 Wajah (AI)' : '📝 Presensi Rombongan';
+      const displayMethod = item.method === 'REKAM_DATA_WAJAH' || item.type === 'SUPERVISOR' ? 'Wajah (AI)' : 'Presensi Rombongan';
       const displayStatus = item.status || 'HADIR';
 
       return `
@@ -2728,8 +2784,10 @@ function attachTransactionsWorkspaceEvents(container) {
     openModal({
       title: 'Kosongkan Seluruh Data Transaksi & Afkir',
       body: `
-        <div style="text-align: center; padding: 10px 0;">
-          <div style="font-size: 2.5rem; margin-bottom: 8px;">⚠️</div>
+        <div style="text-align: center; padding: 12px 0;">
+          <div style="width: 48px; height: 48px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          </div>
           <h3 style="font-size: 1rem; font-weight: 800; color: #991b1b; margin: 0 0 8px;">Hapus Bersih Semua Data Transaksi?</h3>
           <p style="font-size: 0.82rem; color: #334155; line-height: 1.5; margin: 0 0 12px;">
             Tindakan ini akan <strong>menghapus seluruh data operasional</strong> di prototype, termasuk:
@@ -2774,7 +2832,7 @@ function attachTransactionsWorkspaceEvents(container) {
     const btn = container.querySelector('#btn-tx-seed-sample');
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = '🔄 Menyinkronkan...';
+      btn.innerHTML = '<span>Menyinkronkan...</span>';
     }
     const count = await syncAllTxFromMobileDB(activeTxTab);
     const modTitle = TX_MODULES[activeTxTab]?.title || 'Modul';
@@ -2945,8 +3003,10 @@ function openTxDeleteConfirm(item, modId, index) {
   openModal({
     title: `Hapus Transaksi ${cfg.title}`,
     body: `
-      <div style="text-align: center; padding: 10px 0;">
-        <div style="font-size: 2.5rem; margin-bottom: 8px;">⚠️</div>
+      <div style="text-align: center; padding: 12px 0;">
+        <div style="width: 48px; height: 48px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        </div>
         <p style="font-size: 0.95rem; color: #1e293b; margin: 0 0 8px;">
           Yakin ingin menghapus data <strong>${esc(docTitle)}</strong>?
         </p>

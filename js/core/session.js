@@ -31,10 +31,12 @@ export const session = {
     return s ? s.userId : null;
   },
 
-  start({ userId, code, role, name, position, estateId, estateName, divisionId, divisionName, scopeType, isDemoSession = false }) {
+  start({ id, userId, code, role, name, position, estateId, estateName, divisionId, divisionName, scopeType, isDemoSession = false }) {
+    const finalUserId = userId || id || code || 'USR-001';
     const s = {
-      userId,
-      code: code || userId,
+      id: finalUserId,
+      userId: finalUserId,
+      code: code || finalUserId,
       role,
       name,
       position: position || (ROLE_LABELS[role] || role),
@@ -52,12 +54,14 @@ export const session = {
   },
 
   /** Role switcher — mode demo/prototype. Mengganti role tanpa logout. */
-  switchRole({ userId, code, role, name, position, estateId, estateName, divisionId, divisionName, scopeType }) {
+  switchRole({ id, userId, code, role, name, position, estateId, estateName, divisionId, divisionName, scopeType }) {
     const current = this.get();
     const base = current && current.loginAt ? { loginAt: current.loginAt } : {};
+    const finalUserId = userId || id || (current ? current.userId : null) || code || 'USR-001';
     const s = {
-      userId,
-      code: code || (current ? current.code : userId),
+      id: finalUserId,
+      userId: finalUserId,
+      code: code || (current ? current.code : finalUserId),
       role,
       name,
       position: position || (ROLE_LABELS[role] || role),

@@ -7,6 +7,7 @@
 import { execSync } from 'child_process';
 
 const suites = [
+  { name: 'Demo Synchronization Engine: Scope & Isolation Suite (TASK-SYNC-02)', file: 'scripts/test-sync-engine.js' },
   { name: 'Master Block Distribution: KEBUN_SENDIRI Distribution Items Suite', file: 'scripts/test-distribution-block-master.js' },
   { name: 'Permintaan Bibit Kebun Sendiri: End-to-End Suite', file: 'scripts/test-permintaan-kebun-sendiri.js' },
   { name: 'Mantri Create Guard: MANTRI_BIBITAN Request Create Block (PRE-UAT)', file: 'scripts/test-mantri-request-create-guard.js' },
