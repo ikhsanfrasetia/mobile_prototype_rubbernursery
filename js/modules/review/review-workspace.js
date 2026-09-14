@@ -27,6 +27,7 @@ import {
 import { resetDatabase } from '../../db/indexeddb.js';
 import { renderProcessMappingPortal } from '../process-mapping/process-mapping-ui.js';
 import { cleanAllTransactionalData } from '../../core/storage-registry.js';
+import { setWorkspaceViewMode } from '../../core/workspace-view.js';
 
 const STORAGE_KEY = 'sigma_feedback_notes';
 const API_URL = '/api/notes';
@@ -965,43 +966,7 @@ export function initReviewWorkspace() {
 
 /** Setup switcher tab navigasi pada layar mobile (< 768px) */
 function setupMobileWorkspaceSwitcher() {
-  const layout = document.getElementById('workspace-layout');
-  if (!layout) return;
-
-  layout.classList.add('is-mobile-preview');
-
-  if (document.getElementById('mobile-workspace-nav')) return;
-
-  const nav = document.createElement('div');
-  nav.className = 'mobile-workspace-nav';
-  nav.id = 'mobile-workspace-nav';
-  nav.innerHTML = `
-    <button class="mobile-tab-btn is-active" id="tab-mobile-preview" type="button">
-      📱 Prototype Aplikasi
-    </button>
-    <button class="mobile-tab-btn" id="tab-mobile-review" type="button">
-      📝 Catatan Review <span class="mobile-tab-badge" id="mobile-tab-badge">${notes.length}</span>
-    </button>
-  `;
-
-  layout.parentNode.insertBefore(nav, layout);
-
-  const tabPreview = nav.querySelector('#tab-mobile-preview');
-  const tabReview = nav.querySelector('#tab-mobile-review');
-
-  tabPreview.addEventListener('click', () => {
-    tabPreview.classList.add('is-active');
-    tabReview.classList.remove('is-active');
-    layout.classList.remove('is-mobile-review');
-    layout.classList.add('is-mobile-preview');
-  });
-
-  tabReview.addEventListener('click', () => {
-    tabReview.classList.add('is-active');
-    tabPreview.classList.remove('is-active');
-    layout.classList.remove('is-mobile-preview');
-    layout.classList.add('is-mobile-review');
-  });
+  // Mode switcher global telah ditangani secara terpusat oleh workspace-view.js pada header workspace
 }
 
 function updateMobileTabBadge() {
@@ -1569,15 +1534,9 @@ export function renderReviewPanel() {
           navigate(route);
           toast(`Menampilkan layar prototype: ${route}`, 'info');
 
-          // Bila di layar mobile (< 768px), otomatis switch ke tab preview HP
-          const layout = document.getElementById('workspace-layout');
-          const tabPreview = document.getElementById('tab-mobile-preview');
-          const tabReview = document.getElementById('tab-mobile-review');
-          if (layout && layout.classList.contains('is-mobile-review')) {
-            layout.classList.remove('is-mobile-review');
-            layout.classList.add('is-mobile-preview');
-            tabPreview?.classList.add('is-active');
-            tabReview?.classList.remove('is-active');
+          // Bila di layar mobile (< 768px), otomatis switch ke mode HP
+          if (window.innerWidth < 768) {
+            setWorkspaceViewMode('hp');
           }
         }
       });

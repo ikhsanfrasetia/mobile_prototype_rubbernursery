@@ -9,10 +9,10 @@
    - Secondary: #999999
    ============================================================ */
 
-/* ---------- Workspace Layout ---------- */
-.workspace-layout {
+/* ---------- Workspace Shell & Global Header ---------- */
+.workspace-shell {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   height: 100vh;
   height: 100dvh;
   width: 100vw;
@@ -22,8 +22,146 @@
   box-sizing: border-box;
 }
 
-/* Kolom Kiri: Mobile Preview */
-.workspace-preview-column {
+.workspace-global-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  min-height: 48px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0 20px;
+  box-sizing: border-box;
+  z-index: 200;
+  flex-shrink: 0;
+}
+
+.workspace-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.workspace-brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #116834;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.workspace-header-divider {
+  width: 1px;
+  height: 16px;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+
+.workspace-page-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-context-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #22c55e;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.workspace-page-context strong {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.workspace-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.workspace-mode-switcher {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  gap: 2px;
+}
+
+.mode-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 12px;
+  min-height: 32px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.mode-switch-btn:hover {
+  color: #1e293b;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.mode-switch-btn:focus-visible {
+  outline: 2px solid #116834;
+  outline-offset: 1px;
+}
+
+.mode-switch-btn.is-active {
+  background: #ffffff;
+  color: #116834;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.mode-switch-btn svg {
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+/* ---------- Workspace Layout & Modes ---------- */
+.workspace-layout {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+  height: calc(100vh - 48px);
+  height: calc(100dvh - 48px);
+  width: 100vw;
+  max-width: 100vw;
+  background: #f8fafc;
+  overflow: hidden;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* --- MODE 1: SPLIT VIEW (Default) --- */
+.workspace-layout.mode-split .workspace-preview-column {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -42,7 +180,7 @@
   position: relative;
 }
 
-.workspace-preview-column .device-stage {
+.workspace-layout.mode-split .workspace-preview-column .device-stage {
   min-height: auto;
   padding: 0;
   background: transparent;
@@ -53,9 +191,10 @@
   gap: 12px;
 }
 
-/* Kolom Kanan: Review Panel & Workflow Workspace */
-.workspace-review-column {
-  flex: 1 1 auto;
+.workspace-layout.mode-split .workspace-review-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
   min-width: 0;
   width: 0;
   height: 100%;
@@ -63,6 +202,56 @@
   overflow-x: hidden;
   background: #f8fafc;
   padding: 24px 28px 48px;
+  box-sizing: border-box;
+}
+
+/* --- MODE 2: HP FOCUS --- */
+.workspace-layout.mode-hp .workspace-review-column {
+  display: none !important;
+}
+
+.workspace-layout.mode-hp .workspace-preview-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 1 1 100% !important;
+  background: #f8fafc;
+  border-right: none;
+  padding: 24px 16px 48px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.workspace-layout.mode-hp .device-stage {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+/* --- MODE 3: WEB FOCUS --- */
+.workspace-layout.mode-web .workspace-preview-column {
+  display: none !important;
+}
+
+.workspace-layout.mode-web .workspace-review-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #f8fafc;
+  padding: 24px 32px 48px;
   box-sizing: border-box;
 }
 

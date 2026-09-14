@@ -17,30 +17,79 @@
   <title>Sigma Nursery - Prototype Review Workspace</title>
 </head>
 <body>
-  <!-- Prototype Review Workspace (Responsive 2-Column Desktop / 1-Column Tablet & Mobile) -->
-  <div class="workspace-layout" id="workspace-layout">
-    <!-- Kolom Kiri: Mobile Prototype Preview -->
-    <aside class="workspace-preview-column" id="workspace-preview">
-      <div class="device-stage">
-        <!-- Toolbar di atas Frame HP -->
-        <div class="device-toolbar-container" id="device-toolbar-container"></div>
-        <div class="device-frame" id="device-frame">
-          <div class="device-screen" id="device-screen">
-            <div class="device-notch"></div>
-            <div id="app"></div>
-            <div id="modal-root"></div>
-            <div id="toast-root"></div>
-            <!-- Marker Overlay Layer (Relative to screen frame) -->
-            <div class="marker-layer" id="marker-layer"></div>
-          </div>
+  <!-- Prototype Review Workspace Shell -->
+  <div class="workspace-shell" id="workspace-shell">
+    <!-- Global Workspace Header (Mode Switcher & Page Context) -->
+    <header class="workspace-global-header" id="workspace-global-header">
+      <div class="workspace-header-brand">
+        <div class="workspace-brand-logo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M12 8v4"/>
+            <path d="M12 16h.01"/>
+          </svg>
+          <span class="workspace-brand-name">SIGMA Nursery</span>
+        </div>
+        <span class="workspace-header-divider" aria-hidden="true"></span>
+        <div class="workspace-page-context">
+          <span class="workspace-context-dot" aria-hidden="true"></span>
+          <span class="workspace-context-text">Halaman: <strong id="workspace-active-page-label">Memuat...</strong></span>
         </div>
       </div>
-    </aside>
 
-    <!-- Kolom Kanan: Review Panel / Catatan Perbaikan -->
-    <main class="workspace-review-column" id="workspace-review">
-      <div class="review-panel-container" id="review-panel-container"></div>
-    </main>
+      <div class="workspace-header-actions">
+        <div class="workspace-mode-switcher" id="workspace-mode-switcher" role="radiogroup" aria-label="Mode Tampilan Workspace">
+          <button class="mode-switch-btn" id="btn-mode-hp" data-mode="hp" type="button" role="radio" aria-checked="false" aria-label="Mode Fokus Layar HP">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+              <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            </svg>
+            <span>HP</span>
+          </button>
+          <button class="mode-switch-btn is-active" id="btn-mode-split" data-mode="split" type="button" role="radio" aria-checked="true" aria-label="Mode Tampilan Split HP & Web">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="10" y1="3" x2="10" y2="21"></line>
+            </svg>
+            <span>Split</span>
+          </button>
+          <button class="mode-switch-btn" id="btn-mode-web" data-mode="web" type="button" role="radio" aria-checked="false" aria-label="Mode Fokus Aplikasi Web">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            <span>Web</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Prototype Review Workspace Body (Responsive 2-Column Desktop / 1-Column Tablet & Mobile) -->
+    <div class="workspace-layout mode-split" id="workspace-layout">
+      <!-- Kolom Kiri: Mobile Prototype Preview -->
+      <aside class="workspace-preview-column" id="workspace-preview">
+        <div class="device-stage">
+          <!-- Toolbar di atas Frame HP -->
+          <div class="device-toolbar-container" id="device-toolbar-container"></div>
+          <div class="device-frame" id="device-frame">
+            <div class="device-screen" id="device-screen">
+              <div class="device-notch"></div>
+              <div id="app"></div>
+              <div id="modal-root"></div>
+              <div id="toast-root"></div>
+              <!-- Marker Overlay Layer (Relative to screen frame) -->
+              <div class="marker-layer" id="marker-layer"></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Kolom Kanan: Review Panel / Catatan Perbaikan -->
+      <main class="workspace-review-column" id="workspace-review">
+        <div class="review-panel-container" id="review-panel-container"></div>
+      </main>
+    </div>
   </div>
 
   <script src="assets/vendor/html-to-image.js"></script>

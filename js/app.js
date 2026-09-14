@@ -15,6 +15,7 @@ import { renderAttendanceSupervisorResult } from './modules/attendance/attendanc
 import { renderAttendanceWorkers } from './modules/attendance/attendance-workers.js';
 import { renderAttendanceSummary } from './modules/attendance/attendance-summary.js';
 import { initReviewWorkspace } from './modules/review/review-workspace.js';
+import { initWorkspaceViewMode } from './core/workspace-view.js';
 import { renderReceiptLanding } from './modules/receipt/receipt-landing.js';
 import { renderReceiptKebunSepupuLanding } from './modules/receipt/receipt-kebun-sepupu-landing.js';
 import { renderReceiptBenih } from './modules/receipt/receipt-benih.js';
@@ -144,6 +145,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.error('[bootstrap] seed gagal:', err);
   }
   initRouter();
+  initWorkspaceViewMode();
   initReviewWorkspace();
   initExportScreenToolbar();
 });
