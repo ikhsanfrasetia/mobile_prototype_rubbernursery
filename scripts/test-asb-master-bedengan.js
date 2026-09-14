@@ -93,6 +93,59 @@ const askepUser = {
   estateId: 'EST-TBS'
 };
 
+// Fixture setup for test suite (TASK-RESET-MASTER-BEDENGAN-BATCH-01 Rule 20)
+for (let i = 1; i <= 9; i++) {
+  const code = `BED-${String(i).padStart(3, '0')}`;
+  createBedengan({
+    bedenganId: `BED-TBS-D1-${String(i).padStart(3, '0')}`,
+    bedenganCode: code,
+    name: `Bedengan ${String(i).padStart(3, '0')}`,
+    programId: 'PRG-TBS-2026-001',
+    estateId: 'EST-TBS',
+    divisionId: 'DIV-001',
+    blockCode: '001/91',
+    capacity: 1000,
+    qrCode: `SIGMA-${code}`
+  }, asbUserTBS);
+}
+
+const bed10 = createBedengan({
+  bedenganId: 'BED-TBS-D1-010',
+  bedenganCode: 'BED-010',
+  name: 'Bedengan 010',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  blockCode: '001/91',
+  capacity: 1000,
+  qrCode: 'SIGMA-BED-010'
+}, asbUserTBS);
+deactivateBedengan(bed10.bedenganId, asbUserTBS);
+
+createBedengan({
+  bedenganId: 'BED-APM-D2-001',
+  bedenganCode: 'BED-APM-001',
+  name: 'Bedengan APM 01',
+  programId: 'PRG-APM-2026-001',
+  estateId: 'EST-APM',
+  divisionId: 'DIV-APM-02',
+  blockCode: '007/03',
+  capacity: 1200,
+  qrCode: 'SIGMA-BED-APM-001'
+}, asbUserAPM);
+
+createBedengan({
+  bedenganId: 'BED-APM-D2-002',
+  bedenganCode: 'BED-APM-002',
+  name: 'Bedengan APM 02',
+  programId: 'PRG-APM-2026-001',
+  estateId: 'EST-APM',
+  divisionId: 'DIV-APM-02',
+  blockCode: '007/03',
+  capacity: 1200,
+  qrCode: 'SIGMA-BED-APM-002'
+}, asbUserAPM);
+
 // 1. List
 console.log('--- TEST 1: List Bedengan ---');
 const allBeds = getAllBedengan();

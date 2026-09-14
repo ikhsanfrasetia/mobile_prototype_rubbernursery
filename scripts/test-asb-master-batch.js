@@ -22,6 +22,7 @@ if (typeof globalThis.localStorage === 'undefined') {
 
 import {
   STORAGE_KEY_NURSERY_BATCHES,
+  BATCH_MASTER_STATUS,
   BATCH_STATUS,
   BATCH_CATEGORIES,
   BATCH_GROWTH_STAGES,
@@ -51,6 +52,7 @@ import { DATA_STORAGE_REGISTRY, cleanAllTransactionalData } from '../js/core/sto
 import { getActivePrograms } from '../js/data/program-master.js';
 import { normalizeKlonName } from '../js/data/klon-master.js';
 import { getNurseryBatches, deductBatchStock } from '../js/modules/dispatch/dispatch-landing.js';
+import { createBedengan } from '../js/data/bedengan-master.js';
 
 let passedAssertions = 0;
 let failedAssertions = 0;
@@ -99,6 +101,120 @@ const askepUser = {
   estateId: 'EST-TBS'
 };
 
+// Fixture setup for test suite (TASK-RESET-MASTER-BEDENGAN-BATCH-01 Rule 20)
+createBedengan({
+  bedenganId: 'BED-TBS-D1-001',
+  bedenganCode: 'BED-001',
+  name: 'Bedengan 001',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  blockCode: '001/91',
+  capacity: 1000,
+  qrCode: 'SIGMA-BED-001'
+}, asbUserTBS);
+
+createBedengan({
+  bedenganId: 'BED-TBS-D1-002',
+  bedenganCode: 'BED-002',
+  name: 'Bedengan 002',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  blockCode: '001/91',
+  capacity: 1000,
+  qrCode: 'SIGMA-BED-002'
+}, asbUserTBS);
+
+createBedengan({
+  bedenganId: 'BED-TBS-D1-004',
+  bedenganCode: 'BED-004',
+  name: 'Bedengan 004',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  blockCode: '001/91',
+  capacity: 1000,
+  qrCode: 'SIGMA-BED-004'
+}, asbUserTBS);
+
+createBedengan({
+  bedenganId: 'BED-APM-D2-001',
+  bedenganCode: 'BED-APM-001',
+  name: 'Bedengan APM 01',
+  programId: 'PRG-APM-2026-001',
+  estateId: 'EST-APM',
+  divisionId: 'DIV-APM-02',
+  blockCode: '007/03',
+  capacity: 1200,
+  qrCode: 'SIGMA-BED-APM-001'
+}, asbUserAPM);
+
+createBedengan({
+  bedenganId: 'BED-APM-D2-002',
+  bedenganCode: 'BED-APM-002',
+  name: 'Bedengan APM 02',
+  programId: 'PRG-APM-2026-001',
+  estateId: 'EST-APM',
+  divisionId: 'DIV-APM-02',
+  blockCode: '007/03',
+  capacity: 1200,
+  qrCode: 'SIGMA-BED-APM-002'
+}, asbUserAPM);
+
+// APM Batch Fixtures
+for (let i = 1; i <= 7; i++) {
+  const code = `B-${String(i).padStart(3, '0')}`;
+  createBatch({
+    batchId: `BATCH-APM-${String(i).padStart(3, '0')}`,
+    batchCode: code,
+    name: code,
+    programId: 'PRG-APM-2026-001',
+    estateId: 'EST-APM',
+    divisionId: 'DIV-APM-02',
+    blockCode: '007/03',
+    clone: i === 4 ? 'PB 260' : (i === 5 ? 'GT 1' : 'IRCA 19'),
+    stage: i === 4 ? 'Rubber Main Nursery' : 'Rubber Advance Planting Material',
+    category: i === 4 ? 'Polibag Kecil' : 'Polibag Besar',
+    bedenganIds: ['BED-APM-D2-001'],
+    initialQty: 5000,
+    availableQty: 5000
+  }, asbUserAPM);
+}
+
+// TBS Batch Fixtures
+createBatch({
+  batchId: 'BATCH-TBS-001',
+  batchCode: 'B-TBS-01',
+  name: 'B-TBS-01',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  blockCode: '001/91',
+  clone: 'IRCA 19',
+  stage: 'Rubber Advance Planting Material',
+  category: 'Polibag Besar',
+  bedenganIds: ['BED-TBS-D1-001', 'BED-TBS-D1-002'],
+  initialQty: 5000,
+  availableQty: 5000
+}, asbUserTBS);
+
+createBatch({
+  batchId: 'BATCH-TBS-002',
+  batchCode: 'B-TBS-02',
+  name: 'B-TBS-02',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  blockCode: '001/91',
+  clone: 'PB 260',
+  stage: 'Rubber Main Nursery',
+  category: 'Polibag Kecil',
+  bedenganIds: ['BED-TBS-D1-004'],
+  initialQty: 8000,
+  availableQty: 8000
+}, asbUserTBS);
+
 // 1. List
 console.log('--- TEST 1: List Batches ---');
 const allBatches = getAllBatches();
@@ -107,7 +223,7 @@ assert(allBatches.length >= 9, `Terdapat ${allBatches.length} batch terdaftar (>
 
 const activeBatches = getActiveBatches();
 assert(Array.isArray(activeBatches), 'getActiveBatches() mengembalikan Array');
-assert(activeBatches.every(b => b.status === BATCH_STATUS.AVAILABLE && (b.availableQty || 0) > 0), 'Semua batch di getActiveBatches() berstatus AVAILABLE & saldo > 0');
+assert(activeBatches.every(b => (b.statusMaster ? b.statusMaster === BATCH_MASTER_STATUS.ACTIVE : b.status === BATCH_STATUS.AVAILABLE) && (b.availableQty || 0) > 0), 'Semua batch di getActiveBatches() berstatus AVAILABLE & saldo > 0');
 
 // 2. Create Valid Batch
 console.log('\n--- TEST 2: Create Valid Batch ---');
@@ -350,12 +466,29 @@ const hybridConfig = DATA_STORAGE_REGISTRY.HYBRID.find(h => h.key === 'nursery_b
 assert(hybridConfig !== undefined, 'nursery_batches terdaftar dalam DATA_STORAGE_REGISTRY.HYBRID');
 await cleanAllTransactionalData({ skipIndexedDB: true });
 const postCleanBatches = getAllBatches();
-assert(postCleanBatches.length >= 9, `nursery_batches ter-restore ke baseline default (${postCleanBatches.length} batch)`);
+assert(postCleanBatches.length === 0, `nursery_batches ter-restore ke baseline default [0 batch]`);
+
+// Re-create batch fixture for subsequent tests
+createBatch({
+  batchId: 'BATCH-TBS-001',
+  batchCode: 'B-TBS-01',
+  name: 'B-TBS-01',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  blockCode: '001/91',
+  clone: 'IRCA 19',
+  stage: 'Rubber Advance Planting Material',
+  category: 'Polibag Besar',
+  bedenganIds: ['BED-TBS-D1-001'],
+  initialQty: 5000,
+  availableQty: 5000
+}, asbUserTBS);
 
 // 35. Refresh Persistence
 console.log('\n--- TEST 35: Refresh Persistence ---');
 const rawStoredBatches = storage.get(STORAGE_KEY_NURSERY_BATCHES, []);
-assert(Array.isArray(rawStoredBatches) && rawStoredBatches.length === postCleanBatches.length, 'Data nursery_batches tersimpan dan termuat kembali dari LocalStorage');
+assert(Array.isArray(rawStoredBatches) && rawStoredBatches.length === 1, 'Data nursery_batches tersimpan dan termuat kembali dari LocalStorage');
 
 // 36. Legacy Compatibility
 console.log('\n--- TEST 36: Legacy Compatibility ---');

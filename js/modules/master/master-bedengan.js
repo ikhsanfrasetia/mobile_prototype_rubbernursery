@@ -18,6 +18,7 @@ import {
   getNextBedenganCandidate,
   createBedengan,
   updateBedengan,
+  deleteBedengan,
   activateBedengan,
   deactivateBedengan
 } from '../../data/bedengan-master.js';
@@ -181,7 +182,23 @@ export function renderMasterBedengan() {
                               <span style="display: inline-block; padding: 2px 7px; background: ${statusBadge.bg}; color: ${statusBadge.color}; border-radius: 9999px; font-size: 0.70rem; font-weight: 700;">${statusBadge.label}</span>
                             </td>
                             <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
-                              <button type="button" class="btn-view-qr" data-id="${b.bedenganId}" title="Lihat QR Bedengan" style="padding: 4px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; color: #166534; font-size: 0.74rem; font-weight: 700; cursor: pointer;">Lihat QR</button>
+                              <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                <button type="button" class="btn-edit-bedengan" data-id="${b.bedenganId}" title="Ubah Master Bedengan" style="padding: 4px 8px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; color: #334155; font-size: 0.74rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                  <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                  </svg>
+                                  <span>Edit</span>
+                                </button>
+                                <button type="button" class="btn-delete-bedengan" data-id="${b.bedenganId}" title="Hapus Master Bedengan" style="padding: 4px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; color: #DC2626; font-size: 0.74rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                  <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                  </svg>
+                                  <span>Hapus</span>
+                                </button>
+                                <button type="button" class="btn-view-qr" data-id="${b.bedenganId}" title="Lihat QR Bedengan" style="padding: 4px 7px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; color: #166534; font-size: 0.74rem; font-weight: 600; cursor: pointer;">QR</button>
+                              </div>
                             </td>
                           </tr>
                         `;
@@ -484,6 +501,14 @@ export function renderMasterBedengan() {
       });
     });
 
+    // Delete Bedengan Modal
+    app.querySelectorAll('.btn-delete-bedengan').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        openDeleteBedenganModal(id);
+      });
+    });
+
     // Toggle Status / Deactivate / Activate
     app.querySelectorAll('.btn-toggle-status').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -759,12 +784,12 @@ export function renderMasterBedengan() {
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
-              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Kode Bedengan *</label>
-              <input id="modal-edit-code" type="text" value="${esc(item.bedenganCode)}" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; outline: none;">
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Kode Bedengan (Auto)</label>
+              <input id="modal-edit-code" type="text" value="${esc(item.bedenganCode)}" readonly style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #E2E8F0; border-radius: 6px; background: #F1F5F9; color: #64748B; cursor: not-allowed; outline: none; font-family: monospace; font-weight: 700;">
             </div>
             <div>
-              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Nama Bedengan *</label>
-              <input id="modal-edit-name" type="text" value="${esc(item.name)}" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; outline: none;">
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Nama Bedengan (Auto)</label>
+              <input id="modal-edit-name" type="text" value="${esc(item.name)}" readonly style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #E2E8F0; border-radius: 6px; background: #F1F5F9; color: #64748B; cursor: not-allowed; outline: none; font-weight: 600;">
             </div>
           </div>
 
@@ -776,9 +801,7 @@ export function renderMasterBedengan() {
             <div>
               <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Status Bedengan *</label>
               <select id="modal-edit-status" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; outline: none;">
-                <option value="${BEDENGAN_STATUS.AVAILABLE}" ${item.status === BEDENGAN_STATUS.AVAILABLE ? 'selected' : ''}>Tersedia</option>
-                <option value="${BEDENGAN_STATUS.OCCUPIED}" ${item.status === BEDENGAN_STATUS.OCCUPIED ? 'selected' : ''}>Digunakan</option>
-                <option value="${BEDENGAN_STATUS.MAINTENANCE}" ${item.status === BEDENGAN_STATUS.MAINTENANCE ? 'selected' : ''}>Pemeliharaan</option>
+                <option value="${BEDENGAN_STATUS.AVAILABLE}" ${item.status === BEDENGAN_STATUS.AVAILABLE ? 'selected' : ''}>Tersedia (Aktif)</option>
                 <option value="${BEDENGAN_STATUS.INACTIVE}" ${item.status === BEDENGAN_STATUS.INACTIVE ? 'selected' : ''}>Nonaktif</option>
               </select>
             </div>
@@ -818,8 +841,6 @@ export function renderMasterBedengan() {
           programId: document.getElementById('modal-edit-program').value,
           estateId: estateSel.value,
           divisionId: divSel.value,
-          bedenganCode: document.getElementById('modal-edit-code').value.trim(),
-          name: document.getElementById('modal-edit-name').value.trim(),
           capacity: Number(document.getElementById('modal-edit-capacity').value),
           qrCode: document.getElementById('modal-edit-qr').value.trim(),
           status: document.getElementById('modal-edit-status').value
@@ -828,6 +849,60 @@ export function renderMasterBedengan() {
         updateBedengan(id, payload, user);
         closeModal();
         toast('Perubahan Master Bedengan berhasil disimpan.', 'success');
+        renderView();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
+  }
+
+  function openDeleteBedenganModal(id) {
+    const item = getBedenganById(id);
+    if (!item) return;
+
+    const prog = getProgramById(item.programId);
+
+    const html = `
+      <div style="padding: 18px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: #FEE2E2; display: flex; align-items: center; justify-content: center; color: #DC2626; flex-shrink: 0;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </div>
+          <div>
+            <h2 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0;">Konfirmasi Hapus Bedengan</h2>
+            <p style="font-size: 0.76rem; color: #64748B; margin: 0;">Tindakan penghapusan data master bedengan</p>
+          </div>
+        </div>
+
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px; margin-bottom: 14px; font-size: 0.82rem;">
+          <div style="margin-bottom: 6px; color: #475569;">Apakah Anda yakin ingin menghapus Bedengan ini?</div>
+          <div style="font-weight: 700; color: #0F172A; font-size: 0.95rem; font-family: monospace;">${esc(item.bedenganCode)} &bull; ${esc(item.name)}</div>
+          <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px;">Program: <strong>${esc(prog ? prog.name : item.programId)}</strong></div>
+        </div>
+
+        <div style="background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 6px; padding: 10px; font-size: 0.76rem; color: #92400E; margin-bottom: 14px; line-height: 1.4;">
+          <strong>Perlindungan Histori:</strong> Jika bedengan belum pernah digunakan dalam transaksi, record akan dihapus permanen. Jika sudah memiliki referensi transaksi, status akan diubah menjadi <strong>Nonaktif (INACTIVE)</strong>.
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button id="btn-cancel-delete-bedengan" type="button" style="padding: 8px 16px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.84rem; font-weight: 600; color: #475569; cursor: pointer;">Batal</button>
+          <button id="btn-confirm-delete-bedengan" type="button" style="padding: 8px 18px; background: #DC2626; border: none; border-radius: 6px; font-size: 0.84rem; font-weight: 600; color: #FFFFFF; cursor: pointer;">Hapus Bedengan</button>
+        </div>
+      </div>
+    `;
+
+    openModal(html);
+
+    document.getElementById('btn-cancel-delete-bedengan')?.addEventListener('click', closeModal);
+    document.getElementById('btn-confirm-delete-bedengan')?.addEventListener('click', () => {
+      try {
+        const result = deleteBedengan(id, user);
+        closeModal();
+        toast(result.message, result.softDeleted ? 'info' : 'success');
         renderView();
       } catch (err) {
         toast(err.message, 'error');

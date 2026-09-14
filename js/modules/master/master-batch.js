@@ -25,10 +25,11 @@ import {
   getNextBatchCandidate,
   createBatch,
   updateBatch,
+  deleteBatch,
   activateBatch,
   deactivateBatch
 } from '../../data/batch-master.js';
-import { getOpenPrograms, getActivePrograms, getProgramById } from '../../data/program-master.js';
+import { getOpenPrograms, getActivePrograms, getProgramById, resolveProgram } from '../../data/program-master.js';
 import { getActiveEstates, getEstateById, getNurseryDivisionsByEstate } from '../../data/estate-master.js';
 import { getActiveKlons, normalizeKlonName } from '../../data/klon-master.js';
 import { getActiveBedengan, getBedenganById } from '../../data/bedengan-master.js';
@@ -68,6 +69,7 @@ export function renderMasterBatch() {
         divisionId: user.divisionId
       };
       if (state.programId !== 'ALL') filters.programId = state.programId;
+      if (state.status !== 'ALL') filters.statusMaster = state.status;
       return getAllBatches(filters);
     }
     const filters = {};
@@ -75,8 +77,6 @@ export function renderMasterBatch() {
     if (state.programId !== 'ALL') filters.programId = state.programId;
     if (state.estateId !== 'ALL') filters.estateId = state.estateId;
     if (state.divisionId !== 'ALL') filters.divisionId = state.divisionId;
-    if (state.cloneId !== 'ALL') filters.cloneId = state.cloneId;
-    if (state.growthStage !== 'ALL') filters.growthStage = state.growthStage;
     if (state.status !== 'ALL') filters.statusMaster = state.status;
 
     return getAllBatches(filters);
@@ -145,14 +145,14 @@ export function renderMasterBatch() {
             </div>
 
             <!-- FILTER BAR (HANYA PROGRAM PEMBIBITAN) -->
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
               <select id="select-filter-program" style="width: 100%; padding: 8px 10px; font-size: 0.82rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; color: #1E293B; outline: none;">
                 <option value="ALL">Semua Program</option>
                 ${allPrograms.map(p => `<option value="${p.id}" ${state.programId === p.id ? 'selected' : ''}>${esc(p.code)} — ${esc(p.name)}</option>`).join('')}
               </select>
             </div>
 
-            <!-- LIST OF BATCHES (PURE MASTER TABLE) -->
+            <!-- LIST OF BATCHES (PURE MASTER TABLE: 5 KOLOM) -->
             <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
               ${items.length === 0 ? `
                 <div style="text-align: center; padding: 24px 16px; color: #64748B; font-size: 0.84rem;">
@@ -163,39 +163,35 @@ export function renderMasterBatch() {
                   <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem; text-align: left;">
                     <thead>
                       <tr style="background: #F8FAFC; border-bottom: 1px solid #E2E8F0; color: #475569; font-weight: 700; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.03em;">
-                        <th style="padding: 9px 12px;">Kode Batch</th>
-                        <th style="padding: 9px 12px;">Klon</th>
-                        <th style="padding: 9px 12px;">Program</th>
-                        <th style="padding: 9px 12px;">Tahapan Pertumbuhan</th>
-                        <th style="padding: 9px 12px;">Kategori</th>
-                        <th style="padding: 9px 12px;">Status</th>
-                        <th style="padding: 9px 12px; text-align: center;">Aksi</th>
+                        <th style="padding: 10px 12px;">Kode Batch</th>
+                        <th style="padding: 10px 12px;">Nama Batch</th>
+                        <th style="padding: 10px 12px;">Program</th>
+                        <th style="padding: 10px 12px;">Status</th>
+                        <th style="padding: 10px 12px; text-align: center;">Aksi</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${items.map((b, idx) => {
-                        const prog = getProgramById(b.programId);
+                        const prog = getProgramById(b.programId) || resolveProgram(b.programId);
                         const isInactive = (b.statusMaster === BATCH_MASTER_STATUS.INACTIVE || b.status === BATCH_STATUS.INACTIVE);
                         const statusBadge = isInactive
-                          ? { bg: '#E2E8F0', color: '#475569', label: 'Nonaktif' }
+                          ? { bg: '#F1F5F9', color: '#64748B', label: 'Tidak Aktif' }
                           : { bg: '#DCFCE7', color: '#166534', label: 'Aktif' };
+
+                        const batchCode = b.batchCode || b.batchNo || '-';
+                        const batchName = b.name || `Batch ${batchCode}`;
+                        const programLabel = prog ? `${prog.code} — ${prog.name}` : (b.programCode || b.programId || '-');
 
                         return `
                           <tr style="border-bottom: 1px solid #F1F5F9; transition: background 0.1s ease; ${idx % 2 === 1 ? 'background: #FAFAFA;' : ''}">
                             <td style="padding: 10px 12px; font-weight: 700; color: #0F172A; font-family: monospace;">
-                              ${esc(b.batchCode || b.batchNo || '-')}
-                            </td>
-                            <td style="padding: 10px 12px; font-weight: 700; color: #1E293B;">
-                              ${esc(b.clone || b.klon || '-')}
+                              ${esc(batchCode)}
                             </td>
                             <td style="padding: 10px 12px; font-weight: 600; color: #1E293B;">
-                              ${esc(prog ? prog.name : b.programId || '-')}
+                              ${esc(batchName)}
                             </td>
-                            <td style="padding: 10px 12px; color: #475569;">
-                              ${esc(b.growthStage || b.stage || '-')}
-                            </td>
-                            <td style="padding: 10px 12px; color: #475569;">
-                              ${esc(b.category || '-')}
+                            <td style="padding: 10px 12px; color: #334155; font-size: 0.78rem;">
+                              ${esc(programLabel)}
                             </td>
                             <td style="padding: 10px 12px;">
                               <span style="display: inline-block; padding: 2px 7px; background: ${statusBadge.bg}; color: ${statusBadge.color}; border-radius: 9999px; font-size: 0.70rem; font-weight: 700;">
@@ -203,7 +199,23 @@ export function renderMasterBatch() {
                               </span>
                             </td>
                             <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
-                              <button type="button" class="btn-view-qr" data-id="${b.id || b.batchId}" title="Lihat QR Batch" style="padding: 4px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; color: #166534; font-size: 0.74rem; font-weight: 700; cursor: pointer;">Lihat QR</button>
+                              <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                <button type="button" class="btn-edit-batch" data-id="${b.id || b.batchId}" title="Ubah Master Batch" style="padding: 4px 8px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; color: #334155; font-size: 0.74rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                  <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                  </svg>
+                                  <span>Edit</span>
+                                </button>
+                                <button type="button" class="btn-delete-batch" data-id="${b.id || b.batchId}" title="Hapus Master Batch" style="padding: 4px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; color: #DC2626; font-size: 0.74rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                  <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                  </svg>
+                                  <span>Hapus</span>
+                                </button>
+                                <button type="button" class="btn-view-qr" data-id="${b.id || b.batchId}" title="Lihat QR Batch" style="padding: 4px 7px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; color: #166534; font-size: 0.74rem; font-weight: 600; cursor: pointer;">QR</button>
+                              </div>
                             </td>
                           </tr>
                         `;
@@ -226,7 +238,7 @@ export function renderMasterBatch() {
         </div>
       `;
     } else {
-      // Role lain / Non-ASB: Clean Master UI
+      // Role lain / Non-ASB: Clean Master UI (5 Kolom)
       app.innerHTML = `
         <div class="page master-batch-page" style="display: flex; flex-direction: column; min-height: 100%; background: #F8FAFC; color: #1E293B; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
           
@@ -259,7 +271,7 @@ export function renderMasterBatch() {
           <!-- MAIN CONTAINER -->
           <main style="max-width: 1100px; width: 100%; margin: 0 auto; padding: 16px; box-sizing: border-box; flex: 1;">
             
-            <!-- SUMMARY CARDS (MASTER ONLY) -->
+            <!-- SUMMARY CARDS (MASTER ONLY: Total Batch, Batch Aktif, Nonaktif) -->
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px;">
               <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; text-align: center;">
                 <div style="font-size: 0.72rem; font-weight: 600; color: #64748B; text-transform: uppercase;">Total Batch</div>
@@ -280,7 +292,7 @@ export function renderMasterBatch() {
               
               <!-- Search -->
               <div style="flex: 1; min-width: 180px; position: relative;">
-                <input id="input-search" type="text" placeholder="Cari kode batch, ID, klon..." value="${esc(state.search)}" style="width: 100%; box-sizing: border-box; padding: 8px 10px 8px 30px; font-size: 0.82rem; border: 1px solid #CBD5E1; border-radius: 6px; outline: none;">
+                <input id="input-search" type="text" placeholder="Cari kode batch, ID, nama..." value="${esc(state.search)}" style="width: 100%; box-sizing: border-box; padding: 8px 10px 8px 30px; font-size: 0.82rem; border: 1px solid #CBD5E1; border-radius: 6px; outline: none;">
                 <svg viewBox="0 0 24 24" width="15" height="15" stroke="#94A3B8" stroke-width="2.2" fill="none" style="position: absolute; left: 9px; top: 10px;">
                   <circle cx="11" cy="11" r="8"></circle>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -288,7 +300,7 @@ export function renderMasterBatch() {
               </div>
 
               <!-- Filter Program -->
-              <select id="select-filter-program" style="padding: 7px 10px; font-size: 0.82rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; color: #334155; outline: none; min-width: 130px;">
+              <select id="select-filter-program" style="padding: 7px 10px; font-size: 0.82rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; color: #334155; outline: none; min-width: 150px;">
                 <option value="ALL">Semua Program</option>
                 ${allPrograms.map(p => `<option value="${p.id}" ${state.programId === p.id ? 'selected' : ''}>${esc(p.code)} - ${esc(p.name)}</option>`).join('')}
               </select>
@@ -315,7 +327,7 @@ export function renderMasterBatch() {
               <select id="select-filter-status" style="padding: 7px 10px; font-size: 0.82rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; color: #334155; outline: none; min-width: 110px;">
                 <option value="ALL" ${state.status === 'ALL' ? 'selected' : ''}>Semua Status</option>
                 <option value="${BATCH_MASTER_STATUS.ACTIVE}" ${state.status === BATCH_MASTER_STATUS.ACTIVE ? 'selected' : ''}>Aktif</option>
-                <option value="${BATCH_MASTER_STATUS.INACTIVE}" ${state.status === BATCH_MASTER_STATUS.INACTIVE ? 'selected' : ''}>Nonaktif</option>
+                <option value="${BATCH_MASTER_STATUS.INACTIVE}" ${state.status === BATCH_MASTER_STATUS.INACTIVE ? 'selected' : ''}>Tidak Aktif</option>
               </select>
 
               ${(state.search || state.programId !== 'ALL' || state.estateId !== 'ALL' || state.status !== 'ALL') ? `
@@ -323,7 +335,7 @@ export function renderMasterBatch() {
               ` : ''}
             </div>
 
-            <!-- LIST OF BATCHES (PURE MASTER TABLE) -->
+            <!-- LIST OF BATCHES (PURE MASTER TABLE: 5 KOLOM) -->
             <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
               ${items.length === 0 ? `
                 <div style="text-align: center; padding: 40px 16px; color: #94A3B8;">
@@ -340,50 +352,34 @@ export function renderMasterBatch() {
                     <thead>
                       <tr style="background: #F8FAFC; border-bottom: 1px solid #E2E8F0; color: #475569; font-weight: 700; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em;">
                         <th style="padding: 10px 14px;">Kode Batch</th>
-                        <th style="padding: 10px 14px;">Klon & Tahapan</th>
-                        <th style="padding: 10px 14px;">Kebun & Divisi</th>
-                        <th style="padding: 10px 14px;">Bedengan</th>
+                        <th style="padding: 10px 14px;">Nama Batch</th>
+                        <th style="padding: 10px 14px;">Program</th>
                         <th style="padding: 10px 14px;">Status</th>
                         <th style="padding: 10px 14px; text-align: center;">Aksi</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${items.map((b, idx) => {
-                        const prog = getProgramById(b.programId);
-                        const est = getEstateById(b.estateId);
-                        
+                        const prog = getProgramById(b.programId) || resolveProgram(b.programId);
                         const isInactive = (b.statusMaster === BATCH_MASTER_STATUS.INACTIVE || b.status === BATCH_STATUS.INACTIVE);
                         const statusBadge = isInactive
-                          ? { bg: '#E2E8F0', color: '#475569', label: 'Nonaktif' }
+                          ? { bg: '#F1F5F9', color: '#64748B', label: 'Tidak Aktif' }
                           : { bg: '#DCFCE7', color: '#166534', label: 'Aktif' };
 
-                        const bedLabels = (Array.isArray(b.bedenganIds) ? b.bedenganIds : []).map(bid => {
-                          const bedObj = getBedenganById(bid);
-                          return bedObj ? bedObj.bedenganCode || bedObj.name : bid;
-                        });
+                        const batchCode = b.batchCode || b.batchNo || '-';
+                        const batchName = b.name || `Batch ${batchCode}`;
+                        const programLabel = prog ? `${prog.code} — ${prog.name}` : (b.programCode || b.programId || '-');
 
                         return `
                           <tr style="border-bottom: 1px solid #F1F5F9; transition: background 0.1s ease; ${idx % 2 === 1 ? 'background: #FAFAFA;' : ''}">
-                            <td style="padding: 12px 14px;">
-                              <div style="font-weight: 700; color: #0F172A; font-family: monospace;">${esc(b.batchCode || b.batchNo || '-')}</div>
-                              <div style="font-size: 0.72rem; color: #64748B;">${esc(prog ? prog.code : b.programId || '-')}</div>
+                            <td style="padding: 12px 14px; font-weight: 700; color: #0F172A; font-family: monospace;">
+                              ${esc(batchCode)}
                             </td>
-                            <td style="padding: 12px 14px;">
-                              <div style="font-weight: 700; color: #1E293B;">${esc(b.clone || b.klon || '-')}</div>
-                              <div style="font-size: 0.72rem; color: #64748B;">${esc(b.growthStage || b.stage || '-')} • ${esc(b.category || '-')}</div>
+                            <td style="padding: 12px 14px; font-weight: 600; color: #1E293B;">
+                              ${esc(batchName)}
                             </td>
-                            <td style="padding: 12px 14px;">
-                              <div style="font-weight: 600; color: #1E293B;">${esc(est ? est.estate_name : b.estateName || b.estateId)}</div>
-                              <div style="font-size: 0.72rem; color: #64748B;">${esc(b.divisionName || b.divisionId)}</div>
-                            </td>
-                            <td style="padding: 12px 14px;">
-                              <div style="display: flex; flex-wrap: wrap; gap: 4px; max-width: 180px;">
-                                ${bedLabels.length > 0 ? bedLabels.map(bl => `
-                                  <span style="display: inline-block; padding: 1px 5px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 4px; font-family: monospace; font-size: 0.72rem; color: #334155;">
-                                    ${esc(bl)}
-                                  </span>
-                                `).join('') : '<span style="color: #94A3B8; font-size: 0.74rem;">-</span>'}
-                              </div>
+                            <td style="padding: 12px 14px; color: #334155; font-size: 0.80rem;">
+                              ${esc(programLabel)}
                             </td>
                             <td style="padding: 12px 14px;">
                               <span style="display: inline-block; padding: 3px 8px; background: ${statusBadge.bg}; color: ${statusBadge.color}; border-radius: 9999px; font-size: 0.72rem; font-weight: 700;">
@@ -391,7 +387,10 @@ export function renderMasterBatch() {
                               </span>
                             </td>
                             <td style="padding: 12px 14px; text-align: center; white-space: nowrap;">
-                              <button type="button" class="btn-detail-batch" data-id="${b.id || b.batchId}" title="Lihat Detail" style="padding: 5px 8px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; color: #475569; font-size: 0.76rem; font-weight: 600; cursor: pointer; margin-right: 4px;">
+                              <button type="button" class="btn-view-qr" data-id="${b.id || b.batchId}" title="Lihat QR Batch" style="padding: 5px 9px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 4px; color: #166534; font-size: 0.76rem; font-weight: 700; cursor: pointer; margin-right: 4px;">
+                                Lihat QR
+                              </button>
+                              <button type="button" class="btn-detail-batch" data-id="${b.id || b.batchId}" title="Lihat Detail" style="padding: 5px 8px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; color: #475569; font-size: 0.76rem; font-weight: 600; cursor: pointer;">
                                 Detail
                               </button>
                             </td>
@@ -504,6 +503,12 @@ export function renderMasterBatch() {
     app.querySelectorAll('.btn-edit-batch').forEach(btn => {
       btn.addEventListener('click', () => {
         openEditBatchModal(btn.dataset.id);
+      });
+    });
+
+    app.querySelectorAll('.btn-delete-batch').forEach(btn => {
+      btn.addEventListener('click', () => {
+        openDeleteBatchModal(btn.dataset.id);
       });
     });
 
@@ -776,38 +781,44 @@ export function renderMasterBatch() {
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
-              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Kode Batch *</label>
-              <input id="modal-edit-batch-code" type="text" value="${esc(item.batchCode || item.batchNo)}" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; outline: none;">
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Kode Batch (Auto)</label>
+              <input id="modal-edit-batch-code" type="text" value="${esc(item.batchCode || item.batchNo)}" readonly style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #E2E8F0; border-radius: 6px; background: #F1F5F9; color: #64748B; cursor: not-allowed; outline: none; font-family: monospace; font-weight: 700;">
             </div>
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Nama Batch (Auto)</label>
+              <input id="modal-edit-batch-name" type="text" value="${esc(item.name || `Batch ${item.batchCode}`)}" readonly style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #E2E8F0; border-radius: 6px; background: #F1F5F9; color: #64748B; cursor: not-allowed; outline: none; font-weight: 600;">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
               <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Klon Bibit *</label>
               <select id="modal-edit-batch-clone" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; outline: none;">
                 ${allKlons.map(k => `<option value="${k.name}" ${normalizeKlonName(k.name) === normalizeKlonName(item.clone || item.klon) ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}
               </select>
             </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
               <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Tahapan Pertumbuhan *</label>
               <select id="modal-edit-batch-stage" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; outline: none;">
                 ${BATCH_GROWTH_STAGES.map(s => `<option value="${s}" ${s === (item.growthStage || item.stage) ? 'selected' : ''}>${esc(s)}</option>`).join('')}
               </select>
             </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
               <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Kategori *</label>
               <select id="modal-edit-batch-category" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; outline: none;">
                 ${BATCH_CATEGORIES.map(c => `<option value="${c}" ${c === item.category ? 'selected' : ''}>${esc(c)}</option>`).join('')}
               </select>
             </div>
-          </div>
-
-          <div>
-            <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Status Master *</label>
-            <select id="modal-edit-batch-status" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; outline: none;">
-              <option value="${BATCH_MASTER_STATUS.ACTIVE}" ${isMasterActive ? 'selected' : ''}>Aktif</option>
-              <option value="${BATCH_MASTER_STATUS.INACTIVE}" ${!isMasterActive ? 'selected' : ''}>Nonaktif</option>
-            </select>
+            <div>
+              <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Status Master *</label>
+              <select id="modal-edit-batch-status" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; outline: none;">
+                <option value="${BATCH_MASTER_STATUS.ACTIVE}" ${isMasterActive ? 'selected' : ''}>Aktif</option>
+                <option value="${BATCH_MASTER_STATUS.INACTIVE}" ${!isMasterActive ? 'selected' : ''}>Nonaktif</option>
+              </select>
+            </div>
           </div>
 
           <div>
@@ -840,7 +851,6 @@ export function renderMasterBatch() {
         const selectedBedIds = Array.from(document.querySelectorAll('.cb-edit-bedengan:checked')).map(cb => cb.value);
 
         const payload = {
-          batchCode: document.getElementById('modal-edit-batch-code').value.trim(),
           clone: document.getElementById('modal-edit-batch-clone').value,
           growthStage: document.getElementById('modal-edit-batch-stage').value,
           category: document.getElementById('modal-edit-batch-category').value,
@@ -851,6 +861,60 @@ export function renderMasterBatch() {
         updateBatch(id, payload, user);
         closeModal();
         toast('Perubahan Master Batch berhasil disimpan.', 'success');
+        renderView();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
+  }
+
+  function openDeleteBatchModal(id) {
+    const item = getBatchById(id);
+    if (!item) return;
+
+    const prog = getProgramById(item.programId) || resolveProgram(item.programId);
+
+    const html = `
+      <div style="padding: 18px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: #FEE2E2; display: flex; align-items: center; justify-content: center; color: #DC2626; flex-shrink: 0;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </div>
+          <div>
+            <h2 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0;">Konfirmasi Hapus Batch</h2>
+            <p style="font-size: 0.76rem; color: #64748B; margin: 0;">Tindakan penghapusan data master batch</p>
+          </div>
+        </div>
+
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px; margin-bottom: 14px; font-size: 0.82rem;">
+          <div style="margin-bottom: 6px; color: #475569;">Apakah Anda yakin ingin menghapus Batch ini?</div>
+          <div style="font-weight: 700; color: #0F172A; font-size: 0.95rem; font-family: monospace;">${esc(item.batchCode || item.batchNo)} &bull; ${esc(item.name || `Batch ${item.batchCode}`)}</div>
+          <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px;">Program: <strong>${esc(prog ? prog.name : item.programId)}</strong></div>
+        </div>
+
+        <div style="background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 6px; padding: 10px; font-size: 0.76rem; color: #92400E; margin-bottom: 14px; line-height: 1.4;">
+          <strong>Perlindungan Histori:</strong> Jika batch belum pernah digunakan dalam transaksi, record akan dihapus permanen. Jika sudah memiliki referensi transaksi, status akan diubah menjadi <strong>Nonaktif (INACTIVE)</strong>.
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button id="btn-cancel-delete-batch" type="button" style="padding: 8px 16px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.84rem; font-weight: 600; color: #475569; cursor: pointer;">Batal</button>
+          <button id="btn-confirm-delete-batch" type="button" style="padding: 8px 18px; background: #DC2626; border: none; border-radius: 6px; font-size: 0.84rem; font-weight: 600; color: #FFFFFF; cursor: pointer;">Hapus Batch</button>
+        </div>
+      </div>
+    `;
+
+    openModal(html);
+
+    document.getElementById('btn-cancel-delete-batch')?.addEventListener('click', closeModal);
+    document.getElementById('btn-confirm-delete-batch')?.addEventListener('click', () => {
+      try {
+        const result = deleteBatch(id, user);
+        closeModal();
+        toast(result.message, result.softDeleted ? 'info' : 'success');
         renderView();
       } catch (err) {
         toast(err.message, 'error');

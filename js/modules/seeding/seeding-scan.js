@@ -9,7 +9,8 @@ import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
-import { getActiveBedengan, getBedenganByQR } from '../../data/bedengan-master.js';
+import { getActiveBedengan, getBedenganById, getBedenganByCode, getBedenganByQR, BEDENGAN_STATUS } from '../../data/bedengan-master.js';
+import { isProgramOpen } from '../../data/program-master.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
 
 export function renderSeedingScan() {
@@ -19,23 +20,28 @@ export function renderSeedingScan() {
   const txs = storage.get('receipt_transactions', []);
   const sourceTx = (sourceIdx !== null && txs[sourceIdx]) ? txs[sourceIdx] : {};
   const docNo = sourceTx.docNo || sourceTx.nomorDokumen || formatStandardDocNo(2026, 'APR', (parseInt(sourceIdx || 0) + 1));
-  const program = sourceTx.program || 'PRG/NUR/01/2026';
+  const program = sourceTx.program || sourceTx.rawState?.programNurseryCode || 'PRG/NUR/01/2026';
   const klon = sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1';
 
   const userCtx = getCurrentUserContext();
+  const effectiveEstateId = sourceTx.estateId || userCtx?.estateId || 'EST-TBS';
+  const effectiveDivisionId = sourceTx.divisionId || userCtx?.divisionId || (effectiveEstateId === 'EST-APM' ? 'DIV-APM-02' : 'DIV-001');
+  const effectiveProgramId = sourceTx.programId || sourceTx.rawState?.programNurseryId || null;
+
   const scopedBeds = getActiveBedengan({
-    estateId: userCtx?.estateId,
-    divisionId: userCtx?.divisionId
+    estateId: effectiveEstateId,
+    divisionId: effectiveDivisionId,
+    programId: effectiveProgramId || undefined
   });
-  const bedListSource = scopedBeds.length > 0 ? scopedBeds : getActiveBedengan();
+  const bedListSource = scopedBeds.length > 0 ? scopedBeds : getActiveBedengan({ estateId: effectiveEstateId });
 
   const bedenganList = bedListSource.map(b => ({
     id: b.bedenganId,
     name: b.name,
     code: b.bedenganCode,
     qrPayload: b.qrCode,
-    capacity: `${Number(b.capacity).toLocaleString('id-ID')} Bibit`,
-    status: b.status === 'AVAILABLE' ? 'Tersedia' : (b.status === 'OCCUPIED' ? 'Penuh' : 'Pemeliharaan')
+    capacity: `${Number(b.capacity || 1000).toLocaleString('id-ID')} Bibit`,
+    status: b.status === BEDENGAN_STATUS.ACTIVE ? 'Tersedia' : 'Tidak Aktif'
   }));
 
   app.innerHTML = `
@@ -122,7 +128,7 @@ export function renderSeedingScan() {
           </div>
           <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
             ${bedenganList.slice(0, 6).map(b => `
-              <button type="button" class="btn-mock-qr-scan" data-bedengan="${b.name}" data-code="${b.code}" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #F1F5F9; font-size: 0.72rem; font-weight: 600; padding: 5px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.15s ease;">
+              <button type="button" class="btn-mock-qr-scan" data-id="${b.id}" data-code="${b.code}" data-bedengan="${b.id}" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #F1F5F9; font-size: 0.72rem; font-weight: 600; padding: 5px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.15s ease;">
                 🏷️ ${b.name}
               </button>
             `).join('')}
@@ -166,7 +172,7 @@ export function renderSeedingScan() {
 
         <div style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px;">
           ${bedenganList.map((b) => `
-            <div class="card-pick-manual-bedengan" data-bedengan="${b.name}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.15s ease;">
+            <div class="card-pick-manual-bedengan" data-id="${b.id}" data-bedengan="${b.id}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.15s ease;">
               <div>
                 <div style="font-weight: 800; font-size: 0.88rem; color: #1E293B;">${b.name}</div>
                 <div style="font-size: 0.70rem; color: #64748B; margin-top: 2px;">Kapasitas: ${b.capacity} • Kode: ${b.code}</div>
@@ -253,10 +259,9 @@ export function renderSeedingScan() {
       boxFailed.style.display = 'block';
     }
 
-    toast('Gagal memindai QR Bedengan (1x). Opsi pilih manual telah dibuka.', 'error');
+    toast('QR Code tidak terdeteksi. Gunakan pilihan manual.', 'error');
   };
 
-  // Trigger uji gagal scan manual
   app.querySelector('#btn-mock-fail-scan')?.addEventListener('click', triggerScanFailure);
 
   // Auto trigger gagal scan setelah 6 detik jika belum berhasil scan
@@ -265,17 +270,60 @@ export function renderSeedingScan() {
   }, 6000);
 
   // Process Selection & Proceed to Form
-  const proceedWithBedengan = (bedenganName, verifiedMethod = 'QR_SCAN') => {
+  const proceedWithBedengan = (bedenganIdentifier, verifiedMethod = 'QR_SCAN') => {
     clearTimeout(failTimer);
     stopCamera();
 
-    // Simpan ke storage untuk digunakan di seeding-form.js
-    storage.set('scanned_bedengan', bedenganName);
+    // Resolve Canonical Bedengan Object
+    const bedObj = getBedenganById(bedenganIdentifier) ||
+      getBedenganByCode(bedenganIdentifier) ||
+      getBedenganByQR(bedenganIdentifier) ||
+      bedListSource.find(b => b.name === bedenganIdentifier || b.bedenganCode === bedenganIdentifier || b.bedenganId === bedenganIdentifier);
+
+    if (!bedObj) {
+      toast('Bedengan tidak ditemukan dalam master data.', 'error');
+      return;
+    }
+
+    // Validasi 1: Status Master Bedengan
+    if (bedObj.status === BEDENGAN_STATUS.INACTIVE) {
+      toast(`Bedengan '${bedObj.name || bedObj.bedenganCode}' tidak aktif.`, 'error');
+      return;
+    }
+
+    // Validasi 2: Status Program Pembibitan (OPEN)
+    if (bedObj.programId && !isProgramOpen(bedObj.programId)) {
+      toast(`Program Pembibitan untuk Bedengan ini sudah CLOSE.`, 'error');
+      return;
+    }
+
+    // Validasi 3: Scope Kebun (Estate)
+    if (bedObj.estateId && effectiveEstateId && bedObj.estateId.toUpperCase() !== effectiveEstateId.toUpperCase()) {
+      toast(`Bedengan '${bedObj.name || bedObj.bedenganCode}' berada di luar Kebun transaksi (${effectiveEstateId}).`, 'error');
+      return;
+    }
+
+    // Validasi 4: Scope Divisi (Division)
+    if (bedObj.divisionId && effectiveDivisionId && bedObj.divisionId.toUpperCase() !== effectiveDivisionId.toUpperCase()) {
+      toast(`Bedengan '${bedObj.name || bedObj.bedenganCode}' berada di luar Divisi transaksi (${effectiveDivisionId}).`, 'error');
+      return;
+    }
+
+    // Simpan Canonical Foreign Keys & Metadata ke Storage untuk seeding-form.js
+    storage.set('scanned_bedengan_id', bedObj.bedenganId);
+    storage.set('scanned_bedengan_code', bedObj.bedenganCode);
+    storage.set('scanned_bedengan_name', bedObj.name);
+    storage.set('scanned_bedengan', bedObj.name); // backward compatibility
+    storage.set('scanned_bedengan_program_id', bedObj.programId || null);
+    storage.set('scanned_bedengan_block_id', bedObj.blockId || null);
+    storage.set('scanned_bedengan_block_code', bedObj.blockCode || null);
+    storage.set('scanned_bedengan_estate_id', bedObj.estateId);
+    storage.set('scanned_bedengan_division_id', bedObj.divisionId);
     storage.set('bedengan_verified_method', verifiedMethod);
     storage.set('bedengan_verified_at', new Date().toLocaleTimeString('id-ID'));
 
     // Feedback visual
-    toast(`Identifikasi: ${bedenganName}`, 'info');
+    toast(`Identifikasi: ${bedObj.name} (${bedObj.bedenganCode})`, 'info');
 
     // Navigasi ke Form Penyemaian
     setTimeout(() => {
@@ -301,8 +349,8 @@ export function renderSeedingScan() {
   // Mock Barcode Quick Scan Buttons
   app.querySelectorAll('.btn-mock-qr-scan').forEach(btn => {
     btn.addEventListener('click', () => {
-      const bName = btn.dataset.bedengan;
-      proceedWithBedengan(bName, 'QR_SCAN');
+      const bId = btn.dataset.id || btn.dataset.bedengan;
+      proceedWithBedengan(bId, 'QR_SCAN');
     });
   });
 
@@ -326,9 +374,9 @@ export function renderSeedingScan() {
 
   app.querySelectorAll('.card-pick-manual-bedengan').forEach(card => {
     card.addEventListener('click', () => {
-      const bName = card.dataset.bedengan;
+      const bId = card.dataset.id || card.dataset.bedengan;
       closeSheet();
-      proceedWithBedengan(bName, 'MANUAL');
+      proceedWithBedengan(bId, 'MANUAL');
     });
   });
 }

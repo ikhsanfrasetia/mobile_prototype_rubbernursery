@@ -26,7 +26,8 @@ export const STORAGE_CATEGORIES = {
 };
 
 export const HYBRID_STRATEGIES = {
-  RESTORE_DEFAULT_NURSERY_BATCHES: 'RESTORE_DEFAULT_NURSERY_BATCHES'
+  RESTORE_DEFAULT_NURSERY_BATCHES: 'RESTORE_DEFAULT_NURSERY_BATCHES',
+  RESTORE_DEFAULT_BEDENGAN_MASTER: 'RESTORE_DEFAULT_BEDENGAN_MASTER'
 };
 
 export const DATA_STORAGE_REGISTRY = {
@@ -47,7 +48,11 @@ export const DATA_STORAGE_REGISTRY = {
     'attendance_transactions',
     'selection_transactions',
     'destruction_transactions',
-    'verification_transactions'
+    'verification_transactions',
+    'batch_inventory_states',
+    'batch_inventory_journal',
+    'bedengan_context_relations',
+    'batch_context_relations'
   ],
   POOL: [
     'selection_pool',
@@ -82,7 +87,12 @@ export const DATA_STORAGE_REGISTRY = {
     {
       key: 'nursery_batches',
       strategy: HYBRID_STRATEGIES.RESTORE_DEFAULT_NURSERY_BATCHES,
-      restoreFn: () => JSON.parse(JSON.stringify(DEFAULT_NURSERY_BATCHES))
+      restoreFn: () => []
+    },
+    {
+      key: 'bedengan_master',
+      strategy: HYBRID_STRATEGIES.RESTORE_DEFAULT_BEDENGAN_MASTER,
+      restoreFn: () => []
     }
   ],
   MASTER: [
@@ -92,7 +102,6 @@ export const DATA_STORAGE_REGISTRY = {
     'worker_master',
     'cfna_master',
     'program_master',
-    'bedengan_master',
     'role_registry',
     'permissions',
     'menu_registry',
@@ -223,10 +232,10 @@ export async function cleanAllTransactionalData({
     cleanedKeysCount++;
   }
 
-  // 4. Eksekusi Strategi HYBRID (misal nursery_batches reset baseline)
+  // 4. Eksekusi Strategi HYBRID (misal nursery_batches & bedengan_master reset baseline)
   let hybridRestored = 0;
   for (const item of (registry.HYBRID || [])) {
-    if (item.strategy === HYBRID_STRATEGIES.RESTORE_DEFAULT_NURSERY_BATCHES && typeof item.restoreFn === 'function') {
+    if (typeof item.restoreFn === 'function') {
       const baselineData = item.restoreFn();
       storage.set(item.key, baselineData);
       hybridRestored++;

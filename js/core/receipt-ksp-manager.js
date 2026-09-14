@@ -16,6 +16,7 @@ import {
   RECEIPT_KSP_STATUS_LABELS,
   RECEIPT_KSP_STORAGE_KEY
 } from './receipt-ksp-constants.js';
+import { addBatchStockFromReceipt, initBatchInventory } from './batch-inventory-service.js';
 
 /**
  * Generator Nomor Dokumen Penerimaan Kebun Sepupu Terstandarisasi
@@ -375,6 +376,13 @@ export function createNurseryBatchesFromReceipt(receipt, detailsResults, current
 
       allNurseryBatches.push(newBatchObj);
       createdBatches.push(newBatchObj);
+
+      // Inisialisasi inventory state & catat jurnal mutasi via Batch Inventory Service
+      initBatchInventory(newBatchId, newBatchCode, acceptedQty, {
+        refId: receipt.receiptDocNo || receipt.docNo,
+        createdBy: currentUser.name || currentUser.userId,
+        notes: `Penerimaan bibit dari transaksi ${receipt.receiptDocNo || receipt.docNo}`
+      });
 
       // Simpan referensi new batch ke detail
       d.newBatchId = newBatchId;

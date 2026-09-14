@@ -60,6 +60,14 @@ import { renderProfile } from './modules/profile/profile.js';
 import { seedDatabase } from './db/seed.js';
 import { initExportScreenToolbar } from './core/export-screen.js';
 import { session } from './core/session.js';
+import { storage } from './core/storage.js';
+
+// Hard reset master runtime storage baseline once (TASK-HARD-CLEAR-MASTER-RUNTIME-01)
+if (storage.get('master_reset_hard_v2') !== true) {
+  storage.set('bedengan_master', []);
+  storage.set('nursery_batches', []);
+  storage.set('master_reset_hard_v2', true);
+}
 
 /* ---- PWA: service worker ---- */
 if ('serviceWorker' in navigator) {

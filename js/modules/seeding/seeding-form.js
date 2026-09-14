@@ -3,10 +3,14 @@ import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
 import { getActiveKlons, normalizeKlonName, resolveKlon } from '../../data/klon-master.js';
+import { getActiveBatches, getBatchById, getBatchByCode } from '../../data/batch-master.js';
+import { getActiveBedengan, getBedenganById, getBedenganByCode } from '../../data/bedengan-master.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 
 export function renderSeedingForm() {
   const app = document.getElementById('app');
   const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan' };
+  const userCtx = getCurrentUserContext();
   const today = formatDate(new Date().toISOString());
 
   // Get source transaction
@@ -16,39 +20,82 @@ export function renderSeedingForm() {
   const sourceDocNo = sourceTx.docNo || sourceTx.nomorDokumen || formatStandardDocNo(2026, 'APR', (parseInt(sourceIdx || 0) + 1));
   const docNo = sourceDocNo;
 
+  // Context Scoping
+  const effectiveEstateId = sourceTx.estateId || userCtx?.estateId || 'EST-TBS';
+  const effectiveDivisionId = sourceTx.divisionId || userCtx?.divisionId || (effectiveEstateId === 'EST-APM' ? 'DIV-APM-02' : 'DIV-001');
+  const effectiveProgramId = sourceTx.programId || sourceTx.rawState?.programNurseryId || null;
+  const effectiveProgramCode = sourceTx.program || sourceTx.rawState?.programNurseryCode || 'PRG/NUR/01/2026';
+
   // Check if we are in Edit mode
   const editIdx = storage.get('editing_seeding_index', null);
   const seedingTxs = storage.get('seeding_transactions', []);
   const editTx = editIdx !== null ? seedingTxs[editIdx] : null;
 
-  // Batch determination
-  const defaultBatch = editTx 
-    ? (editTx.batchNo || 'Batch-01')
-    : (sourceTx.rawState?.batchCode || sourceTx.batchCode || `Batch-${(seedingTxs.filter(s => s.sourceIndex == sourceIdx).length + 1).toString().padStart(2, '0')}`);
+  // Candidate Master Batches (Scoped)
+  const availableBatches = getActiveBatches({
+    estateId: effectiveEstateId,
+    divisionId: effectiveDivisionId,
+    programId: effectiveProgramId || undefined
+  });
+  const finalBatchList = availableBatches.length > 0 ? availableBatches : getActiveBatches({ estateId: effectiveEstateId });
+
+  // Candidate Master Bedengan (Scoped)
+  const availableBedengan = getActiveBedengan({
+    estateId: effectiveEstateId,
+    divisionId: effectiveDivisionId,
+    programId: effectiveProgramId || undefined
+  });
+  const finalBedenganList = availableBedengan.length > 0 ? availableBedengan : getActiveBedengan({ estateId: effectiveEstateId });
 
   // Scanned Bedengan from QR or Manual
-  const scannedBedengan = storage.get('scanned_bedengan', 'Bedengan 01');
-  const verifiedMethod = storage.get('bedengan_verified_method', 'QR_SCAN');
+  const scannedBedenganId = storage.get('scanned_bedengan_id', null);
+  const scannedBedenganName = storage.get('scanned_bedengan_name', storage.get('scanned_bedengan', null));
+  const initialBedObj = (scannedBedenganId ? getBedenganById(scannedBedenganId) : null) ||
+    (scannedBedenganName ? (getBedenganByCode(scannedBedenganName) || finalBedenganList.find(b => b.name === scannedBedenganName)) : null) ||
+    finalBedenganList[0] ||
+    null;
+
+  // Batch determination
+  let defaultBatchId = null;
+  let defaultBatchCode = null;
+  if (editTx && (editTx.batchId || editTx.batchNo)) {
+    const b = getBatchById(editTx.batchId) || getBatchByCode(editTx.batchNo);
+    defaultBatchId = b ? b.id : editTx.batchId;
+    defaultBatchCode = b ? b.batchCode : editTx.batchNo;
+  } else if (sourceTx.batchId || sourceTx.rawState?.batchId || sourceTx.batchCode || sourceTx.rawState?.batchCode) {
+    const b = getBatchById(sourceTx.batchId || sourceTx.rawState?.batchId) || getBatchByCode(sourceTx.batchCode || sourceTx.rawState?.batchCode);
+    defaultBatchId = b ? b.id : (sourceTx.batchId || sourceTx.rawState?.batchId);
+    defaultBatchCode = b ? b.batchCode : (sourceTx.batchCode || sourceTx.rawState?.batchCode);
+  } else if (finalBatchList.length > 0) {
+    defaultBatchId = finalBatchList[0].id;
+    defaultBatchCode = finalBatchList[0].batchCode;
+  }
+
+  const initialBedName = initialBedObj ? initialBedObj.name : 'Bedengan 001';
+  const initialBedId = initialBedObj ? initialBedObj.bedenganId : null;
+  const initialBedCode = initialBedObj ? initialBedObj.bedenganCode : null;
 
   // Form state
   const state = {
-    batchNo: defaultBatch,
+    batchId: defaultBatchId,
+    batchNo: defaultBatchCode,
     ditolak: editTx ? editTx.ditolak : '',
     alasanDitolak: editTx ? editTx.alasanDitolak : 'Tidak Ada',
     tableRows: editTx ? JSON.parse(JSON.stringify(editTx.rows)) : [
-      { bedengan: scannedBedengan || 'Bedengan 01', klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1', disemai: '', polybag: '' }
+      {
+        bedenganId: initialBedId,
+        bedenganCode: initialBedCode,
+        bedengan: initialBedName,
+        klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1',
+        disemai: '',
+        polybag: ''
+      }
     ],
     photos: editTx ? JSON.parse(JSON.stringify(editTx.photos)) : []
   };
 
-  const batchList = ['Batch-01', 'Batch-02', 'Batch-03', 'Batch-04', 'Batch-05', 'Batch-06', 'Batch-07', 'Batch-08', 'Batch-09', 'Batch-10'];
-  if (!batchList.includes(state.batchNo)) {
-    batchList.unshift(state.batchNo);
-  }
-
   const activeKlons = getActiveKlons();
   const klonList = activeKlons.map(k => k.canonicalName);
-  const bedenganList = Array.from({length: 10}, (_, i) => `Bedengan ${(i + 1).toString().padStart(2, '0')}`);
   
   const totalPenerimaan = parseInt(sourceTx.qty || 0);
 
@@ -175,7 +222,7 @@ export function renderSeedingForm() {
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
               <span style="font-size: 0.74rem; font-weight: 700; color: #116834;">Nomor Batch</span>
               <select id="select-batch" style="font-size: 0.75rem; font-weight: 700; color: #111111; border: 1px solid #A5D6A7; background: #FFFFFF; border-radius: 4px; padding: 2px 6px; outline: none; cursor: pointer;">
-                ${batchList.map(b => `<option value="${b}" ${state.batchNo === b ? 'selected' : ''}>${b}</option>`).join('')}
+                ${finalBatchList.map(b => `<option value="${b.id || b.batchId}" ${(state.batchId === (b.id || b.batchId) || state.batchNo === (b.batchCode || b.batchNo)) ? 'selected' : ''}>${b.batchCode || b.batchNo}</option>`).join('')}
               </select>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
@@ -336,14 +383,10 @@ export function renderSeedingForm() {
     tableBody.innerHTML = state.tableRows.map((row, idx) => `
       <div style="display: grid; grid-template-columns: 1.6fr 1fr 0.9fr 24px; gap: 6px; padding: 8px 6px; border-bottom: 1px solid #E5E7EB; align-items: center;">
         <div style="font-size: 0.78rem; font-weight: 700; color: #111827; text-align: center; white-space: nowrap;">
-          ${row.bedengan || scannedBedengan || 'Bedengan 01'}
+          <select class="sel-bedengan" data-index="${idx}" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 4px; outline: none; background: #FFFFFF; font-size: 0.74rem; font-weight: 700; color: #111827; cursor: pointer; padding: 4px 2px; text-align: center;">
+            ${finalBedenganList.map(b => `<option value="${b.bedenganId}" ${(row.bedenganId === b.bedenganId || row.bedengan === b.name || row.bedengan === b.bedenganCode) ? 'selected' : ''}>${b.name}</option>`).join('')}
+          </select>
         </div>
-        <!-- 
-        <select class="sel-klon" data-index="${idx}" style="width: 100%; border: none; outline: none; background: transparent; font-size: 0.72rem; text-overflow: ellipsis; padding: 3px 0; color: ${row.klon ? '#111111' : '#6B7280'}; cursor: pointer;">
-          <option value="" disabled ${!row.klon ? 'selected' : ''}>Pilih</option>
-          ${klonList.map(k => `<option value="${k}" ${row.klon === k ? 'selected' : ''}>${k}</option>`).join('')}
-        </select>
-        -->
         <input type="number" class="inp-disemai" data-index="${idx}" value="${row.disemai}" placeholder="0" style="width: 100%; border: none; outline: none; font-size: 0.75rem; font-weight: 600; text-align: center; background: transparent; color: #111111; padding: 3px 0;">
         <input type="number" class="inp-polybag" data-index="${idx}" value="${row.polybag}" placeholder="0" readonly style="width: 100%; border: none; outline: none; font-size: 0.75rem; font-weight: 600; text-align: center; background: transparent; color: #4B5563; padding: 3px 0;">
         <div style="display: flex; justify-content: center; align-items: center;">
@@ -368,6 +411,19 @@ export function renderSeedingForm() {
       </div>
     `).join('');
 
+    tableBody.querySelectorAll('.sel-bedengan').forEach(el => {
+      el.addEventListener('change', (e) => {
+        const rowIdx = parseInt(e.target.dataset.index, 10);
+        const bedId = e.target.value;
+        const bObj = getBedenganById(bedId) || finalBedenganList.find(b => b.bedenganId === bedId);
+        if (state.tableRows[rowIdx]) {
+          state.tableRows[rowIdx].bedenganId = bObj ? bObj.bedenganId : bedId;
+          state.tableRows[rowIdx].bedenganCode = bObj ? bObj.bedenganCode : null;
+          state.tableRows[rowIdx].bedengan = bObj ? bObj.name : bedId;
+        }
+        validateForm();
+      });
+    });
 
     tableBody.querySelectorAll('.sel-klon').forEach(el => {
       el.addEventListener('change', (e) => {
@@ -411,7 +467,15 @@ export function renderSeedingForm() {
     tableBody.querySelectorAll('.btn-reset-row').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.currentTarget.dataset.index);
-        state.tableRows[idx] = { bedengan: '', klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1', disemai: '', polybag: '' };
+        const defBed = initialBedObj || finalBedenganList[0] || null;
+        state.tableRows[idx] = {
+          bedenganId: defBed ? defBed.bedenganId : null,
+          bedenganCode: defBed ? defBed.bedenganCode : null,
+          bedengan: defBed ? defBed.name : '',
+          klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1',
+          disemai: '',
+          polybag: ''
+        };
         renderTableRows();
         calculateTotals();
         validateForm();
@@ -442,7 +506,10 @@ export function renderSeedingForm() {
   // Initial bindings
   if (selectBatch) {
     selectBatch.addEventListener('change', (e) => {
-      state.batchNo = e.target.value;
+      const chosenId = e.target.value;
+      const bObj = getBatchById(chosenId) || getBatchByCode(chosenId);
+      state.batchId = bObj ? (bObj.id || bObj.batchId) : chosenId;
+      state.batchNo = bObj ? (bObj.batchCode || bObj.batchNo) : chosenId;
       validateForm();
     });
   }
@@ -476,8 +543,15 @@ export function renderSeedingForm() {
   });
 
   btnTambahData.addEventListener('click', () => {
-    const currentBedengan = scannedBedengan || state.tableRows[0]?.bedengan || 'Bedengan 01';
-    state.tableRows.push({ bedengan: currentBedengan, klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1', disemai: '', polybag: '' });
+    const defaultBedObj = initialBedObj || finalBedenganList[0] || null;
+    state.tableRows.push({
+      bedenganId: defaultBedObj ? defaultBedObj.bedenganId : null,
+      bedenganCode: defaultBedObj ? defaultBedObj.bedenganCode : null,
+      bedengan: defaultBedObj ? defaultBedObj.name : 'Bedengan 001',
+      klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1',
+      disemai: '',
+      polybag: ''
+    });
     renderTableRows();
     validateForm();
   });
@@ -601,24 +675,62 @@ export function renderSeedingForm() {
       totalPolybag += parseInt(r.polybag || 0);
     });
 
-    const bedenganDisplay = Array.from(new Set((state.tableRows || []).map(r => r.bedengan).filter(Boolean))).join(', ') || 'Bedengan 01';
+    const bedenganDisplay = Array.from(new Set((state.tableRows || []).map(r => r.bedengan).filter(Boolean))).join(', ') || 'Bedengan 001';
 
     const seedingDocNo = (editTx && editTx.docNo) ? editTx.docNo : generateUniqueDocNo('seeding', txs, 2026);
+
+    // Resolve Canonical References
+    const batchObj = (state.batchId || state.batchNo) ? (getBatchById(state.batchId) || getBatchByCode(state.batchNo)) : null;
+    const finalBatchId = batchObj ? (batchObj.id || batchObj.batchId) : (state.batchId || null);
+    const finalBatchCode = batchObj ? (batchObj.batchCode || batchObj.batchNo) : (state.batchNo || null);
+
+    const firstRowBedId = state.tableRows[0]?.bedenganId || initialBedObj?.bedenganId || null;
+    const primaryBedObj = firstRowBedId ? getBedenganById(firstRowBedId) : (initialBedObj || null);
+    const finalBedenganId = primaryBedObj ? primaryBedObj.bedenganId : (firstRowBedId || null);
+    const finalBedenganCode = primaryBedObj ? primaryBedObj.bedenganCode : null;
+
+    const finalProgramId = effectiveProgramId || batchObj?.programId || primaryBedObj?.programId || null;
+    const finalProgramCode = effectiveProgramCode || batchObj?.programCode || primaryBedObj?.programCode || null;
+    const finalBlockId = primaryBedObj?.blockId || batchObj?.blockId || sourceTx.blockId || null;
+    const finalBlockCode = primaryBedObj?.blockCode || batchObj?.blockCode || sourceTx.blockCode || null;
+
+    // Enriched Rows with Bedengan Canonical IDs
+    const enrichedRows = state.tableRows.map(r => {
+      const bObj = (r.bedenganId ? getBedenganById(r.bedenganId) : null) || getBedenganByCode(r.bedengan) || finalBedenganList.find(b => b.name === r.bedengan);
+      return {
+        ...r,
+        bedenganId: bObj ? bObj.bedenganId : (r.bedenganId || null),
+        bedenganCode: bObj ? bObj.bedenganCode : null,
+        bedengan: bObj ? bObj.name : r.bedengan
+      };
+    });
 
     const newTx = {
       date: today,
       docNo: seedingDocNo,
       sourceDocNo: sourceDocNo,
       sourceIndex: sourceIdx,
-      batchNo: state.batchNo || 'Batch-01',
-      program: sourceTx.program || 'PRG/NUR/01/2026',
+      // Canonical Foreign Keys
+      programId: finalProgramId,
+      programCode: finalProgramCode,
+      batchId: finalBatchId,
+      batchCode: finalBatchCode,
+      bedenganId: finalBedenganId,
+      bedenganCode: finalBedenganCode,
+      blockId: finalBlockId,
+      blockCode: finalBlockCode,
+      estateId: effectiveEstateId,
+      divisionId: effectiveDivisionId,
+      // Display and Backward Compatibility Fields
+      batchNo: finalBatchCode || state.batchNo || 'B-001',
+      program: finalProgramCode || sourceTx.program || 'PRG/NUR/01/2026',
       tahapan: sourceTx.tahapan || 'Rubber Main Nursery',
       klonAwal: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1',
       bedengan: bedenganDisplay,
       totalPenerimaan,
       ditolak: state.ditolak,
       alasanDitolak: state.alasanDitolak,
-      rows: state.tableRows,
+      rows: enrichedRows,
       photos: state.photos,
       totalDisemai,
       totalPolybag
@@ -633,7 +745,15 @@ export function renderSeedingForm() {
     storage.set('seeding_transactions', txs);
 
     // Bersihkan session scan bedengan
+    storage.remove('scanned_bedengan_id');
+    storage.remove('scanned_bedengan_code');
+    storage.remove('scanned_bedengan_name');
     storage.remove('scanned_bedengan');
+    storage.remove('scanned_bedengan_program_id');
+    storage.remove('scanned_bedengan_block_id');
+    storage.remove('scanned_bedengan_block_code');
+    storage.remove('scanned_bedengan_estate_id');
+    storage.remove('scanned_bedengan_division_id');
     storage.remove('bedengan_verified_method');
     storage.remove('bedengan_verified_at');
 

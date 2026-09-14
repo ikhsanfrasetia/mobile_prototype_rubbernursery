@@ -1,10 +1,12 @@
 /**
  * modules/attendance/attendance-landing.js — Halaman Landing Presensi (Role Mantri).
  * Menampilkan Ringkasan Kehadiran harian (Presensi Datang / Presensi Pulang)
- * dengan validasi waktu (<10:00 WIB Datang, >=14:00 WIB Pulang) dan pencegahan duplikasi presensi.
+ * dengan validasi waktu (<10:00 WIB Datang, >=14:00 WIB Pulang), pencegahan duplikasi presensi,
+ * dan simulasi mengawankan data presensi (TASK-SIMULASI-CLOUD-ATTENDANCE-01).
  */
 
 import { session } from '../../core/session.js';
+import { storage } from '../../core/storage.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
 import { getWorkersForUserContext } from '../../data/worker-master.js';
 import { attendanceRepository, workerRepository } from '../../db/repositories.js';
@@ -12,14 +14,42 @@ import { todayISO, formatFullDateIndonesian } from '../../core/utils.js';
 import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
 
-const MONTH_NAMES_ID = [
+export const MONTH_NAMES_ID = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-function formatDisplayDate(date = new Date()) {
+export function formatDisplayDate(date = new Date()) {
   const d = typeof date === 'string' ? new Date(date) : date;
   return `${d.getDate()} ${MONTH_NAMES_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+export function formatAttendanceCloudDate(dateInput) {
+  if (!dateInput) return '';
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return '';
+  const day = d.getDate();
+  const month = MONTH_NAMES_ID[d.getMonth()];
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${day} ${month} ${year}, ${hours}:${minutes}`;
+}
+
+export function getAttendanceCloudStorageKey(userId) {
+  const cleanId = String(userId || 'DEFAULT_USER').trim();
+  return `attendance_cloud_state_${cleanId}`;
+}
+
+export function getAttendanceCloudState(userId) {
+  const key = getAttendanceCloudStorageKey(userId);
+  return storage.get(key, null);
+}
+
+export function setAttendanceCloudState(userId, stateData) {
+  const key = getAttendanceCloudStorageKey(userId);
+  storage.set(key, stateData);
+  return stateData;
 }
 
 export function getAttendanceTypeByHour() {
@@ -30,7 +60,8 @@ export function getAttendanceTypeByHour() {
 
 export async function renderAttendanceLanding() {
   const app = document.getElementById('app');
-  const userContext = getCurrentUserContext();
+  const userContext = getCurrentUserContext() || session.get() || {};
+  const userId = userContext.userId || userContext.id || userContext.code || 'USR-MNT-TBS';
   const today = todayISO();
   const attType = getAttendanceTypeByHour();
   const pageTitle = attType === 'PULANG' ? 'Presensi Pulang' : 'Presensi Datang';
@@ -64,18 +95,35 @@ export async function renderAttendanceLanding() {
 
   const totalTidakHadir = todayAttendances.filter((a) => a.status === 'ABSENT' || a.attendanceType === 'ABSENT').length;
 
+  // Cloud State & Status Label Logic
+  const cloudState = getAttendanceCloudState(userId);
+  const availableToCloudCount = totalHadir;
+  const isCloudEnabled = availableToCloudCount >= 1;
+
+  let initialCloudStatusText = 'Belum ada data yang dapat diawankan';
+  if (cloudState && cloudState.lastAttendanceCloudAt) {
+    initialCloudStatusText = `Terakhir diawankan ${formatAttendanceCloudDate(cloudState.lastAttendanceCloudAt)}`;
+  }
+
   app.innerHTML = `
     <div class="page attendance-landing-page">
       <header class="attendance-topbar">
-        <button class="attendance-icon-btn" id="attendance-back-btn" type="button" aria-label="Kembali">
+        <button class="attendance-icon-btn ${!isCloudEnabled ? 'is-disabled' : ''}" id="attendance-back-btn" type="button" aria-label="Kembali">
           <svg viewBox="0 0 24 24" width="24" height="24" stroke="#1f2937" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
             <line x1="19" y1="12" x2="5" y2="12"></line>
             <polyline points="12 19 5 12 12 5"></polyline>
           </svg>
         </button>
         <h1 class="attendance-page-title">${pageTitle}</h1>
-        <button class="attendance-icon-btn" id="attendance-cloud-btn" type="button" aria-label="Status Sinkronisasi">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="#2d6a4f">
+        <button 
+          class="attendance-icon-btn ${!isCloudEnabled ? 'is-disabled' : ''}" 
+          id="attendance-cloud-btn" 
+          type="button" 
+          aria-label="Status Sinkronisasi"
+          ${!isCloudEnabled ? 'disabled' : ''}
+          style="${!isCloudEnabled ? 'opacity: 0.35; cursor: not-allowed;' : 'opacity: 1; cursor: pointer;'}"
+        >
+          <svg class="attendance-cloud-icon" viewBox="0 0 24 24" width="24" height="24" fill="${!isCloudEnabled ? '#94a3b8' : '#2d6a4f'}" style="transition: transform 0.2s ease, opacity 0.2s ease;">
             <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
           </svg>
         </button>
@@ -140,8 +188,8 @@ export async function renderAttendanceLanding() {
           </div>
         </div>
 
-        <div class="attendance-cloud-status">
-          Belum data yang dapat diawankan
+        <div class="attendance-cloud-status" id="attendance-cloud-status">
+          ${initialCloudStatusText}
         </div>
       </main>
 
@@ -159,19 +207,59 @@ export async function renderAttendanceLanding() {
   `;
 
   // Event Listeners
-  app.querySelector('#attendance-back-btn').addEventListener('click', () => {
+  app.querySelector('#attendance-back-btn')?.addEventListener('click', () => {
     navigate('/home');
   });
 
-  app.querySelector('#attendance-cloud-btn').addEventListener('click', () => {
-    toast.info('Belum ada data presensi yang perlu disinkronkan ke server.');
+  // Simulasi Mengawankan Data Presensi
+  let isClouding = false;
+  const cloudBtn = app.querySelector('#attendance-cloud-btn');
+  const cloudStatusEl = app.querySelector('#attendance-cloud-status');
+  const cloudIcon = cloudBtn ? cloudBtn.querySelector('svg') : null;
+
+  cloudBtn?.addEventListener('click', async () => {
+    if (isClouding) return;
+    if (availableToCloudCount === 0) {
+      toast.info('Belum ada data presensi yang dapat diawankan.');
+      return;
+    }
+
+    // 1. Set uploading state
+    isClouding = true;
+    cloudBtn.disabled = true;
+    cloudBtn.classList.add('attendance-cloud-animating');
+    cloudBtn.style.opacity = '0.7';
+    if (cloudIcon) cloudIcon.classList.add('attendance-cloud-animating');
+    if (cloudStatusEl) cloudStatusEl.textContent = 'Mengawankan data...';
+
+    // 2. Simulate upload process delay (1200ms)
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    // 3. Complete and persist last sync timestamp
+    const nowIso = new Date().toISOString();
+    setAttendanceCloudState(userId, {
+      lastAttendanceCloudAt: nowIso,
+      count: availableToCloudCount
+    });
+
+    if (cloudIcon) cloudIcon.classList.remove('attendance-cloud-animating');
+    cloudBtn.classList.remove('attendance-cloud-animating');
+    cloudBtn.disabled = false;
+    cloudBtn.style.opacity = '1';
+    
+    if (cloudStatusEl) {
+      cloudStatusEl.textContent = `Terakhir diawankan ${formatAttendanceCloudDate(nowIso)}`;
+    }
+
+    toast.success(`${availableToCloudCount} data presensi berhasil diawankan.`);
+    isClouding = false;
   });
 
-  app.querySelector('#attendance-summary-header').addEventListener('click', () => {
+  app.querySelector('#attendance-summary-header')?.addEventListener('click', () => {
     navigate('/attendance/summary');
   });
 
-  app.querySelector('#btn-presensi-supervisor').addEventListener('click', () => {
+  app.querySelector('#btn-presensi-supervisor')?.addEventListener('click', () => {
     if (isSupervisorDone) {
       toast.info(`Anda sudah menyelesaikan ${pageTitle} untuk hari ini.`);
       return;
@@ -179,7 +267,7 @@ export async function renderAttendanceLanding() {
     navigate('/attendance/supervisor');
   });
 
-  app.querySelector('#btn-presensi-pekerja').addEventListener('click', () => {
+  app.querySelector('#btn-presensi-pekerja')?.addEventListener('click', () => {
     navigate('/attendance/workers');
   });
 }

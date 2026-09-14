@@ -16,6 +16,12 @@ import { ROLES, normalizeRole, getCurrentUserContext } from '../core/user-contex
 import { getOpenPrograms, getActivePrograms, getProgramById, resolveProgram, isProgramOpen } from './program-master.js';
 import { getActiveEstates, getEstateById, getNurseryDivisionsByEstate, resolveNurseryDivision } from './estate-master.js';
 import { getAllBatches } from './batch-master.js';
+import { 
+  getBedenganContext, 
+  setBedenganContext, 
+  getBedengansByContext, 
+  validateCrossEstateContext 
+} from '../core/master-context-service.js';
 
 export const BEDENGAN_STATUS = Object.freeze({
   ACTIVE: 'ACTIVE',
@@ -30,230 +36,30 @@ export const STORAGE_KEY_BEDENGAN_MASTER = 'bedengan_master';
 
 /**
  * Baseline Default Data Master Bedengan (Canonical Seed)
+ * Baseline production/prototype: Dimulai dari [] (kosong)
  */
-export const DEFAULT_BEDENGAN_MASTER = Object.freeze([
-  // ==========================================
-  // TANAH BESIH (EST-TBS) — DIVISI I (DIV-001)
-  // ==========================================
-  {
-    bedenganId: 'BED-TBS-D1-001',
-    bedenganCode: 'BED-001',
-    name: 'Bedengan 001',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-001',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    bedenganId: 'BED-TBS-D1-002',
-    bedenganCode: 'BED-002',
-    name: 'Bedengan 002',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-002',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    bedenganId: 'BED-TBS-D1-003',
-    bedenganCode: 'BED-003',
-    name: 'Bedengan 003',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-003',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    bedenganId: 'BED-TBS-D1-004',
-    bedenganCode: 'BED-004',
-    name: 'Bedengan 004',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-004',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    bedenganId: 'BED-TBS-D1-005',
-    bedenganCode: 'BED-005',
-    name: 'Bedengan 005',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-005',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    bedenganId: 'BED-TBS-D1-006',
-    bedenganCode: 'BED-006',
-    name: 'Bedengan 006',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-006',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    bedenganId: 'BED-TBS-D1-007',
-    bedenganCode: 'BED-007',
-    name: 'Bedengan 007',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-007',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    bedenganId: 'BED-TBS-D1-008',
-    bedenganCode: 'BED-008',
-    name: 'Bedengan 008',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-008',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    bedenganId: 'BED-TBS-D1-009',
-    bedenganCode: 'BED-009',
-    name: 'Bedengan 009',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-009',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    bedenganId: 'BED-TBS-D1-010',
-    bedenganCode: 'BED-010',
-    name: 'Bedengan 010',
-    programId: 'PRG-TBS-2026-001',
-    estateId: 'EST-TBS',
-    divisionId: 'DIV-001',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    capacity: 1000,
-    qrCode: 'SIGMA-BED-010',
-    status: BEDENGAN_STATUS.INACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
+export const DEFAULT_BEDENGAN_MASTER = Object.freeze([]);
 
-  // ==========================================
-  // AEK PAMINGKE (EST-APM) — DIVISI II (DIV-APM-02)
-  // ==========================================
-  {
-    bedenganId: 'BED-APM-D2-001',
-    bedenganCode: 'BED-APM-001',
-    name: 'Bedengan APM 01',
-    programId: 'PRG-APM-2026-001',
-    estateId: 'EST-APM',
-    divisionId: 'DIV-APM-02',
-    blockId: null,
-    blockCode: '007/03',
-    capacity: 1200,
-    qrCode: 'SIGMA-BED-APM-001',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-APM',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-APM'
-  },
-  {
-    bedenganId: 'BED-APM-D2-002',
-    bedenganCode: 'BED-APM-002',
-    name: 'Bedengan APM 02',
-    programId: 'PRG-APM-2026-001',
-    estateId: 'EST-APM',
-    divisionId: 'DIV-APM-02',
-    blockId: null,
-    blockCode: '007/03',
-    capacity: 1200,
-    qrCode: 'SIGMA-BED-APM-002',
-    status: BEDENGAN_STATUS.ACTIVE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-APM',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-APM'
-  }
+const OLD_LEGACY_BEDENGAN_IDS = new Set([
+  'BED-TBS-D1-001', 'BED-TBS-D1-002', 'BED-TBS-D1-003', 'BED-TBS-D1-004', 'BED-TBS-D1-005',
+  'BED-TBS-D1-006', 'BED-TBS-D1-007', 'BED-TBS-D1-008', 'BED-TBS-D1-009', 'BED-TBS-D1-010',
+  'BED-APM-D2-001', 'BED-APM-D2-002'
 ]);
 
 /**
  * Mengambil dataset raw dari storage dengan inisialisasi default
  */
 function _loadBedenganFromStorage() {
-  const stored = storage.get(STORAGE_KEY_BEDENGAN_MASTER, null);
-  if (!stored || !Array.isArray(stored) || stored.length === 0) {
+  let stored = storage.get(STORAGE_KEY_BEDENGAN_MASTER, null);
+  if (stored === null || !Array.isArray(stored)) {
     const cloned = JSON.parse(JSON.stringify(DEFAULT_BEDENGAN_MASTER));
     storage.set(STORAGE_KEY_BEDENGAN_MASTER, cloned);
     return cloned;
+  }
+  // Hard-clear: Sanitize out any legacy seed bedengans lingering in browser runtime storage
+  if (stored.some(b => OLD_LEGACY_BEDENGAN_IDS.has(b.bedenganId) || (b.createdAt === '2026-01-01T08:00:00.000Z' && (b.createdBy === 'USR-ASB-TBS' || b.createdBy === 'USR-ASB-APM')))) {
+    stored = stored.filter(b => !OLD_LEGACY_BEDENGAN_IDS.has(b.bedenganId) && !(b.createdAt === '2026-01-01T08:00:00.000Z' && (b.createdBy === 'USR-ASB-TBS' || b.createdBy === 'USR-ASB-APM')));
+    storage.set(STORAGE_KEY_BEDENGAN_MASTER, stored);
   }
   return stored;
 }
@@ -375,35 +181,38 @@ export function validateUserScopeAndRole(user, targetEstateId, targetDivisionId,
 export function getAllBedengan(filters = {}) {
   let list = _loadBedenganFromStorage();
 
-  if (filters.estateId) {
-    const cleanEstate = String(filters.estateId).trim().toUpperCase();
-    list = list.filter(b => b.estateId.toUpperCase() === cleanEstate);
-  }
+  return list.filter(b => {
+    const ctx = getBedenganContext(b.bedenganId) || b;
+    if (filters.estateId) {
+      const cleanEstate = String(filters.estateId).trim().toUpperCase();
+      if ((ctx.estateId || '').toUpperCase() !== cleanEstate) return false;
+    }
 
-  if (filters.divisionId) {
-    const cleanDiv = String(filters.divisionId).trim().toUpperCase();
-    list = list.filter(b => b.divisionId.toUpperCase() === cleanDiv);
-  }
+    if (filters.divisionId) {
+      const cleanDiv = String(filters.divisionId).trim().toUpperCase();
+      if ((ctx.divisionId || '').toUpperCase() !== cleanDiv) return false;
+    }
 
-  if (filters.programId) {
-    const cleanProg = String(filters.programId).trim();
-    list = list.filter(b => b.programId === cleanProg || (b.programCode && b.programCode === cleanProg));
-  }
+    if (filters.programId) {
+      const prog = resolveProgram(filters.programId);
+      const targetProgId = prog ? prog.id : String(filters.programId).trim();
+      if (ctx.programId !== targetProgId && ctx.programCode !== targetProgId) return false;
+    }
 
-  if (filters.status) {
-    list = list.filter(b => b.status === filters.status);
-  }
+    if (filters.status) {
+      if (b.status !== filters.status) return false;
+    }
 
-  if (filters.search) {
-    const q = String(filters.search).trim().toLowerCase();
-    list = list.filter(b => 
-      b.bedenganCode.toLowerCase().includes(q) ||
-      b.name.toLowerCase().includes(q) ||
-      (b.qrCode && b.qrCode.toLowerCase().includes(q))
-    );
-  }
+    if (filters.search) {
+      const q = String(filters.search).trim().toLowerCase();
+      const match = (b.bedenganCode || '').toLowerCase().includes(q) ||
+        (b.name || '').toLowerCase().includes(q) ||
+        (b.qrCode && b.qrCode.toLowerCase().includes(q));
+      if (!match) return false;
+    }
 
-  return list;
+    return true;
+  });
 }
 
 /**
@@ -411,7 +220,14 @@ export function getAllBedengan(filters = {}) {
  */
 export function getActiveBedengan(filters = {}) {
   const all = getAllBedengan(filters);
-  return all.filter(b => b.status === BEDENGAN_STATUS.ACTIVE || b.status !== BEDENGAN_STATUS.INACTIVE);
+  return all.filter(b => {
+    const isActive = b.status === BEDENGAN_STATUS.ACTIVE || b.status !== BEDENGAN_STATUS.INACTIVE;
+    if (!isActive) return false;
+    if (filters.openProgramOnly !== false && b.programId) {
+      if (!isProgramOpen(b.programId)) return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -468,45 +284,52 @@ export function isBedenganActive(id) {
 
 /**
  * Menghasilkan candidate identity berikutnya untuk Master Bedengan
- * scoped strictly to (programId + estateId + divisionId)
+ * Format:
+ * - Kode: BED-001, BED-002, BED-003, dst.
+ * - Nama: Bedengan-001, Bedengan-002, Bedengan-003, dst.
+ * Sequence aman & unik dimulai dari 001.
  */
 export function getNextBedenganCandidate(programId, estateId, divisionId) {
   if (!programId || !estateId || !divisionId) return null;
 
   const allBedengans = getAllBedengan({}); // includes INACTIVE
 
-  // Format estate code short: 'EST-APM' -> 'APM', 'EST-TBS' -> 'TBS'
-  const estShort = String(estateId).replace(/^EST-/, '').toUpperCase();
+  let maxSeq = 0;
+  allBedengans.forEach(b => {
+    const codeMatch = String(b.bedenganCode || '').match(/BED-(\d+)/i);
+    const nameMatch = String(b.name || '').match(/Bedengan-(\d+)/i);
+    if (codeMatch) {
+      const num = parseInt(codeMatch[1], 10);
+      if (num > maxSeq) maxSeq = num;
+    } else if (nameMatch) {
+      const num = parseInt(nameMatch[1], 10);
+      if (num > maxSeq) maxSeq = num;
+    }
+  });
 
-  // Format division short: 'DIV-APM-02' -> 'D2', 'DIV-001' -> 'D1'
+  let nextSeq = maxSeq + 1;
+  let candidateCode = `BED-${String(nextSeq).padStart(3, '0')}`;
+  let candidateName = `Bedengan-${String(nextSeq).padStart(3, '0')}`;
+
+  while (
+    allBedengans.some(b => 
+      String(b.bedenganCode || '').toUpperCase() === candidateCode.toUpperCase() ||
+      String(b.name || '').toUpperCase() === candidateName.toUpperCase()
+    )
+  ) {
+    nextSeq++;
+    candidateCode = `BED-${String(nextSeq).padStart(3, '0')}`;
+    candidateName = `Bedengan-${String(nextSeq).padStart(3, '0')}`;
+  }
+
+  const estShort = String(estateId).replace(/^EST-/, '').toUpperCase();
   let divShort = 'D1';
   const numMatch = String(divisionId).match(/\d+/);
   if (numMatch) {
     divShort = `D${parseInt(numMatch[0], 10)}`;
   }
 
-  // Find all bedengans in this scope (programId + estateId + divisionId)
-  const scopedBedengans = allBedengans.filter(b => 
-    (b.programId === programId || (b.programCode && b.programCode === programId)) &&
-    String(b.estateId).toUpperCase() === String(estateId).toUpperCase() &&
-    String(b.divisionId).toUpperCase() === String(divisionId).toUpperCase()
-  );
-
-  let maxSeq = 0;
-  scopedBedengans.forEach(b => {
-    const seqMatch = String(b.bedenganCode).match(/(\d+)$/);
-    if (seqMatch) {
-      const num = parseInt(seqMatch[1], 10);
-      if (num > maxSeq) maxSeq = num;
-    }
-  });
-
-  const nextSeq = maxSeq + 1;
-  const seqPadded = String(nextSeq).padStart(3, '0');
-
-  const candidateId = `BED-${estShort}-${divShort}-${seqPadded}`;
-  const candidateCode = estShort === 'TBS' ? `BED-${seqPadded}` : `BED-${estShort}-${divShort}-${seqPadded}`;
-  const candidateName = `Bedengan ${seqPadded}`;
+  const candidateId = `BED-${estShort}-${divShort}-${Date.now().toString().slice(-4)}-${String(nextSeq).padStart(3, '0')}`;
   const candidateQR = `SIGMA-${candidateCode}`;
 
   return {
@@ -572,7 +395,15 @@ export function createBedengan(data, currentUser = null) {
   }
 
   const now = new Date().toISOString();
-  const newId = data.bedenganId || `BED-${finalEstateId || 'EST'}-${finalDivisionId || 'DIV'}-${Date.now().toString().slice(-4)}`;
+  let newId = data.bedenganId;
+  if (!newId) {
+    let candidate = `BED-${finalEstateId || 'EST'}-${finalDivisionId || 'DIV'}-${Date.now().toString().slice(-4)}`;
+    let counter = 1;
+    while (list.some(b => b.bedenganId === candidate)) {
+      candidate = `BED-${finalEstateId || 'EST'}-${finalDivisionId || 'DIV'}-${Date.now().toString().slice(-4)}-${counter++}`;
+    }
+    newId = candidate;
+  }
 
   const newBedengan = {
     bedenganId: newId,
@@ -596,6 +427,18 @@ export function createBedengan(data, currentUser = null) {
 
   list.push(newBedengan);
   _saveBedenganToStorage(list);
+
+  // Daftarkan Context Relasi ke Master Context Service
+  setBedenganContext(newBedengan.bedenganId, {
+    bedenganCode: newBedengan.bedenganCode,
+    programId: program ? program.id : data.programId,
+    programCode: program ? program.code : (data.programCode || null),
+    programName: program ? program.name : (data.programName || null),
+    estateId: finalEstateId,
+    divisionId: finalDivisionId,
+    blockId: finalBlockId,
+    blockCode: finalBlockCode
+  });
 
   return newBedengan;
 }
@@ -676,6 +519,16 @@ export function updateBedengan(id, data, currentUser = null) {
   list[idx] = updated;
   _saveBedenganToStorage(list);
 
+  // Perbarui Context Relasi di Master Context Service (dengan proteksi immutability program/estate)
+  setBedenganContext(id, {
+    bedenganCode: updated.bedenganCode,
+    programId: targetProgram,
+    estateId: targetEstate,
+    divisionId: targetDivision,
+    blockId: updated.blockId,
+    blockCode: updated.blockCode
+  });
+
   return updated;
 }
 
@@ -710,6 +563,106 @@ export function deactivateBedengan(id, currentUser = null) {
   return updateBedengan(id, { status: BEDENGAN_STATUS.INACTIVE }, currentUser);
 }
 
+const TRANSACTION_STORAGE_KEYS = [
+  'requests_transactions', 'requests', 'dispatch_transactions',
+  'receipt_ksp_transactions', 'receipt_transactions', 'nursery_activity_records',
+  'entres_transactions', 'entres_menunas_transactions', 'entres_topping_transactions',
+  'materials_transactions', 'seeding_transactions', 'budding_transactions',
+  'inspection_transactions', 'attendance_transactions', 'selection_transactions',
+  'destruction_transactions', 'verification_transactions',
+  'selection_pool', 'regrafting_pool'
+];
+
+/**
+ * Memeriksa apakah bedengan sudah pernah digunakan dalam transaksi atau batch
+ */
+export function isBedenganUsedInTransactions(bedenganId, bedenganCode = null) {
+  if (!bedenganId && !bedenganCode) return false;
+
+  // 1. Cek keterkaitan dengan batch aktif/tercatat
+  const batches = getAllBatches() || [];
+  const inBatch = batches.some(b => {
+    if (Array.isArray(b.bedenganIds)) {
+      if (bedenganId && b.bedenganIds.some(bid => String(bid).trim().toUpperCase() === String(bedenganId).trim().toUpperCase())) return true;
+      if (bedenganCode && b.bedenganIds.some(bid => String(bid).trim().toUpperCase() === String(bedenganCode).trim().toUpperCase())) return true;
+    }
+    if (bedenganId && b.bedenganId && String(b.bedenganId).trim().toUpperCase() === String(bedenganId).trim().toUpperCase()) return true;
+    if (bedenganCode && b.bedenganId && String(b.bedenganId).trim().toUpperCase() === String(bedenganCode).trim().toUpperCase()) return true;
+    return false;
+  });
+  if (inBatch) return true;
+
+  // 2. Cek riwayat transaksi
+  for (const key of TRANSACTION_STORAGE_KEYS) {
+    const records = storage.get(key, []);
+    if (Array.isArray(records) && records.length > 0) {
+      const serialized = JSON.stringify(records);
+      if (bedenganId && serialized.includes(`"${bedenganId}"`)) return true;
+      if (bedenganCode && serialized.includes(`"${bedenganCode}"`)) return true;
+      // Periksa juga property matching langsung
+      const matched = records.some(r => 
+        (bedenganId && (r.bedenganId === bedenganId || r.bedengan_id === bedenganId || r.bedengan === bedenganId)) ||
+        (bedenganCode && (r.bedenganCode === bedenganCode || r.bedengan_code === bedenganCode || r.bedengan === bedenganCode || r.bedenganName === bedenganCode))
+      );
+      if (matched) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * DELETE Master Bedengan
+ * Aturan:
+ * - Jika record belum pernah digunakan pada transaksi: hard delete diperbolehkan.
+ * - Jika record sudah memiliki referensi transaksi / batch: hard delete DITOLAK -> status diubah menjadi INACTIVE (soft delete).
+ */
+export function deleteBedengan(id, currentUser = null) {
+  const ctx = currentUser || getCurrentUserContext();
+  const list = _loadBedenganFromStorage();
+
+  const idx = list.findIndex(b => b.bedenganId === id);
+  if (idx === -1) {
+    throw new Error(`Bedengan dengan ID '${id}' tidak ditemukan`);
+  }
+
+  const existing = list[idx];
+
+  // Scope & Role Check
+  validateUserScopeAndRole(ctx, existing.estateId, existing.divisionId, 'menghapus');
+
+  const isUsed = isBedenganUsedInTransactions(existing.bedenganId, existing.bedenganCode);
+
+  if (isUsed) {
+    // Soft Delete: Ubah status menjadi INACTIVE untuk menjaga integritas histori transaksi
+    const now = new Date().toISOString();
+    existing.status = BEDENGAN_STATUS.INACTIVE;
+    existing.updatedAt = now;
+    existing.updatedBy = ctx.userId || ctx.id || 'ASISTEN_BIBITAN';
+
+    list[idx] = existing;
+    _saveBedenganToStorage(list);
+
+    return {
+      success: true,
+      softDeleted: true,
+      bedengan: existing,
+      message: `Bedengan '${existing.bedenganCode}' sudah digunakan dalam data transaksi. Status diubah menjadi Nonaktif (INACTIVE) untuk menjaga histori.`
+    };
+  } else {
+    // Hard Delete: Hapus permanen dari storage
+    list.splice(idx, 1);
+    _saveBedenganToStorage(list);
+
+    return {
+      success: true,
+      softDeleted: false,
+      bedengan: existing,
+      message: `Bedengan '${existing.bedenganCode}' berhasil dihapus secara permanen.`
+    };
+  }
+}
+
 /**
  * Legacy Compatibility: Resolve Bedengan
  */
@@ -719,7 +672,7 @@ export function resolveBedenganLegacy(value) {
   return {
     bedenganId: String(value || 'BED-001'),
     bedenganCode: String(value || 'BED-001'),
-    name: String(value || 'Bedengan 001'),
+    name: String(value || 'Bedengan-001'),
     status: BEDENGAN_STATUS.ACTIVE,
     capacity: 1000
   };

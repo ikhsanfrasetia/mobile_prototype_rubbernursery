@@ -18,6 +18,12 @@ import { getProgramById } from '../../data/program-master.js';
 import { getEstateById, resolveNurseryDivision } from '../../data/estate-master.js';
 import { formatStandardDocNo, formatDate } from '../../core/utils.js';
 import { applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
+import { 
+  deductBatchStock as deductInventoryStock, 
+  getAvailableQty as getInventoryAvailableQty, 
+  INVENTORY_TX_TYPE 
+} from '../../core/batch-inventory-service.js';
+import { getBatchContext } from '../../core/master-context-service.js';
 
 export const SELECTION_STATUS = Object.freeze({
   MENUNGGU_VERIFIKASI: 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN',
@@ -325,34 +331,35 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
   }
 
   const batchObj = allBatches[bIdx];
+  const batchCtx = getBatchContext(batchObj.id || batchObj.batchId || target.batchId || target.batchCode) || batchObj;
 
-  // 6. Validasi Program / Estate / Division Alignment
-  if (target.estateId && batchObj.estateId && target.estateId !== batchObj.estateId) {
+  // 6. Validasi Program / Estate / Division Alignment via Context Relation Layer
+  if (target.estateId && batchCtx.estateId && target.estateId.toUpperCase() !== batchCtx.estateId.toUpperCase()) {
     const failedRecord = {
       ...target,
       stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Inkonsistensi estate: Selection (${target.estateId}) vs Batch (${batchObj.estateId})`,
+      stockMutationError: `Inkonsistensi estate: Selection (${target.estateId}) vs Batch (${batchCtx.estateId})`,
       updatedAt: new Date().toISOString()
     };
     allRecords[idx] = failedRecord;
     storage.set(SELECTION_STORAGE_KEY, allRecords);
-    throw new Error(`Inkonsistensi estate: Selection (${target.estateId}) vs Batch (${batchObj.estateId}).`);
+    throw new Error(`Inkonsistensi estate: Selection (${target.estateId}) vs Batch (${batchCtx.estateId}).`);
   }
 
-  if (target.divisionId && batchObj.divisionId && target.divisionId !== batchObj.divisionId) {
+  if (target.divisionId && batchCtx.divisionId && target.divisionId.toUpperCase() !== batchCtx.divisionId.toUpperCase()) {
     const failedRecord = {
       ...target,
       stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Inkonsistensi divisi: Selection (${target.divisionId}) vs Batch (${batchObj.divisionId})`,
+      stockMutationError: `Inkonsistensi divisi: Selection (${target.divisionId}) vs Batch (${batchCtx.divisionId})`,
       updatedAt: new Date().toISOString()
     };
     allRecords[idx] = failedRecord;
     storage.set(SELECTION_STORAGE_KEY, allRecords);
-    throw new Error(`Inkonsistensi divisi: Selection (${target.divisionId}) vs Batch (${batchObj.divisionId}).`);
+    throw new Error(`Inkonsistensi divisi: Selection (${target.divisionId}) vs Batch (${batchCtx.divisionId}).`);
   }
 
-  // 7. Validasi Kecukupan Stok (Available Qty >= Mutation Qty)
-  const currentAvailable = parseInt(batchObj.availableQty !== undefined ? batchObj.availableQty : (batchObj.currentQty || 0), 10);
+  // 7. Validasi Kecukupan Stok via Inventory Service
+  const currentAvailable = getInventoryAvailableQty(batchObj.id || batchObj.batchCode || batchObj.batchNo);
   if (currentAvailable < mutationQty) {
     const failedRecord = {
       ...target,
@@ -365,18 +372,23 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
     throw new Error(`Stok batch ${batchObj.batchCode || batchObj.batchNo} tidak mencukupi (Tersedia: ${currentAvailable} < Afkir: ${mutationQty}).`);
   }
 
-  // 8. Atomic Stock Mutation Commit
-  const newAvailableQty = currentAvailable - mutationQty;
+  // 8. Atomic Stock Mutation Commit via Inventory Service
+  const updatedInvState = deductInventoryStock(
+    batchObj.id || batchObj.batchCode || batchObj.batchNo,
+    mutationQty,
+    INVENTORY_TX_TYPE.SELECTION,
+    target.docNo || target.id,
+    currentUser,
+    `Pengurangan stok seleksi afkir ${target.docNo || target.id}`
+  );
+
   const updatedBatch = {
     ...batchObj,
-    availableQty: newAvailableQty,
-    currentQty: newAvailableQty,
-    status: newAvailableQty === 0 ? 'EMPTY' : 'AVAILABLE',
-    updatedAt: new Date().toISOString()
+    availableQty: updatedInvState.availableQty,
+    currentQty: updatedInvState.availableQty,
+    status: updatedInvState.status,
+    updatedAt: updatedInvState.updatedAt
   };
-
-  allBatches[bIdx] = updatedBatch;
-  storage.set('nursery_batches', allBatches);
 
   // 9. Update Transaction Metadata
   const updatedSelection = {

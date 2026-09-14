@@ -39,6 +39,7 @@ import {
   getBlocksByDivision,
   resolveBlock
 } from '../../data/block-master.js';
+import { getOpenPrograms, getProgramById } from '../../data/program-master.js';
 
 export const MASTER_AKTIVITAS = [
   { kode: '122193', nama: 'Treatment & Pengemasan' },
@@ -65,12 +66,15 @@ export const MASTER_AKTIVITAS = [
   { kode: '122111', nama: 'Biaya Biji Kelatak' }
 ];
 
-export const MASTER_PROGRAM_PEMBIBITAN = [
+/**
+ * @deprecated MASTER_PROGRAM_PEMBIBITAN digantikan oleh getOpenPrograms({ estateId }) dari program-master.js
+ */
+export const MASTER_PROGRAM_PEMBIBITAN = Object.freeze([
   'PRG/NUR/01/2026',
   'PRG/NUR/02/2027',
   'PRG/NUR/03/2028',
   'PRG/NUR/08/2029'
-];
+]);
 
 /**
  * @deprecated MASTER_LOKASI_BLOK sudah dinonaktifkan dari production logic. Gunakan js/data/block-master.js.
@@ -754,9 +758,12 @@ export function renderNurseryActivityForm() {
   const userCtx = getCurrentUserContext();
   const activeWorkers = getWorkersForUserContext(userCtx, { activeOnly: true });
   const availableBlocks = getBlocksForNurseryActivity(userCtx);
+  const openPrograms = getOpenPrograms({ estateId: userCtx?.estateId });
 
   let selectedAktivitasIndex = 0;
-  let selectedProgram = MASTER_PROGRAM_PEMBIBITAN[0];
+  const initialProgram = openPrograms[0] || null;
+  let selectedProgramId = initialProgram ? initialProgram.id : null;
+  let selectedProgramCode = initialProgram ? initialProgram.code : null;
   let selectedBlokIndex = 0;
   let isInputManual = false;
   const workerSelectionState = {};
@@ -835,7 +842,7 @@ export function renderNurseryActivityForm() {
             Nama Program Pembibitan
           </label>
           <div id="btn-open-program-sheet" role="button" tabindex="0" style="display: flex; justify-content: space-between; align-items: center; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 12px; height: 42px; background: #FFFFFF; cursor: pointer; transition: border-color 0.15s ease;">
-            <span id="label-selected-program" style="font-size: 0.88rem; font-weight: 700; color: #111827;">${selectedProgram}</span>
+            <span id="label-selected-program" style="font-size: 0.88rem; font-weight: 700; color: #111827;">${selectedProgramCode || 'Belum ada Program Terbuka'}</span>
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -920,12 +927,17 @@ export function renderNurseryActivityForm() {
         </div>
         
         <div id="list-program-container" style="display: flex; flex-direction: column; border: 1px solid #D9D9D9; border-radius: 8px; overflow: hidden; background: #FFFFFF;">
-          ${MASTER_PROGRAM_PEMBIBITAN.map((prog, idx) => `
-            <div class="item-program-row" data-code="${prog}" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: ${selectedProgram === prog ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === MASTER_PROGRAM_PEMBIBITAN.length - 1 ? 'none' : '1px solid #E5E7EB'}; cursor: pointer;">
-              <span style="font-size: 0.95rem; color: #111111; font-weight: ${selectedProgram === prog ? '700' : '500'};">${prog}</span>
+          ${openPrograms.length > 0 ? openPrograms.map((prog, idx) => `
+            <div class="item-program-row" data-id="${prog.id}" data-code="${prog.code}" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: ${(selectedProgramId === prog.id || selectedProgramCode === prog.code) ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === openPrograms.length - 1 ? 'none' : '1px solid #E5E7EB'}; cursor: pointer;">
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 0.95rem; color: #111111; font-weight: ${(selectedProgramId === prog.id || selectedProgramCode === prog.code) ? '700' : '500'};">${prog.code}</span>
+                <span style="font-size: 0.76rem; color: #64748B;">${prog.name}</span>
+              </div>
               <span style="font-size: 0.95rem; color: #116834; font-weight: 700;">Pilih</span>
             </div>
-          `).join('')}
+          `).join('') : `
+            <div style="padding: 20px; text-align: center; color: #64748B; font-size: 0.85rem;">Tidak ada Program Pembibitan OPEN pada unit kerja ini.</div>
+          `}
         </div>
       </div>
 
@@ -1007,14 +1019,16 @@ export function renderNurseryActivityForm() {
 
   app.querySelectorAll('.item-program-row').forEach(row => {
     row.addEventListener('click', () => {
+      const id = row.dataset.id;
       const code = row.dataset.code;
       if (code) {
-        selectedProgram = code;
-        if (labelSelectedProgram) labelSelectedProgram.textContent = selectedProgram;
+        selectedProgramId = id;
+        selectedProgramCode = code;
+        if (labelSelectedProgram) labelSelectedProgram.textContent = selectedProgramCode;
         
         // Perbarui highlight baris
         app.querySelectorAll('.item-program-row').forEach(r => {
-          const isCurr = r.dataset.code === selectedProgram;
+          const isCurr = r.dataset.id === selectedProgramId || r.dataset.code === selectedProgramCode;
           r.style.background = isCurr ? '#E8F5E9' : '#FFFFFF';
           const spanText = r.querySelector('span:first-child');
           if (spanText) spanText.style.fontWeight = isCurr ? '700' : '500';
@@ -1031,7 +1045,10 @@ export function renderNurseryActivityForm() {
     const selectCfnaEl = app.querySelector('#select-cfna');
     const aktIdx = parseInt(selectAktivitasEl?.value || '0', 10);
     const selectedAkt = MASTER_AKTIVITAS[aktIdx] || MASTER_AKTIVITAS[0];
-    const selectedProg = selectedProgram || MASTER_PROGRAM_PEMBIBITAN[0];
+    
+    const chosenProg = (selectedProgramId ? getProgramById(selectedProgramId) : null) || openPrograms.find(p => p.code === selectedProgramCode) || null;
+    const finalProgId = chosenProg ? chosenProg.id : selectedProgramId;
+    const finalProgCode = chosenProg ? chosenProg.code : selectedProgramCode;
 
     const chosenBlockId = selectBlokEl?.value;
     const blockMasterRecord = getBlockById(chosenBlockId) || (availableBlocks.length > 0 ? availableBlocks[0] : null);
@@ -1121,7 +1138,11 @@ export function renderNurseryActivityForm() {
       id: `ACT-${Date.now()}`,
       docNo,
       aktivitas: selectedAkt,
-      program: selectedProg,
+      programId: finalProgId,
+      programCode: finalProgCode,
+      program: finalProgCode || 'Nursery Program 2026',
+      estateId: userCtx?.estateId || null,
+      divisionId: userCtx?.divisionId || null,
       lokasiBlok: selectedBlok,
       pekerja: canonicalWorkers,
       allocationCode,

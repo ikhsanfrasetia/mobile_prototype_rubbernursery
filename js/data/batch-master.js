@@ -17,6 +17,19 @@ import { getOpenPrograms, getActivePrograms, getProgramById, resolveProgram, isP
 import { getActiveEstates, getEstateById, getNurseryDivisionsByEstate } from './estate-master.js';
 import { normalizeKlonName, isKnownKlon } from './klon-master.js';
 import { getBedenganById, getActiveBedengan, BEDENGAN_STATUS } from './bedengan-master.js';
+import { 
+  getAvailableQty as getInventoryAvailableQty,
+  deductBatchStock as deductInventoryStock,
+  addBatchStockFromReceipt as addInventoryStockFromReceipt,
+  initBatchInventory,
+  INVENTORY_TX_TYPE
+} from '../core/batch-inventory-service.js';
+import {
+  getBatchContext,
+  setBatchContext,
+  getBatchesByContext,
+  validateCrossEstateContext
+} from '../core/master-context-service.js';
 
 export const STORAGE_KEY_NURSERY_BATCHES = 'nursery_batches';
 
@@ -52,332 +65,31 @@ export const BATCH_GROWTH_STAGES = Object.freeze([
 
 /**
  * Baseline Default Seed Batches (Canonical Master Seed)
+ * Baseline production/prototype: Dimulai dari [] (kosong)
  */
-export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
-  // ==========================================
-  // AEK PAMINGKE (EST-APM) — DIVISI II (DIV-APM-02)
-  // ==========================================
-  {
-    id: 'BATCH-APM-001',
-    batchId: 'BATCH-APM-001',
-    batchCode: 'B-001',
-    batchNo: 'B-001',
-    programId: 'PRG-APM-2026-001',
-    programCode: '2026/AP/RNUR/001',
-    programName: 'RB Nursery Program 2026-2027 AP',
-    estateId: 'EST-APM',
-    estateCode: 'EST-APM',
-    estateName: 'Aek Pamingke',
-    divisionId: 'DIV-APM-02',
-    divisionCode: 'DIV-APM-02',
-    divisionName: 'Divisi II',
-    blockId: null,
-    blockCode: '007/03',
-    cloneId: 'IRCA 19',
-    clone: 'IRCA 19',
-    klon: 'IRCA 19',
-    growthStage: 'Rubber Advance Planting Material',
-    stage: 'Rubber Advance Planting Material',
-    category: 'Polibag Besar',
-    bedenganIds: ['BED-APM-D2-001'],
-    initialQty: 5000,
-    receivedQty: 5000,
-    availableQty: 5000,
-    currentQty: 5000,
-    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
-    status: BATCH_STATUS.AVAILABLE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-APM',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-APM'
-  },
-  {
-    id: 'BATCH-APM-002',
-    batchId: 'BATCH-APM-002',
-    batchCode: 'B-002',
-    batchNo: 'B-002',
-    programId: 'PRG-APM-2026-001',
-    programCode: '2026/AP/RNUR/001',
-    programName: 'RB Nursery Program 2026-2027 AP',
-    estateId: 'EST-APM',
-    estateCode: 'EST-APM',
-    estateName: 'Aek Pamingke',
-    divisionId: 'DIV-APM-02',
-    divisionCode: 'DIV-APM-02',
-    divisionName: 'Divisi II',
-    blockId: null,
-    blockCode: '007/03',
-    cloneId: 'IRCA 19',
-    clone: 'IRCA 19',
-    klon: 'IRCA 19',
-    growthStage: 'Rubber Advance Planting Material',
-    stage: 'Rubber Advance Planting Material',
-    category: 'Polibag Besar',
-    bedenganIds: ['BED-APM-D2-002'],
-    initialQty: 4000,
-    receivedQty: 4000,
-    availableQty: 4000,
-    currentQty: 4000,
-    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
-    status: BATCH_STATUS.AVAILABLE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-APM',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-APM'
-  },
-  {
-    id: 'BATCH-APM-003',
-    batchId: 'BATCH-APM-003',
-    batchCode: 'B-003',
-    batchNo: 'B-003',
-    programId: 'PRG-APM-2026-001',
-    programCode: '2026/AP/RNUR/001',
-    programName: 'RB Nursery Program 2026-2027 AP',
-    estateId: 'EST-APM',
-    estateCode: 'EST-APM',
-    estateName: 'Aek Pamingke',
-    divisionId: 'DIV-APM-02',
-    divisionCode: 'DIV-APM-02',
-    divisionName: 'Divisi II',
-    blockId: null,
-    blockCode: '007/03',
-    cloneId: 'IRCA 19',
-    clone: 'IRCA 19',
-    klon: 'IRCA 19',
-    growthStage: 'Rubber Advance Planting Material',
-    stage: 'Rubber Advance Planting Material',
-    category: 'Polibag Besar',
-    bedenganIds: ['BED-APM-D2-001', 'BED-APM-D2-002'],
-    initialQty: 5000,
-    receivedQty: 5000,
-    availableQty: 5000,
-    currentQty: 5000,
-    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
-    status: BATCH_STATUS.AVAILABLE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-APM',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-APM'
-  },
-  {
-    id: 'BATCH-APM-007',
-    batchId: 'BATCH-APM-007',
-    batchCode: 'B-007',
-    batchNo: 'B-007',
-    programId: 'PRG-APM-2026-001',
-    programCode: '2026/AP/RNUR/001',
-    programName: 'RB Nursery Program 2026-2027 AP',
-    estateId: 'EST-APM',
-    estateCode: 'EST-APM',
-    estateName: 'Aek Pamingke',
-    divisionId: 'DIV-APM-02',
-    divisionCode: 'DIV-APM-02',
-    divisionName: 'Divisi II',
-    blockId: null,
-    blockCode: '007/03',
-    cloneId: 'IRCA 19',
-    clone: 'IRCA 19',
-    klon: 'IRCA 19',
-    growthStage: 'Rubber Advance Planting Material',
-    stage: 'Rubber Advance Planting Material',
-    category: 'Polibag Besar',
-    bedenganIds: ['BED-APM-D2-001'],
-    initialQty: 6000,
-    receivedQty: 6000,
-    availableQty: 6000,
-    currentQty: 6000,
-    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
-    status: BATCH_STATUS.AVAILABLE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-APM',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-APM'
-  },
-  {
-    id: 'BATCH-APM-006',
-    batchId: 'BATCH-APM-006',
-    batchCode: 'B-006',
-    batchNo: 'B-006',
-    programId: 'PRG-APM-2026-001',
-    programCode: '2026/AP/RNUR/001',
-    programName: 'RB Nursery Program 2026-2027 AP',
-    estateId: 'EST-APM',
-    estateCode: 'EST-APM',
-    estateName: 'Aek Pamingke',
-    divisionId: 'DIV-APM-02',
-    divisionCode: 'DIV-APM-02',
-    divisionName: 'Divisi II',
-    blockId: null,
-    blockCode: '007/03',
-    cloneId: 'IRCA 18',
-    clone: 'IRCA 18',
-    klon: 'IRCA 18',
-    growthStage: 'Rubber Advance Planting Material',
-    stage: 'Rubber Advance Planting Material',
-    category: 'Polibag Besar',
-    bedenganIds: ['BED-APM-D2-002'],
-    initialQty: 10000,
-    receivedQty: 10000,
-    availableQty: 10000,
-    currentQty: 10000,
-    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
-    status: BATCH_STATUS.AVAILABLE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-APM',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-APM'
-  },
-  {
-    id: 'BATCH-APM-004',
-    batchId: 'BATCH-APM-004',
-    batchCode: 'B-004',
-    batchNo: 'B-004',
-    programId: 'PRG-APM-2026-001',
-    programCode: '2026/AP/RNUR/001',
-    programName: 'RB Nursery Program 2026-2027 AP',
-    estateId: 'EST-APM',
-    estateCode: 'EST-APM',
-    estateName: 'Aek Pamingke',
-    divisionId: 'DIV-APM-02',
-    divisionCode: 'DIV-APM-02',
-    divisionName: 'Divisi II',
-    blockId: null,
-    blockCode: '007/03',
-    cloneId: 'PB 260',
-    clone: 'PB 260',
-    klon: 'PB 260',
-    growthStage: 'Rubber Main Nursery',
-    stage: 'Rubber Main Nursery',
-    category: 'Polibag Kecil',
-    bedenganIds: ['BED-APM-D2-001'],
-    initialQty: 10000,
-    receivedQty: 10000,
-    availableQty: 10000,
-    currentQty: 10000,
-    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
-    status: BATCH_STATUS.AVAILABLE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-APM',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-APM'
-  },
-  {
-    id: 'BATCH-APM-005',
-    batchId: 'BATCH-APM-005',
-    batchCode: 'B-005',
-    batchNo: 'B-005',
-    programId: 'PRG-APM-2026-001',
-    programCode: '2026/AP/RNUR/001',
-    programName: 'RB Nursery Program 2026-2027 AP',
-    estateId: 'EST-APM',
-    estateCode: 'EST-APM',
-    estateName: 'Aek Pamingke',
-    divisionId: 'DIV-APM-02',
-    divisionCode: 'DIV-APM-02',
-    divisionName: 'Divisi II',
-    blockId: null,
-    blockCode: '007/03',
-    cloneId: 'GT 1',
-    clone: 'GT 1',
-    klon: 'GT 1',
-    growthStage: 'Rubber Advance Planting Material',
-    stage: 'Rubber Advance Planting Material',
-    category: 'Polibag Besar',
-    bedenganIds: ['BED-APM-D2-002'],
-    initialQty: 8000,
-    receivedQty: 8000,
-    availableQty: 8000,
-    currentQty: 8000,
-    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
-    status: BATCH_STATUS.AVAILABLE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-APM',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-APM'
-  },
+export const DEFAULT_CANONICAL_BATCHES = Object.freeze([]);
 
-  // ==========================================
-  // TANAH BESIH (EST-TBS) — DIVISI I (DIV-001)
-  // ==========================================
-  {
-    id: 'BATCH-TBS-001',
-    batchId: 'BATCH-TBS-001',
-    batchCode: 'B-TBS-01',
-    batchNo: 'B-TBS-01',
-    programId: 'PRG-TBS-2026-001',
-    programCode: '2026/TB/RNUR/001',
-    programName: 'RB Nursery Program 2026-2027 TB',
-    estateId: 'EST-TBS',
-    estateCode: 'EST-TBS',
-    estateName: 'Tanah Besih',
-    divisionId: 'DIV-001',
-    divisionCode: 'DIV-001',
-    divisionName: 'Divisi I',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    cloneId: 'IRCA 19',
-    clone: 'IRCA 19',
-    klon: 'IRCA 19',
-    growthStage: 'Rubber Advance Planting Material',
-    stage: 'Rubber Advance Planting Material',
-    category: 'Polibag Besar',
-    bedenganIds: ['BED-TBS-D1-001', 'BED-TBS-D1-002'],
-    initialQty: 5000,
-    receivedQty: 5000,
-    availableQty: 5000,
-    currentQty: 5000,
-    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
-    status: BATCH_STATUS.AVAILABLE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  },
-  {
-    id: 'BATCH-TBS-002',
-    batchId: 'BATCH-TBS-002',
-    batchCode: 'B-TBS-02',
-    batchNo: 'B-TBS-02',
-    programId: 'PRG-TBS-2026-001',
-    programCode: '2026/TB/RNUR/001',
-    programName: 'RB Nursery Program 2026-2027 TB',
-    estateId: 'EST-TBS',
-    estateCode: 'EST-TBS',
-    estateName: 'Tanah Besih',
-    divisionId: 'DIV-001',
-    divisionCode: 'DIV-001',
-    divisionName: 'Divisi I',
-    blockId: 'BLK-001',
-    blockCode: '001/91',
-    cloneId: 'PB 260',
-    clone: 'PB 260',
-    klon: 'PB 260',
-    growthStage: 'Rubber Main Nursery',
-    stage: 'Rubber Main Nursery',
-    category: 'Polibag Kecil',
-    bedenganIds: ['BED-TBS-D1-004'],
-    initialQty: 8000,
-    receivedQty: 8000,
-    availableQty: 8000,
-    currentQty: 8000,
-    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
-    status: BATCH_STATUS.AVAILABLE,
-    createdAt: '2026-01-01T08:00:00.000Z',
-    createdBy: 'USR-ASB-TBS',
-    updatedAt: '2026-01-01T08:00:00.000Z',
-    updatedBy: 'USR-ASB-TBS'
-  }
+const OLD_LEGACY_BATCH_IDS = new Set([
+  'BATCH-APM-001', 'BATCH-APM-002', 'BATCH-APM-003', 'BATCH-APM-004', 'BATCH-APM-005', 'BATCH-APM-006', 'BATCH-APM-007',
+  'BATCH-TBS-001', 'BATCH-TBS-002',
+  'B-001', 'B-002', 'B-003', 'B-004', 'B-005', 'B-006', 'B-007',
+  'B-TBS-01', 'B-TBS-02'
 ]);
 
 /**
  * Mengambil dataset raw dari storage dengan inisialisasi default
  */
 function _loadBatchesFromStorage() {
-  const stored = storage.get(STORAGE_KEY_NURSERY_BATCHES, null);
-  if (!stored || !Array.isArray(stored) || stored.length === 0) {
+  let stored = storage.get(STORAGE_KEY_NURSERY_BATCHES, null);
+  if (stored === null || !Array.isArray(stored)) {
     const cloned = JSON.parse(JSON.stringify(DEFAULT_CANONICAL_BATCHES));
     storage.set(STORAGE_KEY_NURSERY_BATCHES, cloned);
     return cloned;
+  }
+  // Hard-clear: Sanitize out any legacy seed batches lingering in browser runtime storage
+  if (stored.some(b => OLD_LEGACY_BATCH_IDS.has(b.id) || OLD_LEGACY_BATCH_IDS.has(b.batchId) || OLD_LEGACY_BATCH_IDS.has(b.batchCode) || (b.createdAt === '2026-01-01T08:00:00.000Z' && (b.createdBy === 'USR-ASB-TBS' || b.createdBy === 'USR-ASB-APM')))) {
+    stored = stored.filter(b => !OLD_LEGACY_BATCH_IDS.has(b.id) && !OLD_LEGACY_BATCH_IDS.has(b.batchId) && !OLD_LEGACY_BATCH_IDS.has(b.batchCode) && !(b.createdAt === '2026-01-01T08:00:00.000Z' && (b.createdBy === 'USR-ASB-TBS' || b.createdBy === 'USR-ASB-APM')));
+    storage.set(STORAGE_KEY_NURSERY_BATCHES, stored);
   }
   // Pastikan statusMaster tersedia
   return stored.map(b => ({
@@ -534,17 +246,27 @@ export function getAllBatches(filters = {}) {
 
   if (filters.estateId) {
     const cleanEst = String(filters.estateId).trim().toUpperCase();
-    list = list.filter(b => (b.estateId || '').toUpperCase() === cleanEst);
+    list = list.filter(b => {
+      const ctx = getBatchContext(b.id || b.batchId) || b;
+      return (ctx.estateId || '').toUpperCase() === cleanEst;
+    });
   }
 
   if (filters.divisionId) {
     const cleanDiv = String(filters.divisionId).trim().toUpperCase();
-    list = list.filter(b => (b.divisionId || '').toUpperCase() === cleanDiv);
+    list = list.filter(b => {
+      const ctx = getBatchContext(b.id || b.batchId) || b;
+      return (ctx.divisionId || '').toUpperCase() === cleanDiv;
+    });
   }
 
   if (filters.programId) {
-    const cleanProg = String(filters.programId).trim();
-    list = list.filter(b => b.programId === cleanProg || (b.programCode && b.programCode === cleanProg));
+    const prog = resolveProgram(filters.programId);
+    const targetProgId = prog ? prog.id : String(filters.programId).trim();
+    list = list.filter(b => {
+      const ctx = getBatchContext(b.id || b.batchId) || b;
+      return ctx.programId === targetProgId || ctx.programCode === targetProgId;
+    });
   }
 
   if (filters.cloneId || filters.clone || filters.klon) {
@@ -584,7 +306,14 @@ export function getAllBatches(filters = {}) {
 
 export function getActiveBatches(filters = {}) {
   const all = getAllBatches(filters);
-  return all.filter(b => b.status !== BATCH_STATUS.INACTIVE && b.status !== BATCH_STATUS.EMPTY && (b.availableQty || 0) > 0);
+  return all.filter(b => {
+    const isMasterActive = (b.statusMaster || (b.status === BATCH_STATUS.INACTIVE ? BATCH_MASTER_STATUS.INACTIVE : BATCH_MASTER_STATUS.ACTIVE)) === BATCH_MASTER_STATUS.ACTIVE && b.status !== BATCH_STATUS.INACTIVE;
+    if (!isMasterActive) return false;
+    if (filters.openProgramOnly !== false && b.programId) {
+      if (!isProgramOpen(b.programId)) return false;
+    }
+    return true;
+  });
 }
 
 export function getBatchById(id) {
@@ -637,64 +366,53 @@ export function isBatchActive(id) {
 
 export function getAvailableBatchStock(id) {
   const b = getBatchById(id);
-  if (!b || b.status === BATCH_STATUS.INACTIVE) return 0;
-  return Number(b.availableQty || 0);
+  if (!b || b.statusMaster === BATCH_MASTER_STATUS.INACTIVE || b.status === BATCH_STATUS.INACTIVE) return 0;
+  return getInventoryAvailableQty(b.id || b.batchId || b.batchCode || id);
 }
 
 /**
  * Menghasilkan candidate identity berikutnya untuk Master Batch
- * scoped strictly to (programId + estateId + divisionId)
+ * Format:
+ * - Kode: BTCH-001, BTCH-002, BTCH-003, dst.
+ * - Nama: Batch-001, Batch-002, Batch-003, dst.
+ * Sequence aman & unik dimulai dari 001.
  */
 export function getNextBatchCandidate(programId, estateId, divisionId) {
   if (!programId || !estateId || !divisionId) return null;
 
   const allBatches = getAllBatches({}); // includes INACTIVE & EMPTY
 
-  // Format estate code short: 'EST-APM' -> 'APM', 'EST-TBS' -> 'TBS'
-  const estShort = String(estateId).replace(/^EST-/, '').toUpperCase();
-
-  // Format division 2-digits: 'DIV-APM-02' -> '02', 'DIV-001' -> '01'
-  let divDigits = '01';
-  const numMatch = String(divisionId).match(/\d+/);
-  if (numMatch) {
-    divDigits = String(parseInt(numMatch[0], 10)).padStart(2, '0');
-  }
-
-  // Find all batches in this scope (programId + estateId + divisionId)
-  const scopedBatches = allBatches.filter(b =>
-    (b.programId === programId || (b.programCode && b.programCode === programId)) &&
-    String(b.estateId).toUpperCase() === String(estateId).toUpperCase() &&
-    String(b.divisionId).toUpperCase() === String(divisionId).toUpperCase()
-  );
-
   let maxSeq = 0;
-  scopedBatches.forEach(b => {
-    const m = (b.batchCode || b.batchNo || '').match(/(\d+)$/);
-    if (m) {
-      const s = parseInt(m[1], 10);
-      if (s > maxSeq) maxSeq = s;
+  allBatches.forEach(b => {
+    const codeMatch = String(b.batchCode || b.batchNo || '').match(/BTCH-(\d+)/i);
+    const nameMatch = String(b.name || '').match(/Batch-(\d+)/i);
+    if (codeMatch) {
+      const num = parseInt(codeMatch[1], 10);
+      if (num > maxSeq) maxSeq = num;
+    } else if (nameMatch) {
+      const num = parseInt(nameMatch[1], 10);
+      if (num > maxSeq) maxSeq = num;
     }
   });
 
   let nextSeq = maxSeq + 1;
-  let candidateCode = `B-${estShort}-${divDigits}-${String(nextSeq).padStart(3, '0')}`;
-  let candidateName = `Batch ${String(nextSeq).padStart(3, '0')}`;
-  let candidateId = `BATCH-${estShort}-${divDigits}-${String(programId).replace(/[^A-Za-z0-9]/g, '')}-${String(nextSeq).padStart(3, '0')}`;
-  let candidateQR = `SIGMA-BATCH-${estShort}-${divDigits}-${String(nextSeq).padStart(3, '0')}`;
+  let candidateCode = `BTCH-${String(nextSeq).padStart(3, '0')}`;
+  let candidateName = `Batch-${String(nextSeq).padStart(3, '0')}`;
 
   while (
-    scopedBatches.some(b => 
-      ((b.batchCode && b.batchCode.toUpperCase() === candidateCode.toUpperCase()) ||
-       (b.batchNo && b.batchNo.toUpperCase() === candidateCode.toUpperCase())) ||
-      (b.name && b.name.toUpperCase() === candidateName.toUpperCase())
+    allBatches.some(b => 
+      String(b.batchCode || b.batchNo || '').toUpperCase() === candidateCode.toUpperCase() ||
+      String(b.name || '').toUpperCase() === candidateName.toUpperCase()
     )
   ) {
     nextSeq++;
-    candidateCode = `B-${estShort}-${divDigits}-${String(nextSeq).padStart(3, '0')}`;
-    candidateName = `Batch ${String(nextSeq).padStart(3, '0')}`;
-    candidateId = `BATCH-${estShort}-${divDigits}-${String(programId).replace(/[^A-Za-z0-9]/g, '')}-${String(nextSeq).padStart(3, '0')}`;
-    candidateQR = `SIGMA-BATCH-${estShort}-${divDigits}-${String(nextSeq).padStart(3, '0')}`;
+    candidateCode = `BTCH-${String(nextSeq).padStart(3, '0')}`;
+    candidateName = `Batch-${String(nextSeq).padStart(3, '0')}`;
   }
+
+  const estShort = String(estateId).replace(/^EST-/, '').toUpperCase();
+  const candidateId = `BATCH-${estShort}-${Date.now().toString().slice(-4)}-${String(nextSeq).padStart(3, '0')}`;
+  const candidateQR = `SIGMA-${candidateCode}`;
 
   return {
     seq: nextSeq,
@@ -752,7 +470,15 @@ export function createBatch(data, currentUser = null) {
     throw new Error(`Kode Batch '${data.batchCode}' sudah digunakan`);
   }
 
-  const newId = data.batchId || data.id || `BATCH-${finalEstateId || 'EST'}-${Date.now().toString().slice(-6)}`;
+  let newId = data.batchId || data.id;
+  if (!newId) {
+    let candidate = `BATCH-${finalEstateId || 'EST'}-${Date.now().toString().slice(-6)}`;
+    let counter = 1;
+    while (list.some(b => b.id === candidate || b.batchId === candidate)) {
+      candidate = `BATCH-${finalEstateId || 'EST'}-${Date.now().toString().slice(-6)}-${counter++}`;
+    }
+    newId = candidate;
+  }
   if (list.some(b => b.id === newId || b.batchId === newId)) {
     throw new Error(`Batch ID '${newId}' sudah digunakan`);
   }
@@ -819,6 +545,24 @@ export function createBatch(data, currentUser = null) {
 
   list.push(newBatch);
   _saveBatchesToStorage(list);
+
+  // Daftarkan Context Relasi ke Master Context Service
+  setBatchContext(newBatch.id, {
+    batchCode: newBatch.batchCode,
+    programId: program ? program.id : data.programId,
+    programCode: program ? program.code : (data.programCode || null),
+    programName: program ? program.name : (data.programName || null),
+    estateId: finalEstateId,
+    divisionId: finalDivisionId,
+    blockId: finalBlockId,
+    blockCode: finalBlockCode
+  });
+
+  // Inisialisasi saldo di Inventory Ledger Service
+  initBatchInventory(newBatch.id, newBatch.batchCode, initialQty, {
+    createdBy: ctx.userId || ctx.id || 'ASISTEN_BIBITAN',
+    notes: `Inisialisasi Master Batch ${newBatch.batchCode}`
+  });
 
   return newBatch;
 }
@@ -905,6 +649,16 @@ export function updateBatch(id, data, currentUser = null) {
   list[idx] = updated;
   _saveBatchesToStorage(list);
 
+  // Perbarui Context Relasi di Master Context Service (dengan proteksi immutability program/estate)
+  setBatchContext(id, {
+    batchCode: updated.batchCode,
+    programId: targetProgram,
+    estateId: targetEstate,
+    divisionId: targetDivision,
+    blockId: updated.blockId,
+    blockCode: updated.blockCode
+  });
+
   return updated;
 }
 
@@ -928,67 +682,108 @@ export function deactivateBatch(id, currentUser = null) {
   }, currentUser);
 }
 
+const TRANSACTION_STORAGE_KEYS = [
+  'requests_transactions', 'requests', 'dispatch_transactions',
+  'receipt_ksp_transactions', 'receipt_transactions', 'nursery_activity_records',
+  'entres_transactions', 'entres_menunas_transactions', 'entres_topping_transactions',
+  'materials_transactions', 'seeding_transactions', 'budding_transactions',
+  'inspection_transactions', 'attendance_transactions', 'selection_transactions',
+  'destruction_transactions', 'verification_transactions',
+  'selection_pool', 'regrafting_pool'
+];
+
 /**
- * Mutasi Stok Transaksional (Deduct Stock)
+ * Memeriksa apakah batch sudah pernah digunakan dalam transaksi
  */
-export function deductBatchStock(batchIdOrCode, qty, reason = 'DISPATCH') {
-  const deductQty = Number(qty);
-  if (isNaN(deductQty) || deductQty <= 0) {
-    throw new Error('Kuantitas pengurangan stok harus berupa angka lebih dari 0');
+export function isBatchUsedInTransactions(batchId, batchCode = null) {
+  if (!batchId && !batchCode) return false;
+
+  for (const key of TRANSACTION_STORAGE_KEYS) {
+    const records = storage.get(key, []);
+    if (Array.isArray(records) && records.length > 0) {
+      const serialized = JSON.stringify(records);
+      if (batchId && serialized.includes(`"${batchId}"`)) return true;
+      if (batchCode && serialized.includes(`"${batchCode}"`)) return true;
+      // Periksa property matching langsung
+      const matched = records.some(r => 
+        (batchId && (r.batchId === batchId || r.batch_id === batchId || r.batchCode === batchId || r.id === batchId)) ||
+        (batchCode && (r.batchCode === batchCode || r.batch_code === batchCode || r.batchNo === batchCode || r.batch_no === batchCode || r.batchName === batchCode))
+      );
+      if (matched) return true;
+    }
   }
 
-  const list = _loadBatchesFromStorage();
-  const b = list.find(x => x.id === batchIdOrCode || x.batchId === batchIdOrCode || x.batchCode === batchIdOrCode || x.batchNo === batchIdOrCode);
-
-  if (!b) {
-    throw new Error(`Batch '${batchIdOrCode}' tidak ditemukan`);
-  }
-
-  if (b.statusMaster === BATCH_MASTER_STATUS.INACTIVE || b.status === BATCH_STATUS.INACTIVE) {
-    throw new Error(`Batch '${b.batchCode}' berstatus NONAKTIF dan tidak dapat digunakan untuk transaksi.`);
-  }
-
-  const currentAvailable = Number(b.availableQty ?? b.currentQty ?? 0);
-  if (currentAvailable < deductQty) {
-    throw new Error(`Stok batch '${b.batchCode}' tidak mencukupi (Tersedia: ${currentAvailable}, Diminta: ${deductQty})`);
-  }
-
-  b.availableQty = currentAvailable - deductQty;
-  b.currentQty = b.availableQty;
-  if (b.availableQty === 0) {
-    b.status = BATCH_STATUS.EMPTY;
-  }
-  b.updatedAt = new Date().toISOString();
-
-  _saveBatchesToStorage(list);
-  return b;
+  return false;
 }
 
 /**
- * Mutasi Stok Transaksional (Add Stock from Receipt KSP)
+ * DELETE Master Batch
+ * Aturan:
+ * - Jika record belum pernah digunakan pada transaksi: hard delete diperbolehkan.
+ * - Jika record sudah memiliki referensi transaksi: hard delete DITOLAK -> status diubah menjadi INACTIVE (soft delete).
+ */
+export function deleteBatch(id, currentUser = null) {
+  const ctx = currentUser || getCurrentUserContext();
+  const list = _loadBatchesFromStorage();
+
+  const idx = list.findIndex(b => b.id === id || b.batchId === id);
+  if (idx === -1) {
+    throw new Error(`Batch dengan ID '${id}' tidak ditemukan`);
+  }
+
+  const existing = list[idx];
+
+  // Scope & Role Check
+  validateBatchUserScope(ctx, existing.estateId, existing.divisionId, 'menghapus');
+
+  const isUsed = isBatchUsedInTransactions(existing.id || existing.batchId, existing.batchCode || existing.batchNo);
+
+  if (isUsed) {
+    // Soft Delete: Ubah statusMaster & status menjadi INACTIVE untuk menjaga integritas histori transaksi
+    const now = new Date().toISOString();
+    existing.statusMaster = BATCH_MASTER_STATUS.INACTIVE;
+    existing.status = BATCH_STATUS.INACTIVE;
+    existing.updatedAt = now;
+    existing.updatedBy = ctx.userId || ctx.id || 'ASISTEN_BIBITAN';
+
+    list[idx] = existing;
+    _saveBatchesToStorage(list);
+
+    return {
+      success: true,
+      softDeleted: true,
+      batch: existing,
+      message: `Batch '${existing.batchCode || existing.batchNo}' sudah digunakan dalam data transaksi. Status diubah menjadi Nonaktif (INACTIVE) untuk menjaga histori.`
+    };
+  } else {
+    // Hard Delete: Hapus permanen dari storage
+    list.splice(idx, 1);
+    _saveBatchesToStorage(list);
+
+    return {
+      success: true,
+      softDeleted: false,
+      batch: existing,
+      message: `Batch '${existing.batchCode || existing.batchNo}' berhasil dihapus secara permanen.`
+    };
+  }
+}
+
+/**
+ * Mutasi Stok Transaksional (Deduct Stock) - Delegasi ke Inventory Service
+ */
+export function deductBatchStock(batchIdOrCode, qty, reason = 'DISPATCH') {
+  const txType = reason === 'SELECTION' ? INVENTORY_TX_TYPE.SELECTION : (reason === 'DESTRUCTION' ? INVENTORY_TX_TYPE.DESTRUCTION : INVENTORY_TX_TYPE.DISPATCH);
+  deductInventoryStock(batchIdOrCode, qty, txType, null, null, `Deduct stock via batch-master (${reason})`);
+  return getBatchById(batchIdOrCode) || getBatchByCode(batchIdOrCode) || { id: batchIdOrCode };
+}
+
+/**
+ * Mutasi Stok Transaksional (Add Stock from Receipt KSP) - Delegasi ke Inventory Service
  */
 export function addBatchStockFromReceipt(batchIdOrCode, qty, receiptId = null) {
-  const addQty = Number(qty);
-  if (isNaN(addQty) || addQty <= 0) {
-    throw new Error('Kuantitas penambahan stok harus berupa angka lebih dari 0');
-  }
-
-  const list = _loadBatchesFromStorage();
-  const b = list.find(x => x.id === batchIdOrCode || x.batchId === batchIdOrCode || x.batchCode === batchIdOrCode || x.batchNo === batchIdOrCode);
-
-  if (!b) {
-    throw new Error(`Batch '${batchIdOrCode}' tidak ditemukan`);
-  }
-
-  b.availableQty = Number(b.availableQty ?? 0) + addQty;
-  b.currentQty = b.availableQty;
-  b.receivedQty = Number(b.receivedQty ?? 0) + addQty;
-  b.status = BATCH_STATUS.AVAILABLE;
-  if (receiptId) b.sourceReceiptId = receiptId;
-  b.updatedAt = new Date().toISOString();
-
-  _saveBatchesToStorage(list);
-  return b;
+  addInventoryStockFromReceipt(batchIdOrCode, qty, receiptId, null, 'Add stock via batch-master');
+  return getBatchById(batchIdOrCode) || getBatchByCode(batchIdOrCode) || { id: batchIdOrCode };
 }
 
 /**
@@ -1000,8 +795,8 @@ export function resolveBatchLegacy(value) {
   return {
     id: String(value || 'BATCH-001'),
     batchId: String(value || 'BATCH-001'),
-    batchCode: String(value || 'B-001'),
-    name: String(value || 'Batch 001'),
+    batchCode: String(value || 'BTCH-001'),
+    name: String(value || 'Batch-001'),
     status: BATCH_STATUS.EMPTY,
     statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     availableQty: 0

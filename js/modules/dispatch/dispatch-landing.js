@@ -28,6 +28,14 @@ import { toast } from '../../components/toast.js';
 import { requestRepository, batchRepository } from '../../db/repositories.js';
 import { resolveTransactionActor, applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 import { resolveEstate } from '../../data/estate-master.js';
+import { resolveProgram } from '../../data/program-master.js';
+import { getBatchContext } from '../../core/master-context-service.js';
+import {
+  deductBatchStock as deductInventoryStock,
+  deductMultiBatchStock as deductMultiInventoryStock,
+  getAvailableQty as getInventoryAvailableQty,
+  INVENTORY_TX_TYPE
+} from '../../core/batch-inventory-service.js';
 import { formatDate, formatStandardDocNo, esc } from '../../core/utils.js';
 import { createReceiptFromDispatch } from '../../core/receipt-ksp-manager.js';
 import { RECEIPT_KSP_STATUS, RECEIPT_KSP_STATUS_LABELS } from '../../core/receipt-ksp-constants.js';
@@ -74,17 +82,21 @@ export const DEFAULT_NURSERY_BATCHES = DEFAULT_CANONICAL_BATCHES;
  * Mengambil daftar batch nursery yang tersedia di storage / DB
  */
 export function getNurseryBatches(estateId = null, clone = null, growthStage = null, divisionId = null, programId = null) {
-  let batches = storage.get('nursery_batches', []);
-  if (!batches || batches.length === 0) {
+  let batches = storage.get('nursery_batches', null);
+  if (batches === null || !Array.isArray(batches)) {
     batches = [...DEFAULT_NURSERY_BATCHES];
     storage.set('nursery_batches', batches);
   }
 
-  return batches.filter(b => {
+  return batches.map(b => ({
+    ...b,
+    availableQty: getInventoryAvailableQty(b.id || b.batchId || b.batchCode || b.batchNo)
+  })).filter(b => {
+    const ctx = getBatchContext(b.id || b.batchId || b.batchCode || b.batchNo) || b;
     const isAvailable = (b.availableQty || 0) > 0 && b.status !== 'EMPTY' && b.status !== 'INACTIVE';
-    const matchEstate = !estateId || b.estateId === estateId;
-    const matchDivision = !divisionId || b.divisionId === divisionId;
-    const matchProgram = !programId || b.programId === programId;
+    const matchEstate = !estateId || (ctx.estateId || '').toUpperCase() === String(estateId).trim().toUpperCase();
+    const matchDivision = !divisionId || (ctx.divisionId || '').toUpperCase() === String(divisionId).trim().toUpperCase();
+    const matchProgram = !programId || ctx.programId === programId || (resolveProgram(programId)?.id === ctx.programId);
     const batchClone = (b.clone || b.klon || '').trim().toUpperCase();
     const targetClone = (clone || '').trim().toUpperCase();
     const matchClone = !clone || batchClone === targetClone || (targetClone && batchClone.replace(/\s+/g, '') === targetClone.replace(/\s+/g, ''));
@@ -94,78 +106,35 @@ export function getNurseryBatches(estateId = null, clone = null, growthStage = n
 }
 
 /**
- * Mengurangi stok batch tunggal setelah pengeluaran
+ * Mengurangi stok batch tunggal setelah pengeluaran (Delegasi ke Inventory Service)
  */
 export function deductBatchStock(batchIdOrCode, qty) {
   const deductQty = parseInt(qty, 10);
   if (isNaN(deductQty) || deductQty <= 0) return false;
 
-  let batches = storage.get('nursery_batches', []);
-  if (!batches || batches.length === 0) {
-    batches = [...DEFAULT_NURSERY_BATCHES];
+  try {
+    deductInventoryStock(batchIdOrCode, deductQty, INVENTORY_TX_TYPE.DISPATCH, null, null, 'Pengeluaran bibit (Dispatch)');
+    return true;
+  } catch (err) {
+    return false;
   }
-
-  const batchIndex = batches.findIndex(b => b.id === batchIdOrCode || b.batchId === batchIdOrCode || b.batchCode === batchIdOrCode || b.batchNo === batchIdOrCode);
-  if (batchIndex === -1) return false;
-
-  const currentAvailable = parseInt(batches[batchIndex].availableQty || 0, 10);
-  if (currentAvailable < deductQty) return false;
-
-  const newAvailable = currentAvailable - deductQty;
-  batches[batchIndex] = {
-    ...batches[batchIndex],
-    availableQty: newAvailable,
-    currentQty: newAvailable,
-    status: newAvailable === 0 ? 'EMPTY' : 'AVAILABLE'
-  };
-
-  storage.set('nursery_batches', batches);
-  return true;
 }
 
 /**
- * Mengurangi stok multi-batch secara ATOMIK
- * Jika salah satu batch gagal/tidak cukup, seluruh transaksi dibatalkan (0 commit).
+ * Mengurangi stok multi-batch secara ATOMIK (Delegasi ke Inventory Service)
  */
 export function deductMultiBatchStock(allocations) {
   if (!Array.isArray(allocations) || allocations.length === 0) {
     return { success: false, error: 'Daftar alokasi batch tidak boleh kosong.' };
   }
 
+  const res = deductMultiInventoryStock(allocations, INVENTORY_TX_TYPE.DISPATCH, null, null);
+  if (!res.success) {
+    return { success: false, error: res.error };
+  }
+
   let batches = storage.get('nursery_batches', []);
-  if (!batches || batches.length === 0) {
-    batches = [...DEFAULT_NURSERY_BATCHES];
-  }
-
-  const updatedBatches = batches.map(b => ({ ...b }));
-
-  // 1. Validasi seluruh batch terlebih dahulu
-  for (const alloc of allocations) {
-    const bCode = alloc.batchIdOrCode || alloc.batchCode || alloc.batchId;
-    const deductQty = parseInt(alloc.qty, 10);
-    if (isNaN(deductQty) || deductQty <= 0) {
-      return { success: false, error: `Kuantitas alokasi (${deductQty}) tidak valid.` };
-    }
-
-    const idx = updatedBatches.findIndex(b => b.id === bCode || b.batchId === bCode || b.batchCode === bCode || b.batchNo === bCode);
-    if (idx === -1) {
-      return { success: false, error: `Batch ${bCode} tidak ditemukan di master batch nursery.` };
-    }
-
-    const currentAvailable = parseInt(updatedBatches[idx].availableQty || 0, 10);
-    if (currentAvailable < deductQty) {
-      return { success: false, error: `Stok batch ${bCode} (${currentAvailable.toLocaleString('id-ID')} Pkk) tidak mencukupi untuk alokasi ${deductQty.toLocaleString('id-ID')} Pkk.` };
-    }
-
-    const newAvailable = currentAvailable - deductQty;
-    updatedBatches[idx].availableQty = newAvailable;
-    updatedBatches[idx].currentQty = newAvailable;
-    updatedBatches[idx].status = newAvailable === 0 ? 'EMPTY' : 'AVAILABLE';
-  }
-
-  // 2. Commit atomic
-  storage.set('nursery_batches', updatedBatches);
-  return { success: true, updatedBatches };
+  return { success: true, updatedBatches: batches };
 }
 
 /**

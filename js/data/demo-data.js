@@ -263,11 +263,7 @@ function GROWTH_STAGES_DEMO() {
 }
 
 function BEDS_DEMO() {
-  return [
-    { id: 'BED-001', code: 'BED-001', name: 'Bedengan 001' },
-    { id: 'BED-002', code: 'BED-002', name: 'Bedengan 002' },
-    { id: 'BED-003', code: 'BED-003', name: 'Bedengan 003' }
-  ];
+  return [];
 }
 
 function REASONS_DEMO() {

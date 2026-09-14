@@ -4,6 +4,7 @@ import { session } from '../../core/session.js';
 import { formatDate, generateUniqueDocNo } from '../../core/utils.js';
 import { getActiveKlons } from '../../data/klon-master.js';
 import { getOpenPrograms, getActivePrograms, getProgramById } from '../../data/program-master.js';
+import { getActiveBatches, getBatchById, getBatchByCode } from '../../data/batch-master.js';
 
 export function renderReceiptBenih() {
   const app = document.getElementById('app');
@@ -38,6 +39,7 @@ export function renderReceiptBenih() {
     sourceName: storage.get('benih_source_name', null),
     photos: storage.get('receipt_photos', []),
     tableRows: storage.get('benih_table_rows', [{ klon: '', qty: '', rejected: '', reason: '' }]),
+    batchId: storage.get('benih_batch_id', null),
     batchCode: storage.get('benih_batch_code', null)
   };
 
@@ -355,11 +357,7 @@ export function renderReceiptBenih() {
     </div>
   `;
 
-  // DATA DUMMY
-  const batchData = [
-    'Batch-01', 'Batch-02', 'Batch-03', 'Batch-04', 'Batch-05'
-  ];
-
+  // Canonical Program Master
   const programData = getOpenPrograms({ estateId: currentEstateId });
 
   let sumberData = [];
@@ -449,19 +447,31 @@ export function renderReceiptBenih() {
   function updateBatchVisibility() {
     if (state.jenisPenerimaan === 'Bibit / Tanaman Muda' && state.tahapanPertumbuhan === 'Rubber Advance Planting Material') {
       sectionQrBatch.style.display = 'block';
+      if (state.batchCode) {
+        selectedBatchContainer.style.display = 'flex';
+        selectedBatchText.textContent = state.batchCode;
+        btnPilihBatch.style.display = 'none';
+        btnScanQr.style.display = 'none';
+      } else {
+        selectedBatchContainer.style.display = 'none';
+        btnPilihBatch.style.display = 'block';
+        btnScanQr.style.display = 'block';
+      }
     } else {
       sectionQrBatch.style.display = 'none';
-      state.batchCode = null;
-      storage.remove('benih_batch_code');
-    }
-    
-    if (state.batchCode) {
-      selectedBatchContainer.style.display = 'flex';
-      selectedBatchText.textContent = state.batchCode;
-    } else {
-      selectedBatchContainer.style.display = 'none';
     }
   }
+
+  // Populate Initial State Labels
+  if (state.programNurseryCode) {
+    labelProgram.textContent = state.programNurseryCode;
+    labelProgram.style.color = '#111111';
+  }
+  if (state.sourceName) {
+    labelSumber.textContent = state.sourceName;
+    labelSumber.style.color = '#111111';
+  }
+  updateBatchVisibility();
 
   // RENDER LISTS
   function renderJenisList() {
@@ -555,6 +565,18 @@ export function renderReceiptBenih() {
         storage.set('benih_program_id', state.programNurseryId);
         storage.set('benih_program_code', state.programNurseryCode);
         
+        // Reset batch if it doesn't match selected program
+        if (state.batchId || state.batchCode) {
+          const b = getBatchById(state.batchId) || getBatchByCode(state.batchCode);
+          if (b && b.programId && b.programId !== state.programNurseryId && b.programCode !== state.programNurseryCode) {
+            state.batchId = null;
+            state.batchCode = null;
+            storage.remove('benih_batch_id');
+            storage.remove('benih_batch_code');
+            updateBatchVisibility();
+          }
+        }
+
         labelProgram.textContent = state.programNurseryCode;
         labelProgram.style.color = '#111111';
         closeModals();
@@ -587,16 +609,38 @@ export function renderReceiptBenih() {
   }
   
   function renderBatchList() {
-    listBatch.innerHTML = batchData.map((b, idx) => `
-      <div class="item-batch" data-code="${b}" style="display: flex; justify-content: space-between; padding: 16px; background: ${state.batchCode === b ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === batchData.length - 1 ? 'none' : '1px solid #D9D9D9'}; cursor: pointer;">
-        <span style="font-size: 0.95rem; color: #111111; font-weight: ${state.batchCode === b ? '700' : '400'};">${b}</span>
-        <span style="font-size: 0.95rem; color: #116834; font-weight: 600;">Pilih</span>
-      </div>
-    `).join('');
+    const candidateBatches = getActiveBatches({
+      estateId: currentEstateId,
+      programId: state.programNurseryId || undefined
+    });
+
+    if (candidateBatches.length === 0) {
+      listBatch.innerHTML = `
+        <div style="padding: 24px 16px; text-align: center; color: #64748B; font-size: 0.88rem;">
+          ${state.programNurseryId ? 'Tidak ada Master Batch aktif untuk Program ini.' : 'Tidak ada Master Batch aktif pada Kebun ini.'}
+        </div>
+      `;
+      return;
+    }
+
+    listBatch.innerHTML = candidateBatches.map((b, idx) => {
+      const isSelected = (state.batchId && (b.id === state.batchId || b.batchId === state.batchId)) || (state.batchCode && (b.batchCode === state.batchCode || b.batchNo === state.batchCode));
+      return `
+        <div class="item-batch" data-id="${b.id || b.batchId}" data-code="${b.batchCode || b.batchNo}" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: ${isSelected ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === candidateBatches.length - 1 ? 'none' : '1px solid #D9D9D9'}; cursor: pointer;">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 0.95rem; color: #111111; font-weight: ${isSelected ? '700' : '600'};">${b.batchCode || b.batchNo}</span>
+            <span style="font-size: 0.78rem; color: #666666;">${b.clone || b.klon || 'Klon -'} • ${b.stage || b.growthStage || 'Tahap -'}</span>
+          </div>
+          <span style="font-size: 0.95rem; color: #116834; font-weight: 600;">Pilih</span>
+        </div>
+      `;
+    }).join('');
 
     listBatch.querySelectorAll('.item-batch').forEach(el => {
       el.addEventListener('click', () => {
+        state.batchId = el.dataset.id;
         state.batchCode = el.dataset.code;
+        storage.set('benih_batch_id', state.batchId);
         storage.set('benih_batch_code', state.batchCode);
         
         updateBatchVisibility();
@@ -809,14 +853,25 @@ export function renderReceiptBenih() {
   
   app.querySelector('#btn-simulate-scan').addEventListener('click', () => {
     qrCameraOverlay.style.display = 'none';
-    state.batchCode = 'Batch-03';
-    storage.set('benih_batch_code', state.batchCode);
-    updateBatchVisibility();
-    validateForm();
+    const candidateBatches = getActiveBatches({
+      estateId: currentEstateId,
+      programId: state.programNurseryId || undefined
+    });
+    const firstBatch = candidateBatches[0];
+    if (firstBatch) {
+      state.batchId = firstBatch.id || firstBatch.batchId;
+      state.batchCode = firstBatch.batchCode || firstBatch.batchNo;
+      storage.set('benih_batch_id', state.batchId);
+      storage.set('benih_batch_code', state.batchCode);
+      updateBatchVisibility();
+      validateForm();
+    }
   });
   
   btnHapusBatch.addEventListener('click', () => {
+    state.batchId = null;
     state.batchCode = null;
+    storage.remove('benih_batch_id');
     storage.remove('benih_batch_code');
     updateBatchVisibility();
     validateForm();
@@ -909,6 +964,7 @@ export function renderReceiptBenih() {
     storage.remove('selected_sir');
     storage.remove('selected_klon');
     storage.remove('benih_table_rows');
+    storage.remove('benih_batch_id');
     storage.remove('benih_batch_code');
     storage.remove('editing_transaction_index');
     
@@ -961,6 +1017,12 @@ export function renderReceiptBenih() {
       ? txs[editingIdx].docNo
       : generateUniqueDocNo('reception', txs, 2026);
     
+    const batchObj = (state.batchId || state.batchCode) ? (getBatchById(state.batchId) || getBatchByCode(state.batchCode)) : null;
+    const finalBatchId = batchObj ? (batchObj.id || batchObj.batchId) : (state.batchId || null);
+    const finalBatchCode = batchObj ? (batchObj.batchCode || batchObj.batchNo) : (state.batchCode || null);
+    const finalBlockId = batchObj?.blockId || null;
+    const finalBlockCode = batchObj?.blockCode || null;
+
     const newTx = {
       id: docNo,
       docNo: docNo,
@@ -971,6 +1033,12 @@ export function renderReceiptBenih() {
       tahapan: state.tahapanPertumbuhan,
       program: state.programNurseryCode,
       programId: state.programNurseryId,
+      programCode: state.programNurseryCode,
+      batchId: finalBatchId,
+      batchCode: finalBatchCode,
+      batchNo: finalBatchCode,
+      blockId: finalBlockId,
+      blockCode: finalBlockCode,
       klon: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') 
              ? (state.tableRows[0]?.klon || 'GT 1') 
              : (selectedKlon ? (selectedKlon.title || selectedKlon.canonicalName || 'GT 1') : 'GT 1'),
@@ -987,11 +1055,14 @@ export function renderReceiptBenih() {
         tahapanPertumbuhan: state.tahapanPertumbuhan,
         programNurseryId: state.programNurseryId,
         programNurseryCode: state.programNurseryCode,
+        batchId: finalBatchId,
+        batchCode: finalBatchCode,
+        blockId: finalBlockId,
+        blockCode: finalBlockCode,
         sourceId: state.sourceId,
         sourceName: state.sourceName,
         photos: state.photos,
         tableRows: state.tableRows,
-        batchCode: state.batchCode,
         selectedSir,
         selectedKlon
       }
@@ -1016,6 +1087,7 @@ export function renderReceiptBenih() {
     storage.remove('selected_sir');
     storage.remove('selected_klon');
     storage.remove('benih_table_rows');
+    storage.remove('benih_batch_id');
     storage.remove('benih_batch_code');
     
     closeModals();

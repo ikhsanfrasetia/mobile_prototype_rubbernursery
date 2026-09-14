@@ -317,18 +317,18 @@ assert(resLegacyCode !== null && resLegacyCode.code === '2026/TB/RNUR/001', '20c
 
 // 21. Program CLOSE tidak menghapus atau mengubah Batch existing
 const batchesBefore = getAllBatches();
-assert(batchesBefore.length >= 9, '21a. Batches existing tetap tersedia');
+assert(batchesBefore.length >= 1, '21a. Batches existing tetap tersedia');
 
 // 22. Program CLOSE tidak menghapus atau mengubah Bedengan existing
 const bedsBefore = getAllBedengan();
-assert(bedsBefore.length >= 12, '22a. Bedengans existing tetap tersedia');
+assert(bedsBefore.length >= 1, '22a. Bedengans existing tetap tersedia');
 
 // 23. Master Batch status tetap ACTIVE / INACTIVE
-const tbsBatch = getBatchById('BATCH-TBS-001');
+const tbsBatch = getBatchById(createdBatchOpen.batchId);
 assert(tbsBatch !== null && tbsBatch.statusMaster === BATCH_MASTER_STATUS.ACTIVE, '23. Master Batch status tetap ACTIVE/INACTIVE');
 
 // 24. Master Bedengan status tetap ACTIVE / INACTIVE
-const tbsBed = getBedenganById('BED-TBS-D1-001');
+const tbsBed = getBedenganById(createdBedenganOpen.bedenganId);
 assert(tbsBed !== null && (tbsBed.status === BEDENGAN_STATUS.ACTIVE || tbsBed.status !== BEDENGAN_STATUS.INACTIVE), '24. Master Bedengan status tetap ACTIVE/INACTIVE');
 
 // 25. Transaction engine tetap menggunakan programId

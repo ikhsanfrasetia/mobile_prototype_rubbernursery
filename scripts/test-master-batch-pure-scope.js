@@ -41,7 +41,7 @@ import { storage, KEYS } from '../js/core/storage.js';
 import { renderMasterBatch } from '../js/modules/master/master-batch.js';
 import { deductBatchStock } from '../js/modules/dispatch/dispatch-landing.js';
 import { createNurseryBatchesFromReceipt } from '../js/core/receipt-ksp-manager.js';
-import { BEDENGAN_STATUS, getAllBedengan } from '../js/data/bedengan-master.js';
+import { BEDENGAN_STATUS, getAllBedengan, createBedengan } from '../js/data/bedengan-master.js';
 
 let passed = 0;
 let failed = 0;
@@ -78,6 +78,42 @@ const asbUser = {
 };
 
 storage.set(KEYS.SESSION, asbUser);
+
+// Setup Test Fixtures (TASK-RESET-MASTER-BEDENGAN-BATCH-01 Rule 20)
+createBatch({
+  batchCode: 'B-TBS-01',
+  name: 'Batch TBS 01',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  clone: 'IRCA 19',
+  stage: 'Rubber Advance Planting Material',
+  category: 'Polibag Besar',
+  bedenganIds: []
+}, asbUser);
+
+createBatch({
+  batchCode: 'B-TBS-02',
+  name: 'Batch TBS 02',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  clone: 'PB 260',
+  stage: 'Rubber Main Nursery',
+  category: 'Polibag Kecil',
+  bedenganIds: []
+}, asbUser);
+
+createBedengan({
+  bedenganCode: 'BED-001',
+  name: 'Bedengan 001',
+  programId: 'PRG-TBS-2026-001',
+  estateId: 'EST-TBS',
+  divisionId: 'DIV-001',
+  blockCode: '001/91',
+  capacity: 1000,
+  qrCode: 'SIGMA-BED-001'
+}, asbUser);
 
 // 1 & 2: Render ASB UI & Check absence of availableQty presentation
 console.log('--- 1 & 2. UI Presentation Audit ---');
