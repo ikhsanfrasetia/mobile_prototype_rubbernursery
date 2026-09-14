@@ -3,11 +3,12 @@ import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, generateUniqueDocNo } from '../../core/utils.js';
 import { getActiveKlons } from '../../data/klon-master.js';
-import { getActivePrograms } from '../../data/program-master.js';
+import { getOpenPrograms, getActivePrograms, getProgramById } from '../../data/program-master.js';
 
 export function renderReceiptBenih() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan' };
+  const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan', estateId: 'EST-TBS', divisionId: 'DIV-001' };
+  const currentEstateId = user.estateId || (user.divisionId && user.divisionId.includes('APM') ? 'EST-APM' : 'EST-TBS');
   const today = formatDate(new Date().toISOString());
 
   // Guard against editing locked document that already has seeding transactions
@@ -359,7 +360,7 @@ export function renderReceiptBenih() {
     'Batch-01', 'Batch-02', 'Batch-03', 'Batch-04', 'Batch-05'
   ];
 
-  const programData = getActivePrograms();
+  const programData = getOpenPrograms({ estateId: currentEstateId });
 
   let sumberData = [];
   if (originTypeRaw === 'KEBUN_SENDIRI') {
@@ -538,8 +539,11 @@ export function renderReceiptBenih() {
 
   function renderProgramList() {
     listProgram.innerHTML = programData.map((p, idx) => `
-      <div class="item-program" data-id="${p.id}" data-code="${p.code}" style="display: flex; justify-content: space-between; padding: 16px; background: ${state.programNurseryId === p.id ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === programData.length - 1 ? 'none' : '1px solid #D9D9D9'}; cursor: pointer;">
-        <span style="font-size: 0.95rem; color: #111111; font-weight: ${state.programNurseryId === p.id ? '700' : '400'};">${p.code}</span>
+      <div class="item-program" data-id="${p.id}" data-code="${p.code}" style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: ${state.programNurseryId === p.id ? '#E8F5E9' : '#FFFFFF'}; border-bottom: ${idx === programData.length - 1 ? 'none' : '1px solid #D9D9D9'}; cursor: pointer;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 0.95rem; color: #111111; font-weight: ${state.programNurseryId === p.id ? '700' : '600'};">${p.code}</span>
+          <span style="font-size: 0.78rem; color: #666666;">${p.name}</span>
+        </div>
         <span style="font-size: 0.95rem; color: #116834; font-weight: 600;">Pilih</span>
       </div>
     `).join('');
@@ -961,9 +965,12 @@ export function renderReceiptBenih() {
       id: docNo,
       docNo: docNo,
       nomorDokumen: docNo,
+      estateId: currentEstateId,
+      divisionId: user.divisionId || (currentEstateId === 'EST-APM' ? 'DIV-APM-02' : 'DIV-001'),
       jenis: state.jenisPenerimaan,
       tahapan: state.tahapanPertumbuhan,
       program: state.programNurseryCode,
+      programId: state.programNurseryId,
       klon: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') 
              ? (state.tableRows[0]?.klon || 'GT 1') 
              : (selectedKlon ? (selectedKlon.title || selectedKlon.canonicalName || 'GT 1') : 'GT 1'),
@@ -974,6 +981,8 @@ export function renderReceiptBenih() {
       qty: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? totalQtyTable : (selectedSir ? selectedSir.qty : '-'),
       rawState: {
         originTypeRaw,
+        estateId: currentEstateId,
+        divisionId: user.divisionId || (currentEstateId === 'EST-APM' ? 'DIV-APM-02' : 'DIV-001'),
         jenisPenerimaan: state.jenisPenerimaan,
         tahapanPertumbuhan: state.tahapanPertumbuhan,
         programNurseryId: state.programNurseryId,

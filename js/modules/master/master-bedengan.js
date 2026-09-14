@@ -21,7 +21,7 @@ import {
   activateBedengan,
   deactivateBedengan
 } from '../../data/bedengan-master.js';
-import { getActivePrograms, getProgramById } from '../../data/program-master.js';
+import { getOpenPrograms, getActivePrograms, getProgramById } from '../../data/program-master.js';
 import { getActiveEstates, getEstateById, getNurseryDivisionsByEstate } from '../../data/estate-master.js';
 
 let state = {
@@ -44,7 +44,7 @@ export function renderMasterBedengan() {
     state.divisionId = user?.divisionId || 'ALL';
   }
 
-  const allPrograms = getActivePrograms();
+  const allPrograms = getOpenPrograms(isAsb ? { estateId: user.estateId } : (state.estateId !== 'ALL' ? { estateId: state.estateId } : {}));
   const allEstates = getActiveEstates();
 
   function getFilteredList() {
@@ -136,7 +136,7 @@ export function renderMasterBedengan() {
             <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
               <select id="select-filter-program" style="width: 100%; padding: 8px 10px; font-size: 0.82rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; color: #1E293B; outline: none;">
                 <option value="ALL">Semua Program</option>
-                ${allPrograms.map(p => `<option value="${p.id}" ${state.programId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+                ${allPrograms.map(p => `<option value="${p.id}" ${state.programId === p.id ? 'selected' : ''}>${esc(p.code)} — ${esc(p.name)}</option>`).join('')}
               </select>
             </div>
 
@@ -510,7 +510,7 @@ export function renderMasterBedengan() {
   }
 
   function openCreateBedenganModal() {
-    const activePrograms = getActivePrograms();
+    const activePrograms = getOpenPrograms(isAsb ? { estateId: user.estateId } : (state.estateId !== 'ALL' ? { estateId: state.estateId } : {}));
     const defaultEstate = user.estateId || (allEstates[0] ? allEstates[0].estate_id : 'EST-TBS');
     const initialDivisions = getNurseryDivisionsByEstate(defaultEstate);
     const defaultDivision = user.divisionId || (initialDivisions[0] ? initialDivisions[0].divisionId : 'DIV-001');
@@ -541,7 +541,7 @@ export function renderMasterBedengan() {
             <label style="display: block; font-size: 0.78rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Program Pembibitan *</label>
             <select id="modal-create-program" required style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 0.84rem; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; outline: none;">
               <option value="" disabled selected>Pilih Program Pembibitan</option>
-              ${activePrograms.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+              ${activePrograms.map(p => `<option value="${p.id}">${esc(p.code)} — ${esc(p.name)}</option>`).join('')}
             </select>
           </div>
 

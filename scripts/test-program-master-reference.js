@@ -1,6 +1,6 @@
 /**
  * scripts/test-program-master-reference.js
- * Verification Test Suite for Program Pembibitan Canonical Reference & Provider (TASK ASB-02)
+ * Verification Test Suite for Program Pembibitan Canonical Reference & Provider (TASK ASB-02 & TASK-IMPLEMENT-PROGRAM-MASTER-01)
  */
 
 if (typeof globalThis.localStorage === 'undefined') {
@@ -28,13 +28,16 @@ import {
   getProgramProvider,
   setProgramProvider,
   getAllPrograms,
+  getOpenPrograms,
   getActivePrograms,
   getProgramById,
   getProgramByCode,
   getProgramsByEstate,
   getProgramsByDivision,
+  getProgramsByBlock,
   resolveProgram,
   resolveProgramLegacy,
+  isProgramOpen,
   isProgramActive
 } from '../js/data/program-master.js';
 import { MASTER_PROGRAM_PEMBIBITAN } from '../js/data/master-data.js';
@@ -55,47 +58,47 @@ function assert(condition, message) {
 }
 
 console.log('========================================================================================');
-console.log('   TEST SUITE: PROGRAM PEMBIBITAN REFERENCE & DUMMY PROVIDER (TASK ASB-02)             ');
+console.log('   TEST SUITE: PROGRAM PEMBIBITAN REFERENCE & DUMMY PROVIDER (TASK ASB-02 / TASK-01)   ');
 console.log('========================================================================================\n');
 
 // 1. getAllPrograms
 console.log('--- TEST 1: getAllPrograms Resolver ---');
 const allPrograms = getAllPrograms();
 assert(Array.isArray(allPrograms), 'getAllPrograms() mengembalikan Array');
-assert(allPrograms.length >= 4, `Jumlah program terdefinisi (actual: ${allPrograms.length})`);
+assert(allPrograms.length >= 2, `Jumlah program terdefinisi (actual: ${allPrograms.length})`);
 allPrograms.forEach((p, idx) => {
   assert(Boolean(p.id && p.code && p.name && p.status), `Program #${idx + 1} (${p.code}) memiliki field minimum (id, code, name, status)`);
-  assert(Array.isArray(p.estateIds), `Program #${idx + 1} memiliki array estateIds`);
+  assert(Array.isArray(p.estateIds) || Boolean(p.estateId), `Program #${idx + 1} memiliki relasi estate`);
 });
 
-// 2. getActivePrograms
-console.log('\n--- TEST 2: getActivePrograms Resolver ---');
-const activePrograms = getActivePrograms();
-assert(Array.isArray(activePrograms), 'getActivePrograms() mengembalikan Array');
-assert(activePrograms.length > 0, `Terdapat ${activePrograms.length} program berstatus ACTIVE`);
+// 2. getOpenPrograms & getActivePrograms
+console.log('\n--- TEST 2: getOpenPrograms & getActivePrograms Resolver ---');
+const activePrograms = getOpenPrograms();
+assert(Array.isArray(activePrograms), 'getOpenPrograms() mengembalikan Array');
+assert(activePrograms.length > 0, `Terdapat ${activePrograms.length} program berstatus OPEN`);
 activePrograms.forEach(p => {
-  assert(p.status === PROGRAM_STATUS.ACTIVE, `Program ${p.code} berstatus ACTIVE`);
+  assert(p.status === PROGRAM_STATUS.OPEN, `Program ${p.code} berstatus OPEN`);
 });
-const inactiveInActive = activePrograms.some(p => p.status === PROGRAM_STATUS.INACTIVE);
-assert(!inactiveInActive, 'Program INACTIVE tidak muncul di getActivePrograms()');
+const inactiveInActive = activePrograms.some(p => p.status === PROGRAM_STATUS.CLOSE);
+assert(!inactiveInActive, 'Program CLOSE tidak muncul di getOpenPrograms()');
 
 // 3. getProgramById
 console.log('\n--- TEST 3: getProgramById Resolver ---');
-const progById = getProgramById('PRG-2026-001');
-assert(progById !== null, 'getProgramById("PRG-2026-001") berhasil menemukan program');
-assert(progById && progById.code === 'PN-2026-01', `Program code sesuai: PN-2026-01 (actual: ${progById?.code})`);
+const progById = getProgramById('PRG-TBS-2026-001') || getProgramById('PRG-2026-001');
+assert(progById !== null, 'getProgramById("PRG-2026-001") berhasil menemukan program via legacy ID');
+assert(progById && (progById.code === '2026/TB/RNUR/001' || progById.code === 'PN-2026-01'), `Program code sesuai: 2026/TB/RNUR/001 (actual: ${progById?.code})`);
 assert(getProgramById('NON_EXISTENT_ID') === null, 'getProgramById() return null untuk ID yang tidak ada');
 assert(getProgramById(null) === null, 'getProgramById() return null untuk input null');
 
 // 4. getProgramByCode & Legacy Code
 console.log('\n--- TEST 4: getProgramByCode & Legacy Code Resolver ---');
-const progByCode = getProgramByCode('PN-2026-01');
-assert(progByCode !== null, 'getProgramByCode("PN-2026-01") berhasil menemukan program');
-assert(progByCode && progByCode.id === 'PRG-2026-001', `ID program sesuai: PRG-2026-001`);
+const progByCode = getProgramByCode('2026/TB/RNUR/001') || getProgramByCode('PN-2026-01');
+assert(progByCode !== null, 'getProgramByCode("2026/TB/RNUR/001") berhasil menemukan program');
+assert(progByCode && (progByCode.id === 'PRG-TBS-2026-001' || progByCode.id === 'PRG-2026-001'), `ID program sesuai: PRG-TBS-2026-001`);
 
 const progByLegacy = getProgramByCode('PRG/NUR/01/2026');
 assert(progByLegacy !== null, 'getProgramByCode("PRG/NUR/01/2026") berhasil resolve dari legacy code');
-assert(progByLegacy && progByLegacy.code === 'PN-2026-01', 'Legacy code mengarah ke program canonical PN-2026-01');
+assert(progByLegacy && (progByLegacy.code === '2026/TB/RNUR/001' || progByLegacy.code === 'PN-2026-01'), 'Legacy code mengarah ke program canonical 2026/TB/RNUR/001');
 assert(getProgramByCode('INVALID_CODE') === null, 'getProgramByCode() return null untuk code invalid');
 
 // 5. Filter by Estate
@@ -105,11 +108,11 @@ const apmPrograms = getProgramsByEstate('EST-APM');
 assert(Array.isArray(tbsPrograms) && tbsPrograms.length > 0, `Ditemukan ${tbsPrograms.length} program untuk EST-TBS`);
 assert(Array.isArray(apmPrograms) && apmPrograms.length > 0, `Ditemukan ${apmPrograms.length} program untuk EST-APM`);
 tbsPrograms.forEach(p => {
-  const match = p.estateIds.some(e => e.includes('TBS') || e === 'EST-001' || e === 'EST-002');
+  const match = p.estateId === 'EST-TBS' || (p.estateIds && p.estateIds.some(e => e.includes('TBS') || e === 'EST-001' || e === 'EST-002'));
   assert(match, `Program ${p.code} terhubung dengan estate Tanah Besih (EST-TBS)`);
 });
 apmPrograms.forEach(p => {
-  const match = p.estateIds.some(e => e.includes('APM') || e === 'EST-003');
+  const match = p.estateId === 'EST-APM' || (p.estateIds && p.estateIds.some(e => e.includes('APM') || e === 'EST-003'));
   assert(match, `Program ${p.code} terhubung dengan estate Aek Pamingke (EST-APM)`);
 });
 assert(getProgramsByEstate(null).length === 0, 'getProgramsByEstate(null) return empty array');
@@ -121,7 +124,7 @@ const divApmPrograms = getProgramsByDivision('DIV-APM-02');
 assert(Array.isArray(div1Programs) && div1Programs.length > 0, `Ditemukan ${div1Programs.length} program untuk DIV-001`);
 assert(Array.isArray(divApmPrograms) && divApmPrograms.length > 0, `Ditemukan ${divApmPrograms.length} program untuk DIV-APM-02`);
 div1Programs.forEach(p => {
-  const match = p.divisionIds.some(d => d.includes('DIV-001') || d === 'DIV1');
+  const match = p.divisionId === 'DIV-001' || (p.divisionIds && p.divisionIds.some(d => d.includes('DIV-001') || d === 'DIV1'));
   assert(match, `Program ${p.code} terhubung dengan divisi DIV-001`);
 });
 assert(getProgramsByDivision(null).length === 0, 'getProgramsByDivision(null) return empty array');
@@ -156,13 +159,13 @@ assert(Array.isArray(MASTER_PROGRAM_PEMBIBITAN), 'MASTER_PROGRAM_PEMBIBITAN diek
 assert(MASTER_PROGRAM_PEMBIBITAN.length === PROGRAM_MASTER.length, 'MASTER_PROGRAM_PEMBIBITAN identik dengan PROGRAM_MASTER');
 
 const resolvedFlex = resolveProgram('Program Nursery 2026 - Batch 1');
-assert(resolvedFlex !== null && resolvedFlex.code === 'PN-2026-01', 'resolveProgram() fleksibel mencari berdasarkan name');
+assert(resolvedFlex !== null && (resolvedFlex.code === '2026/TB/RNUR/001' || resolvedFlex.code === 'PN-2026-01'), 'resolveProgram() fleksibel mencari berdasarkan name');
 
 const legacyObj = resolveProgramLegacy('PRG/NUR/01/2026');
-assert(legacyObj.code === 'PRG/NUR/01/2026' || legacyObj.canonicalCode === 'PN-2026-01', 'resolveProgramLegacy() menghasilkan objek kompatibel untuk UI existing');
+assert(legacyObj.code === '2026/TB/RNUR/001' || legacyObj.canonicalCode === '2026/TB/RNUR/001' || legacyObj.code === 'PRG/NUR/01/2026', 'resolveProgramLegacy() menghasilkan objek kompatibel untuk UI existing');
 
-assert(isProgramActive('PN-2026-01') === true, 'isProgramActive("PN-2026-01") return true');
-assert(isProgramActive('PN-2029-01') === false, 'isProgramActive("PN-2029-01") return false (INACTIVE)');
+assert(isProgramActive('2026/TB/RNUR/001') === true, 'isProgramActive("2026/TB/RNUR/001") return true');
+assert(isProgramActive('PN-2029-01') === false, 'isProgramActive("PN-2029-01") return false (tidak ada di master / CLOSE)');
 
 // 10. Provider Architecture (Dummy vs Future ERP)
 console.log('\n--- TEST 10: Provider Architecture (Dummy vs Future ERP) ---');

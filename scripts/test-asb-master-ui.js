@@ -301,13 +301,17 @@ assert(bedHtml.includes('<header') && batchHtml.includes('<header'), 'Kedua modu
 assert(bedHtml.includes('Master Bedengan'), 'Master Bedengan header title tampil');
 assert(batchHtml.includes('Master Batch'), 'Master Batch header title tampil');
 
-// 1.2 Compact Summary 4 Metrics
-console.log('\n--- TEST 2 & 3: Compact Summary & 4 Metrics Only ---');
-assert(bedHtml.includes('COMPACT SUMMARY (4 METRICS)') && batchHtml.includes('COMPACT SUMMARY (4 METRICS)'), 'Kedua modul memiliki compact summary 4 metrics');
+// 1.2 Compact Summary
+console.log('\n--- TEST 2 & 3: Compact Summary Metrics ---');
+assert(bedHtml.includes('COMPACT SUMMARY (4 METRICS)'), 'Master Bedengan memiliki compact summary 4 metrics');
+assert(batchHtml.includes('COMPACT SUMMARY (3 METRICS: Total Batch, Batch Aktif, Nonaktif)'), 'Master Batch memiliki compact summary 3 metrics');
 ['Total', 'Tersedia', 'Aktif', 'Nonaktif'].forEach(metric => {
   assert(bedHtml.includes(metric), `Master Bedengan memuat metric '${metric}'`);
+});
+['Total Batch', 'Batch Aktif', 'Nonaktif'].forEach(metric => {
   assert(batchHtml.includes(metric), `Master Batch memuat metric '${metric}'`);
 });
+assert(!batchHtml.includes('Tersedia</div>'), 'Master Batch TIDAK memuat metric inventory Tersedia');
 assert(!batchHtml.includes('Digunakan') && !batchHtml.includes('Pemeliharaan'), 'Master Batch TIDAK memuat metric lama (Digunakan/Pemeliharaan)');
 assert(!batchHtml.includes('Habis') && !batchHtml.includes('Total Stok'), 'Master Batch TIDAK memuat metric lama (Habis/Total Stok)');
 
@@ -337,50 +341,50 @@ assert(!bedHtml.includes('Edit</button>') && !batchHtml.includes('Edit</button>'
 // 3. PROGRAM-FIRST AUTO GENERATION (CODE, NAME, QR) & UNIQUENESS
 // -------------------------------------------------------------------------
 console.log('\n--- TEST 7, 8, 9, 10, 11, 12: Program-First Auto Identity & Sequence Non-Reuse ---');
-// 3.1 Bedengan Candidate
-const bedCand1 = getNextBedenganCandidate('PRG-2026-003', 'EST-APM', 'DIV-APM-02');
+// 3.1 Bedengan Candidate (APM)
+const bedCand1 = getNextBedenganCandidate('PRG-APM-2026-001', 'EST-APM', 'DIV-APM-02');
 assert(bedCand1.bedenganCode === 'BED-APM-D2-003', 'Auto code Bedengan mengikuti canonical scoped sequence (BED-APM-D2-003)');
 assert(bedCand1.name === 'Bedengan 003', 'Auto name Bedengan dihasilkan otomatis (Bedengan 003)');
 assert(bedCand1.qrCode === 'SIGMA-BED-APM-D2-003', 'Auto QR Bedengan dihasilkan otomatis');
 
-// 3.2 Program Switch Bedengan
-const bedCandProg1 = getNextBedenganCandidate('PRG-2026-001', 'EST-APM', 'DIV-APM-02');
-assert(bedCandProg1.bedenganCode === 'BED-APM-D2-001', 'Switch program menghitung ulang sequence dari awal (BED-APM-D2-001)');
+// 3.2 Program Switch Bedengan (TBS)
+const bedCandProgTBS = getNextBedenganCandidate('PRG-TBS-2026-001', 'EST-TBS', 'DIV-001');
+assert(bedCandProgTBS.bedenganCode === 'BED-011', 'Switch program TBS menghitung sequence TBS secara independen (BED-011)');
 
-// 3.3 Batch Candidate
-const batchCand1 = getNextBatchCandidate('PRG-2026-003', 'EST-APM', 'DIV-APM-02');
+// 3.3 Batch Candidate (APM)
+const batchCand1 = getNextBatchCandidate('PRG-APM-2026-001', 'EST-APM', 'DIV-APM-02');
 assert(batchCand1.batchCode === 'B-APM-02-008', 'Auto code Batch mengikuti canonical scoped sequence (B-APM-02-008)');
 assert(batchCand1.name === 'Batch 008', 'Auto name Batch dihasilkan otomatis (Batch 008)');
 assert(batchCand1.qrCode === 'SIGMA-BATCH-APM-02-008', 'Auto QR Batch dihasilkan otomatis');
 
-// 3.4 Program Switch Batch
-const batchCandProg1 = getNextBatchCandidate('PRG-2026-001', 'EST-APM', 'DIV-APM-02');
-assert(batchCandProg1.batchCode === 'B-APM-02-001', 'Switch program batch menghitung ulang sequence dari awal (B-APM-02-001)');
+// 3.4 Program Switch Batch (TBS)
+const batchCandProgTBS = getNextBatchCandidate('PRG-TBS-2026-001', 'EST-TBS', 'DIV-001');
+assert(batchCandProgTBS.batchCode === 'B-TBS-01-003', 'Switch program TBS menghitung sequence TBS secara independen (B-TBS-01-003)');
 
 // 3.5 Sequence Non-Reuse (Create & Inactivate)
 const createdBed = createBedengan({
-  bedenganId: bedCandProg1.bedenganId,
-  programId: 'PRG-2026-001',
+  bedenganId: bedCand1.bedenganId,
+  programId: 'PRG-APM-2026-001',
   estateId: 'EST-APM',
   divisionId: 'DIV-APM-02',
-  bedenganCode: bedCandProg1.bedenganCode,
-  name: bedCandProg1.name,
+  bedenganCode: bedCand1.bedenganCode,
+  name: bedCand1.name,
   capacity: 1000,
-  qrCode: bedCandProg1.qrCode,
+  qrCode: bedCand1.qrCode,
   status: BEDENGAN_STATUS.INACTIVE
 }, asbAPM);
 
-const nextBedCand = getNextBedenganCandidate('PRG-2026-001', 'EST-APM', 'DIV-APM-02');
-assert(nextBedCand.bedenganCode === 'BED-APM-D2-002', 'Record INACTIVE tetap dihitung, sequence non-reuse terbukti (BED-APM-D2-002)');
+const nextBedCand = getNextBedenganCandidate('PRG-APM-2026-001', 'EST-APM', 'DIV-APM-02');
+assert(nextBedCand.bedenganCode === 'BED-APM-D2-004', 'Record INACTIVE tetap dihitung, sequence non-reuse terbukti (BED-APM-D2-004)');
 
 // -------------------------------------------------------------------------
 // 4. BATCH-BEDENGAN PROGRAM CONSISTENCY
 // -------------------------------------------------------------------------
 console.log('\n--- TEST 13: Batch-Bedengan Program Consistency ---');
-const bedsProg1 = getActiveBedengan({ estateId: 'EST-TBS', divisionId: 'DIV-001', programId: 'PRG-2026-001' });
-const bedsProg2 = getActiveBedengan({ estateId: 'EST-TBS', divisionId: 'DIV-001', programId: 'PRG-2026-002' });
-assert(bedsProg1.every(b => b.programId === 'PRG-2026-001'), 'Query bedengan terfilter strictly sesuai Program PRG-2026-001');
-assert(bedsProg2.every(b => b.programId === 'PRG-2026-002'), 'Query bedengan terfilter strictly sesuai Program PRG-2026-002');
+const bedsProgTBS = getActiveBedengan({ estateId: 'EST-TBS', divisionId: 'DIV-001', programId: 'PRG-TBS-2026-001' });
+const bedsProgAPM = getActiveBedengan({ estateId: 'EST-APM', divisionId: 'DIV-APM-02', programId: 'PRG-APM-2026-001' });
+assert(bedsProgTBS.length > 0 && bedsProgTBS.every(b => b.programId === 'PRG-TBS-2026-001' || b.programId === 'PRG-2026-001'), 'Query bedengan terfilter strictly sesuai Program PRG-TBS-2026-001');
+assert(bedsProgAPM.length > 0 && bedsProgAPM.every(b => b.programId === 'PRG-APM-2026-001' || b.programId === 'PRG-2026-003'), 'Query bedengan terfilter strictly sesuai Program PRG-APM-2026-001');
 
 // -------------------------------------------------------------------------
 // 5. QR VIEWER MODAL & CANONICAL PAYLOAD WITHOUT STOCK
@@ -523,11 +527,11 @@ assert(createModalHtml.includes('Menunggu Program'), '9. Status identity menungg
 
 // 10, 11, 12. Relasi scope sesuai Program, Estate, dan Division
 const apmBedengans = getActiveBedengan({
-  programId: 'PRG-2026-003',
+  programId: 'PRG-APM-2026-001',
   estateId: 'EST-APM',
   divisionId: 'DIV-APM-02'
 });
-assert(apmBedengans.length > 0 && apmBedengans.every(b => b.programId === 'PRG-2026-003'), '10. Scoping data sesuai Program (PRG-2026-003)');
+assert(apmBedengans.length > 0 && apmBedengans.every(b => b.programId === 'PRG-APM-2026-001'), '10. Scoping data sesuai Program (PRG-APM-2026-001)');
 assert(apmBedengans.every(b => b.estateId === 'EST-APM'), '11. Scoping data sesuai Estate (EST-APM)');
 assert(apmBedengans.every(b => b.divisionId === 'DIV-APM-02'), '12. Scoping data sesuai Division (DIV-APM-02)');
 
@@ -535,7 +539,7 @@ assert(apmBedengans.every(b => b.divisionId === 'DIV-APM-02'), '12. Scoping data
 assert(createModalHtml.includes('id="preview-batch-qr"'), '13. QR Code card tersedia dalam block identity auto-generated');
 
 // 14. QR canonical
-const candidateBatch = getNextBatchCandidate('PRG-2026-003', 'EST-APM', 'DIV-APM-02');
+const candidateBatch = getNextBatchCandidate('PRG-APM-2026-001', 'EST-APM', 'DIV-APM-02');
 assert(candidateBatch.qrCode === 'SIGMA-BATCH-APM-02-008' && !candidateBatch.qrCode.includes('availableQty'), '14. QR canonical format tanpa kuantitas stok');
 
 // 15. Initial Qty tidak tampil
@@ -547,7 +551,7 @@ const newMasterBatch = createBatch({
   batchCode: candidateBatch.batchCode,
   name: candidateBatch.name,
   qrCode: candidateBatch.qrCode,
-  programId: 'PRG-2026-003',
+  programId: 'PRG-APM-2026-001',
   estateId: 'EST-APM',
   divisionId: 'DIV-APM-02',
   clone: 'IRCA 19',

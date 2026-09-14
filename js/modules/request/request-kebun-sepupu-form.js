@@ -8,7 +8,7 @@ import { requestRepository } from '../../db/repositories.js';
 import { getActiveKlons, resolveKlon } from '../../data/klon-master.js';
 import { getActiveCfnaMaster, getCfnaByCode } from '../../data/cfna-master.js';
 import { getActiveEstates, resolveEstate } from '../../data/estate-master.js';
-import { getActivePrograms, getProgramById } from '../../data/program-master.js';
+import { getOpenPrograms, getActivePrograms, getProgramById, isProgramOpen } from '../../data/program-master.js';
 import {
   formatDate,
   formatFullDateIndonesian,
@@ -59,8 +59,9 @@ export async function renderRequestKebunSepupuForm() {
     <option value="${esc(e.estate_id)}">${esc(e.estate_name)}</option>
   `).join('');
 
-  // 2. Program Pembibitan
-  const activePrograms = getActivePrograms();
+  // 2. Program Pembibitan (Scoped to Target Estate)
+  const initialTargetEstateId = targetEstates[0]?.estate_id || (user.estateId === 'EST-TBS' ? 'EST-APM' : 'EST-TBS');
+  const activePrograms = getOpenPrograms({ estateId: initialTargetEstateId });
   const programOptions = activePrograms.map(p => `
     <option value="${esc(p.id)}">${esc(p.code)} - ${esc(p.name)}</option>
   `).join('');
@@ -228,6 +229,19 @@ export async function renderRequestKebunSepupuForm() {
       </main>
     </div>
   `;
+
+  // Dynamic Program update when Target Estate changes
+  const selectTargetEstate = app.querySelector('#input-target-estate');
+  const selectProgram = app.querySelector('#input-program');
+  selectTargetEstate?.addEventListener('change', (e) => {
+    const selectedEstate = e.target.value;
+    const scopedProgs = getOpenPrograms({ estateId: selectedEstate });
+    if (selectProgram) {
+      selectProgram.innerHTML = scopedProgs.map(p => `
+        <option value="${esc(p.id)}">${esc(p.code)} - ${esc(p.name)}</option>
+      `).join('');
+    }
+  });
 
   // Back button
   app.querySelector('#btn-back')?.addEventListener('click', () => {

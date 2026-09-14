@@ -18,7 +18,7 @@ import { openModal, closeModal } from '../../components/modal.js';
 import { requestRepository } from '../../db/repositories.js';
 import { getActiveKlons, resolveKlon } from '../../data/klon-master.js';
 import { getActiveCfnaMaster, getCfnaByCode } from '../../data/cfna-master.js';
-import { getActivePrograms, getProgramById } from '../../data/program-master.js';
+import { getOpenPrograms, getActivePrograms, getProgramById, isProgramOpen } from '../../data/program-master.js';
 import { getNurseryDivisionsByEstate } from '../../data/estate-master.js';
 import {
   getBlocksByDivision,
@@ -103,7 +103,8 @@ export async function renderRequestKebunSendiriForm() {
   const docNo = generateUniqueDocNo('request', existingRequests);
 
   // 1. Program Pembibitan
-  const activePrograms = getActivePrograms();
+  const currentEstateId = user.estateId || (user.divisionId && user.divisionId.includes('APM') ? 'EST-APM' : 'EST-TBS');
+  const activePrograms = getOpenPrograms({ estateId: currentEstateId });
   const programOptions = activePrograms.map(p => `
     <option value="${esc(p.id)}">${esc(p.code)} - ${esc(p.name)}</option>
   `).join('');

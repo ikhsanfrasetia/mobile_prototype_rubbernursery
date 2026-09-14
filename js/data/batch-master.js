@@ -1,23 +1,29 @@
 /**
- * data/batch-master.js — Master Data & Service Terpusat Master Batch (TASK ASB-04).
+ * data/batch-master.js — Master Data & Service Terpusat Master Batch (TASK ASB-04 & TASK-IMPLEMENT-PROGRAM-MASTER-01).
  * 
  * Prinsip:
  * - "SINGLE SOURCE OF TRUTH: nursery_batches"
  * - Dikelola oleh Role ASISTEN_BIBITAN (CRUD, Activate/Deactivate, Atribut Master)
  * - Dibaca oleh MANTRI_BIBITAN (Read-only / Consumer)
  * - 1 Batch -> N Bedengan (bedenganIds: string[])
- * - Terintegrasi dengan program-master.js, estate-master.js, klon-master.js, bedengan-master.js
+ * - Terintegrasi dengan program-master.js (Status: OPEN/CLOSE), estate-master.js, klon-master.js, bedengan-master.js
+ * - Status Master Batch: ACTIVE / INACTIVE
  * - Mutasi stok transaksional terisolasi melalui service dispatch/receipt existing
  */
 
 import { storage } from '../core/storage.js';
 import { ROLES, normalizeRole, getCurrentUserContext } from '../core/user-context.js';
-import { getActivePrograms, getProgramById, resolveProgram } from './program-master.js';
+import { getOpenPrograms, getActivePrograms, getProgramById, resolveProgram, isProgramOpen } from './program-master.js';
 import { getActiveEstates, getEstateById, getNurseryDivisionsByEstate } from './estate-master.js';
 import { normalizeKlonName, isKnownKlon } from './klon-master.js';
 import { getBedenganById, getActiveBedengan, BEDENGAN_STATUS } from './bedengan-master.js';
 
 export const STORAGE_KEY_NURSERY_BATCHES = 'nursery_batches';
+
+export const BATCH_MASTER_STATUS = Object.freeze({
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE'
+});
 
 export const BATCH_STATUS = Object.freeze({
   CREATED: 'CREATED',
@@ -56,13 +62,17 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     batchId: 'BATCH-APM-001',
     batchCode: 'B-001',
     batchNo: 'B-001',
-    programId: 'PRG-2026-003',
+    programId: 'PRG-APM-2026-001',
+    programCode: '2026/AP/RNUR/001',
+    programName: 'RB Nursery Program 2026-2027 AP',
     estateId: 'EST-APM',
     estateCode: 'EST-APM',
     estateName: 'Aek Pamingke',
     divisionId: 'DIV-APM-02',
     divisionCode: 'DIV-APM-02',
     divisionName: 'Divisi II',
+    blockId: null,
+    blockCode: '007/03',
     cloneId: 'IRCA 19',
     clone: 'IRCA 19',
     klon: 'IRCA 19',
@@ -74,6 +84,7 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     receivedQty: 5000,
     availableQty: 5000,
     currentQty: 5000,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     status: BATCH_STATUS.AVAILABLE,
     createdAt: '2026-01-01T08:00:00.000Z',
     createdBy: 'USR-ASB-APM',
@@ -85,13 +96,17 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     batchId: 'BATCH-APM-002',
     batchCode: 'B-002',
     batchNo: 'B-002',
-    programId: 'PRG-2026-003',
+    programId: 'PRG-APM-2026-001',
+    programCode: '2026/AP/RNUR/001',
+    programName: 'RB Nursery Program 2026-2027 AP',
     estateId: 'EST-APM',
     estateCode: 'EST-APM',
     estateName: 'Aek Pamingke',
     divisionId: 'DIV-APM-02',
     divisionCode: 'DIV-APM-02',
     divisionName: 'Divisi II',
+    blockId: null,
+    blockCode: '007/03',
     cloneId: 'IRCA 19',
     clone: 'IRCA 19',
     klon: 'IRCA 19',
@@ -103,6 +118,7 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     receivedQty: 4000,
     availableQty: 4000,
     currentQty: 4000,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     status: BATCH_STATUS.AVAILABLE,
     createdAt: '2026-01-01T08:00:00.000Z',
     createdBy: 'USR-ASB-APM',
@@ -114,13 +130,17 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     batchId: 'BATCH-APM-003',
     batchCode: 'B-003',
     batchNo: 'B-003',
-    programId: 'PRG-2026-003',
+    programId: 'PRG-APM-2026-001',
+    programCode: '2026/AP/RNUR/001',
+    programName: 'RB Nursery Program 2026-2027 AP',
     estateId: 'EST-APM',
     estateCode: 'EST-APM',
     estateName: 'Aek Pamingke',
     divisionId: 'DIV-APM-02',
     divisionCode: 'DIV-APM-02',
     divisionName: 'Divisi II',
+    blockId: null,
+    blockCode: '007/03',
     cloneId: 'IRCA 19',
     clone: 'IRCA 19',
     klon: 'IRCA 19',
@@ -132,6 +152,7 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     receivedQty: 5000,
     availableQty: 5000,
     currentQty: 5000,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     status: BATCH_STATUS.AVAILABLE,
     createdAt: '2026-01-01T08:00:00.000Z',
     createdBy: 'USR-ASB-APM',
@@ -143,13 +164,17 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     batchId: 'BATCH-APM-007',
     batchCode: 'B-007',
     batchNo: 'B-007',
-    programId: 'PRG-2026-003',
+    programId: 'PRG-APM-2026-001',
+    programCode: '2026/AP/RNUR/001',
+    programName: 'RB Nursery Program 2026-2027 AP',
     estateId: 'EST-APM',
     estateCode: 'EST-APM',
     estateName: 'Aek Pamingke',
     divisionId: 'DIV-APM-02',
     divisionCode: 'DIV-APM-02',
     divisionName: 'Divisi II',
+    blockId: null,
+    blockCode: '007/03',
     cloneId: 'IRCA 19',
     clone: 'IRCA 19',
     klon: 'IRCA 19',
@@ -161,6 +186,7 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     receivedQty: 6000,
     availableQty: 6000,
     currentQty: 6000,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     status: BATCH_STATUS.AVAILABLE,
     createdAt: '2026-01-01T08:00:00.000Z',
     createdBy: 'USR-ASB-APM',
@@ -172,13 +198,17 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     batchId: 'BATCH-APM-006',
     batchCode: 'B-006',
     batchNo: 'B-006',
-    programId: 'PRG-2026-003',
+    programId: 'PRG-APM-2026-001',
+    programCode: '2026/AP/RNUR/001',
+    programName: 'RB Nursery Program 2026-2027 AP',
     estateId: 'EST-APM',
     estateCode: 'EST-APM',
     estateName: 'Aek Pamingke',
     divisionId: 'DIV-APM-02',
     divisionCode: 'DIV-APM-02',
     divisionName: 'Divisi II',
+    blockId: null,
+    blockCode: '007/03',
     cloneId: 'IRCA 18',
     clone: 'IRCA 18',
     klon: 'IRCA 18',
@@ -190,6 +220,7 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     receivedQty: 10000,
     availableQty: 10000,
     currentQty: 10000,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     status: BATCH_STATUS.AVAILABLE,
     createdAt: '2026-01-01T08:00:00.000Z',
     createdBy: 'USR-ASB-APM',
@@ -201,13 +232,17 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     batchId: 'BATCH-APM-004',
     batchCode: 'B-004',
     batchNo: 'B-004',
-    programId: 'PRG-2026-003',
+    programId: 'PRG-APM-2026-001',
+    programCode: '2026/AP/RNUR/001',
+    programName: 'RB Nursery Program 2026-2027 AP',
     estateId: 'EST-APM',
     estateCode: 'EST-APM',
     estateName: 'Aek Pamingke',
     divisionId: 'DIV-APM-02',
     divisionCode: 'DIV-APM-02',
     divisionName: 'Divisi II',
+    blockId: null,
+    blockCode: '007/03',
     cloneId: 'PB 260',
     clone: 'PB 260',
     klon: 'PB 260',
@@ -219,6 +254,7 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     receivedQty: 10000,
     availableQty: 10000,
     currentQty: 10000,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     status: BATCH_STATUS.AVAILABLE,
     createdAt: '2026-01-01T08:00:00.000Z',
     createdBy: 'USR-ASB-APM',
@@ -230,13 +266,17 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     batchId: 'BATCH-APM-005',
     batchCode: 'B-005',
     batchNo: 'B-005',
-    programId: 'PRG-2026-003',
+    programId: 'PRG-APM-2026-001',
+    programCode: '2026/AP/RNUR/001',
+    programName: 'RB Nursery Program 2026-2027 AP',
     estateId: 'EST-APM',
     estateCode: 'EST-APM',
     estateName: 'Aek Pamingke',
     divisionId: 'DIV-APM-02',
     divisionCode: 'DIV-APM-02',
     divisionName: 'Divisi II',
+    blockId: null,
+    blockCode: '007/03',
     cloneId: 'GT 1',
     clone: 'GT 1',
     klon: 'GT 1',
@@ -248,6 +288,7 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     receivedQty: 8000,
     availableQty: 8000,
     currentQty: 8000,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     status: BATCH_STATUS.AVAILABLE,
     createdAt: '2026-01-01T08:00:00.000Z',
     createdBy: 'USR-ASB-APM',
@@ -263,13 +304,17 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     batchId: 'BATCH-TBS-001',
     batchCode: 'B-TBS-01',
     batchNo: 'B-TBS-01',
-    programId: 'PRG-2026-001',
+    programId: 'PRG-TBS-2026-001',
+    programCode: '2026/TB/RNUR/001',
+    programName: 'RB Nursery Program 2026-2027 TB',
     estateId: 'EST-TBS',
     estateCode: 'EST-TBS',
     estateName: 'Tanah Besih',
     divisionId: 'DIV-001',
     divisionCode: 'DIV-001',
     divisionName: 'Divisi I',
+    blockId: 'BLK-001',
+    blockCode: '001/91',
     cloneId: 'IRCA 19',
     clone: 'IRCA 19',
     klon: 'IRCA 19',
@@ -281,6 +326,7 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     receivedQty: 5000,
     availableQty: 5000,
     currentQty: 5000,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     status: BATCH_STATUS.AVAILABLE,
     createdAt: '2026-01-01T08:00:00.000Z',
     createdBy: 'USR-ASB-TBS',
@@ -292,13 +338,17 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     batchId: 'BATCH-TBS-002',
     batchCode: 'B-TBS-02',
     batchNo: 'B-TBS-02',
-    programId: 'PRG-2026-002',
+    programId: 'PRG-TBS-2026-001',
+    programCode: '2026/TB/RNUR/001',
+    programName: 'RB Nursery Program 2026-2027 TB',
     estateId: 'EST-TBS',
     estateCode: 'EST-TBS',
     estateName: 'Tanah Besih',
     divisionId: 'DIV-001',
     divisionCode: 'DIV-001',
     divisionName: 'Divisi I',
+    blockId: 'BLK-001',
+    blockCode: '001/91',
     cloneId: 'PB 260',
     clone: 'PB 260',
     klon: 'PB 260',
@@ -310,6 +360,7 @@ export const DEFAULT_CANONICAL_BATCHES = Object.freeze([
     receivedQty: 8000,
     availableQty: 8000,
     currentQty: 8000,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
     status: BATCH_STATUS.AVAILABLE,
     createdAt: '2026-01-01T08:00:00.000Z',
     createdBy: 'USR-ASB-TBS',
@@ -328,7 +379,11 @@ function _loadBatchesFromStorage() {
     storage.set(STORAGE_KEY_NURSERY_BATCHES, cloned);
     return cloned;
   }
-  return stored;
+  // Pastikan statusMaster tersedia
+  return stored.map(b => ({
+    ...b,
+    statusMaster: b.statusMaster || (b.status === BATCH_STATUS.INACTIVE ? BATCH_MASTER_STATUS.INACTIVE : BATCH_MASTER_STATUS.ACTIVE)
+  }));
 }
 
 /**
@@ -385,46 +440,61 @@ export function validateBatchUserScope(user, targetEstateId, targetDivisionId, a
 }
 
 /**
- * Validasi Relasi Batch (Program, Estate, Divisi, Klon, Bedengan N-relation)
+ * Validasi Relasi Batch (Program, Estate, Divisi, Klon, Bedengan N-relation, Block)
  */
-export function validateBatchRelations({ programId, estateId, divisionId, clone, bedenganIds = [] }) {
+export function validateBatchRelations({ programId, estateId, divisionId, clone, bedenganIds = [], blockId, blockCode }) {
   const errors = [];
 
   // 1. Program Validation
   const prog = getProgramById(programId) || resolveProgram(programId);
   if (!prog) {
     errors.push(`Program Pembibitan '${programId}' tidak ditemukan`);
-  } else if (prog.status !== 'ACTIVE') {
-    errors.push(`Program '${prog.name || programId}' tidak berstatus ACTIVE`);
+  } else if (!isProgramOpen(prog.id || programId)) {
+    errors.push('Program pembibitan sudah berstatus Close dan tidak dapat digunakan untuk membuat Master Batch.');
   }
 
-  // 2. Estate Validation
-  const est = getEstateById(estateId);
+  // 2. Estate Validation & Context Inheritance
+  const targetEstateId = estateId || prog?.estateId;
+  const est = getEstateById(targetEstateId);
   if (!est) {
-    errors.push(`Estate '${estateId}' tidak valid`);
+    errors.push(`Estate '${targetEstateId}' tidak valid`);
+  } else if (prog && prog.estateId && estateId && String(prog.estateId).toUpperCase() !== String(estateId).toUpperCase() && !prog.estateIds?.some(e => e.toUpperCase() === String(estateId).toUpperCase())) {
+    errors.push(`Program '${prog.code || programId}' terdaftar pada Estate '${prog.estateName || prog.estateId}', tidak cocok dengan Estate target '${estateId}'`);
   }
 
   // 3. Division Validation
-  if (est && divisionId) {
-    const validDivs = getNurseryDivisionsByEstate(estateId);
+  const targetDivision = divisionId || prog?.divisionId;
+  if (est && targetDivision) {
+    const validDivs = getNurseryDivisionsByEstate(est.estate_id || targetEstateId);
     const divMatch = validDivs.some(d => 
-      d.divisionId.toUpperCase() === divisionId.toUpperCase() ||
-      d.divisionCode.toUpperCase() === divisionId.toUpperCase()
+      d.divisionId.toUpperCase() === targetDivision.toUpperCase() ||
+      d.divisionCode.toUpperCase() === targetDivision.toUpperCase()
     );
     if (!divMatch) {
-      errors.push(`Divisi '${divisionId}' tidak terdaftar pada Estate '${est.estate_name || estateId}'`);
+      errors.push(`Divisi '${targetDivision}' tidak terdaftar pada Estate '${est.estate_name || targetEstateId}'`);
+    } else if (prog && prog.divisionId && divisionId && String(prog.divisionId).toUpperCase() !== String(divisionId).toUpperCase() && !prog.divisionIds?.some(d => d.toUpperCase() === String(divisionId).toUpperCase())) {
+      errors.push(`Program '${prog.code || programId}' terdaftar pada Divisi '${prog.divisionName || prog.divisionId}', tidak cocok dengan Divisi target '${divisionId}'`);
     }
-  } else if (!divisionId) {
+  } else if (!targetDivision) {
     errors.push('Divisi wajib dipilih');
   }
 
-  // 4. Clone Validation
+  // 4. Block Validation (jika diberikan)
+  if (prog && (blockId || blockCode)) {
+    const pBlock = prog.blockCode || prog.blockId;
+    const tBlock = blockCode || blockId;
+    if (pBlock && tBlock && String(pBlock).toUpperCase() !== String(tBlock).toUpperCase() && String(prog.blockId || '').toUpperCase() !== String(blockId || '').toUpperCase()) {
+      errors.push(`Blok '${tBlock}' tidak sesuai dengan Blok Bibitan Program '${pBlock}'`);
+    }
+  }
+
+  // 5. Clone Validation
   const normClone = normalizeKlonName(clone);
   if (!isKnownKlon(normClone)) {
     errors.push(`Klon '${clone}' tidak terdaftar dalam Master Data Klon`);
   }
 
-  // 5. Bedengan N-Relation Validation
+  // 6. Bedengan N-Relation Validation
   if (Array.isArray(bedenganIds) && bedenganIds.length > 0) {
     bedenganIds.forEach(bedId => {
       const bed = getBedenganById(bedId);
@@ -434,13 +504,13 @@ export function validateBatchRelations({ programId, estateId, divisionId, clone,
         if (bed.status === BEDENGAN_STATUS.INACTIVE) {
           errors.push(`Bedengan '${bed.name || bedId}' berstatus INACTIVE`);
         }
-        if (estateId && bed.estateId && bed.estateId.toUpperCase() !== estateId.toUpperCase()) {
-          errors.push(`Bedengan '${bed.name || bedId}' tidak berada di Estate '${estateId}'`);
+        if (targetEstateId && bed.estateId && bed.estateId.toUpperCase() !== targetEstateId.toUpperCase()) {
+          errors.push(`Bedengan '${bed.name || bedId}' tidak berada di Estate '${targetEstateId}'`);
         }
-        if (divisionId && bed.divisionId && bed.divisionId.toUpperCase() !== divisionId.toUpperCase()) {
-          errors.push(`Bedengan '${bed.name || bedId}' tidak berada di Divisi '${divisionId}'`);
+        if (targetDivision && bed.divisionId && bed.divisionId.toUpperCase() !== targetDivision.toUpperCase()) {
+          errors.push(`Bedengan '${bed.name || bedId}' tidak berada di Divisi '${targetDivision}'`);
         }
-        if (prog && bed.programId && bed.programId !== prog.id && bed.programId !== prog.code) {
+        if (prog && bed.programId && bed.programId !== prog.id && bed.programId !== prog.code && (!prog.legacyCodes || !prog.legacyCodes.includes(bed.programId))) {
           errors.push(`Bedengan '${bed.name || bedId}' dialokasikan untuk program lain (${bed.programId})`);
         }
       }
@@ -474,7 +544,7 @@ export function getAllBatches(filters = {}) {
 
   if (filters.programId) {
     const cleanProg = String(filters.programId).trim();
-    list = list.filter(b => b.programId === cleanProg);
+    list = list.filter(b => b.programId === cleanProg || (b.programCode && b.programCode === cleanProg));
   }
 
   if (filters.cloneId || filters.clone || filters.klon) {
@@ -487,8 +557,12 @@ export function getAllBatches(filters = {}) {
     list = list.filter(b => (b.growthStage || b.stage || '').toUpperCase() === stage);
   }
 
+  if (filters.statusMaster) {
+    list = list.filter(b => (b.statusMaster || (b.status === BATCH_STATUS.INACTIVE ? BATCH_MASTER_STATUS.INACTIVE : BATCH_MASTER_STATUS.ACTIVE)) === filters.statusMaster);
+  }
+
   if (filters.status) {
-    list = list.filter(b => b.status === filters.status);
+    list = list.filter(b => b.status === filters.status || b.statusMaster === filters.status);
   }
 
   if (filters.bedenganId) {
@@ -525,12 +599,10 @@ export function getBatchByCode(code) {
   const list = _loadBatchesFromStorage();
   return list.find(b => 
     (b.batchCode || '').toLowerCase() === clean ||
-    (b.batchNo || '').toLowerCase() === clean
+    (b.batchNo || '').toLowerCase() === clean ||
+    (b.id || '').toLowerCase() === clean ||
+    (b.batchId || '').toLowerCase() === clean
   ) || null;
-}
-
-export function getBatchesByProgram(programId) {
-  return getAllBatches({ programId });
 }
 
 export function getBatchesByEstate(estateId) {
@@ -539,6 +611,10 @@ export function getBatchesByEstate(estateId) {
 
 export function getBatchesByDivision(divisionId) {
   return getAllBatches({ divisionId });
+}
+
+export function getBatchesByProgram(programId) {
+  return getAllBatches({ programId });
 }
 
 export function getBatchesByClone(cloneId) {
@@ -555,7 +631,8 @@ export function getBatchesByBedengan(bedenganId) {
 
 export function isBatchActive(id) {
   const b = getBatchById(id);
-  return b ? b.status !== BATCH_STATUS.INACTIVE : false;
+  if (!b) return false;
+  return (b.statusMaster || (b.status === BATCH_STATUS.INACTIVE ? BATCH_MASTER_STATUS.INACTIVE : BATCH_MASTER_STATUS.ACTIVE)) === BATCH_MASTER_STATUS.ACTIVE;
 }
 
 export function getAvailableBatchStock(id) {
@@ -585,7 +662,7 @@ export function getNextBatchCandidate(programId, estateId, divisionId) {
 
   // Find all batches in this scope (programId + estateId + divisionId)
   const scopedBatches = allBatches.filter(b =>
-    b.programId === programId &&
+    (b.programId === programId || (b.programCode && b.programCode === programId)) &&
     String(b.estateId).toUpperCase() === String(estateId).toUpperCase() &&
     String(b.divisionId).toUpperCase() === String(divisionId).toUpperCase()
   );
@@ -639,26 +716,34 @@ export function createBatch(data, currentUser = null) {
   }
 
   const initialQty = Number(data.initialQty !== undefined ? data.initialQty : (data.receivedQty || 0));
-  if (data.status !== BATCH_STATUS.CREATED && (initialQty <= 0 || isNaN(initialQty))) {
+  if (data.status !== BATCH_STATUS.CREATED && data.initialQty !== undefined && (initialQty <= 0 || isNaN(initialQty))) {
     throw new Error('Kuantitas awal (Initial Qty) harus berupa angka lebih dari 0');
   } else if (initialQty < 0 || isNaN(initialQty)) {
     throw new Error('Kuantitas awal (Initial Qty) tidak boleh negatif');
   }
 
-  // Scope & Role Check
-  validateBatchUserScope(ctx, data.estateId, data.divisionId, 'menambah');
-
-  // Relations Check
+  // Relations Check & Context Inheritance
   const relCheck = validateBatchRelations({
     programId: data.programId,
     estateId: data.estateId,
     divisionId: data.divisionId,
     clone: data.clone || data.klon || data.cloneId,
-    bedenganIds: data.bedenganIds || []
+    bedenganIds: data.bedenganIds || [],
+    blockId: data.blockId,
+    blockCode: data.blockCode
   });
   if (!relCheck.valid) {
     throw new Error(relCheck.errors.join('. '));
   }
+
+  const program = relCheck.program;
+  const finalEstateId = data.estateId || program?.estateId;
+  const finalDivisionId = data.divisionId || program?.divisionId;
+  const finalBlockId = data.blockId !== undefined ? data.blockId : (program?.blockId || null);
+  const finalBlockCode = data.blockCode !== undefined ? data.blockCode : (program?.blockCode || null);
+
+  // Scope & Role Check
+  validateBatchUserScope(ctx, finalEstateId, finalDivisionId, 'menambah');
 
   const list = _loadBatchesFromStorage();
 
@@ -667,15 +752,17 @@ export function createBatch(data, currentUser = null) {
     throw new Error(`Kode Batch '${data.batchCode}' sudah digunakan`);
   }
 
-  const newId = data.batchId || data.id || `BATCH-${data.estateId || 'EST'}-${Date.now().toString().slice(-6)}`;
+  const newId = data.batchId || data.id || `BATCH-${finalEstateId || 'EST'}-${Date.now().toString().slice(-6)}`;
   if (list.some(b => b.id === newId || b.batchId === newId)) {
     throw new Error(`Batch ID '${newId}' sudah digunakan`);
   }
 
   const now = new Date().toISOString();
-  const estObj = getEstateById(data.estateId);
-  const divs = getNurseryDivisionsByEstate(data.estateId);
-  const divObj = divs.find(d => d.divisionId === data.divisionId);
+  const estObj = getEstateById(finalEstateId);
+  const divs = getNurseryDivisionsByEstate(finalEstateId);
+  const divObj = divs.find(d => d.divisionId === finalDivisionId);
+
+  const statusMasterVal = data.statusMaster || (data.status === BATCH_STATUS.INACTIVE ? BATCH_MASTER_STATUS.INACTIVE : BATCH_MASTER_STATUS.ACTIVE);
 
   const newBatch = {
     id: newId,
@@ -685,15 +772,20 @@ export function createBatch(data, currentUser = null) {
     name: data.name ? String(data.name).trim() : `Batch ${String(data.batchCode).trim()}`,
     qrCode: data.qrCode ? String(data.qrCode).trim() : `SIGMA-${newId}`,
 
-    programId: data.programId,
+    programId: program ? program.id : data.programId,
+    programCode: program ? program.code : (data.programCode || null),
+    programName: program ? program.name : (data.programName || null),
 
-    estateId: data.estateId,
-    estateCode: data.estateId,
-    estateName: estObj ? estObj.estate_name : data.estateId,
+    estateId: finalEstateId,
+    estateCode: finalEstateId,
+    estateName: estObj ? estObj.estate_name : finalEstateId,
 
-    divisionId: data.divisionId,
-    divisionCode: data.divisionId,
-    divisionName: divObj ? divObj.divisionName : data.divisionId,
+    divisionId: finalDivisionId,
+    divisionCode: finalDivisionId,
+    divisionName: divObj ? divObj.divisionName : finalDivisionId,
+
+    blockId: finalBlockId,
+    blockCode: finalBlockCode,
 
     cloneId: relCheck.cloneName,
     clone: relCheck.cloneName,
@@ -710,7 +802,8 @@ export function createBatch(data, currentUser = null) {
     availableQty: Number(data.availableQty !== undefined ? data.availableQty : initialQty),
     currentQty: Number(data.currentQty !== undefined ? data.currentQty : initialQty),
 
-    status: data.status || (initialQty > 0 ? BATCH_STATUS.AVAILABLE : BATCH_STATUS.EMPTY),
+    statusMaster: statusMasterVal,
+    status: data.status || (initialQty > 0 ? BATCH_STATUS.AVAILABLE : BATCH_STATUS.CREATED),
 
     sourceReceiptId: data.sourceReceiptId || null,
     sourceDispatchId: data.sourceDispatchId || null,
@@ -744,7 +837,7 @@ export function updateBatch(id, data, currentUser = null) {
 
   const existing = list[idx];
 
-  // Scope & Role Check
+  // Scope & Role Check for existing and target
   validateBatchUserScope(ctx, existing.estateId, existing.divisionId, 'mengubah');
   if (data.estateId && data.divisionId) {
     validateBatchUserScope(ctx, data.estateId, data.divisionId, 'mengubah');
@@ -761,7 +854,9 @@ export function updateBatch(id, data, currentUser = null) {
     estateId: targetEstate,
     divisionId: targetDivision,
     clone: targetClone,
-    bedenganIds: targetBedengans
+    bedenganIds: targetBedengans,
+    blockId: data.blockId !== undefined ? data.blockId : existing.blockId,
+    blockCode: data.blockCode !== undefined ? data.blockCode : existing.blockCode
   });
   if (!relCheck.valid) {
     throw new Error(relCheck.errors.join('. '));
@@ -775,26 +870,34 @@ export function updateBatch(id, data, currentUser = null) {
   }
 
   const now = new Date().toISOString();
-  let nextStatus = data.status !== undefined ? data.status : existing.status;
-  if (nextStatus === BATCH_STATUS.AVAILABLE && (existing.availableQty || 0) <= 0) {
-    nextStatus = BATCH_STATUS.EMPTY;
-  }
+  const estObj = getEstateById(targetEstate);
+  const divs = getNurseryDivisionsByEstate(targetEstate);
+  const divObj = divs.find(d => d.divisionId === targetDivision);
 
   const updated = {
     ...existing,
     batchCode: data.batchCode !== undefined ? String(data.batchCode).trim() : existing.batchCode,
     batchNo: data.batchCode !== undefined ? String(data.batchCode).trim() : existing.batchNo,
+    name: data.name !== undefined ? String(data.name).trim() : existing.name,
+    qrCode: data.qrCode !== undefined ? String(data.qrCode).trim() : existing.qrCode,
     programId: targetProgram,
     estateId: targetEstate,
+    estateCode: targetEstate,
+    estateName: estObj ? estObj.estate_name : targetEstate,
     divisionId: targetDivision,
+    divisionCode: targetDivision,
+    divisionName: divObj ? divObj.divisionName : targetDivision,
+    blockId: data.blockId !== undefined ? data.blockId : existing.blockId,
+    blockCode: data.blockCode !== undefined ? data.blockCode : existing.blockCode,
     cloneId: relCheck.cloneName,
     clone: relCheck.cloneName,
     klon: relCheck.cloneName,
     growthStage: data.growthStage || data.stage || existing.growthStage,
     stage: data.growthStage || data.stage || existing.stage,
-    category: data.category !== undefined ? data.category : existing.category,
-    bedenganIds: targetBedengans,
-    status: nextStatus,
+    category: data.category || existing.category,
+    bedenganIds: Array.isArray(targetBedengans) ? targetBedengans : existing.bedenganIds,
+    statusMaster: data.statusMaster !== undefined ? data.statusMaster : (data.status === BATCH_STATUS.INACTIVE ? BATCH_MASTER_STATUS.INACTIVE : (existing.statusMaster || BATCH_MASTER_STATUS.ACTIVE)),
+    status: data.status !== undefined ? data.status : existing.status,
     updatedAt: now,
     updatedBy: ctx.userId || ctx.id || 'ASISTEN_BIBITAN'
   };
@@ -806,24 +909,90 @@ export function updateBatch(id, data, currentUser = null) {
 }
 
 /**
- * ACTIVATE Master Batch
+ * ACTIVATE Master Batch (Administrative Status Update Only)
  */
 export function activateBatch(id, currentUser = null) {
-  const b = getBatchById(id);
-  if (!b) throw new Error(`Batch '${id}' tidak ditemukan`);
-  const status = (b.availableQty || 0) > 0 ? BATCH_STATUS.AVAILABLE : BATCH_STATUS.EMPTY;
-  return updateBatch(id, { status }, currentUser);
+  return updateBatch(id, { 
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
+    status: BATCH_STATUS.AVAILABLE 
+  }, currentUser);
 }
 
 /**
- * DEACTIVATE Master Batch (Safe Non-Destructive Inactivation)
+ * DEACTIVATE Master Batch (Administrative Status Update Only)
  */
 export function deactivateBatch(id, currentUser = null) {
-  return updateBatch(id, { status: BATCH_STATUS.INACTIVE }, currentUser);
+  return updateBatch(id, { 
+    statusMaster: BATCH_MASTER_STATUS.INACTIVE,
+    status: BATCH_STATUS.INACTIVE 
+  }, currentUser);
 }
 
 /**
- * Legacy Resolver Compatibility
+ * Mutasi Stok Transaksional (Deduct Stock)
+ */
+export function deductBatchStock(batchIdOrCode, qty, reason = 'DISPATCH') {
+  const deductQty = Number(qty);
+  if (isNaN(deductQty) || deductQty <= 0) {
+    throw new Error('Kuantitas pengurangan stok harus berupa angka lebih dari 0');
+  }
+
+  const list = _loadBatchesFromStorage();
+  const b = list.find(x => x.id === batchIdOrCode || x.batchId === batchIdOrCode || x.batchCode === batchIdOrCode || x.batchNo === batchIdOrCode);
+
+  if (!b) {
+    throw new Error(`Batch '${batchIdOrCode}' tidak ditemukan`);
+  }
+
+  if (b.statusMaster === BATCH_MASTER_STATUS.INACTIVE || b.status === BATCH_STATUS.INACTIVE) {
+    throw new Error(`Batch '${b.batchCode}' berstatus NONAKTIF dan tidak dapat digunakan untuk transaksi.`);
+  }
+
+  const currentAvailable = Number(b.availableQty ?? b.currentQty ?? 0);
+  if (currentAvailable < deductQty) {
+    throw new Error(`Stok batch '${b.batchCode}' tidak mencukupi (Tersedia: ${currentAvailable}, Diminta: ${deductQty})`);
+  }
+
+  b.availableQty = currentAvailable - deductQty;
+  b.currentQty = b.availableQty;
+  if (b.availableQty === 0) {
+    b.status = BATCH_STATUS.EMPTY;
+  }
+  b.updatedAt = new Date().toISOString();
+
+  _saveBatchesToStorage(list);
+  return b;
+}
+
+/**
+ * Mutasi Stok Transaksional (Add Stock from Receipt KSP)
+ */
+export function addBatchStockFromReceipt(batchIdOrCode, qty, receiptId = null) {
+  const addQty = Number(qty);
+  if (isNaN(addQty) || addQty <= 0) {
+    throw new Error('Kuantitas penambahan stok harus berupa angka lebih dari 0');
+  }
+
+  const list = _loadBatchesFromStorage();
+  const b = list.find(x => x.id === batchIdOrCode || x.batchId === batchIdOrCode || x.batchCode === batchIdOrCode || x.batchNo === batchIdOrCode);
+
+  if (!b) {
+    throw new Error(`Batch '${batchIdOrCode}' tidak ditemukan`);
+  }
+
+  b.availableQty = Number(b.availableQty ?? 0) + addQty;
+  b.currentQty = b.availableQty;
+  b.receivedQty = Number(b.receivedQty ?? 0) + addQty;
+  b.status = BATCH_STATUS.AVAILABLE;
+  if (receiptId) b.sourceReceiptId = receiptId;
+  b.updatedAt = new Date().toISOString();
+
+  _saveBatchesToStorage(list);
+  return b;
+}
+
+/**
+ * Legacy Compatibility: Resolve Batch
  */
 export function resolveBatchLegacy(value) {
   const b = getBatchById(value) || getBatchByCode(value);
@@ -832,12 +1001,9 @@ export function resolveBatchLegacy(value) {
     id: String(value || 'BATCH-001'),
     batchId: String(value || 'BATCH-001'),
     batchCode: String(value || 'B-001'),
-    batchNo: String(value || 'B-001'),
-    clone: 'IRCA 19',
-    klon: 'IRCA 19',
-    stage: 'Rubber Advance Planting Material',
-    growthStage: 'Rubber Advance Planting Material',
-    availableQty: 0,
-    status: BATCH_STATUS.EMPTY
+    name: String(value || 'Batch 001'),
+    status: BATCH_STATUS.EMPTY,
+    statusMaster: BATCH_MASTER_STATUS.ACTIVE,
+    availableQty: 0
   };
 }
