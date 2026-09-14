@@ -60,18 +60,19 @@ export function renderSeedingLanding() {
             let ttlDitolakSDHI = 0;
             const relatedTxs = seedingTxs.filter(s => s.sourceIndex == tx.originalIndex);
             relatedTxs.forEach(r => {
-              ttlDisemaiSDHI += parseInt(r.totalDisemai || 0);
-              ttlPolybagSDHI += parseInt(r.totalPolybag || 0);
+              const disemaiVal = parseInt(r.totalDisemai || 0);
+              ttlDisemaiSDHI += disemaiVal;
+              ttlPolybagSDHI += parseInt(r.totalPolybag !== undefined ? r.totalPolybag : Math.ceil(disemaiVal / 2));
               ttlDitolakSDHI += parseInt(r.ditolak || 0);
             });
             const qty = parseInt(tx.qty || 0);
             const bibitTersedia = qty - ttlDisemaiSDHI - ttlDitolakSDHI;
 
-            // Determine status text and color
+            // Determine status text and color (PERTAHANKAN LOGIC STATUS)
             let statusText = 'Belum Disemai';
             let statusColor = '#999999'; // grey
 
-            if (ttlDisemaiSDHI === 0 && ttlPolybagSDHI === 0 && ttlDitolakSDHI === 0) {
+            if (ttlDisemaiSDHI === 0 && ttlDitolakSDHI === 0) {
               statusText = 'Belum Disemai';
               statusColor = '#999999';
             } else if (bibitTersedia <= 0) {
@@ -93,8 +94,9 @@ export function renderSeedingLanding() {
               
               <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                 <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 0.72rem; font-weight: 700; color: #666666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Dokumen Penerimaan</div>
                   <div class="btn-seeding-form" data-index="${tx.originalIndex}" data-status="${statusText}" style="font-weight: 700; font-size: 0.95rem; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;">${docNo}</div>
-                  <div style="font-size: 0.8rem; color: #999999; margin-top: 4px;">Penerimaan, ${tx.tanggal || '28/08/2026'}</div>
+                  <div style="font-size: 0.8rem; color: #888888; margin-top: 3px;">Tanggal Penerimaan: ${tx.tanggal || '28/08/2026'}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
                   <span style="background: ${topBadgeBg}; color: ${topBadgeColor}; font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; white-space: nowrap; border: ${topBadgeBorder};">${topBadgeText}</span>
@@ -107,8 +109,10 @@ export function renderSeedingLanding() {
               <hr style="border: none; border-top: 1px solid #EFEFEF; margin: 12px 0;" />
               
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px;">
-                <span style="font-weight: 700; font-size: 0.95rem; color: #111111; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${tx.program || 'PRG/NUR/01/2026'}</span>
-                <span class="btn-lihat-penerimaan" data-index="${tx.originalIndex}" style="font-size: 0.8rem; color: #4A90E2; cursor: pointer; flex-shrink: 0; text-decoration: none;">Lihat Penerimaan</span>
+                <div style="flex: 1; min-width: 0; font-size: 0.88rem; color: #333333;">
+                  <span style="color: #666666; font-size: 0.8rem;">Program:</span> <strong style="color: #111111;">${tx.program || 'PRG/NUR/01/2026'}</strong>
+                </div>
+                <span class="btn-lihat-penerimaan" data-index="${tx.originalIndex}" style="font-size: 0.8rem; color: #4A90E2; cursor: pointer; flex-shrink: 0; text-decoration: none; font-weight: 600;">Lihat Penerimaan</span>
               </div>
               
               <div class="card-details-content" style="display: none; flex-direction: column;">
@@ -118,27 +122,23 @@ export function renderSeedingLanding() {
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Penerimaan</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${qty}</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${qty.toLocaleString('id-ID')}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Disemai SDHI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${ttlDisemaiSDHI}</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${ttlDisemaiSDHI.toLocaleString('id-ID')}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Polybag SDHI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${ttlPolybagSDHI}</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${ttlPolybagSDHI.toLocaleString('id-ID')}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Banyaknya Ditolak SDHI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${ttlDitolakSDHI}</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${ttlDitolakSDHI.toLocaleString('id-ID')}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Bibit Tersedia</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${qty}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Bibit Belum Diseleksi</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${Math.max(0, bibitTersedia)}</span>
+                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Sisa Benih Belum Disemai</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${Math.max(0, bibitTersedia).toLocaleString('id-ID')}</span>
                 </div>
               </div>
               
@@ -166,6 +166,8 @@ export function renderSeedingLanding() {
           
           ${seedingTxs.length > 0 ? seedingTxs.map((tx, idx) => {
             const seedingDocNo = (tx.docNo ? tx.docNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', idx + 1));
+            const seedingDisemai = parseInt(tx.totalDisemai || 0);
+            const seedingPolybag = parseInt(tx.totalPolybag !== undefined ? tx.totalPolybag : Math.ceil(seedingDisemai / 2));
             return `
             <div style="border: 1px solid #D9D9D9; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #FFFFFF; position: relative;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
@@ -210,15 +212,15 @@ export function renderSeedingLanding() {
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Disemai HI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.totalDisemai || '0'}</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${seedingDisemai.toLocaleString('id-ID')}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Polybag HI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.totalPolybag || '0'}</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${seedingPolybag.toLocaleString('id-ID')}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Banyaknya Ditolak HI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.ditolak || '0'}</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${(parseInt(tx.ditolak || 0)).toLocaleString('id-ID')}</span>
                 </div>
               </div>
               

@@ -12,6 +12,7 @@ import { toast } from '../../components/toast.js';
 import { navigate } from '../../core/router.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
+import { syncAllSeedingsToSelectionPool, filterSelectionByScope } from '../selection/selection-manager.js';
 
 /* SVG Icons sesuai desain acuan - proporsional & tajam */
 const ICONS = {
@@ -622,7 +623,14 @@ export function renderBeranda() {
     }
   }
 
-  // Hitung pending penyeleksian (dari pemeriksaan gagal, reject okulasi/regrafting, dan reject penerimaan APM/benih)
+  // Sinkronisasi bibit ditolak (Rusak, Mati, Lainnya) dari transaksi penyemaian
+  try {
+    syncAllSeedingsToSelectionPool();
+  } catch (err) {
+    console.warn('[beranda] Gagal sinkronisasi seeding ke selection_pool:', err);
+  }
+
+  // Hitung pending penyeleksian (dari pemeriksaan gagal, reject okulasi/regrafting, reject penyemaian, dan reject penerimaan APM/benih)
   let pendingSelectionCount = 0;
   const culledTxs = storage.get('selection_transactions', []);
   const culledPoolDocs = new Set(culledTxs.map(c => c.selectionPoolDocNo).filter(Boolean));
@@ -703,8 +711,11 @@ export function renderBeranda() {
 
   storage.set('selection_pool', selectionPool);
 
-  // Hitung seluruh item selection_pool yang belum dideklarasikan
-  selectionPool.forEach(s => {
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
+  const scopedSelectionPool = filterSelectionByScope(selectionPool, userCtx);
+
+  // Hitung seluruh item selection_pool yang belum dideklarasikan sesuai scope
+  scopedSelectionPool.forEach(s => {
     if (s.status !== 'DECLARED_CULLED' && !culledPoolDocs.has(s.docNo)) {
       pendingSelectionCount++;
     }
@@ -712,7 +723,6 @@ export function renderBeranda() {
 
   // Hitung pending pengeluaran bibit untuk Mantri Bibitan
   const allRequests = storage.get('requests_transactions', []);
-  const userCtx = getCurrentUserContext() || resolveUserContext(user);
   const mantriPendingRequests = allRequests.filter(tx => {
     const isTargetEstate = (tx.targetEstateId === userCtx?.estateId || tx.targetNextEstateId === userCtx?.estateId);
     const targetDivision = tx.targetNextDivisionId || tx.targetDivisionId;

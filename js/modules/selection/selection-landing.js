@@ -25,7 +25,16 @@ import {
   approveSelectionRecord,
   returnSelectionRecord,
   createSelectionRecord,
-  mutateStockFromSelection
+  declareSelectionItem,
+  findExistingSelectionTransaction,
+  mutateStockFromSelection,
+  syncAllSeedingsToSelectionPool,
+  getSelectionSourceLabel,
+  getSelectionCategoryLabel,
+  formatBedenganDisplayCode,
+  saveSelectionDocumentationPhoto,
+  getSelectionPhotos,
+  getSelectionPhotosByDocNo
 } from './selection-manager.js';
 import { getBatchById, getBatchByCode } from '../../data/batch-master.js';
 import { getBedenganById } from '../../data/bedengan-master.js';
@@ -47,6 +56,13 @@ let activeFilterProgram = 'ALL';
 export function renderSelectionLanding() {
   const app = document.getElementById('app');
   if (!app) return;
+
+  // Pastikan sinkronisasi data seeding ke selection_pool dilakukan saat halaman dibuka
+  try {
+    syncAllSeedingsToSelectionPool();
+  } catch (err) {
+    console.warn('[renderSelectionLanding] Gagal sinkronisasi data seeding ke selection pool:', err);
+  }
 
   const rawUser = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan', role: 'MANTRI_TANAMAN' };
   const currentUser = getCurrentUserContext() || resolveUserContext(rawUser);
@@ -367,14 +383,22 @@ function renderMantriSelectionLanding(app, user) {
     return formatStandardDocNo(2026, 'CULL', seq > 0 ? seq : index);
   }
 
-  let selectionPool = storage.get('selection_pool', []);
-  const culledTxs = storage.get('selection_transactions', []);
+  let rawSelectionPool = storage.get('selection_pool', []);
+  
+  // Filter out items that have already been declared successfully
+  rawSelectionPool = rawSelectionPool.filter(item => {
+    return !findExistingSelectionTransaction(item);
+  });
+
+  let selectionPool = filterSelectionByScope(rawSelectionPool, user);
+  const allCulledTxs = storage.get('selection_transactions', []);
+  const culledTxs = filterSelectionByScope(allCulledTxs, user);
 
   app.innerHTML = `
-    <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
       <!-- HEADER -->
-      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #D9D9D9; flex-shrink: 0;">
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
         <div style="display: flex; align-items: center;">
           <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
             <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -382,49 +406,127 @@ function renderMantriSelectionLanding(app, user) {
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">Penyeleksian Bibit (Afkir)</h1>
+          <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 0 6px; letter-spacing: -0.01em;">Penyeleksian Bibit (Afkir)</h1>
         </div>
       </header>
 
       <!-- MAIN CONTENT -->
-      <main style="flex: 1; overflow-y: auto; padding: 14px 16px;">
+      <main style="flex: 1; overflow-y: auto; padding: 12px 14px;">
         
         ${selectionPool.length > 0 ? `
-          <div style="margin-bottom: 10px;">
-            <h2 style="font-size: 0.90rem; font-weight: 700; color: #111111; margin: 0;">Daftar Bibit Afkir / Diseleksi dari Transaksi</h2>
+          <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">Daftar Bibit Afkir / Diseleksi (${selectionPool.length})</h2>
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
             ${selectionPool.map((item, idx) => {
               const isDeclared = item.status === 'DECLARED_CULLED';
               const displayDocNo = standardizeSelectionDocNo(item.docNo, idx + 1);
+              const sourceLabel = getSelectionSourceLabel(item);
+              const categoryLabel = getSelectionCategoryLabel(item);
+              const batchDisplay = item.batchCode || item.batchNo || 'Batch';
+              const sourceDocNo = item.sourceDocNo || item.seedingDocNo || item.buddingDocNo || item.inspectionDocNo || '-';
+              const bedenganDisplay = formatBedenganDisplayCode(item);
+              const programDisplay = item.programCode || item.programName || item.program || '-';
+              const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+
+              let categoryBadgeBg = '#FEF2F2';
+              let categoryBadgeColor = '#DC2626';
+              let categoryBadgeBorder = '#FECACA';
+              if (categoryLabel === 'Mati') {
+                categoryBadgeBg = '#FFF1F2';
+                categoryBadgeColor = '#BE123C';
+                categoryBadgeBorder = '#FFE4E6';
+              } else if (categoryLabel === 'Lainnya') {
+                categoryBadgeBg = '#F1F5F9';
+                categoryBadgeColor = '#475569';
+                categoryBadgeBorder = '#CBD5E1';
+              }
 
               return `
-                <div class="card-selection-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                    <div style="font-weight: 800; font-size: 0.88rem; color: #111827;">
-                      ${item.batchNo || 'Batch-01'} - ${item.klon || 'PB 260'}
+                <div class="card-selection-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; box-sizing: border-box;">
+                  
+                  <!-- 1. HEADER CARD: BATCH (KIRI) & BADGES (KANAN) -->
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+                    <div style="min-width: 0;">
+                      <div style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em; word-break: break-word;">
+                        ${esc(batchDisplay)}
+                      </div>
                     </div>
-                    <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${isDeclared ? '#F0FDF4' : '#FEF2F2'}; color: ${isDeclared ? '#116834' : '#DC2626'}; border: 1px solid ${isDeclared ? '#BBF7D0' : '#FECACA'};">
-                      ${isDeclared ? 'Telah Dikurangi' : 'Perlu Deklarasi'}
-                    </span>
-                  </div>
-
-                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem; color: #6B7280; margin-bottom: 8px;">
-                    <div>${item.bedengan && item.bedengan !== '-' ? item.bedengan : (item.tahapan || 'Pembibitan')}</div>
-                    <div>Dok: ${displayDocNo}</div>
-                  </div>
-
-                  <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;">
-                    <div style="font-size: 0.62rem; font-weight: 700; color: #DC2626; text-transform: uppercase;">Bibit Afkir</div>
-                    <div style="font-size: 1.05rem; font-weight: 900; color: #DC2626;">
-                      ${parseInt(item.jumlahAfkir || 0).toLocaleString('id-ID')} Pkk
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: ${categoryBadgeBg}; color: ${categoryBadgeColor}; border: 1px solid ${categoryBadgeBorder}; white-space: nowrap;">
+                        ${esc(categoryLabel)}
+                      </span>
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: ${isDeclared ? '#F0FDF4' : '#FEF2F2'}; color: ${isDeclared ? '#15803D' : '#DC2626'}; border: 1px solid ${isDeclared ? '#BBF7D0' : '#FECACA'}; white-space: nowrap;">
+                        ${isDeclared ? 'Telah Dikurangi' : 'Perlu Deklarasi'}
+                      </span>
                     </div>
                   </div>
 
+                  <!-- 2. INFORMASI SUMBER (COMPACT 1-BARIS) -->
+                  <div style="font-size: 0.74rem; color: #64748B; margin-bottom: 8px;">
+                    Sumber: <strong style="color: #0F172A; font-weight: 700;">${esc(sourceLabel)}</strong>
+                  </div>
+
+                  <!-- 3. INFORMASI REFERENSI COMPACT (GRID 2 KOLOM) -->
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 7px 0; border-top: 1px solid #F1F5F9; border-bottom: 1px solid #F1F5F9; margin-bottom: 9px; font-size: 0.74rem;">
+                    <!-- Kiri: Bedengan -->
+                    <div style="min-width: 0;">
+                      <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 1px;">Bedengan</div>
+                      <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
+                        ${esc(bedenganDisplay)}
+                      </div>
+                    </div>
+
+                    <!-- Kanan: Dok. Asal -->
+                    <div style="min-width: 0;">
+                      <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 1px;">Dok. Asal</div>
+                      <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
+                        ${esc(sourceDocNo)}
+                      </div>
+                    </div>
+
+                    <!-- Kiri: Program -->
+                    <div style="min-width: 0;">
+                      <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 1px;">Program</div>
+                      <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
+                        ${esc(programDisplay)}
+                      </div>
+                    </div>
+
+                    <!-- Kanan: Dok. Seleksi -->
+                    <div style="min-width: 0;">
+                      <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 1px;">Dok. Seleksi</div>
+                      <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
+                        ${esc(displayDocNo)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 4. PANEL JUMLAH AFKIR (HORIZONTAL & COMPACT) -->
+                  <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-radius: 8px; padding: 8px 12px; margin-bottom: 9px; display: flex; justify-content: space-between; align-items: center; gap: 10px; box-sizing: border-box;">
+                    <div style="min-width: 0; flex: 1;">
+                      <div style="font-size: 0.65rem; font-weight: 800; color: #DC2626; text-transform: uppercase; letter-spacing: 0.03em;">
+                        BIBIT AFKIR (${categoryLabel.toUpperCase()})
+                      </div>
+                      <div style="font-size: 0.70rem; color: #4B5563; margin-top: 1px; word-break: break-word; line-height: 1.3;">
+                        ${esc(item.alasan || `Bibit ${categoryLabel} saat ${sourceLabel}`)}${sourceDocNo && sourceDocNo !== '-' && !item.alasan?.includes(sourceDocNo) ? ` (${esc(sourceDocNo)})` : ''}
+                      </div>
+                    </div>
+                    <div style="text-align: right; flex-shrink: 0;">
+                      <div style="font-size: 1.30rem; font-weight: 900; color: #DC2626; line-height: 1; letter-spacing: -0.02em;">
+                        ${qtyAfkir.toLocaleString('id-ID')}
+                      </div>
+                      <div style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-top: 1px;">
+                        Pkk
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 5. TOMBOL DEKLARASI -->
                   ${!isDeclared ? `
-                    <button type="button" class="btn-deklarasi-afkir" data-index="${idx}" style="width: 100%; height: 38px; background: #DC2626; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer;">
-                      Deklarasi Bibit Afkir (${parseInt(item.jumlahAfkir || 0).toLocaleString('id-ID')} Pkk)
+                    <button type="button" class="btn-deklarasi-afkir" data-index="${idx}" style="width: 100%; height: 38px; background: #DC2626; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 2px rgba(220,38,38,0.2); transition: background 0.15s ease;">
+                      Deklarasi Bibit Afkir (${qtyAfkir.toLocaleString('id-ID')} Pkk)
                     </button>
                   ` : ''}
                 </div>
@@ -434,28 +536,53 @@ function renderMantriSelectionLanding(app, user) {
         ` : ''}
 
         ${selectionPool.length === 0 && culledTxs.length === 0 ? `
-          <div style="background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 32px 16px; text-align: center; margin-top: 24px;">
-            <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Belum Ada Data Penyeleksian</h3>
-            <p style="font-size: 0.78rem; color: #757575; margin: 0;">Data bibit afkir akan muncul saat terdapat bibit yang diseleksi pada transaksi hulu.</p>
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 40px 20px; text-align: center; margin-top: 10px;">
+            <div style="width: 56px; height: 56px; border-radius: 50%; background: #F1F5F9; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; color: #64748B;">
+              <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="none">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            <h3 style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin: 0 0 4px 0;">Belum Ada Data Penyeleksian</h3>
+            <p style="font-size: 0.78rem; color: #64748B; margin: 0; line-height: 1.45;">Data bibit afkir akan muncul saat terdapat bibit yang diseleksi pada transaksi hulu (Penyemaian, Okulasi, atau Pemeriksaan).</p>
           </div>
         ` : ''}
 
         ${culledTxs.length > 0 ? `
           <div style="margin: 20px 0 10px 0;">
-            <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0;">Histori Deklarasi Pengurangan Stok (${culledTxs.length})</h2>
+            <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">Histori Deklarasi Pengurangan Stok (${culledTxs.length})</h2>
           </div>
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${culledTxs.map((ctx, idx) => `
-              <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <div style="font-weight: 800; font-size: 0.88rem; color: #111827;">${ctx.batchNo || 'Batch'} - ${ctx.klon || 'PB 260'}</div>
-                  <span style="font-weight: 800; font-size: 0.86rem; color: #DC2626;">-${parseInt(ctx.jumlahAfkir || 0).toLocaleString('id-ID')} Pkk</span>
+            ${culledTxs.map((ctx) => {
+              const src = getSelectionSourceLabel(ctx);
+              const cat = getSelectionCategoryLabel(ctx);
+              const qty = parseInt(ctx.jumlahAfkir || ctx.quantity || 0, 10);
+              const bedDisplay = formatBedenganDisplayCode(ctx);
+              return `
+                <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px;">
+                    <div style="min-width: 0;">
+                      <div style="font-weight: 800; font-size: 0.88rem; color: #0F172A; word-break: break-word;">
+                        ${esc(ctx.batchCode || ctx.batchNo || 'Batch')}
+                      </div>
+                      <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">
+                        Sumber: <strong style="color: #0F172A;">${esc(src)}</strong> • <span style="color: #DC2626; font-weight: 600;">${esc(cat)}</span>
+                      </div>
+                    </div>
+                    <div style="text-align: right; flex-shrink: 0;">
+                      <span style="font-weight: 900; font-size: 0.95rem; color: #DC2626;">-${qty.toLocaleString('id-ID')}</span>
+                      <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-left: 1px;">Pkk</span>
+                    </div>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 0.70rem; color: #64748B; padding-top: 6px; border-top: 1px solid #F1F5F9;">
+                    <div>Bedengan: <strong style="color: #334155;">${esc(bedDisplay)}</strong></div>
+                    <div>Dok. Asal: <strong style="color: #334155;">${esc(ctx.sourceDocNo || '-')}</strong></div>
+                  </div>
+                  <div style="font-size: 0.68rem; color: #94A3B8; margin-top: 4px;">
+                    Pengaju: <strong>${esc(ctx.createdByName || ctx.mantri || user.name)}</strong> • ${esc(ctx.tanggalSeleksi || ctx.tanggal || today)}
+                  </div>
                 </div>
-                <div style="font-size: 0.72rem; color: #6B7280; margin-top: 4px;">
-                  ${ctx.bedengan || '-'} • Mantri: <strong>${ctx.mantri || user.name}</strong>
-                </div>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         ` : ''}
 
@@ -471,31 +598,295 @@ function renderMantriSelectionLanding(app, user) {
       const targetPoolItem = selectionPool[idx];
       if (!targetPoolItem) return;
 
-      targetPoolItem.status = 'DECLARED_CULLED';
-      storage.set('selection_pool', selectionPool);
+      if (targetPoolItem.status === 'DECLARED_CULLED') {
+        toast('Hasil seleksi ini sudah pernah dideklarasikan.', 'info');
+        return;
+      }
 
-      const culled = storage.get('selection_transactions', []);
-      culled.push({
-        id: `SEL-${Date.now()}`,
-        docNo: formatStandardDocNo(2026, 'CULL', culled.length + 1),
-        selectionPoolDocNo: targetPoolItem.docNo,
-        batchNo: targetPoolItem.batchNo,
-        batchCode: targetPoolItem.batchNo,
-        klon: targetPoolItem.klon,
-        clone: targetPoolItem.klon,
-        bedengan: targetPoolItem.bedengan,
-        program: targetPoolItem.program,
-        tahapan: targetPoolItem.tahapan,
-        sumberAsal: targetPoolItem.sumberAsal,
-        jumlahAfkir: targetPoolItem.jumlahAfkir,
-        tanggal: today,
-        mantri: user.name,
-        status: 'DECLARED_CULLED'
+      const displayDocNo = standardizeSelectionDocNo(targetPoolItem.docNo, idx + 1);
+
+      // STEP 1: Buka Modal Konfirmasi Hasil Seleksi
+      openSelectionConfirmationModal({
+        item: targetPoolItem,
+        displayDocNo,
+        user,
+        onCancel: () => {
+          // User clicks Kembali -> modal closes, no changes
+        },
+        onConfirm: () => {
+          // STEP 2: Buka Kamera untuk Foto Dokumentasi
+          openSelectionCameraModal({
+            item: targetPoolItem,
+            displayDocNo,
+            user,
+            onCaptureCancel: () => {
+              toast('Pengambilan foto dokumentasi dibatalkan. Deklarasi belum disimpan.', 'info');
+            },
+            onCaptureSuccess: (photoResult) => {
+              // STEP 3: Lanjutkan penyimpanan deklarasi & dokumentasi foto secara idempoten
+              try {
+                const res = declareSelectionItem(targetPoolItem, photoResult, user);
+                if (res.isNew) {
+                  toast(`Pengurangan stok seleksi ${getSelectionCategoryLabel(targetPoolItem)} (${res.transaction.docNo}) berhasil dideklarasikan dan dokumentasi tersimpan.`, 'success');
+                } else {
+                  toast(`Data seleksi (${res.transaction.docNo}) sudah tercatat sebelumnya. Dokumentasi diperbarui.`, 'info');
+                }
+                renderMantriSelectionLanding(app, user);
+              } catch (err) {
+                console.error('[Declare Selection Error]', err);
+                toast(err.message || 'Gagal menyimpan deklarasi seleksi', 'error');
+              }
+            }
+          });
+        }
       });
-      storage.set('selection_transactions', culled);
-
-      toast('Pengurangan stok seleksi berhasil dideklarasikan.', 'success');
-      renderMantriSelectionLanding(app, user);
     });
+  });
+}
+
+/**
+ * =============================================================================
+ * POPUP KONFIRMASI HASIL SELEKSI & DOKUMENTASI FOTO BERTIMESTAMP (TOP-LEVEL EXPORTS)
+ * =============================================================================
+ */
+
+export function openSelectionConfirmationModal({
+  item,
+  displayDocNo,
+  user,
+  onConfirm,
+  onCancel
+}) {
+  const sourceDocNo = item.sourceDocNo || item.seedingDocNo || item.buddingDocNo || item.inspectionDocNo || '-';
+  const batchDisplay = item.batchCode || item.batchNo || 'Batch';
+  const categoryLabel = getSelectionCategoryLabel(item);
+  const hasilDisplay = `Bibit Afkir (${categoryLabel})`;
+  const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+  const qtyDisplay = `${qtyAfkir.toLocaleString('id-ID')} Pkk`;
+
+  const bodyContent = `
+    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
+      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 0.74rem;">
+          <div>
+            <div style="font-size: 0.68rem; color: #64748B;">Dok. Seleksi</div>
+            <div style="font-weight: 700; color: #0F172A; word-break: break-word;">${esc(displayDocNo)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.68rem; color: #64748B;">Dok. Asal</div>
+            <div style="font-weight: 700; color: #0F172A; word-break: break-word;">${esc(sourceDocNo)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.68rem; color: #64748B;">Batch</div>
+            <div style="font-weight: 700; color: #0F172A; word-break: break-word;">${esc(batchDisplay)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.68rem; color: #64748B;">Hasil</div>
+            <div style="font-weight: 700; color: #DC2626; word-break: break-word;">${esc(hasilDisplay)}</div>
+          </div>
+        </div>
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #CBD5E1; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.72rem; color: #64748B; font-weight: 600;">Jumlah Hasil Seleksi:</span>
+          <span style="font-size: 1.05rem; font-weight: 900; color: #DC2626;">${qtyDisplay}</span>
+        </div>
+      </div>
+
+      <p style="font-size: 0.80rem; color: #475569; margin: 0 0 14px 0; text-align: center; font-weight: 600;">
+        Apakah Anda yakin akan menyimpan hasil seleksi ini?
+      </p>
+
+      <div style="display: flex; gap: 8px;">
+        <button id="btn-modal-cancel-selection" type="button" style="flex: 1; height: 38px; background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer;">
+          Kembali
+        </button>
+        <button id="btn-modal-save-selection" type="button" style="flex: 1; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25);">
+          Simpan
+        </button>
+      </div>
+    </div>
+  `;
+
+  openModal({
+    title: 'Konfirmasi Hasil Seleksi',
+    body: bodyContent,
+    onClose: () => {
+      if (onCancel) onCancel();
+    }
+  });
+
+  document.getElementById('btn-modal-cancel-selection')?.addEventListener('click', () => {
+    closeModal();
+    if (onCancel) onCancel();
+  });
+
+  document.getElementById('btn-modal-save-selection')?.addEventListener('click', () => {
+    closeModal();
+    if (onConfirm) onConfirm();
+  });
+}
+
+export function openSelectionCameraModal({
+  item,
+  displayDocNo,
+  user,
+  onCaptureSuccess,
+  onCaptureCancel
+}) {
+  let activeStream = null;
+  let isSubmitting = false;
+
+  const bodyContent = `
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+      <div style="width: 100%; font-size: 0.74rem; color: #64748B; background: #F8FAFC; padding: 6px 10px; border-radius: 6px; border: 1px solid #E2E8F0; display: flex; justify-content: space-between; box-sizing: border-box;">
+        <span>Dok: <strong>${esc(displayDocNo)}</strong></span>
+        <span>Batch: <strong>${esc(item.batchCode || item.batchNo || 'Batch')}</strong></span>
+      </div>
+
+      <div style="position: relative; width: 100%; max-width: 360px; height: 250px; background: #0F172A; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+        <video id="selection-camera-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+        <div id="selection-camera-fallback" style="display: none; position: absolute; inset: 0; background: linear-gradient(135deg, #1E293B, #334155); color: #F8FAFC; flex-direction: column; align-items: center; justify-content: center; padding: 16px; text-align: center;">
+          <div style="font-weight: 700; font-size: 0.88rem; margin-bottom: 4px;">Kamera Tidak Tersedia / Mode Preview</div>
+          <div style="font-size: 0.72rem; color: #94A3B8; margin-bottom: 8px;">Simulasi foto dokumentasi aktif dengan timestamp otomatis.</div>
+          <div style="font-size: 0.68rem; background: rgba(0,0,0,0.4); padding: 4px 8px; border-radius: 4px; font-family: monospace;">FOTO DOKUMENTASI SELEKSI</div>
+        </div>
+        <canvas id="selection-camera-canvas" style="display: none;"></canvas>
+      </div>
+
+      <div style="display: flex; gap: 8px; width: 100%; margin-top: 4px;">
+        <button id="btn-cancel-camera-flow" type="button" style="flex: 1; height: 38px; background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer;">
+          Batal
+        </button>
+        <button id="btn-capture-camera-flow" type="button" style="flex: 1.3; height: 38px; background: #DC2626; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(220,38,38,0.25);">
+          Ambil Foto & Simpan
+        </button>
+      </div>
+    </div>
+  `;
+
+  openModal({
+    title: 'Foto Dokumentasi Seleksi',
+    body: bodyContent,
+    onClose: () => {
+      stopTracks();
+      if (onCaptureCancel) onCaptureCancel();
+    }
+  });
+
+  const videoEl = document.getElementById('selection-camera-video');
+  const fallbackEl = document.getElementById('selection-camera-fallback');
+  const canvasEl = document.getElementById('selection-camera-canvas');
+  const btnCancel = document.getElementById('btn-cancel-camera-flow');
+  const btnCapture = document.getElementById('btn-capture-camera-flow');
+
+  function stopTracks() {
+    if (activeStream) {
+      activeStream.getTracks().forEach(t => t.stop());
+      activeStream = null;
+    }
+  }
+
+  // Try getUserMedia safely inside modal call only
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => {
+        activeStream = stream;
+        if (videoEl) {
+          videoEl.srcObject = stream;
+          videoEl.play().catch(() => {});
+        }
+      })
+      .catch(err => {
+        console.warn('[Selection Camera] Access error or fallback mode:', err);
+        if (fallbackEl) fallbackEl.style.display = 'flex';
+        if (videoEl) videoEl.style.display = 'none';
+      });
+  } else {
+    if (fallbackEl) fallbackEl.style.display = 'flex';
+    if (videoEl) videoEl.style.display = 'none';
+  }
+
+  btnCancel?.addEventListener('click', () => {
+    stopTracks();
+    closeModal();
+    if (onCaptureCancel) onCaptureCancel();
+  });
+
+  btnCapture?.addEventListener('click', () => {
+    if (isSubmitting) return;
+    isSubmitting = true;
+    btnCapture.disabled = true;
+    btnCapture.textContent = 'Menyimpan...';
+
+    try {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const timestampFormatted = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      
+      let dataUrl = '';
+      if (activeStream && videoEl && videoEl.videoWidth > 0 && canvasEl) {
+        canvasEl.width = videoEl.videoWidth;
+        canvasEl.height = videoEl.videoHeight;
+        const ctx = canvasEl.getContext('2d');
+        ctx.drawImage(videoEl, 0, 0);
+
+        // Watermark bar with timestamp
+        const barHeight = Math.max(32, Math.floor(canvasEl.height * 0.08));
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.fillRect(0, canvasEl.height - barHeight, canvasEl.width, barHeight);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = `bold ${Math.max(12, Math.floor(barHeight * 0.45))}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        ctx.fillText(`SELEKSI ${displayDocNo} • ${timestampFormatted}`, 12, canvasEl.height - Math.floor(barHeight * 0.3));
+
+        dataUrl = canvasEl.toDataURL('image/jpeg', 0.85);
+      } else if (canvasEl) {
+        canvasEl.width = 480;
+        canvasEl.height = 360;
+        const ctx = canvasEl.getContext('2d');
+        ctx.fillStyle = '#1E293B';
+        ctx.fillRect(0, 0, 480, 360);
+
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(20, 20, 440, 260);
+
+        ctx.fillStyle = '#F8FAFC';
+        ctx.font = 'bold 18px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('DOKUMENTASI SELEKSI BIBIT AFKIR', 240, 130);
+
+        ctx.fillStyle = '#94A3B8';
+        ctx.font = '14px sans-serif';
+        ctx.fillText(`Dokumen: ${displayDocNo} • Batch: ${item.batchCode || item.batchNo || 'Batch'}`, 240, 160);
+        ctx.fillText(`Kategori: ${getSelectionCategoryLabel(item)} (${parseInt(item.jumlahAfkir || item.quantity || 0, 10)} Pkk)`, 240, 185);
+
+        // Timestamp overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillRect(0, 310, 480, 50);
+        ctx.fillStyle = '#22C55E';
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 13px monospace';
+        ctx.fillText(`[TIMESTAMP] ${timestampFormatted}`, 16, 340);
+
+        dataUrl = canvasEl.toDataURL('image/jpeg', 0.85);
+      } else {
+        dataUrl = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect fill="%231E293B" width="400" height="300"/><text fill="%23FFF" x="20" y="150">SELEKSI ${displayDocNo} - ${timestampFormatted}</text></svg>`;
+      }
+
+      stopTracks();
+      closeModal();
+
+      if (onCaptureSuccess) {
+        onCaptureSuccess({
+          dataUrl,
+          capturedAt: now.toISOString(),
+          capturedAtLabel: timestampFormatted
+        });
+      }
+    } catch (err) {
+      console.error('[Selection Photo Capture Error]', err);
+      toast('Gagal mengambil atau menyimpan foto dokumentasi.', 'error');
+      btnCapture.disabled = false;
+      btnCapture.textContent = 'Ambil Foto & Simpan';
+      isSubmitting = false;
+    }
   });
 }

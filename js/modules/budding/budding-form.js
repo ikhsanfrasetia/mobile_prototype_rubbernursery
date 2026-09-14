@@ -5,6 +5,7 @@ import { getCurrentUserContext } from '../../core/user-context.js';
 import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
 import { getWorkersForUserContext, getWorkerById, isWorkerInScope } from '../../data/worker-master.js';
 import { getActiveKlons, getKlonsForUsage, KLON_USAGE, normalizeKlonName, resolveKlon } from '../../data/klon-master.js';
+import { formatBedenganCode } from './budding-grafting.js';
 
 const MASTER_WORKERS = [
   { id: 'W001', name: 'Ahmad Rifai', code: '104521' },
@@ -69,7 +70,7 @@ export function renderBuddingForm() {
     poolDocNo = poolItem.docNo;
     inspectionDocNo = poolItem.inspectionDocNo;
     totalDisemai = parseInt(poolItem.jumlah || 0);
-    bedenganDisplay = poolItem.bedengan || 'Bedengan 01';
+    bedenganDisplay = formatBedenganCode(poolItem.bedengan, poolItem.bedenganCode) || 'BED-001';
     klonRootstock = poolItem.klonRootstock ? normalizeKlonName(poolItem.klonRootstock) : 'GT 1';
   } else {
     const selectedBatch = seedingTxs[batchIdx] || {
@@ -85,8 +86,8 @@ export function renderBuddingForm() {
     docNo = selectedBatch.docNo || (selectedBatch.sourceDocNo ? selectedBatch.sourceDocNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', 1));
     totalDisemai = parseInt(selectedBatch.totalDisemai || 0);
     klonRootstock = selectedBatch.klonAwal ? normalizeKlonName(selectedBatch.klonAwal) : 'GT 1';
-    const batchBedengan = (selectedBatch.rows || []).map(r => r.bedengan).filter(Boolean);
-    bedenganDisplay = batchBedengan.length > 0 ? Array.from(new Set(batchBedengan)).join(', ') : 'Bedengan 01';
+    const batchBedengan = (selectedBatch.rows || []).map(r => formatBedenganCode(r.bedengan, r.bedenganCode)).filter(Boolean);
+    bedenganDisplay = batchBedengan.length > 0 ? Array.from(new Set(batchBedengan)).join(', ') : (formatBedenganCode(selectedBatch.bedengan, selectedBatch.bedenganCode) || 'BED-001');
   }
 
   // Calculate accumulated budding (correctly excluding the currently edited transaction)
@@ -171,13 +172,13 @@ export function renderBuddingForm() {
               </div>
               <div style="grid-column: span 2; padding-top: 2px;">
                 <span style="color: #6B7280;">${isRegrafting ? 'Populasi Gagal Okulasi:' : 'Populasi Bibit Disemai:'}</span>
-                <span style="font-weight: 700; color: #116834; font-size: 0.82rem; margin-left: 4px;">${totalDisemai} Pkk</span>
+                <span style="font-weight: 700; color: #116834; font-size: 0.82rem; margin-left: 4px;">${totalDisemai.toLocaleString('id-ID')} Pkk</span>
               </div>
             </div>
 
             <div style="margin-top: 10px; padding: 8px 12px; background: #E8F5E9; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #C8E6C9;">
               <span style="font-size: 0.74rem; font-weight: 700; color: #116834;">${isRegrafting ? 'Sisa Belum Regrafting:' : 'Sisa Bibit Belum Diokulasi:'}</span>
-              <span style="font-size: 0.88rem; font-weight: 800; color: #116834;">${sisaBelumDiokulasi} Pkk</span>
+              <span style="font-size: 0.88rem; font-weight: 800; color: #116834;">${sisaBelumDiokulasi.toLocaleString('id-ID')} Pkk</span>
             </div>
           </section>
 

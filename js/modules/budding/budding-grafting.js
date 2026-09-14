@@ -3,6 +3,29 @@ import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
 
+/**
+ * Format string atau kode Bedengan agar seragam menjadi Kode Bedengan (misal: BED-001, BED-002)
+ */
+export function formatBedenganCode(bedengan, bedenganCode) {
+  if (bedenganCode) {
+    const codeStr = String(bedenganCode).trim();
+    if (/^BED-\d+/i.test(codeStr)) return codeStr.toUpperCase();
+    const m = codeStr.match(/(\d+)/);
+    if (m) return `BED-${String(m[1]).padStart(3, '0')}`;
+    return codeStr;
+  }
+  if (!bedengan) return '';
+  const str = String(bedengan).trim();
+  if (/^BED-\d+/i.test(str)) {
+    return str.toUpperCase();
+  }
+  const match = str.match(/Bedengan[- ]*(\d+)/i);
+  if (match) {
+    return `BED-${String(match[1]).padStart(3, '0')}`;
+  }
+  return str;
+}
+
 export function renderBuddingGrafting() {
   const app = document.getElementById('app');
 
@@ -54,10 +77,10 @@ export function renderBuddingGrafting() {
       statusBadgeBorder = '1px solid #FFE082';
     }
 
-    // Extract bedengan rows
+    // Extract bedengan rows (Tampilkan Kode Bedengan: BED-001, BED-002, dst)
     const rows = stx.rows || [];
-    const bedenganNames = rows.map(r => r.bedengan).filter(Boolean);
-    const bedenganDisplay = bedenganNames.length > 0 ? Array.from(new Set(bedenganNames)).join(', ') : 'Bedengan 01';
+    const bedenganCodes = rows.map(r => formatBedenganCode(r.bedengan, r.bedenganCode)).filter(Boolean);
+    const bedenganDisplay = bedenganCodes.length > 0 ? Array.from(new Set(bedenganCodes)).join(', ') : (formatBedenganCode(stx.bedengan, stx.bedenganCode) || 'BED-001');
 
     return {
       stx,
@@ -151,29 +174,29 @@ export function renderBuddingGrafting() {
                   <div style="font-size: 0.82rem; font-weight: 700; color: #111111; margin-bottom: 2px;">
                     ${docNo}
                   </div>
-                  <div style="font-size: 0.72rem; color: #888888; margin-bottom: 10px;">
+                  <div style="font-size: 0.72rem; color: #6B7280; margin-bottom: 10px;">
                     Penyemaian: ${stx.date || 'Hari ini'}
                   </div>
 
                   <hr style="border: none; border-top: 1px solid #F3F4F6; margin: 0 0 10px 0;" />
 
                   <!-- GRID DETAIL 2x2 -->
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 10px;">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 12px;">
                     <div>
-                      <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Klon Batang Bawah</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #111111;">${stx.klonAwal ? normalizeKlonName(stx.klonAwal) : 'GT 1'}</div>
+                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Klon Batang Bawah</div>
+                      <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.3;">${stx.klonAwal ? normalizeKlonName(stx.klonAwal) : 'GT 1'}</div>
                     </div>
                     <div>
-                      <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Lokasi Bedengan</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${bedenganDisplay}</div>
+                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Lokasi Bedengan</div>
+                      <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.35; word-break: break-word;">${bedenganDisplay}</div>
                     </div>
                     <div>
-                      <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Populasi Bibit (Disemai)</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #116834;">${populasiBibit} Pkk</div>
+                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Populasi Bibit (Disemai)</div>
+                      <div style="font-size: 0.82rem; font-weight: 700; color: #116834; line-height: 1.3;">${populasiBibit.toLocaleString('id-ID')} Pkk</div>
                     </div>
                     <div>
-                      <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Belum Diokulasi</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: ${sisaBelumOkulasi > 0 ? '#D32F2F' : '#116834'};">${sisaBelumOkulasi} Pkk</div>
+                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Belum Diokulasi</div>
+                      <div style="font-size: 0.82rem; font-weight: 700; color: ${sisaBelumOkulasi > 0 ? '#D32F2F' : '#116834'}; line-height: 1.3;">${sisaBelumOkulasi.toLocaleString('id-ID')} Pkk</div>
                     </div>
                   </div>
 
@@ -199,15 +222,15 @@ export function renderBuddingGrafting() {
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                       <span style="color: #6B7280;">Total Diokulasi SDHI:</span>
-                      <span style="font-weight: 700; color: #116834;">${ttlDiokulasi} Pkk (${persenSelesai}%)</span>
+                      <span style="font-weight: 700; color: #116834;">${ttlDiokulasi.toLocaleString('id-ID')} Pkk (${persenSelesai}%)</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                       <span style="color: #6B7280;">Total Bibit Ditolak:</span>
-                      <span style="font-weight: 700; color: #D32F2F;">${ttlDitolak} Pkk</span>
+                      <span style="font-weight: 700; color: #D32F2F;">${ttlDitolak.toLocaleString('id-ID')} Pkk</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                       <span style="color: #6B7280;">Total Kayu Entres Dipakai:</span>
-                      <span style="font-weight: 700; color: #111;">${ttlKayu} Batang</span>
+                      <span style="font-weight: 700; color: #111;">${ttlKayu.toLocaleString('id-ID')} Batang</span>
                     </div>
 
                     ${rows.length > 0 ? `
@@ -216,8 +239,8 @@ export function renderBuddingGrafting() {
                         <div style="display: flex; flex-direction: column; gap: 3px;">
                           ${rows.map(r => `
                             <div style="display: flex; justify-content: space-between; color: #4B5563;">
-                              <span>• ${r.bedengan || 'Bedengan'} (${r.klon ? normalizeKlonName(r.klon) : (stx.klonAwal ? normalizeKlonName(stx.klonAwal) : 'GT 1')})</span>
-                              <span style="font-weight: 700; color: #116834;">${parseInt(r.disemai || 0)} Pkk</span>
+                              <span>• ${formatBedenganCode(r.bedengan, r.bedenganCode) || 'BED-001'} (${r.klon ? normalizeKlonName(r.klon) : (stx.klonAwal ? normalizeKlonName(stx.klonAwal) : 'GT 1')})</span>
+                              <span style="font-weight: 700; color: #116834;">${parseInt(r.disemai || 0).toLocaleString('id-ID')} Pkk</span>
                             </div>
                           `).join('')}
                         </div>
@@ -297,7 +320,7 @@ export function renderBuddingGrafting() {
                         ${tx.batchNo || 'Batch-01'} <span style="color: #9CA3AF; margin: 0 2px;">•</span> ${tx.klonEntres || tx.klon || 'PB 260'}
                       </div>
                       <div style="font-size: 0.74rem; color: #6B7280; margin-top: 2px;">
-                        ${tx.bedengan || 'Bedengan 01'} <span style="color: #9CA3AF; margin: 0 2px;">•</span> ${tx.tanggal || 'Hari ini'}
+                        ${tx.bedengan ? formatBedenganCode(tx.bedengan, tx.bedenganCode) : 'BED-001'} <span style="color: #9CA3AF; margin: 0 2px;">•</span> ${tx.tanggal || 'Hari ini'}
                       </div>
                       <div style="font-size: 0.74rem; color: #6B7280; margin-top: 2px;">
                         Dok. Penyemaian: <span style="color: #374151; font-weight: 600;">${tx.sourceDocNo || '-'}</span>

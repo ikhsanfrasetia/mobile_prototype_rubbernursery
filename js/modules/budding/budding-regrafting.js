@@ -2,6 +2,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
+import { formatBedenganCode } from './budding-grafting.js';
 
 export function renderBuddingRegrafting() {
   const app = document.getElementById('app');
@@ -242,22 +243,22 @@ export function renderBuddingRegrafting() {
                   <hr style="border: none; border-top: 1px solid #F3F4F6; margin: 0 0 10px 0;" />
 
                   <!-- GRID DETAIL 2x2 -->
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 10px;">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 12px;">
                     <div>
-                      <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Klon Awal (Gagal)</div>
-                      <div style="font-size: 0.84rem; font-weight: 800; color: #D32F2F;">${poolItem.klonAwal ? normalizeKlonName(poolItem.klonAwal) : 'PB 260'}</div>
+                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Klon Awal (Gagal)</div>
+                      <div style="font-size: 0.84rem; font-weight: 800; color: #D32F2F; line-height: 1.3;">${poolItem.klonAwal ? normalizeKlonName(poolItem.klonAwal) : 'PB 260'}</div>
                     </div>
                     <div>
-                      <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Lokasi Bedengan</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${poolItem.bedengan || 'Bedengan 01'}</div>
+                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Lokasi Bedengan</div>
+                      <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.35; word-break: break-word;">${formatBedenganCode(poolItem.bedengan, poolItem.bedenganCode) || 'BED-001'}</div>
                     </div>
                     <div>
-                      <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Populasi Gagal Okulasi</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #D32F2F;">${populasiGagal} Pkk</div>
+                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Populasi Gagal Okulasi</div>
+                      <div style="font-size: 0.82rem; font-weight: 700; color: #D32F2F; line-height: 1.3;">${populasiGagal.toLocaleString('id-ID')} Pkk</div>
                     </div>
                     <div>
-                      <div style="font-size: 0.7rem; color: #6B7280; margin-bottom: 2px;">Sisa Belum Regrafting</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: ${sisaBelumRegraft > 0 ? '#D32F2F' : '#116834'};">${sisaBelumRegraft} Pkk</div>
+                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Sisa Belum Regrafting</div>
+                      <div style="font-size: 0.82rem; font-weight: 700; color: ${sisaBelumRegraft > 0 ? '#D32F2F' : '#116834'}; line-height: 1.3;">${sisaBelumRegraft.toLocaleString('id-ID')} Pkk</div>
                     </div>
                   </div>
 

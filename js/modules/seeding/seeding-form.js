@@ -6,6 +6,7 @@ import { getActiveKlons, normalizeKlonName, resolveKlon } from '../../data/klon-
 import { getActiveBatches, getBatchById, getBatchByCode } from '../../data/batch-master.js';
 import { getActiveBedengan, getBedenganById, getBedenganByCode } from '../../data/bedengan-master.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
+import { integrateSeedingToSelectionPool } from '../selection/selection-manager.js';
 
 export function renderSeedingForm() {
   const app = document.getElementById('app');
@@ -71,9 +72,9 @@ export function renderSeedingForm() {
     defaultBatchCode = finalBatchList[0].batchCode;
   }
 
-  const initialBedName = initialBedObj ? initialBedObj.name : 'Bedengan 001';
+  const initialBedCode = initialBedObj ? (initialBedObj.bedenganCode || initialBedObj.name) : 'BED-001';
+  const initialBedName = initialBedObj ? (initialBedObj.bedenganCode || initialBedObj.name) : 'BED-001';
   const initialBedId = initialBedObj ? initialBedObj.bedenganId : null;
-  const initialBedCode = initialBedObj ? initialBedObj.bedenganCode : null;
 
   // Form state
   const state = {
@@ -131,56 +132,63 @@ export function renderSeedingForm() {
       <!-- SCROLLABLE CONTENT -->
       <main style="flex: 1; overflow-y: auto; padding-bottom: 24px;">
         
-        <!-- INFORMASI MANTRI & TANGGAL -->
-        <section style="display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 16px; border-bottom: 1px solid #D9D9D9; gap: 12px;">
+        <!-- 1. IDENTITAS TRANSAKSI -->
+        <section style="display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 16px; border-bottom: 1px solid #E5E7EB; gap: 12px; background: #FFFFFF;">
           <div style="flex: 1;">
-            <div style="font-size: 0.88rem; font-weight: 700; color: #111111; margin-bottom: 2px;">${user.name}</div>
-            <div style="font-size: 0.74rem; color: #6B7280; line-height: 1.3;">${user.code}-${user.position}</div>
+            <div style="font-size: 0.95rem; font-weight: 700; color: #111111; margin-bottom: 2px;">${user.name}</div>
+            <div style="font-size: 0.76rem; color: #6B7280; line-height: 1.3;">${user.code} - ${user.position}</div>
           </div>
           <div style="text-align: right; flex-shrink: 0;">
-            <div style="font-size: 0.74rem; font-weight: 600; color: #555555; margin-bottom: 2px;">Tanggal Penyemaian</div>
-            <div style="font-size: 0.85rem; color: #111111; font-weight: 700;">${today}</div>
+            <div style="font-size: 0.74rem; font-weight: 600; color: #6B7280; margin-bottom: 2px;">Tanggal Penyemaian</div>
+            <div style="font-size: 0.92rem; color: #111111; font-weight: 700;">${today}</div>
           </div>
         </section>
 
-        <!-- RINCIAN PENYEMAIAN -->
-        <section style="padding: 14px 16px; border-bottom: 1px solid #D9D9D9;">
+        <!-- 2. RINCIAN PENYEMAIAN -->
+        <section style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB; background: #FFFFFF;">
           <h2 style="font-size: 0.88rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Rincian Penyemaian</h2>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <span style="font-size: 0.78rem; color: #555555;">Jenis Bibitan</span>
-            <span style="font-size: 0.82rem; font-weight: 600; color: #222222;">Green Budding</span>
+            <span style="font-size: 0.82rem; font-weight: 700; color: #111111;">Green Budding</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span style="font-size: 0.78rem; color: #555555;">Tahapan Pertumbuhan</span>
-            <span style="font-size: 0.82rem; font-weight: 600; color: #222222;">${sourceTx.tahapan || 'Rubber Main Nursery'}</span>
+            <span style="font-size: 0.82rem; font-weight: 700; color: #111111;">${sourceTx.tahapan || 'Rubber Main Nursery'}</span>
           </div>
           
-          <div style="margin-bottom: 4px;">
-            <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #111111; margin-bottom: 6px;">Pilih Program Pembibitan</label>
-            <div style="background: #F3F4F6; padding: 8px 10px; border-radius: 4px; border: 1px solid #D1D5DB;">
-              <span style="color: #116834; font-weight: 700; font-size: 0.78rem;">${sourceTx.program || 'PRG/NUR/01/2026'}</span>
-              <span style="color: #374151; font-size: 0.78rem;"> - Pembibitan Karet 2026</span>
+          <!-- Program Pembibitan -->
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 0.76rem; font-weight: 600; color: #4B5563; margin-bottom: 6px;">Program Pembibitan</label>
+            <div style="background: #F3F4F6; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid #D1D5DB; display: flex; align-items: center; box-sizing: border-box;">
+              <span style="color: #116834; font-weight: 700; font-size: 0.8rem;">${sourceTx.program || 'PRG/NUR/01/2026'}</span>
+              <span style="color: #374151; font-size: 0.8rem; margin-left: 4px;"> - Pembibitan Karet 2026</span>
             </div>
           </div>
-        </section>
 
-        <!-- KLON & TOTAL -->
-        <section style="padding: 14px 16px; border-bottom: 1px solid #D9D9D9;">
-          <div style="display: grid; grid-template-columns: 0.85fr 1fr 1.45fr; gap: 6px; text-align: center; align-items: flex-end;">
+          <!-- Klon Awal & Total Penerimaan (Rata Kiri, 2 Kolom Seimbang) -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
             <div>
-              <div style="font-size: 0.72rem; font-weight: 600; color: #555555; margin-bottom: 6px;">Klon Awal</div>
-              <div style="font-size: 0.82rem; font-weight: 700; color: #111111; height: 30px; display: flex; align-items: center; justify-content: center;">${sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1'}</div>
+              <div style="font-size: 0.76rem; font-weight: 600; color: #4B5563; margin-bottom: 6px; text-align: left;">Klon Awal</div>
+              <div style="font-size: 0.88rem; font-weight: 700; color: #111827; height: 38px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; box-sizing: border-box; text-align: left;">
+                ${sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1'}
+              </div>
             </div>
             <div>
-              <div style="font-size: 0.72rem; font-weight: 600; color: #555555; margin-bottom: 6px;">Total Penerimaan</div>
-              <div style="font-size: 0.82rem; font-weight: 700; color: #111111; height: 30px; display: flex; align-items: center; justify-content: center;">${totalPenerimaan}</div>
+              <div style="font-size: 0.76rem; font-weight: 600; color: #4B5563; margin-bottom: 6px; text-align: left;">Total Penerimaan</div>
+              <div style="font-size: 0.88rem; font-weight: 700; color: #111827; height: 38px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; box-sizing: border-box; text-align: left;">
+                ${totalPenerimaan.toLocaleString('id-ID')}
+              </div>
             </div>
-            <div>
-              <div style="font-size: 0.72rem; font-weight: 600; color: #555555; margin-bottom: 6px; line-height: 1.15;">Banyaknya<br>Ditolak/Seleksi</div>
-              <div style="display: flex; align-items: center; border: 1px solid #D1D5DB; border-radius: 4px; height: 30px; background: #FFFFFF; overflow: hidden;">
-                <input type="number" id="input-ditolak" value="${state.ditolak}" placeholder="0" style="width: 36px; border: none; outline: none; padding: 0 2px; text-align: center; font-size: 0.76rem; font-weight: 600; color: #111111; background: transparent;">
-                <div style="width: 1px; height: 18px; background: #D1D5DB; flex-shrink: 0;"></div>
-                <select id="select-alasan" style="flex: 1; min-width: 0; border: none; outline: none; background: transparent; padding: 0 4px; font-size: 0.74rem; color: #374151; cursor: pointer;" ${(!state.ditolak || parseInt(state.ditolak) === 0) ? 'disabled' : ''}>
+          </div>
+
+          <!-- Banyaknya Ditolak / Seleksi (Simetris 2 Kolom Seimbang) -->
+          <div>
+            <div style="font-size: 0.76rem; font-weight: 600; color: #4B5563; margin-bottom: 6px; text-align: left;">Banyaknya Ditolak/Seleksi</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: center;">
+              <input type="number" id="input-ditolak" value="${state.ditolak}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; text-align: left; font-size: 0.88rem; font-weight: 700; color: #111827; background: #FFFFFF; outline: none; box-sizing: border-box;">
+              <div style="position: relative; width: 100%; height: 38px;">
+                <select id="select-alasan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; padding: 0 10px; font-size: 0.82rem; font-weight: 600; color: #374151; cursor: pointer; outline: none; box-sizing: border-box;" ${(!state.ditolak || parseInt(state.ditolak) === 0) ? 'disabled' : ''}>
                   <option value="Tidak Ada" ${state.alasanDitolak === 'Tidak Ada' || !state.ditolak || parseInt(state.ditolak) === 0 ? 'selected' : ''}>Tidak Ada</option>
                   <option value="Rusak" ${state.alasanDitolak === 'Rusak' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Rusak</option>
                   <option value="Mati" ${state.alasanDitolak === 'Mati' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Mati</option>
@@ -189,10 +197,11 @@ export function renderSeedingForm() {
               </div>
             </div>
           </div>
+
         </section>
 
-        <!-- DETAIL PENYEMAIAN -->
-        <section style="padding: 14px 16px; border-bottom: 1px solid #D9D9D9;">
+        <!-- 3. DETAIL PENYEMAIAN -->
+        <section style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB; background: #FFFFFF;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <h2 style="font-size: 0.88rem; font-weight: 700; color: #111111; margin: 0;">Detail Penyemaian</h2>
             <button id="btn-tambah-data" type="button" style="background: #116834; color: white; border: none; border-radius: 4px; padding: 4px 10px; font-size: 0.72rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
@@ -204,50 +213,52 @@ export function renderSeedingForm() {
             </button>
           </div>
 
-
-          
-          <div style="background: #E8F5E9; padding: 8px 6px; display: grid; grid-template-columns: 1.6fr 1fr 0.9fr 24px; gap: 6px; border: 1px solid #C8E6C9; border-bottom: none; text-align: center; align-items: center;">
-            <div style="font-size: 0.68rem; font-weight: 700; color: #116834;">No. Bedengan</div>
-            <!-- <div style="font-size: 0.68rem; font-weight: 700; color: #116834;">Klon Baru</div> -->
-            <div style="font-size: 0.68rem; font-weight: 700; color: #116834;">Bibit Disemai</div>
-            <div style="font-size: 0.68rem; font-weight: 700; color: #116834;">Jlh Polybag</div>
+          <!-- Table Header -->
+          <div style="background: #E8F5E9; padding: 8px 6px; display: grid; grid-template-columns: 1.5fr 1fr 1fr 28px; gap: 6px; border: 1px solid #C8E6C9; border-bottom: none; align-items: center; text-align: center;">
+            <div style="font-size: 0.7rem; font-weight: 700; color: #116834; text-align: left; padding-left: 4px;">No. Bedengan</div>
+            <div style="font-size: 0.7rem; font-weight: 700; color: #116834;">Bibit Disemai</div>
+            <div style="font-size: 0.7rem; font-weight: 700; color: #116834;">Jlh Polybag</div>
             <div></div>
           </div>
           
-          <div id="table-body" style="border-left: 1px solid #C8E6C9; border-right: 1px solid #C8E6C9;">
+          <div id="table-body" style="border-left: 1px solid #C8E6C9; border-right: 1px solid #C8E6C9; border-bottom: 1px solid #C8E6C9;">
             <!-- rows -->
           </div>
-          
-          <div style="background: #E8F5E9; padding: 10px 12px; border: 1px solid #C8E6C9; border-top: none;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-              <span style="font-size: 0.74rem; font-weight: 700; color: #116834;">Nomor Batch</span>
-              <select id="select-batch" style="font-size: 0.75rem; font-weight: 700; color: #111111; border: 1px solid #A5D6A7; background: #FFFFFF; border-radius: 4px; padding: 2px 6px; outline: none; cursor: pointer;">
+        </section>
+
+        <!-- 4. RINGKASAN PENYEMAIAN -->
+        <section style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB; background: #FFFFFF;">
+          <h2 style="font-size: 0.88rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Ringkasan Penyemaian</h2>
+          <div style="background: #E8F5E9; padding: 12px 14px; border: 1px solid #C8E6C9; border-radius: 6px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.76rem; font-weight: 700; color: #116834;">Nomor Batch</span>
+              <select id="select-batch" style="font-size: 0.76rem; font-weight: 700; color: #111111; border: 1px solid #A5D6A7; background: #FFFFFF; border-radius: 4px; padding: 3px 8px; outline: none; cursor: pointer;">
                 ${finalBatchList.map(b => `<option value="${b.id || b.batchId}" ${(state.batchId === (b.id || b.batchId) || state.batchNo === (b.batchCode || b.batchNo)) ? 'selected' : ''}>${b.batchCode || b.batchNo}</option>`).join('')}
               </select>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-              <span style="font-size: 0.74rem; font-weight: 700; color: #116834;">Bibit Tersedia</span>
-              <span id="lbl-tersedia" style="font-size: 0.78rem; font-weight: 700; color: #111111;">0</span>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.76rem; font-weight: 700; color: #116834;">Bibit Disemai (Sesi Ini)</span>
+              <span id="lbl-tersedia" style="font-size: 0.82rem; font-weight: 700; color: #111111;">0</span>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-              <span style="font-size: 0.74rem; font-weight: 700; color: #116834;">Banyaknya Ditolak/Seleksi</span>
-              <span id="lbl-ditolak" style="font-size: 0.78rem; font-weight: 700; color: #111111;">0</span>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.76rem; font-weight: 700; color: #116834;">Banyaknya Ditolak/Seleksi</span>
+              <span id="lbl-ditolak" style="font-size: 0.82rem; font-weight: 700; color: #111111;">0</span>
             </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span style="font-size: 0.74rem; font-weight: 700; color: #116834;">Bibit Belum Disemai</span>
-              <span id="lbl-belum" style="font-size: 0.78rem; font-weight: 700; color: #D32F2F;">${previousBalance}</span>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.76rem; font-weight: 700; color: #116834;">Sisa Benih Belum Disemai</span>
+              <span id="lbl-belum" style="font-size: 0.82rem; font-weight: 700; color: #D32F2F;">${previousBalance}</span>
             </div>
           </div>
         </section>
 
-        <!-- TAMBAH FOTO -->
-        <section style="padding: 14px 16px;">
-          <h2 style="font-size: 0.88rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Tambah Foto</h2>
-          <p style="font-size: 0.74rem; color: #6B7280; margin: 0 0 12px 0; line-height: 1.35;">
+        <!-- 5. TAMBAH FOTO -->
+        <section style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB; background: #FFFFFF;">
+          <h2 style="font-size: 0.88rem; font-weight: 700; color: #111111; margin: 0 0 4px 0;">Tambah Foto</h2>
+          <p style="font-size: 0.74rem; color: #6B7280; margin: 0 0 10px 0; line-height: 1.35;">
             Praktik terbaik adalah menyertakan foto jarak dekat untuk detail Item dan foto jarak jauh untuk konteks area yang terpengaruh.
           </p>
           
-          <div id="photo-container" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;"></div>
+          <div id="photo-container" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;"></div>
 
           <button id="btn-tambah-foto" type="button" style="width: 100%; padding: 10px; background: #E3F2FD; border: 1px dashed #4A90E2; border-radius: 6px; color: #4A90E2; font-size: 0.82rem; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 6px; cursor: pointer;">
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -261,7 +272,7 @@ export function renderSeedingForm() {
 
       </main>
 
-      <!-- BOTTOM ACTION -->
+      <!-- 6. BOTTOM ACTION -->
       <footer style="padding: 14px 16px; background: #FFFFFF; border-top: 1px solid #D9D9D9; flex-shrink: 0;">
         <button id="btn-simpan" type="button" disabled style="width: 100%; height: 44px; background: #E0E0E0; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.92rem; cursor: not-allowed;">
           Simpan Penyemaian
@@ -367,12 +378,12 @@ export function renderSeedingForm() {
     });
     const ditolak = parseInt(state.ditolak || 0);
     
-    lblTersedia.textContent = disemaiTotal;
-    lblDitolak.textContent = ditolak;
+    lblTersedia.textContent = disemaiTotal.toLocaleString('id-ID');
+    lblDitolak.textContent = ditolak.toLocaleString('id-ID');
     
-    const belumDiseleksi = previousBalance - ditolak - disemaiTotal;
-    lblBelum.textContent = belumDiseleksi;
-    if (belumDiseleksi < 0 || belumDiseleksi > 0) {
+    const sisaBenih = previousBalance - ditolak - disemaiTotal;
+    lblBelum.textContent = sisaBenih.toLocaleString('id-ID');
+    if (sisaBenih < 0) {
       lblBelum.style.color = '#D32F2F';
     } else {
       lblBelum.style.color = '#111111';
@@ -381,18 +392,16 @@ export function renderSeedingForm() {
 
   function renderTableRows() {
     tableBody.innerHTML = state.tableRows.map((row, idx) => `
-      <div style="display: grid; grid-template-columns: 1.6fr 1fr 0.9fr 24px; gap: 6px; padding: 8px 6px; border-bottom: 1px solid #E5E7EB; align-items: center;">
-        <div style="font-size: 0.78rem; font-weight: 700; color: #111827; text-align: center; white-space: nowrap;">
-          <select class="sel-bedengan" data-index="${idx}" style="width: 100%; border: 1px solid #CBD5E1; border-radius: 4px; outline: none; background: #FFFFFF; font-size: 0.74rem; font-weight: 700; color: #111827; cursor: pointer; padding: 4px 2px; text-align: center;">
-            ${finalBedenganList.map(b => `<option value="${b.bedenganId}" ${(row.bedenganId === b.bedenganId || row.bedengan === b.name || row.bedengan === b.bedenganCode) ? 'selected' : ''}>${b.name}</option>`).join('')}
-          </select>
-        </div>
-        <input type="number" class="inp-disemai" data-index="${idx}" value="${row.disemai}" placeholder="0" style="width: 100%; border: none; outline: none; font-size: 0.75rem; font-weight: 600; text-align: center; background: transparent; color: #111111; padding: 3px 0;">
-        <input type="number" class="inp-polybag" data-index="${idx}" value="${row.polybag}" placeholder="0" readonly style="width: 100%; border: none; outline: none; font-size: 0.75rem; font-weight: 600; text-align: center; background: transparent; color: #4B5563; padding: 3px 0;">
+      <div class="table-row" style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 28px; gap: 6px; padding: 6px; border-bottom: 1px solid #E5E7EB; align-items: center; background: #FFFFFF;">
+        <select class="sel-bedengan" data-index="${idx}" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 4px; outline: none; background: #FFFFFF; font-size: 0.76rem; font-weight: 700; color: #111827; cursor: pointer; padding: 0 4px;">
+          ${finalBedenganList.map(b => `<option value="${b.bedenganId}" ${(row.bedenganId === b.bedenganId || row.bedengan === b.name || row.bedengan === b.bedenganCode || row.bedenganCode === b.bedenganCode) ? 'selected' : ''}>${b.bedenganCode || b.name}</option>`).join('')}
+        </select>
+        <input type="number" class="inp-disemai" data-index="${idx}" value="${row.disemai}" placeholder="0" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 4px; outline: none; font-size: 0.82rem; font-weight: 700; text-align: center; background: #FFFFFF; color: #111827; padding: 0 4px; box-sizing: border-box;">
+        <input type="number" class="inp-polybag" data-index="${idx}" value="${row.polybag}" placeholder="0" readonly style="width: 100%; height: 34px; border: 1px solid #E2E8F0; border-radius: 4px; outline: none; font-size: 0.82rem; font-weight: 600; text-align: center; background: #F8FAFC; color: #4B5563; padding: 0 4px; box-sizing: border-box;">
         <div style="display: flex; justify-content: center; align-items: center;">
           ${state.tableRows.length > 1 ? `
-            <button type="button" class="btn-hapus-row" data-index="${idx}" title="Hapus baris" style="background: #FEE2E2; border: 1px solid #FECACA; border-radius: 3px; width: 20px; height: 20px; padding: 0; cursor: pointer; color: #DC2626; display: flex; align-items: center; justify-content: center;">
-              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <button type="button" class="btn-hapus-row" data-index="${idx}" title="Hapus baris" style="background: #FEE2E2; border: 1px solid #FECACA; border-radius: 4px; width: 26px; height: 26px; padding: 0; cursor: pointer; color: #DC2626; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                 <line x1="10" y1="11" x2="10" y2="17"></line>
@@ -400,8 +409,8 @@ export function renderSeedingForm() {
               </svg>
             </button>
           ` : `
-            <button type="button" class="btn-reset-row" data-index="${idx}" title="Kosongkan baris" style="background: transparent; border: none; width: 20px; height: 20px; padding: 0; cursor: pointer; color: #9CA3AF; display: flex; align-items: center; justify-content: center;">
-              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <button type="button" class="btn-reset-row" data-index="${idx}" title="Kosongkan baris" style="background: transparent; border: none; width: 26px; height: 26px; padding: 0; cursor: pointer; color: #9CA3AF; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
               </svg>
@@ -419,7 +428,7 @@ export function renderSeedingForm() {
         if (state.tableRows[rowIdx]) {
           state.tableRows[rowIdx].bedenganId = bObj ? bObj.bedenganId : bedId;
           state.tableRows[rowIdx].bedenganCode = bObj ? bObj.bedenganCode : null;
-          state.tableRows[rowIdx].bedengan = bObj ? bObj.name : bedId;
+          state.tableRows[rowIdx].bedengan = bObj ? (bObj.bedenganCode || bObj.name) : bedId;
         }
         validateForm();
       });
@@ -444,8 +453,11 @@ export function renderSeedingForm() {
         state.tableRows[e.target.dataset.index].polybag = polybagVal || '';
         
         // update DOM directly for polybag
-        const row = e.target.closest('div');
-        row.querySelector('.inp-polybag').value = polybagVal || '';
+        const row = e.target.closest('.table-row') || e.target.closest('div');
+        const polybagInput = row.querySelector('.inp-polybag');
+        if (polybagInput) {
+          polybagInput.value = polybagVal || '';
+        }
         
         calculateTotals();
         validateForm();
@@ -471,7 +483,7 @@ export function renderSeedingForm() {
         state.tableRows[idx] = {
           bedenganId: defBed ? defBed.bedenganId : null,
           bedenganCode: defBed ? defBed.bedenganCode : null,
-          bedengan: defBed ? defBed.name : '',
+          bedengan: defBed ? (defBed.bedenganCode || defBed.name) : '',
           klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1',
           disemai: '',
           polybag: ''
@@ -547,7 +559,7 @@ export function renderSeedingForm() {
     state.tableRows.push({
       bedenganId: defaultBedObj ? defaultBedObj.bedenganId : null,
       bedenganCode: defaultBedObj ? defaultBedObj.bedenganCode : null,
-      bedengan: defaultBedObj ? defaultBedObj.name : 'Bedengan 001',
+      bedengan: defaultBedObj ? (defaultBedObj.bedenganCode || defaultBedObj.name) : 'BED-001',
       klon: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1',
       disemai: '',
       polybag: ''
@@ -671,8 +683,9 @@ export function renderSeedingForm() {
     let totalDisemai = 0;
     let totalPolybag = 0;
     state.tableRows.forEach(r => {
-      totalDisemai += parseInt(r.disemai || 0);
-      totalPolybag += parseInt(r.polybag || 0);
+      const disVal = parseInt(r.disemai || 0);
+      totalDisemai += disVal;
+      totalPolybag += parseInt(r.polybag || Math.ceil(disVal / 2) || 0);
     });
 
     const bedenganDisplay = Array.from(new Set((state.tableRows || []).map(r => r.bedengan).filter(Boolean))).join(', ') || 'Bedengan 001';
@@ -733,7 +746,7 @@ export function renderSeedingForm() {
       rows: enrichedRows,
       photos: state.photos,
       totalDisemai,
-      totalPolybag
+      totalPolybag: Math.ceil(totalDisemai / 2)
     };
 
     if (editIdx !== null) {
@@ -743,6 +756,13 @@ export function renderSeedingForm() {
     }
     
     storage.set('seeding_transactions', txs);
+
+    // Integrasikan bibit ditolak (Rusak, Mati, Lainnya) ke Selection Pool secara idempoten
+    try {
+      integrateSeedingToSelectionPool(newTx, { isEditing: editIdx !== null });
+    } catch (err) {
+      console.warn('[seeding-form] Gagal integrasi ke selection_pool:', err.message);
+    }
 
     // Bersihkan session scan bedengan
     storage.remove('scanned_bedengan_id');
