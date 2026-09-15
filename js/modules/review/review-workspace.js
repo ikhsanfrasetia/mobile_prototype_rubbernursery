@@ -7,7 +7,7 @@
 import { getCurrent, navigate } from '../../core/router.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { esc, todayISO, uid, formatStandardDocNo, generateUniqueDocNo, getModuleDocCode, MODULE_DOC_CODES } from '../../core/utils.js';
+import { esc, todayISO, uid, formatStandardDocNo, generateUniqueDocNo, getModuleDocCode, MODULE_DOC_CODES, getAttendanceUniqueKey } from '../../core/utils.js';
 import { session } from '../../core/session.js';
 import { storage } from '../../core/storage.js';
 import { ROLE_LABELS } from '../../core/permissions.js';
@@ -518,7 +518,13 @@ function loadTxList(modId) {
   const cfg = TX_MODULES[modId];
   if (!cfg) return [];
   if (modId === 'attendance') {
-    const items = storage.get('attendance_transactions', []);
+    const rawItems = storage.get('attendance_transactions', []) || [];
+    const map = new Map();
+    rawItems.forEach(it => {
+      const key = getAttendanceUniqueKey(it) || it.id;
+      if (!map.has(key)) map.set(key, it);
+    });
+    const items = Array.from(map.values());
     return (items || []).map((it) => ({
       ...it,
       name: it.workerName || it.name || it.userName || 'Wagiman',
@@ -636,7 +642,7 @@ function saveTxList(modId, list) {
   list.forEach((item) => {
     try {
       cfg.repo.create(item);
-    } catch (e) {}
+    } catch (e) { }
   });
 }
 let flowRoleFilter = 'ALL';
@@ -700,7 +706,7 @@ function setWorkspaceTab(tab) {
     const url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
     window.history.replaceState({}, '', url);
-  } catch (_) {}
+  } catch (_) { }
 }
 
 /** Sinkronkan seluruh data transaksi dari IndexedDB & Storage Frame HP */
@@ -713,9 +719,13 @@ export async function syncAllTxFromMobileDB(targetModId = null) {
       const dbList = await attendanceRepository.list();
       const stored = storage.get('attendance_transactions', []);
       const map = new Map();
-      (dbList || []).forEach((it) => map.set(it.id, it));
+      (dbList || []).forEach((it) => {
+        const key = getAttendanceUniqueKey(it) || it.id;
+        map.set(key, it);
+      });
       stored.forEach((it) => {
-        if (!map.has(it.id)) map.set(it.id, it);
+        const key = getAttendanceUniqueKey(it) || it.id;
+        if (!map.has(key)) map.set(key, it);
       });
       const merged = Array.from(map.values()).map((it) => ({
         ...it,
@@ -1211,12 +1221,11 @@ export function renderReviewPanel() {
             </tr>
           </thead>
           <tbody>
-            ${
-              filteredNotes.length === 0
-                ? '<tr><td colspan="9" class="review-empty-state">Tidak ada catatan perbaikan yang cocok dengan filter.</td></tr>'
-                : filteredNotes
-                    .map(
-                      (n) => `
+            ${filteredNotes.length === 0
+        ? '<tr><td colspan="9" class="review-empty-state">Tidak ada catatan perbaikan yang cocok dengan filter.</td></tr>'
+        : filteredNotes
+          .map(
+            (n) => `
               <tr class="${selectedNoteId === n.id ? 'is-selected' : ''}" data-id="${n.id}">
                 <td class="col-no">#${String(n.number).padStart(2, '0')}</td>
                 <td class="col-date">${esc(n.createdAt)}</td>
@@ -1231,9 +1240,8 @@ export function renderReviewPanel() {
                 </td>
                 <td class="col-desc">${esc(n.description)}</td>
                 <td class="col-status">
-                  <span class="table-status-badge ${
-                    n.status === 'Dalam Proses' ? 'status-proses' : n.status === 'Selesai' ? 'status-selesai' : 'status-baru'
-                  }">${esc(n.status)}</span>
+                  <span class="table-status-badge ${n.status === 'Dalam Proses' ? 'status-proses' : n.status === 'Selesai' ? 'status-selesai' : 'status-baru'
+              }">${esc(n.status)}</span>
                 </td>
                 <td class="col-role">${esc(n.creatorRole || 'Customer')}</td>
                 <td class="col-marker">
@@ -1250,26 +1258,24 @@ export function renderReviewPanel() {
                 </td>
               </tr>
             `
-                    )
-                    .join('')
-            }
+          )
+          .join('')
+      }
           </tbody>
         </table>
       </div>
 
       <!-- Mobile Card List (< 768px) -->
       <div class="review-mobile-list">
-        ${
-          filteredNotes.length === 0
-            ? '<div class="review-empty-state">Tidak ada catatan perbaikan.</div>'
-            : filteredNotes
-                .map(
-                  (n) => `
+        ${filteredNotes.length === 0
+        ? '<div class="review-empty-state">Tidak ada catatan perbaikan.</div>'
+        : filteredNotes
+          .map(
+            (n) => `
           <div class="feedback-card-item ${selectedNoteId === n.id ? 'is-selected' : ''}" data-id="${n.id}">
             <div class="feedback-card-head">
               <span class="feedback-card-no">#${String(n.number).padStart(2, '0')}</span>
-              <span class="table-status-badge ${
-                n.status === 'Dalam Proses' ? 'status-proses' : n.status === 'Selesai' ? 'status-selesai' : 'status-baru'
+              <span class="table-status-badge ${n.status === 'Dalam Proses' ? 'status-proses' : n.status === 'Selesai' ? 'status-selesai' : 'status-baru'
               }">${esc(n.status)}</span>
             </div>
             <div class="feedback-card-date">📅 ${esc(n.createdAt)} &bull; ${esc(n.pageTitle || n.page || '-')}</div>
@@ -1286,9 +1292,9 @@ export function renderReviewPanel() {
             </div>
           </div>
         `
-                )
-                .join('')
-        }
+          )
+          .join('')
+      }
       </div>
     `;
   } else if (activeWorkspaceTab === 'flow') {
@@ -1324,14 +1330,13 @@ export function renderReviewPanel() {
 
         <!-- Timeline Steps -->
         <div class="flow-timeline">
-          ${
-            filteredSteps.length === 0
-              ? '<div class="review-empty-state">Tidak ada tahapan alur yang sesuai dengan filter.</div>'
-              : filteredSteps
-                  .map((step) => {
-                    const isExpanded = expandedFlowSteps.has(step.step);
-                    const fc = step.flowChart;
-                    return `
+          ${filteredSteps.length === 0
+        ? '<div class="review-empty-state">Tidak ada tahapan alur yang sesuai dengan filter.</div>'
+        : filteredSteps
+          .map((step) => {
+            const isExpanded = expandedFlowSteps.has(step.step);
+            const fc = step.flowChart;
+            return `
             <div class="flow-step-card ${step.status === 'READY' ? 'is-active-module' : 'is-analysis-module'}" data-step="${step.step}">
               <div class="flow-step-header-row">
                 <div class="flow-step-number-badge">
@@ -1368,9 +1373,8 @@ export function renderReviewPanel() {
               </div>
 
               <!-- Flowchart Stepper Box -->
-              ${
-                isExpanded && fc
-                  ? `
+              ${isExpanded && fc
+                ? `
                 <div class="flow-step-flowchart-box">
                   <div class="flowchart-header">
                     <span class="flowchart-heading">Alur Proses Aplikasi</span>
@@ -1384,8 +1388,8 @@ export function renderReviewPanel() {
                   <!-- Stepper Sequence List -->
                   <div class="flowchart-stepper-container">
                     ${fc.nodes
-                      .map(
-                        (node, nIdx) => `
+                  .map(
+                    (node, nIdx) => `
                       <div class="flow-stepper-item">
                         <div class="stepper-indicator-col">
                           <div class="stepper-dot">${String(nIdx + 1).padStart(2, '0')}</div>
@@ -1394,15 +1398,14 @@ export function renderReviewPanel() {
                         <div class="stepper-content-col">
                           <div class="stepper-head">
                             <span class="stepper-node-title">${esc(node.label)}</span>
-                            <span class="stepper-type-pill ${node.type}">${
-                              node.type === 'start'
-                                ? 'Inisialisasi'
-                                : node.type === 'process'
-                                ? 'Operasional'
-                                : node.type === 'decision'
-                                ? 'Verifikasi Mutu'
-                                : 'Output Sistem'
-                            }</span>
+                            <span class="stepper-type-pill ${node.type}">${node.type === 'start'
+                        ? 'Inisialisasi'
+                        : node.type === 'process'
+                          ? 'Operasional'
+                          : node.type === 'decision'
+                            ? 'Verifikasi Mutu'
+                            : 'Output Sistem'
+                      }</span>
                             <span class="stepper-actor-tag">Role: ${esc(node.actor)}</span>
                           </div>
                           <div class="stepper-desc">${esc(node.desc)}</div>
@@ -1410,8 +1413,8 @@ export function renderReviewPanel() {
                         </div>
                       </div>
                     `
-                      )
-                      .join('')}
+                  )
+                  .join('')}
                   </div>
 
                   <!-- 3-Column Meta Details -->
@@ -1437,13 +1440,13 @@ export function renderReviewPanel() {
                   </div>
                 </div>
               `
-                  : ''
+                : ''
               }
             </div>
           `;
-                  })
-                  .join('')
-          }
+          })
+          .join('')
+      }
         </div>
       </div>
     `;
@@ -1653,7 +1656,7 @@ export function renderReviewPanel() {
       const id = btn.dataset.id;
       const note = notes.find((n) => n.id === id);
       if (!note) return;
-      
+
       note.hidden = !note.hidden;
       saveNotesLocally();
       updateMarkers();
@@ -1842,7 +1845,7 @@ function openAddFeedbackModal(markerCoords = null) {
           saveNotesLocally();
           closeModal();
           isReviewMode = false;
-          
+
           if (result.emailStatus?.sent) {
             toast('Catatan disimpan ke Database & notifikasi email terkirim!', 'success');
           } else {
@@ -1895,9 +1898,8 @@ function openFeedbackDetailModal(note) {
         <div><strong>Tanggal:</strong> ${esc(note.createdAt)}</div>
         <div><strong>Pembuat:</strong> ${esc(note.author)} (${esc(note.creatorRole || 'Customer')})</div>
         ${note.email ? `<div><strong>Email:</strong> <a href="mailto:${esc(note.email)}" style="color:#116834;">${esc(note.email)}</a></div>` : ''}
-        <div><strong>Status:</strong> <span class="table-status-badge ${
-          note.status === 'Dalam Proses' ? 'status-proses' : note.status === 'Selesai' ? 'status-selesai' : 'status-baru'
-        }">${esc(note.status)}</span></div>
+        <div><strong>Status:</strong> <span class="table-status-badge ${note.status === 'Dalam Proses' ? 'status-proses' : note.status === 'Selesai' ? 'status-selesai' : 'status-baru'
+      }">${esc(note.status)}</span></div>
         <div><strong>Deskripsi:</strong></div>
         <div style="background:#f8fafc; padding:12px; border-radius:6px; border:1px solid #e2e8f0; line-height:1.45; word-break:break-word;">
           ${esc(note.description)}
@@ -1956,7 +1958,7 @@ function openChangeStatusModal(note) {
       note.status = newStatus;
       saveNotesLocally();
       closeModal();
-      
+
       let emailNotified = false;
       // Update di server
       try {
@@ -2049,8 +2051,8 @@ function renderTransactionsWorkspaceTab() {
       <!-- HEADER -->
       <div class="tx-catalog-header">
         <div class="tx-header-left">
-          <h2 class="tx-header-title">Katalog & Manajemen Data Transaksi</h2>
-          <p class="tx-header-subtitle">Kelola transaksi operasional pembibitan dari satu tempat.</p>
+          <h2 class="tx-header-title">Monitoring Data Transaksi</h2>
+          <p class="tx-header-subtitle">Data Transaksi Gawai Rubber Nursery.</p>
         </div>
         <div class="tx-header-actions">
           <button class="btn-tx-destructive" id="btn-tx-reset-all" type="button" title="Kosongkan seluruh data transaksi & afkir di prototype">
@@ -2085,18 +2087,18 @@ function renderTransactionsWorkspaceTab() {
       <!-- 12 MODUL SUB-TABS -->
       <div class="tx-modules-nav-wrap">
         ${Object.values(TX_MODULES)
-          .map((m) => {
-            const isActive = m.id === activeTxTab;
-            const count = loadTxList(m.id).length;
-            return `
+      .map((m) => {
+        const isActive = m.id === activeTxTab;
+        const count = loadTxList(m.id).length;
+        return `
             <button class="tx-module-tab tx-sub-tab-btn ${isActive ? 'is-active' : ''}" data-mod="${m.id}" type="button">
               <span class="tx-module-tab-icon">${getTxModuleIconSvg(m.id, 14)}</span>
               <span>${esc(m.title)}</span>
               <span class="tx-module-tab-count">${count}</span>
             </button>
           `;
-          })
-          .join('')}
+      })
+      .join('')}
       </div>
 
       <!-- FILTER BAR & METRICS -->
@@ -2107,8 +2109,8 @@ function renderTransactionsWorkspaceTab() {
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             </span>
             <input class="tx-search-input" id="tx-search-input" type="text" placeholder="Cari no. dokumen, batch, klon, bedengan..." value="${esc(
-              txSearchQuery
-            )}" />
+        txSearchQuery
+      )}" />
           </div>
           <select class="tx-status-select" id="tx-filter-status">
             <option value="ALL" ${txStatusFilter === 'ALL' ? 'selected' : ''}>Semua Status</option>
@@ -2119,34 +2121,31 @@ function renderTransactionsWorkspaceTab() {
             <option value="DRAFT" ${txStatusFilter === 'DRAFT' ? 'selected' : ''}>Status: Draft</option>
             <option value="HADIR" ${txStatusFilter === 'HADIR' ? 'selected' : ''}>Status: Hadir</option>
           </select>
-          ${
-            txSearchQuery
-              ? '<button class="tx-btn-reset-search" id="btn-tx-reset-search" type="button">Reset</button>'
-              : ''
-          }
+          ${txSearchQuery
+      ? '<button class="tx-btn-reset-search" id="btn-tx-reset-search" type="button">Reset</button>'
+      : ''
+    }
         </div>
 
         <div class="tx-toolbar-right">
           <span class="tx-metric-badge">
             Total: ${filteredList.length} Record
           </span>
-          ${
-            curMod.qtyField
-              ? `
+          ${curMod.qtyField
+      ? `
             <span class="tx-metric-badge volume">
               Volume: ${totalVolume.toLocaleString('id-ID')} ${esc(dominantUnit)}
             </span>
           `
-              : ''
-          }
+      : ''
+    }
         </div>
       </div>
 
       <!-- CONTENT AREA: TABLE / EMPTY STATE -->
       <div class="tx-content-card">
-        ${
-          filteredList.length === 0
-            ? `
+        ${filteredList.length === 0
+      ? `
           <div class="tx-empty-state">
             <div class="tx-empty-icon-wrap">
               ${getTxModuleIconSvg(activeTxTab, 26)}
@@ -2165,12 +2164,12 @@ function renderTransactionsWorkspaceTab() {
             </div>
           </div>
         `
-            : `
+      : `
           <div class="tx-table-responsive">
             ${renderDynamicTxTable(activeTxTab, curMod, filteredList)}
           </div>
         `
-        }
+    }
       </div>
     </div>
   `;
@@ -2997,7 +2996,7 @@ function openTxDeleteConfirm(item, modId, index) {
     if (item.id) {
       try {
         cfg.repo.remove(item.id);
-      } catch (e) {}
+      } catch (e) { }
     }
     closeModal();
     toast('Data transaksi berhasil dihapus!', 'info');
@@ -3015,17 +3014,17 @@ function openTxDetailModal(item, modId, index) {
       <div style="max-height: 60vh; overflow-y: auto;">
         <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
           ${Object.entries(item)
-            .map(([k, v]) => {
-              if (k === 'rawState' || k === 'photos' || k === 'photo') return '';
-              const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
-              return `
+        .map(([k, v]) => {
+          if (k === 'rawState' || k === 'photos' || k === 'photo') return '';
+          const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
+          return `
               <tr style="border-bottom: 1px solid #f1f5f9;">
                 <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 38%; vertical-align: top;">${esc(k)}</td>
                 <td style="padding: 6px 0; color: #0f172a; word-break: break-word;">${esc(val)}</td>
               </tr>
             `;
-            })
-            .join('')}
+        })
+        .join('')}
         </table>
       </div>
     `,

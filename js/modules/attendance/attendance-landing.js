@@ -10,30 +10,46 @@ import { storage } from '../../core/storage.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
 import { getWorkersForUserContext } from '../../data/worker-master.js';
 import { attendanceRepository, workerRepository } from '../../db/repositories.js';
-import { todayISO, formatFullDateIndonesian } from '../../core/utils.js';
+import { todayISO, formatFullDateIndonesian, getAttendanceUniqueKey } from '../../core/utils.js';
 import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
+
+export { getAttendanceUniqueKey };
 
 export const MONTH_NAMES_ID = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-export function formatDisplayDate(date = new Date()) {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return `${d.getDate()} ${MONTH_NAMES_ID[d.getMonth()]} ${d.getFullYear()}`;
+export function formatDisplayDate(dateInput) {
+  try {
+    const d = !dateInput ? new Date() : (typeof dateInput === 'string' ? new Date(dateInput) : (dateInput instanceof Date ? dateInput : new Date()));
+    if (isNaN(d.getTime())) {
+      const now = new Date();
+      return `${now.getDate()} ${MONTH_NAMES_ID[now.getMonth()]} ${now.getFullYear()}`;
+    }
+    const month = MONTH_NAMES_ID[d.getMonth()] || '';
+    return `${d.getDate()} ${month} ${d.getFullYear()}`;
+  } catch (e) {
+    const now = new Date();
+    return `${now.getDate()} ${MONTH_NAMES_ID[now.getMonth()]} ${now.getFullYear()}`;
+  }
 }
 
 export function formatAttendanceCloudDate(dateInput) {
   if (!dateInput) return '';
-  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-  if (isNaN(d.getTime())) return '';
-  const day = d.getDate();
-  const month = MONTH_NAMES_ID[d.getMonth()];
-  const year = d.getFullYear();
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  return `${day} ${month} ${year}, ${hours}:${minutes}`;
+  try {
+    const d = typeof dateInput === 'string' ? new Date(dateInput) : (dateInput instanceof Date ? dateInput : new Date(dateInput));
+    if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+    const day = d.getDate();
+    const month = MONTH_NAMES_ID[d.getMonth()] || '';
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${day} ${month} ${year}, ${hours}:${minutes}`;
+  } catch (e) {
+    return '';
+  }
 }
 
 export function getAttendanceCloudStorageKey(userId) {
@@ -42,14 +58,37 @@ export function getAttendanceCloudStorageKey(userId) {
 }
 
 export function getAttendanceCloudState(userId) {
-  const key = getAttendanceCloudStorageKey(userId);
-  return storage.get(key, null);
+  const defaultState = {
+    lastAttendanceCloudAt: null,
+    syncedAttendanceDate: null,
+    count: 0
+  };
+  try {
+    const key = getAttendanceCloudStorageKey(userId);
+    const raw = storage.get(key, null);
+    if (!raw || typeof raw !== 'object') {
+      return defaultState;
+    }
+    return {
+      lastAttendanceCloudAt: typeof raw.lastAttendanceCloudAt === 'string' ? raw.lastAttendanceCloudAt : null,
+      syncedAttendanceDate: typeof raw.syncedAttendanceDate === 'string' ? raw.syncedAttendanceDate : null,
+      count: typeof raw.count === 'number' && !isNaN(raw.count) ? raw.count : 0
+    };
+  } catch (err) {
+    console.warn('[attendance-landing] Gagal membaca cloud state:', err);
+    return defaultState;
+  }
 }
 
 export function setAttendanceCloudState(userId, stateData) {
   const key = getAttendanceCloudStorageKey(userId);
-  storage.set(key, stateData);
-  return stateData;
+  const payload = {
+    lastAttendanceCloudAt: stateData?.lastAttendanceCloudAt || null,
+    syncedAttendanceDate: stateData?.syncedAttendanceDate || null,
+    count: typeof stateData?.count === 'number' ? stateData.count : 0
+  };
+  storage.set(key, payload);
+  return payload;
 }
 
 export function getAttendanceTypeByHour() {
@@ -58,36 +97,89 @@ export function getAttendanceTypeByHour() {
   return currentHour >= 14 ? 'PULANG' : 'DATANG';
 }
 
-export async function renderAttendanceLanding() {
+export async function renderAttendanceLanding(contextOrDate = null) {
   const app = document.getElementById('app');
+  if (!app) return;
+
   const userContext = getCurrentUserContext() || session.get() || {};
   const userId = userContext.userId || userContext.id || userContext.code || 'USR-MNT-TBS';
-  const today = todayISO();
+
+  // Resolusi tanggal aktif yang aman dari berbagai tipe input (string ISO, router context object { params, query }, null, dll)
+  let today = todayISO();
+  if (typeof contextOrDate === 'string' && contextOrDate.trim().length >= 10) {
+    today = contextOrDate.trim().slice(0, 10);
+  } else if (contextOrDate && typeof contextOrDate === 'object') {
+    if (typeof contextOrDate.date === 'string' && contextOrDate.date.trim().length >= 10) {
+      today = contextOrDate.date.trim().slice(0, 10);
+    } else if (contextOrDate.params && typeof contextOrDate.params.date === 'string' && contextOrDate.params.date.trim().length >= 10) {
+      today = contextOrDate.params.date.trim().slice(0, 10);
+    }
+  }
+
   const attType = getAttendanceTypeByHour();
   const pageTitle = attType === 'PULANG' ? 'Presensi Pulang' : 'Presensi Datang';
 
-  // Ambil data pekerja dan presensi hari ini
+  // Ambil data pekerja dan presensi hari ini secara terpadu dan ter-deduplikasi
   let workers = [];
   let attendances = [];
 
   try {
-    workers = await workerRepository.list();
-    attendances = await attendanceRepository.list();
+    workers = (await workerRepository.list()) || [];
+    const dbList = (await attendanceRepository.list()) || [];
+    const storageList = storage.get('attendance_transactions', []) || [];
+
+    // Deduplikasi record antara IndexedDB dan localStorage
+    const attendanceMap = new Map();
+    dbList.forEach((item) => {
+      if (item) {
+        const key = getAttendanceUniqueKey(item) || item.id;
+        attendanceMap.set(key, item);
+      }
+    });
+    storageList.forEach((item) => {
+      if (item) {
+        const key = getAttendanceUniqueKey(item) || item.id;
+        if (!attendanceMap.has(key)) {
+          attendanceMap.set(key, item);
+        }
+      }
+    });
+    attendances = Array.from(attendanceMap.values());
   } catch (err) {
     console.warn('[attendance-landing] Gagal memuat data:', err);
+    workers = [];
+    attendances = [];
   }
 
-  // Filter presensi hari ini untuk tipe aktif (DATANG / PULANG)
-  const todayAttendances = attendances.filter((a) => (a.date === today || (a.createdAt && a.createdAt.startsWith(today))));
-  
-  const supervisorRecord = todayAttendances.find((a) => a.type === 'SUPERVISOR' && (a.attendanceType === attType || (!a.attendanceType && attType === 'DATANG')));
-  const isSupervisorDone = !!supervisorRecord;
+  // Filter presensi hari ini untuk tipe aktif (DATANG / PULANG) secara defensif
+  const todayAttendances = attendances.filter((a) => {
+    if (!a) return false;
+    const aDate = a.date || a.tanggal || (a.createdAt ? String(a.createdAt).slice(0, 10) : '');
+    const isToday = aDate === today;
+    const aType = a.attendanceType || 'DATANG';
+    const isMatchingType = aType === attType;
+    if (!isToday || !isMatchingType) return false;
 
+    if (userContext?.estateId && a.estateId && a.estateId !== userContext.estateId) return false;
+    if (userContext?.divisionId && a.divisionId && a.divisionId !== userContext.divisionId) return false;
+
+    return true;
+  });
+  
+  const supervisorRecord = todayAttendances.find((a) => a.type === 'SUPERVISOR');
+  const isSupervisorDone = !!supervisorRecord;
   const supervisorHadir = isSupervisorDone ? 1 : 0;
-  const pekerjaHadir = todayAttendances.filter((a) => a.type === 'WORKER' && (a.attendanceType === attType || (!a.attendanceType && attType === 'DATANG'))).length;
+
+  // Deduplikasi pekerja unik yang hadir pada tanggal & tipe presensi ini
+  const uniqueWorkerAtts = new Map();
+  todayAttendances.filter((a) => a.type === 'WORKER').forEach((a) => {
+    const wKey = String(a.workerId || a.workerCode || a.code || a.name || a.id).trim();
+    if (wKey) uniqueWorkerAtts.set(wKey, a);
+  });
+  const pekerjaHadir = uniqueWorkerAtts.size;
   const totalHadir = supervisorHadir + pekerjaHadir;
 
-  const scopedActiveWorkers = getWorkersForUserContext(userContext, { activeOnly: true });
+  const scopedActiveWorkers = getWorkersForUserContext(userContext, { activeOnly: true }) || [];
   const totalWorkersCount = scopedActiveWorkers.length > 0 ? scopedActiveWorkers.length : (workers.length > 0 ? workers.length : 5);
   const supervisorBelum = isSupervisorDone ? 0 : 1;
   const pekerjaBelum = Math.max(0, totalWorkersCount - pekerjaHadir);
@@ -100,9 +192,31 @@ export async function renderAttendanceLanding() {
   const availableToCloudCount = totalHadir;
   const isCloudEnabled = availableToCloudCount >= 1;
 
-  let initialCloudStatusText = 'Belum ada data yang dapat diawankan';
-  if (cloudState && cloudState.lastAttendanceCloudAt) {
-    initialCloudStatusText = `Terakhir diawankan ${formatAttendanceCloudDate(cloudState.lastAttendanceCloudAt)}`;
+  let initialCloudStatusText = 'Belum ada data yang diawankan';
+  try {
+    const hasValidTimestamp = Boolean(
+      cloudState &&
+      typeof cloudState.lastAttendanceCloudAt === 'string' &&
+      !isNaN(new Date(cloudState.lastAttendanceCloudAt).getTime())
+    );
+
+    const isMatchingActiveDate = Boolean(
+      cloudState &&
+      (
+        cloudState.syncedAttendanceDate === today ||
+        (!cloudState.syncedAttendanceDate && typeof cloudState.lastAttendanceCloudAt === 'string' && cloudState.lastAttendanceCloudAt.startsWith(today))
+      )
+    );
+
+    if (hasValidTimestamp && isMatchingActiveDate) {
+      const formatted = formatAttendanceCloudDate(cloudState.lastAttendanceCloudAt);
+      if (formatted) {
+        initialCloudStatusText = `Terakhir disinkronkan: ${formatted}`;
+      }
+    }
+  } catch (err) {
+    console.warn('[attendance-landing] Gagal evaluasi status sinkronisasi:', err);
+    initialCloudStatusText = 'Belum ada data yang diawankan';
   }
 
   app.innerHTML = `
@@ -135,7 +249,7 @@ export async function renderAttendanceLanding() {
           <div class="attendance-summary-header" id="attendance-summary-header" role="button" tabindex="0">
             <div class="attendance-summary-info">
               <h2 class="attendance-summary-title">Ringkasan Kehadiran</h2>
-              <span class="attendance-summary-date">${formatDisplayDate()}</span>
+              <span class="attendance-summary-date">${formatDisplayDate(today)}</span>
             </div>
             <div class="attendance-summary-stat">
               <div class="attendance-total-box">
@@ -220,7 +334,7 @@ export async function renderAttendanceLanding() {
   cloudBtn?.addEventListener('click', async () => {
     if (isClouding) return;
     if (availableToCloudCount === 0) {
-      toast.info('Belum ada data presensi yang dapat diawankan.');
+      toast.info('Belum ada data presensi yang dapat disinkronkan.');
       return;
     }
 
@@ -230,7 +344,7 @@ export async function renderAttendanceLanding() {
     cloudBtn.classList.add('attendance-cloud-animating');
     cloudBtn.style.opacity = '0.7';
     if (cloudIcon) cloudIcon.classList.add('attendance-cloud-animating');
-    if (cloudStatusEl) cloudStatusEl.textContent = 'Mengawankan data...';
+    if (cloudStatusEl) cloudStatusEl.textContent = 'Menyinkronkan data...';
 
     // 2. Simulate upload process delay (1200ms)
     await new Promise(resolve => setTimeout(resolve, 1200));
@@ -239,6 +353,7 @@ export async function renderAttendanceLanding() {
     const nowIso = new Date().toISOString();
     setAttendanceCloudState(userId, {
       lastAttendanceCloudAt: nowIso,
+      syncedAttendanceDate: today,
       count: availableToCloudCount
     });
 
@@ -248,10 +363,10 @@ export async function renderAttendanceLanding() {
     cloudBtn.style.opacity = '1';
     
     if (cloudStatusEl) {
-      cloudStatusEl.textContent = `Terakhir diawankan ${formatAttendanceCloudDate(nowIso)}`;
+      cloudStatusEl.textContent = `Terakhir disinkronkan: ${formatAttendanceCloudDate(nowIso)}`;
     }
 
-    toast.success(`${availableToCloudCount} data presensi berhasil diawankan.`);
+    toast.success(`${availableToCloudCount} data presensi berhasil disinkronkan.`);
     isClouding = false;
   });
 

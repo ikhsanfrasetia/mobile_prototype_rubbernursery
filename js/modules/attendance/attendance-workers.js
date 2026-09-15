@@ -15,7 +15,7 @@ import {
   isWorkerActive
 } from '../../data/worker-master.js';
 import { workerRepository, attendanceRepository, photoRepository } from '../../db/repositories.js';
-import { todayISO, nowISO, nowTimeWithSeconds, uid, esc } from '../../core/utils.js';
+import { todayISO, nowISO, nowTimeWithSeconds, uid, esc, getAttendanceUniqueKey } from '../../core/utils.js';
 import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
 import { confirmDialog, openModal, closeModal } from '../../components/modal.js';
@@ -387,24 +387,29 @@ export async function renderAttendanceWorkers() {
         }
 
         const state = workerSessionAttendance.get(w.id);
-        const recordId = uid('ATT-WRK-');
-        const photoId = `PHOTO-${recordId}`;
-        const photoData = (state && state.photo) ? state.photo : (w.defaultPhoto || 'assets/icons/worker_fadilah.jpg');
-
         const workerName = canonical ? canonical.name : w.name;
         const workerCode = canonical ? canonical.code : (w.code || '1405739');
         const workerId = canonical ? canonical.id : w.id;
         const position = canonical?.position || w.position || 'Pekerja Bibitan';
         const locationStr = `${userContext?.estateName || 'Tanah Besih'} - ${userContext?.divisionName || 'Divisi I'}`;
 
-        recordsToSave.push({
+        // Cek apakah pekerja sudah pernah tersimpan sebelumnya hari ini (mencegah duplikasi ID)
+        const existingRecord = todayWorkerAtts.find(
+          (a) => (a.workerId && a.workerId === workerId) || (a.code && a.code === workerCode) || (a.workerCode && a.workerCode === workerCode)
+        );
+
+        const recordId = existingRecord?.id || uid('ATT-WRK-');
+        const photoId = existingRecord?.photoId || `PHOTO-${recordId}`;
+        const photoData = (state && state.photo) ? state.photo : (existingRecord?.photo || w.defaultPhoto || 'assets/icons/worker_fadilah.jpg');
+
+        const recordData = {
           id: recordId,
           type: 'WORKER',
           userId: user.id || 'MNT001',
           createdByUserId: user.id || 'MNT001',
-          workerId: w.id ? workerId : w.id,
+          workerId,
           name: workerName,
-          workerName: w.name ? workerName : w.name,
+          workerName,
           code: workerCode,
           workerCode,
           position,
@@ -414,21 +419,23 @@ export async function renderAttendanceWorkers() {
           method: 'REKAM_DATA_WAJAH',
           photoId,
           photo: photoData,
-          capturedAt: state?.iso || nowISO(),
+          capturedAt: state?.iso || existingRecord?.capturedAt || nowISO(),
           date: today,
           tanggal: today,
-          time: state?.time || nowTimeWithSeconds(),
+          time: state?.time || existingRecord?.time || nowTimeWithSeconds(),
           location: locationStr,
           estateId: userContext?.estateId,
           divisionId: userContext?.divisionId,
-          latitude: state?.latitude || '3.1943859',
-          longitude: state?.longitude || '11.2312083',
-          createdAt: nowISO(),
+          latitude: state?.latitude || existingRecord?.latitude || '3.1943859',
+          longitude: state?.longitude || existingRecord?.longitude || '11.2312083',
+          createdAt: existingRecord?.createdAt || nowISO(),
           createdBy: user.id || 'MNT001',
           status: 'HADIR'
-        });
+        };
 
-        if (photoData) {
+        recordsToSave.push({ record: recordData, isNew: !existingRecord });
+
+        if (photoData && !existingRecord?.photo) {
           photosToSave.push({
             id: photoId,
             entityType: 'ATTENDANCE',
@@ -439,15 +446,26 @@ export async function renderAttendanceWorkers() {
         }
       }
 
-      // Simpan batch ke IndexedDB dengan aman via repository
-      for (const record of recordsToSave) {
-        await attendanceRepository.create(record, userContext);
+      // Simpan batch ke IndexedDB dengan aman via repository (upsert)
+      for (const { record, isNew } of recordsToSave) {
+        if (isNew) {
+          await attendanceRepository.create(record, userContext);
+        } else {
+          try {
+            await attendanceRepository.update(record.id, record, userContext);
+          } catch (e) {
+            await attendanceRepository.create(record, userContext);
+          }
+        }
       }
 
-      // Sinkronkan ke storage agar tampil instan di katalog transaksi
+      // Sinkronkan ke storage dengan deduplikasi ketat
       const storedAtts = storage.get('attendance_transactions', []);
-      for (const record of recordsToSave) {
-        const existingIdx = storedAtts.findIndex((a) => a.id === record.id);
+      for (const { record } of recordsToSave) {
+        const uniqueKey = getAttendanceUniqueKey(record);
+        const existingIdx = storedAtts.findIndex(
+          (a) => a.id === record.id || getAttendanceUniqueKey(a) === uniqueKey
+        );
         if (existingIdx >= 0) {
           storedAtts[existingIdx] = record;
         } else {

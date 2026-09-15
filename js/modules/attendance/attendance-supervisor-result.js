@@ -12,7 +12,7 @@ import { getAttendanceTypeByHour } from './attendance-landing.js';
 import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
-import { formatFullDateIndonesian, nowISO, todayISO, nowTimeWithSeconds, uid, esc } from '../../core/utils.js';
+import { formatFullDateIndonesian, nowISO, todayISO, nowTimeWithSeconds, uid, esc, getAttendanceUniqueKey } from '../../core/utils.js';
 import { ROLE_LABELS } from '../../core/permissions.js';
 
 export async function renderAttendanceSupervisorResult() {
@@ -183,12 +183,31 @@ export async function renderAttendanceSupervisorResult() {
         status: 'HADIR'
       };
 
-      // Simpan record presensi ke IndexedDB
-      await attendanceRepository.create(supervisorRecord);
+      // Simpan record presensi ke IndexedDB (cek jika sudah ada)
+      const existingSup = attendances.find(
+        (a) =>
+          (a.date === today || (a.createdAt && String(a.createdAt).startsWith(today))) &&
+          a.type === 'SUPERVISOR' &&
+          (a.attendanceType === attType || (!a.attendanceType && attType === 'DATANG'))
+      );
 
-      // Sinkronkan langsung ke storage agar tampil instan di katalog
+      if (existingSup) {
+        supervisorRecord.id = existingSup.id;
+        try {
+          await attendanceRepository.update(existingSup.id, supervisorRecord);
+        } catch (e) {
+          await attendanceRepository.create(supervisorRecord);
+        }
+      } else {
+        await attendanceRepository.create(supervisorRecord);
+      }
+
+      // Sinkronkan langsung ke storage agar tampil instan di katalog dengan deduplikasi
       const storedAtts = storage.get('attendance_transactions', []);
-      const existingIdx = storedAtts.findIndex((a) => a.id === recordId);
+      const uniqueKey = getAttendanceUniqueKey(supervisorRecord);
+      const existingIdx = storedAtts.findIndex(
+        (a) => a.id === supervisorRecord.id || getAttendanceUniqueKey(a) === uniqueKey
+      );
       if (existingIdx >= 0) {
         storedAtts[existingIdx] = supervisorRecord;
       } else {

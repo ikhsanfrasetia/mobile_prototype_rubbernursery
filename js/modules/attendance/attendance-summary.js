@@ -4,17 +4,65 @@
  */
 
 import { attendanceRepository, workerRepository } from '../../db/repositories.js';
-import { todayISO, esc } from '../../core/utils.js';
+import { storage } from '../../core/storage.js';
+import { todayISO, esc, getAttendanceUniqueKey } from '../../core/utils.js';
 import { navigate } from '../../core/router.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
+import { session } from '../../core/session.js';
 
-export async function renderAttendanceSummary() {
+export async function renderAttendanceSummary(contextOrDate = null) {
   const app = document.getElementById('app');
-  const today = todayISO();
-  const attendances = await attendanceRepository.list();
-  const todayAtts = attendances.filter((a) => a.date === today);
+  const userContext = getCurrentUserContext() || session.get() || {};
+  let today = todayISO();
+  if (typeof contextOrDate === 'string' && contextOrDate.trim().length >= 10) {
+    today = contextOrDate.trim().slice(0, 10);
+  }
+
+  let attendances = [];
+  try {
+    const dbList = (await attendanceRepository.list()) || [];
+    const storageList = storage.get('attendance_transactions', []) || [];
+
+    const map = new Map();
+    dbList.forEach((it) => {
+      if (it) {
+        const k = getAttendanceUniqueKey(it) || it.id;
+        map.set(k, it);
+      }
+    });
+    storageList.forEach((it) => {
+      if (it) {
+        const k = getAttendanceUniqueKey(it) || it.id;
+        if (!map.has(k)) map.set(k, it);
+      }
+    });
+    attendances = Array.from(map.values());
+  } catch (err) {
+    console.warn('[attendance-summary] Gagal load attendances:', err);
+    attendances = [];
+  }
+
+  const todayAtts = attendances.filter((a) => {
+    if (!a) return false;
+    const aDate = a.date || a.tanggal || (a.createdAt ? String(a.createdAt).slice(0, 10) : '');
+    const isToday = aDate === today;
+    if (!isToday) return false;
+
+    if (userContext?.estateId && a.estateId && a.estateId !== userContext.estateId) return false;
+    if (userContext?.divisionId && a.divisionId && a.divisionId !== userContext.divisionId) return false;
+
+    return true;
+  });
 
   const supAtts = todayAtts.filter((a) => a.type === 'SUPERVISOR');
-  const wrkAtts = todayAtts.filter((a) => a.type === 'WORKER');
+  
+  // Deduplikasi pekerja unik
+  const uniqueWrkMap = new Map();
+  todayAtts.filter((a) => a.type === 'WORKER').forEach((w) => {
+    const wKey = String(w.workerId || w.workerCode || w.code || w.name || w.id).trim();
+    if (wKey) uniqueWrkMap.set(wKey, w);
+  });
+  const wrkAtts = Array.from(uniqueWrkMap.values());
 
   app.innerHTML = `
     <div class="page attendance-subpage">

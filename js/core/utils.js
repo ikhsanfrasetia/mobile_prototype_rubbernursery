@@ -191,3 +191,14 @@ export function generateUniqueDocNo(modIdOrCode, existingList = [], targetYear =
   return candidate;
 }
 
+export function getAttendanceUniqueKey(record) {
+  if (!record || typeof record !== 'object') return '';
+  const type = String(record.type || 'WORKER').toUpperCase();
+  const date = String(record.date || record.tanggal || (record.createdAt ? String(record.createdAt).slice(0, 10) : '')).trim();
+  const attType = String(record.attendanceType || 'DATANG').toUpperCase();
+  const idStr = type === 'SUPERVISOR'
+    ? String(record.userId || record.code || record.userCode || record.createdBy || record.name || 'SUPERVISOR').trim()
+    : String(record.workerId || record.workerCode || record.code || record.name || '').trim();
+  return `${type}:${idStr}:${date}:${attType}`;
+}
+

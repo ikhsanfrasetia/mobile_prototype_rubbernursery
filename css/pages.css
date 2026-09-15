@@ -1724,13 +1724,16 @@ svg.attendance-cloud-animating {
 }
 
 .attendance-cloud-status {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-style: italic;
-  color: #94a3b8;
+  color: #64748b;
   text-align: right;
   padding-right: 4px;
-  margin-top: 4px;
+  margin-top: 6px;
   margin-bottom: 8px;
+  line-height: 1.35;
+  word-break: break-word;
+  user-select: none;
 }
 
 .attendance-footer {
