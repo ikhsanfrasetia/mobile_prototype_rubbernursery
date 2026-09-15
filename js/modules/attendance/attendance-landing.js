@@ -151,45 +151,72 @@ export async function renderAttendanceLanding(contextOrDate = null) {
     attendances = [];
   }
 
-  // Filter presensi hari ini untuk tipe aktif (DATANG / PULANG) secara defensif
+  // Filter seluruh presensi hari ini untuk userContext yang sesuai
   const todayAttendances = attendances.filter((a) => {
     if (!a) return false;
     const aDate = a.date || a.tanggal || (a.createdAt ? String(a.createdAt).slice(0, 10) : '');
     const isToday = aDate === today;
-    const aType = a.attendanceType || 'DATANG';
-    const isMatchingType = aType === attType;
-    if (!isToday || !isMatchingType) return false;
+    if (!isToday) return false;
 
     if (userContext?.estateId && a.estateId && a.estateId !== userContext.estateId) return false;
     if (userContext?.divisionId && a.divisionId && a.divisionId !== userContext.divisionId) return false;
 
     return true;
   });
-  
-  const supervisorRecord = todayAttendances.find((a) => a.type === 'SUPERVISOR');
-  const isSupervisorDone = !!supervisorRecord;
-  const supervisorHadir = isSupervisorDone ? 1 : 0;
 
-  // Deduplikasi pekerja unik yang hadir pada tanggal & tipe presensi ini
-  const uniqueWorkerAtts = new Map();
-  todayAttendances.filter((a) => a.type === 'WORKER').forEach((a) => {
+  // 1. Presensi Datang
+  const todayDatangList = todayAttendances.filter((a) => (a.attendanceType || 'DATANG') === 'DATANG');
+  const supervisorDatangRecord = todayDatangList.find((a) => a.type === 'SUPERVISOR');
+  const isSupervisorDatangDone = !!supervisorDatangRecord;
+  const supervisorDatangHadir = isSupervisorDatangDone ? 1 : 0;
+
+  const uniqueWorkerDatang = new Map();
+  todayDatangList.filter((a) => a.type === 'WORKER').forEach((a) => {
     const wKey = String(a.workerId || a.workerCode || a.code || a.name || a.id).trim();
-    if (wKey) uniqueWorkerAtts.set(wKey, a);
+    if (wKey) uniqueWorkerDatang.set(wKey, a);
   });
-  const pekerjaHadir = uniqueWorkerAtts.size;
-  const totalHadir = supervisorHadir + pekerjaHadir;
+  const pekerjaDatangHadir = uniqueWorkerDatang.size;
+  const totalDatangHadir = supervisorDatangHadir + pekerjaDatangHadir;
+
+  // 2. Presensi Pulang
+  const todayPulangList = todayAttendances.filter((a) => a.attendanceType === 'PULANG');
+  const supervisorPulangRecord = todayPulangList.find((a) => a.type === 'SUPERVISOR');
+  const isSupervisorPulangDone = !!supervisorPulangRecord;
+  const supervisorPulangHadir = isSupervisorPulangDone ? 1 : 0;
+
+  const uniqueWorkerPulang = new Map();
+  todayPulangList.filter((a) => a.type === 'WORKER').forEach((a) => {
+    const wKey = String(a.workerId || a.workerCode || a.code || a.name || a.id).trim();
+    if (wKey) uniqueWorkerPulang.set(wKey, a);
+  });
+  const pekerjaPulangHadir = uniqueWorkerPulang.size;
+  const totalPulangHadir = supervisorPulangHadir + pekerjaPulangHadir;
 
   const scopedActiveWorkers = getWorkersForUserContext(userContext, { activeOnly: true }) || [];
   const totalWorkersCount = scopedActiveWorkers.length > 0 ? scopedActiveWorkers.length : (workers.length > 0 ? workers.length : 5);
-  const supervisorBelum = isSupervisorDone ? 0 : 1;
-  const pekerjaBelum = Math.max(0, totalWorkersCount - pekerjaHadir);
-  const totalBelum = supervisorBelum + pekerjaBelum;
+
+  // Belum Presensi Datang
+  const supervisorBelumDatang = isSupervisorDatangDone ? 0 : 1;
+  const pekerjaBelumDatang = Math.max(0, totalWorkersCount - pekerjaDatangHadir);
+  const totalBelumDatang = supervisorBelumDatang + pekerjaBelumDatang;
+
+  // Belum Presensi Pulang (Peserta Presensi Datang yang belum Presensi Pulang)
+  const supervisorBelumPulang = (isSupervisorDatangDone && !isSupervisorPulangDone) ? 1 : 0;
+  const pekerjaBelumPulang = Math.max(0, pekerjaDatangHadir - pekerjaPulangHadir);
+  const totalBelumPulang = supervisorBelumPulang + pekerjaBelumPulang;
 
   const totalTidakHadir = todayAttendances.filter((a) => a.status === 'ABSENT' || a.attendanceType === 'ABSENT').length;
 
+  // Total kehadiran harian berasal dari Presensi Datang yang valid
+  const totalKehadiranHarian = totalDatangHadir;
+
+  // State sesi aktif (untuk tombol footer dan status selesai)
+  const isCurrentSessionSupervisorDone = attType === 'PULANG' ? isSupervisorPulangDone : isSupervisorDatangDone;
+  const currentSessionHadir = attType === 'PULANG' ? totalPulangHadir : totalDatangHadir;
+
   // Cloud State & Status Label Logic
   const cloudState = getAttendanceCloudState(userId);
-  const availableToCloudCount = totalHadir;
+  const availableToCloudCount = totalDatangHadir + totalPulangHadir;
   const isCloudEnabled = availableToCloudCount >= 1;
 
   let initialCloudStatusText = 'Belum ada data yang diawankan';
@@ -219,88 +246,174 @@ export async function renderAttendanceLanding(contextOrDate = null) {
     initialCloudStatusText = 'Belum ada data yang diawankan';
   }
 
+  // Summary Card Content Template berdasarkan Sesi Aktif
+  const summaryCardHtml = attType === 'PULANG' ? `
+    <div class="attendance-summary-card">
+      <!-- Header Ringkasan Kehadiran (Clickable) -->
+      <div class="attendance-summary-header" id="attendance-summary-header" role="button" tabindex="0" title="Buka Rekapitulasi Presensi">
+        <div class="attendance-summary-info">
+          <h2 class="attendance-summary-title">Ringkasan Kehadiran</h2>
+          <span class="attendance-summary-date">${formatDisplayDate(today)}</span>
+        </div>
+        <div class="attendance-summary-stat">
+          <div class="attendance-total-box">
+            <span class="attendance-total-num">${totalKehadiranHarian}</span>
+            <span class="attendance-total-label">Total</span>
+          </div>
+          <span class="attendance-chevron">›</span>
+        </div>
+      </div>
+
+      <div class="attendance-divider"></div>
+
+      <!-- Section: Presensi Datang (Clickable) -->
+      <div class="attendance-section-group attendance-clickable-group" id="group-presensi-datang" role="button" tabindex="0" title="Buka daftar transaksi Presensi Datang">
+        <div class="attendance-group-header-row">
+          <h3 class="attendance-group-title">Presensi Datang (${totalDatangHadir})</h3>
+          <span class="attendance-section-arrow">›</span>
+        </div>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Supervisor</span>
+          <span class="attendance-row-val">${supervisorDatangHadir}</span>
+        </div>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Pekerja</span>
+          <span class="attendance-row-val">${pekerjaDatangHadir}</span>
+        </div>
+      </div>
+
+      <div class="attendance-divider"></div>
+
+      <!-- Section: Presensi Pulang (Clickable) -->
+      <div class="attendance-section-group attendance-clickable-group" id="group-presensi-pulang" role="button" tabindex="0" title="Buka daftar transaksi Presensi Pulang">
+        <div class="attendance-group-header-row">
+          <h3 class="attendance-group-title">Presensi Pulang (${totalPulangHadir})</h3>
+          <span class="attendance-section-arrow">›</span>
+        </div>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Supervisor</span>
+          <span class="attendance-row-val">${supervisorPulangHadir}</span>
+        </div>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Pekerja</span>
+          <span class="attendance-row-val">${pekerjaPulangHadir}</span>
+        </div>
+      </div>
+
+      <div class="attendance-divider"></div>
+
+      <!-- Section: Belum Presensi Pulang -->
+      <div class="attendance-section-group">
+        <h3 class="attendance-group-title">Belum Presensi Pulang (${totalBelumPulang})</h3>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Supervisor</span>
+          <span class="attendance-row-val">${supervisorBelumPulang}</span>
+        </div>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Pekerja</span>
+          <span class="attendance-row-val">${pekerjaBelumPulang}</span>
+        </div>
+      </div>
+
+      <div class="attendance-divider"></div>
+
+      <!-- Section: Tidak Hadir -->
+      <div class="attendance-section-group">
+        <h3 class="attendance-group-title">Tidak Hadir</h3>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Jumlah tidak hadir</span>
+          <span class="attendance-row-val">${totalTidakHadir}</span>
+        </div>
+      </div>
+    </div>
+  ` : `
+    <div class="attendance-summary-card">
+      <!-- Header Ringkasan Kehadiran (Clickable) -->
+      <div class="attendance-summary-header" id="attendance-summary-header" role="button" tabindex="0" title="Buka Rekapitulasi Presensi">
+        <div class="attendance-summary-info">
+          <h2 class="attendance-summary-title">Ringkasan Kehadiran</h2>
+          <span class="attendance-summary-date">${formatDisplayDate(today)}</span>
+        </div>
+        <div class="attendance-summary-stat">
+          <div class="attendance-total-box">
+            <span class="attendance-total-num">${totalDatangHadir}</span>
+            <span class="attendance-total-label">Total</span>
+          </div>
+          <span class="attendance-chevron">›</span>
+        </div>
+      </div>
+
+      <div class="attendance-divider"></div>
+
+      <!-- Section: Presensi Datang (Clickable) -->
+      <div class="attendance-section-group attendance-clickable-group" id="group-presensi-datang" role="button" tabindex="0" title="Buka daftar transaksi Presensi Datang">
+        <div class="attendance-group-header-row">
+          <h3 class="attendance-group-title">Presensi Datang (${totalDatangHadir})</h3>
+          <span class="attendance-section-arrow">›</span>
+        </div>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Supervisor</span>
+          <span class="attendance-row-val">${supervisorDatangHadir}</span>
+        </div>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Pekerja</span>
+          <span class="attendance-row-val">${pekerjaDatangHadir}</span>
+        </div>
+      </div>
+
+      <div class="attendance-divider"></div>
+
+      <!-- Section: Belum Presensi Datang -->
+      <div class="attendance-section-group">
+        <h3 class="attendance-group-title">Belum Presensi Datang (${totalBelumDatang})</h3>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Supervisor</span>
+          <span class="attendance-row-val">${supervisorBelumDatang}</span>
+        </div>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Pekerja</span>
+          <span class="attendance-row-val">${pekerjaBelumDatang}</span>
+        </div>
+      </div>
+
+      <div class="attendance-divider"></div>
+
+      <!-- Section: Tidak Hadir -->
+      <div class="attendance-section-group">
+        <h3 class="attendance-group-title">Tidak Hadir</h3>
+        <div class="attendance-stat-row">
+          <span class="attendance-row-label">Jumlah tidak hadir</span>
+          <span class="attendance-row-val">${totalTidakHadir}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
   app.innerHTML = `
     <div class="page attendance-landing-page">
       <header class="attendance-topbar">
-        <button class="attendance-icon-btn ${!isCloudEnabled ? 'is-disabled' : ''}" id="attendance-back-btn" type="button" aria-label="Kembali">
-          <svg viewBox="0 0 24 24" width="24" height="24" stroke="#1f2937" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <button class="attendance-icon-btn" id="attendance-back-btn" type="button" aria-label="Kembali ke Beranda" title="Kembali ke Beranda">
+          <svg viewBox="0 0 24 24" width="24" height="24" stroke="#1e293b" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
             <line x1="19" y1="12" x2="5" y2="12"></line>
             <polyline points="12 19 5 12 12 5"></polyline>
           </svg>
         </button>
         <h1 class="attendance-page-title">${pageTitle}</h1>
         <button 
-          class="attendance-icon-btn ${!isCloudEnabled ? 'is-disabled' : ''}" 
+          class="attendance-icon-btn ${isCloudEnabled ? 'attendance-cloud-btn-ready' : 'attendance-cloud-btn-idle'}" 
           id="attendance-cloud-btn" 
           type="button" 
-          aria-label="Status Sinkronisasi"
-          ${!isCloudEnabled ? 'disabled' : ''}
-          style="${!isCloudEnabled ? 'opacity: 0.35; cursor: not-allowed;' : 'opacity: 1; cursor: pointer;'}"
+          aria-label="Status Sinkronisasi Awan"
+          title="${isCloudEnabled ? 'Sinkronkan data presensi ke server' : 'Belum ada data baru untuk disinkronkan'}"
         >
-          <svg class="attendance-cloud-icon" viewBox="0 0 24 24" width="24" height="24" fill="${!isCloudEnabled ? '#94a3b8' : '#2d6a4f'}" style="transition: transform 0.2s ease, opacity 0.2s ease;">
+          <svg class="attendance-cloud-icon" viewBox="0 0 24 24" width="24" height="24" fill="${isCloudEnabled ? '#116834' : '#475569'}">
             <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
           </svg>
         </button>
       </header>
 
       <main class="attendance-body">
-        <div class="attendance-summary-card">
-          <!-- Header Ringkasan Kehadiran (Clickable) -->
-          <div class="attendance-summary-header" id="attendance-summary-header" role="button" tabindex="0">
-            <div class="attendance-summary-info">
-              <h2 class="attendance-summary-title">Ringkasan Kehadiran</h2>
-              <span class="attendance-summary-date">${formatDisplayDate(today)}</span>
-            </div>
-            <div class="attendance-summary-stat">
-              <div class="attendance-total-box">
-                <span class="attendance-total-num">${totalHadir}</span>
-                <span class="attendance-total-label">Total</span>
-              </div>
-              <span class="attendance-chevron">›</span>
-            </div>
-          </div>
-
-          <div class="attendance-divider"></div>
-
-          <!-- Section: Presensi Datang / Pulang -->
-          <div class="attendance-section-group">
-            <h3 class="attendance-group-title">${pageTitle} (${totalHadir})</h3>
-            <div class="attendance-stat-row">
-              <span class="attendance-row-label">Supervisor</span>
-              <span class="attendance-row-val">${supervisorHadir}</span>
-            </div>
-            <div class="attendance-stat-row">
-              <span class="attendance-row-label">Pekerja</span>
-              <span class="attendance-row-val">${pekerjaHadir}</span>
-            </div>
-          </div>
-
-          <div class="attendance-divider"></div>
-
-          <!-- Section: Belum Presensi Datang / Pulang -->
-          <div class="attendance-section-group">
-            <h3 class="attendance-group-title">Belum ${pageTitle} (${totalBelum})</h3>
-            <div class="attendance-stat-row">
-              <span class="attendance-row-label">Supervisor</span>
-              <span class="attendance-row-val">${supervisorBelum}</span>
-            </div>
-            <div class="attendance-stat-row">
-              <span class="attendance-row-label">Pekerja</span>
-              <span class="attendance-row-val">${pekerjaBelum}</span>
-            </div>
-          </div>
-
-          <div class="attendance-divider"></div>
-
-          <!-- Section: Tidak Hadir -->
-          <div class="attendance-section-group">
-            <h3 class="attendance-group-title">Tidak Hadir</h3>
-            <div class="attendance-stat-row">
-              <span class="attendance-row-label">Jumlah tidak hadir</span>
-              <span class="attendance-row-val">${totalTidakHadir}</span>
-            </div>
-          </div>
-        </div>
+        ${summaryCardHtml}
 
         <div class="attendance-cloud-status" id="attendance-cloud-status">
           ${initialCloudStatusText}
@@ -308,12 +421,12 @@ export async function renderAttendanceLanding(contextOrDate = null) {
       </main>
 
       <footer class="attendance-footer">
-        <button class="attendance-btn-primary ${isSupervisorDone ? 'is-completed' : ''}" id="btn-presensi-supervisor" type="button">
-          <span class="btn-primary-text">Presensi Supervisor ${isSupervisorDone ? '(Selesai ✓)' : ''}</span>
+        <button class="attendance-btn-primary ${isCurrentSessionSupervisorDone ? 'is-completed' : ''}" id="btn-presensi-supervisor" type="button">
+          <span class="btn-primary-text">Presensi Supervisor ${attType === 'PULANG' ? 'Pulang' : ''} ${isCurrentSessionSupervisorDone ? '(Selesai ✓)' : ''}</span>
           <span class="btn-primary-arrow">›</span>
         </button>
         <button class="attendance-btn-primary" id="btn-presensi-pekerja" type="button">
-          <span class="btn-primary-text">Presensi Pekerja</span>
+          <span class="btn-primary-text">Presensi Pekerja ${attType === 'PULANG' ? 'Pulang' : ''}</span>
           <span class="btn-primary-arrow">›</span>
         </button>
       </footer>
@@ -334,22 +447,25 @@ export async function renderAttendanceLanding(contextOrDate = null) {
   cloudBtn?.addEventListener('click', async () => {
     if (isClouding) return;
     if (availableToCloudCount === 0) {
+      if (cloudIcon) cloudIcon.setAttribute('fill', '#475569');
       toast.info('Belum ada data presensi yang dapat disinkronkan.');
       return;
     }
 
-    // 1. Set uploading state
+    // 1. Set uploading state (Color Sky Blue #0284c7)
     isClouding = true;
     cloudBtn.disabled = true;
     cloudBtn.classList.add('attendance-cloud-animating');
-    cloudBtn.style.opacity = '0.7';
-    if (cloudIcon) cloudIcon.classList.add('attendance-cloud-animating');
+    if (cloudIcon) {
+      cloudIcon.classList.add('attendance-cloud-animating');
+      cloudIcon.setAttribute('fill', '#0284c7');
+    }
     if (cloudStatusEl) cloudStatusEl.textContent = 'Menyinkronkan data...';
 
     // 2. Simulate upload process delay (1200ms)
     await new Promise(resolve => setTimeout(resolve, 1200));
 
-    // 3. Complete and persist last sync timestamp
+    // 3. Complete and persist last sync timestamp (Color Success Green #116834)
     const nowIso = new Date().toISOString();
     setAttendanceCloudState(userId, {
       lastAttendanceCloudAt: nowIso,
@@ -357,10 +473,12 @@ export async function renderAttendanceLanding(contextOrDate = null) {
       count: availableToCloudCount
     });
 
-    if (cloudIcon) cloudIcon.classList.remove('attendance-cloud-animating');
+    if (cloudIcon) {
+      cloudIcon.classList.remove('attendance-cloud-animating');
+      cloudIcon.setAttribute('fill', '#116834');
+    }
     cloudBtn.classList.remove('attendance-cloud-animating');
     cloudBtn.disabled = false;
-    cloudBtn.style.opacity = '1';
     
     if (cloudStatusEl) {
       cloudStatusEl.textContent = `Terakhir disinkronkan: ${formatAttendanceCloudDate(nowIso)}`;
@@ -374,8 +492,16 @@ export async function renderAttendanceLanding(contextOrDate = null) {
     navigate('/attendance/summary');
   });
 
+  app.querySelector('#group-presensi-datang')?.addEventListener('click', () => {
+    navigate('/attendance/summary?type=DATANG');
+  });
+
+  app.querySelector('#group-presensi-pulang')?.addEventListener('click', () => {
+    navigate('/attendance/summary?type=PULANG');
+  });
+
   app.querySelector('#btn-presensi-supervisor')?.addEventListener('click', () => {
-    if (isSupervisorDone) {
+    if (isCurrentSessionSupervisorDone) {
       toast.info(`Anda sudah menyelesaikan ${pageTitle} untuk hari ini.`);
       return;
     }
