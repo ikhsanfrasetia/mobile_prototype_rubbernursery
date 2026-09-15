@@ -119,16 +119,25 @@ export async function renderAttendanceSupervisorResult() {
     navigate('/attendance/supervisor');
   });
 
+  let isSaving = false;
+
   saveBtn.addEventListener('click', async () => {
+    if (isSaving) return;
+
     const today = capture.date || todayISO();
+    const currentUserId = user.id || 'MNT001';
+    const currentUserCode = capture.userCode || user.code || user.id || '1405482';
+    const currentUserName = capture.userName || user.name || 'Wagiman';
+    let attendances = [];
 
     // Validasi Duplikasi: Pastikan belum ada data presensi supervisor untuk sesi ini hari ini
     try {
-      const attendances = await attendanceRepository.list();
+      attendances = (await attendanceRepository.list()) || [];
       const duplicate = attendances.some(
         (a) =>
           (a.date === today || (a.createdAt && a.createdAt.startsWith(today))) &&
           a.type === 'SUPERVISOR' &&
+          (a.userId === currentUserId || a.code === currentUserCode || a.workerCode === currentUserCode || a.name === currentUserName) &&
           (a.attendanceType === attType || (!a.attendanceType && attType === 'DATANG'))
       );
 
@@ -150,27 +159,28 @@ export async function renderAttendanceSupervisorResult() {
 
     if (!confirmed) return;
 
+    isSaving = true;
     saveBtn.disabled = true;
     saveBtn.textContent = 'Menyimpan...';
 
     try {
       const recordId = uid('ATT-SUP-');
-      const photoId = `PHOTO-${recordId}`;
+      const photoId = capture.photo ? `PHOTO-${recordId}` : null;
 
       const supervisorRecord = {
         id: recordId,
         type: 'SUPERVISOR',
-        userId: user.id || 'MNT001',
-        name: capture.userName || user.name || 'Wagiman',
-        workerName: capture.userName || user.name || 'Wagiman',
-        code: capture.userCode || user.code || '1405482',
-        workerCode: capture.userCode || user.code || '1405482',
+        userId: currentUserId,
+        name: currentUserName,
+        workerName: currentUserName,
+        code: currentUserCode,
+        workerCode: currentUserCode,
         role: user.role || 'MANTRI_TANAMAN',
         position: user.position || (ROLE_LABELS[user.role] || ROLE_LABELS.MANTRI_TANAMAN),
         attendanceType: attType,
         method: 'REKAM_DATA_WAJAH',
         photoId,
-        photo: capture.photo,
+        photo: capture.photo || '',
         capturedAt: capture.iso || nowISO(),
         date: today,
         tanggal: today,
@@ -179,7 +189,7 @@ export async function renderAttendanceSupervisorResult() {
         latitude: capture.latitude || '3.1943859',
         longitude: capture.longitude || '11.2312083',
         createdAt: nowISO(),
-        createdBy: user.id || 'MNT001',
+        createdBy: currentUserId,
         status: 'HADIR'
       };
 
@@ -188,6 +198,7 @@ export async function renderAttendanceSupervisorResult() {
         (a) =>
           (a.date === today || (a.createdAt && String(a.createdAt).startsWith(today))) &&
           a.type === 'SUPERVISOR' &&
+          (a.userId === currentUserId || a.code === currentUserCode || a.workerCode === currentUserCode || a.name === currentUserName) &&
           (a.attendanceType === attType || (!a.attendanceType && attType === 'DATANG'))
       );
 
@@ -216,16 +227,18 @@ export async function renderAttendanceSupervisorResult() {
       storage.set('attendance_transactions', storedAtts);
 
       // Simpan referensi foto ke photo store jika ada
-      try {
-        await photoRepository.create({
-          id: photoId,
-          entityType: 'ATTENDANCE',
-          entityId: recordId,
-          data: capture.photo,
-          createdAt: nowISO()
-        });
-      } catch (errPhoto) {
-        console.warn('[photoRepository] Non-blocking photo save error:', errPhoto);
+      if (photoId && capture.photo) {
+        try {
+          await photoRepository.create({
+            id: photoId,
+            entityType: 'ATTENDANCE',
+            entityId: supervisorRecord.id,
+            data: capture.photo,
+            createdAt: nowISO()
+          });
+        } catch (errPhoto) {
+          console.warn('[photoRepository] Non-blocking photo save error:', errPhoto);
+        }
       }
 
       toast.success(`Data ${pageTitle.toLowerCase()} berhasil disimpan!`);
@@ -233,6 +246,7 @@ export async function renderAttendanceSupervisorResult() {
     } catch (err) {
       console.error('[Attendance Save Error]', err);
       toast.danger('Gagal menyimpan data presensi.');
+      isSaving = false;
       saveBtn.disabled = false;
       saveBtn.textContent = 'Simpan';
     }

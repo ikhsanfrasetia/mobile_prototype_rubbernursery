@@ -34,6 +34,8 @@ export async function renderAttendanceSupervisor() {
   const attType = getAttendanceTypeByHour();
   const cameraTitle = attType === 'PULANG' ? 'Presensi Pulang' : 'Presensi Datang';
 
+  const userId = user.id || 'MNT001';
+
   // Validasi: Cek apakah sudah pernah presensi untuk sesi ini hari ini
   try {
     const attendances = await attendanceRepository.list();
@@ -41,6 +43,7 @@ export async function renderAttendanceSupervisor() {
       (a) =>
         (a.date === today || (a.createdAt && a.createdAt.startsWith(today))) &&
         a.type === 'SUPERVISOR' &&
+        (a.userId === userId || a.code === userCode || a.workerCode === userCode || a.name === userName) &&
         (a.attendanceType === attType || (!a.attendanceType && attType === 'DATANG'))
     );
 

@@ -207,8 +207,10 @@ export async function renderAttendanceLanding(contextOrDate = null) {
 
   const totalTidakHadir = todayAttendances.filter((a) => a.status === 'ABSENT' || a.attendanceType === 'ABSENT').length;
 
-  // Total kehadiran harian berasal dari Presensi Datang yang valid
-  const totalKehadiranHarian = totalDatangHadir;
+  // Total kehadiran harian: Total seluruh individu (Supervisor + Pekerja) yang sudah melakukan presensi hari ini (Datang atau Pulang)
+  const isSupervisorHadirToday = isSupervisorDatangDone || isSupervisorPulangDone;
+  const allUniqueWorkersToday = new Set([...uniqueWorkerDatang.keys(), ...uniqueWorkerPulang.keys()]);
+  const totalKehadiranHarian = (isSupervisorHadirToday ? 1 : 0) + allUniqueWorkersToday.size;
 
   // State sesi aktif (untuk tombol footer dan status selesai)
   const isCurrentSessionSupervisorDone = attType === 'PULANG' ? isSupervisorPulangDone : isSupervisorDatangDone;
@@ -336,7 +338,7 @@ export async function renderAttendanceLanding(contextOrDate = null) {
         </div>
         <div class="attendance-summary-stat">
           <div class="attendance-total-box">
-            <span class="attendance-total-num">${totalDatangHadir}</span>
+            <span class="attendance-total-num">${totalKehadiranHarian}</span>
             <span class="attendance-total-label">Total</span>
           </div>
           <span class="attendance-chevron">›</span>
