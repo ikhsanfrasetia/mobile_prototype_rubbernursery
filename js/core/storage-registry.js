@@ -47,6 +47,7 @@ export const DATA_STORAGE_REGISTRY = {
     'inspection_transactions',
     'attendance_transactions',
     'selection_transactions',
+    'pre_grafting_selection_documents',
     'selection_photos',
     'destruction_transactions',
     'verification_transactions',

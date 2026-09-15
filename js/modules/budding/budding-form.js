@@ -50,8 +50,8 @@ export function renderBuddingForm() {
   let klonRootstock = 'GT 1';
   let poolDocNo = '';
   let inspectionDocNo = '';
+  let selectedGraftingSourceDoc = null;
 
-  const seedingTxs = storage.get('seeding_transactions', []);
   const batchIdx = storage.get('selected_grafting_batch_index', 0);
 
   if (isRegrafting) {
@@ -73,21 +73,53 @@ export function renderBuddingForm() {
     bedenganDisplay = formatBedenganCode(poolItem.bedengan, poolItem.bedenganCode) || 'BED-001';
     klonRootstock = poolItem.klonRootstock ? normalizeKlonName(poolItem.klonRootstock) : 'GT 1';
   } else {
-    const selectedBatch = seedingTxs[batchIdx] || {
-      batchNo: 'Batch-01',
-      docNo: formatStandardDocNo(2026, 'SOW', 1),
-      program: 'PRG/NUR/01/2026',
-      tahapan: 'Rubber Main Nursery',
-      klonAwal: 'GT 1',
-      totalDisemai: 2000,
-      rows: [{ bedengan: 'Bedengan 01', disemai: 2000 }]
-    };
-    batchNo = selectedBatch.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;
-    docNo = selectedBatch.docNo || (selectedBatch.sourceDocNo ? selectedBatch.sourceDocNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', 1));
-    totalDisemai = parseInt(selectedBatch.totalDisemai || 0);
-    klonRootstock = selectedBatch.klonAwal ? normalizeKlonName(selectedBatch.klonAwal) : 'GT 1';
-    const batchBedengan = (selectedBatch.rows || []).map(r => formatBedenganCode(r.bedengan, r.bedenganCode)).filter(Boolean);
-    bedenganDisplay = batchBedengan.length > 0 ? Array.from(new Set(batchBedengan)).join(', ') : (formatBedenganCode(selectedBatch.bedengan, selectedBatch.bedenganCode) || 'BED-001');
+    const allSelectionDocs = storage.get('pre_grafting_selection_documents', []);
+    const seleksi3FinalDocs = allSelectionDocs.filter(d => 
+      (d.selectionStage === 'SELEKSI_III' || d.selectionStage === 'SELEKSI_3') &&
+      (d.selectionType === 'PRA_OKULASI' || !d.selectionType) &&
+      d.status === 'DISETUJUI' &&
+      Boolean(d.isFinal)
+    );
+
+    const targetDocNo = storage.get('selected_grafting_batch_doc_no', null);
+    const targetDocId = storage.get('selected_grafting_batch_id', null);
+
+    let selectedBatchDoc = null;
+    if (targetDocNo) {
+      selectedBatchDoc = seleksi3FinalDocs.find(d => d.docNo === targetDocNo);
+    }
+    if (!selectedBatchDoc && targetDocId) {
+      selectedBatchDoc = seleksi3FinalDocs.find(d => d.id === targetDocId);
+    }
+    if (!selectedBatchDoc && seleksi3FinalDocs.length > 0) {
+      selectedBatchDoc = seleksi3FinalDocs[parseInt(batchIdx)] || seleksi3FinalDocs[0];
+    }
+
+    if (!selectedBatchDoc) {
+      selectedBatchDoc = {
+        batchNo: `Batch-0${parseInt(batchIdx) + 1}`,
+        batchCode: `Batch-0${parseInt(batchIdx) + 1}`,
+        docNo: formatStandardDocNo(2026, 'SEL-III', 1),
+        programCode: 'PRG/NUR/01/2026',
+        klon: 'GT 1',
+        totalLayak: 2000,
+        rows: [{ bedengan: 'Bedengan 01', bedenganCode: 'BED-001', disemai: 2000 }]
+      };
+    }
+
+    selectedGraftingSourceDoc = selectedBatchDoc;
+    batchNo = selectedBatchDoc.batchCode || selectedBatchDoc.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;
+    docNo = selectedBatchDoc.docNo || formatStandardDocNo(2026, 'SEL-III', 1);
+    totalDisemai = parseInt(
+      selectedBatchDoc.totalLayak !== undefined
+        ? selectedBatchDoc.totalLayak
+        : (selectedBatchDoc.finalBibitQty !== undefined ? selectedBatchDoc.finalBibitQty : (selectedBatchDoc.currentBibitQty || 0)),
+      10
+    );
+    klonRootstock = selectedBatchDoc.klon ? normalizeKlonName(selectedBatchDoc.klon) : (selectedBatchDoc.clone ? normalizeKlonName(selectedBatchDoc.clone) : (selectedBatchDoc.klonAwal ? normalizeKlonName(selectedBatchDoc.klonAwal) : 'GT 1'));
+    const rows = selectedBatchDoc.rows || [];
+    const batchBedengan = rows.map(r => formatBedenganCode(r.bedengan, r.bedenganCode)).filter(Boolean);
+    bedenganDisplay = batchBedengan.length > 0 ? Array.from(new Set(batchBedengan)).join(', ') : (formatBedenganCode(selectedBatchDoc.bedengan, selectedBatchDoc.bedenganCode) || 'BED-001');
   }
 
   // Calculate accumulated budding (correctly excluding the currently edited transaction)
@@ -98,10 +130,14 @@ export function renderBuddingForm() {
     
     const isMatch = isRegrafting 
       ? ((b.regraftPoolDocNo && b.regraftPoolDocNo === poolDocNo) || (b.inspectionDocNo && inspectionDocNo && b.inspectionDocNo === inspectionDocNo)) 
-      : (b.seedingIndex === parseInt(batchIdx) || (b.sourceDocNo && b.sourceDocNo === docNo));
+      : ((b.sourceSelection3DocNo && b.sourceSelection3DocNo === docNo) ||
+         (b.sourceSelection3DocumentId && selectedGraftingSourceDoc?.id && b.sourceSelection3DocumentId === selectedGraftingSourceDoc.id) ||
+         (b.sourceDocNo && b.sourceDocNo === docNo) ||
+         (b.seedingIndex === parseInt(batchIdx) && !b.sourceSelection3DocNo && !b.sourceDocNo) ||
+         (b.batchNo === batchNo && !b.sourceSelection3DocNo && !b.sourceDocNo));
       
     if (isMatch) {
-      totalDiokulasiSDHI += parseInt(b.jumlah || 0);
+      totalDiokulasiSDHI += (parseInt(b.jumlah || 0) + parseInt(b.jumlahDitolak || 0));
     }
   });
 
@@ -149,7 +185,7 @@ export function renderBuddingForm() {
             </div>
           </section>
 
-          <!-- INFORMASI BATCH PENYEMAIAN (OTOMATIS) -->
+          <!-- INFORMASI BATCH SELEKSI III / REGRAFTING (OTOMATIS) -->
           <section style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB; background: #F9FAFB;">
             <h2 style="font-size: 0.88rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Informasi Batch Asal</h2>
             
@@ -159,7 +195,7 @@ export function renderBuddingForm() {
                 <div style="font-weight: 700; color: #116834; font-size: 0.84rem; margin-top: 1px;">${batchNo}</div>
               </div>
               <div>
-                <span style="color: #6B7280;">${isRegrafting ? 'Ref. Dokumen Pool:' : 'Dokumen Penyemaian:'}</span>
+                <span style="color: #6B7280;">${isRegrafting ? 'Ref. Dokumen Pool:' : 'Dokumen Seleksi III FINAL:'}</span>
                 <div style="font-weight: 700; color: #111; font-size: 0.80rem; margin-top: 1px; word-break: break-all;">${docNo}</div>
               </div>
               <div>
@@ -171,7 +207,7 @@ export function renderBuddingForm() {
                 <div style="font-weight: 700; color: #111; font-size: 0.80rem; margin-top: 1px;">${klonRootstock}</div>
               </div>
               <div style="grid-column: span 2; padding-top: 2px;">
-                <span style="color: #6B7280;">${isRegrafting ? 'Populasi Gagal Okulasi:' : 'Populasi Bibit Disemai:'}</span>
+                <span style="color: #6B7280;">${isRegrafting ? 'Populasi Gagal Okulasi:' : 'Populasi Siap Okulasi (Layak):'}</span>
                 <span style="font-weight: 700; color: #116834; font-size: 0.82rem; margin-left: 4px;">${totalDisemai.toLocaleString('id-ID')} Pkk</span>
               </div>
             </div>
@@ -827,6 +863,15 @@ export function renderBuddingForm() {
           inspectionDocNo: inspectionDocNo,
           batchNo,
           sourceDocNo: docNo,
+          sourceSelection3DocNo: !isRegrafting ? (selectedGraftingSourceDoc?.docNo || docNo) : null,
+          sourceSelection3DocumentId: !isRegrafting ? (selectedGraftingSourceDoc?.id || null) : null,
+          sourceSelection2DocNo: !isRegrafting ? (selectedGraftingSourceDoc?.sourceSelectionDocNo || selectedGraftingSourceDoc?.sourceDocNo || null) : null,
+          sourceSelection1DocNo: !isRegrafting ? (selectedGraftingSourceDoc?.sourceSelection1DocNo || null) : null,
+          sourceSeedingDocNo: !isRegrafting ? (selectedGraftingSourceDoc?.sourceSeedingDocNo || null) : null,
+          programId: !isRegrafting ? (selectedGraftingSourceDoc?.programId || null) : null,
+          programCode: !isRegrafting ? (selectedGraftingSourceDoc?.programCode || null) : null,
+          estateId: !isRegrafting ? (selectedGraftingSourceDoc?.estateId || null) : null,
+          divisionId: !isRegrafting ? (selectedGraftingSourceDoc?.divisionId || null) : null,
           tanggal: today,
           bedengan: bedenganDisplay,
           klonEntres: normalizeKlonName(selectedKlon),

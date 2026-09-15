@@ -4,17 +4,34 @@ import { storage } from '../../core/storage.js';
 export function renderBuddingLanding() {
   const app = document.getElementById('app');
 
-  // Check pending grafting batches
-  const seedingTxs = storage.get('seeding_transactions', []);
+  // Check pending grafting batches from Dokumen Seleksi III FINAL
+  const allSelectionDocs = storage.get('pre_grafting_selection_documents', []);
+  const seleksi3FinalDocs = allSelectionDocs.filter(d => 
+    (d.selectionStage === 'SELEKSI_III' || d.selectionStage === 'SELEKSI_3') &&
+    (d.selectionType === 'PRA_OKULASI' || !d.selectionType) &&
+    d.status === 'DISETUJUI' &&
+    Boolean(d.isFinal)
+  );
   const buddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
   let hasPendingOkulasi = false;
 
-  for (let i = 0; i < seedingTxs.length; i++) {
-    const stx = seedingTxs[i];
-    const populasiBibit = parseInt(stx.totalDisemai || 0);
-    const batchNo = stx.batchNo || `Batch-0${i + 1}`;
+  for (let i = 0; i < seleksi3FinalDocs.length; i++) {
+    const s3Doc = seleksi3FinalDocs[i];
+    const populasiBibit = parseInt(
+      s3Doc.totalLayak !== undefined
+        ? s3Doc.totalLayak
+        : (s3Doc.finalBibitQty !== undefined ? s3Doc.finalBibitQty : (s3Doc.currentBibitQty || 0)),
+      10
+    );
+    const batchNo = s3Doc.batchCode || s3Doc.batchNo || `Batch-0${i + 1}`;
+    const docNo = s3Doc.docNo;
     let ttlRealized = 0;
-    buddingTxs.filter(b => b.seedingIndex === i || b.batchNo === batchNo).forEach(b => {
+    buddingTxs.filter(b => 
+      (b.sourceSelection3DocNo && b.sourceSelection3DocNo === docNo) ||
+      (b.sourceSelection3DocumentId && s3Doc.id && b.sourceSelection3DocumentId === s3Doc.id) ||
+      (b.sourceDocNo && b.sourceDocNo === docNo) ||
+      (b.batchNo === batchNo && !b.sourceSelection3DocNo && !b.sourceDocNo)
+    ).forEach(b => {
       ttlRealized += parseInt(b.jumlah || 0) + parseInt(b.jumlahDitolak || 0);
     });
     if (populasiBibit - ttlRealized > 0) {

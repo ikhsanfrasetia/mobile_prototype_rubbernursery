@@ -14,24 +14,48 @@ import { normalizeKlonName } from '../../data/klon-master.js';
 export function renderBuddingScan() {
   const app = document.getElementById('app');
 
-  const batchIdx = storage.get('selected_grafting_batch_index', 0);
-  const seedingTxs = storage.get('seeding_transactions', []);
-  const selectedBatch = seedingTxs[batchIdx] || {
-    batchNo: `Batch-0${parseInt(batchIdx) + 1}`,
-    docNo: formatStandardDocNo(2026, 'SOW', 1),
-    program: 'PRG/NUR/01/2026',
-    tahapan: 'Rubber Main Nursery',
-    klonAwal: 'GT 1',
-    totalDisemai: 20000,
-    rows: [{ bedengan: 'Bedengan 01', disemai: 20000 }]
-  };
+  const allSelectionDocs = storage.get('pre_grafting_selection_documents', []);
+  const seleksi3FinalDocs = allSelectionDocs.filter(d => 
+    (d.selectionStage === 'SELEKSI_III' || d.selectionStage === 'SELEKSI_3') &&
+    (d.selectionType === 'PRA_OKULASI' || !d.selectionType) &&
+    d.status === 'DISETUJUI' &&
+    Boolean(d.isFinal)
+  );
 
-  const batchNo = selectedBatch.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;
-  const docNo = selectedBatch.docNo || (selectedBatch.sourceDocNo ? selectedBatch.sourceDocNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', 1));
-  const program = selectedBatch.program || 'PRG/NUR/01/2026';
-  const klonRootstock = selectedBatch.klonAwal ? normalizeKlonName(selectedBatch.klonAwal) : (selectedBatch.klon ? normalizeKlonName(selectedBatch.klon) : 'GT 1');
-  const batchBedengan = (selectedBatch.rows || []).map(r => r.bedengan).filter(Boolean);
-  const bedenganDisplay = batchBedengan.length > 0 ? Array.from(new Set(batchBedengan)).join(', ') : 'Bedengan 01';
+  const targetDocNo = storage.get('selected_grafting_batch_doc_no', null);
+  const targetDocId = storage.get('selected_grafting_batch_id', null);
+  const batchIdx = storage.get('selected_grafting_batch_index', 0);
+
+  let selectedBatch = null;
+  if (targetDocNo) {
+    selectedBatch = seleksi3FinalDocs.find(d => d.docNo === targetDocNo);
+  }
+  if (!selectedBatch && targetDocId) {
+    selectedBatch = seleksi3FinalDocs.find(d => d.id === targetDocId);
+  }
+  if (!selectedBatch && seleksi3FinalDocs.length > 0) {
+    selectedBatch = seleksi3FinalDocs[parseInt(batchIdx)] || seleksi3FinalDocs[0];
+  }
+
+  if (!selectedBatch) {
+    selectedBatch = {
+      batchNo: `Batch-0${parseInt(batchIdx) + 1}`,
+      batchCode: `Batch-0${parseInt(batchIdx) + 1}`,
+      docNo: formatStandardDocNo(2026, 'SEL-III', 1),
+      programCode: 'PRG/NUR/01/2026',
+      klon: 'GT 1',
+      totalLayak: 2000,
+      rows: [{ bedengan: 'Bedengan 01', bedenganCode: 'BED-001', disemai: 2000 }]
+    };
+  }
+
+  const batchNo = selectedBatch.batchCode || selectedBatch.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;
+  const docNo = selectedBatch.docNo || formatStandardDocNo(2026, 'SEL-III', 1);
+  const program = selectedBatch.programCode || selectedBatch.programName || selectedBatch.program || 'PRG/NUR/01/2026';
+  const klonRootstock = selectedBatch.klon ? normalizeKlonName(selectedBatch.klon) : (selectedBatch.clone ? normalizeKlonName(selectedBatch.clone) : (selectedBatch.klonAwal ? normalizeKlonName(selectedBatch.klonAwal) : 'GT 1'));
+  const rows = selectedBatch.rows || [];
+  const batchBedengan = rows.map(r => r.bedenganCode || r.bedengan).filter(Boolean);
+  const bedenganDisplay = batchBedengan.length > 0 ? Array.from(new Set(batchBedengan)).join(', ') : (selectedBatch.bedenganCode || selectedBatch.bedengan || 'BED-001');
 
   app.innerHTML = `
     <div class="page budding-scan-page" style="display: flex; flex-direction: column; height: 100%; background: #0F172A; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; position: relative; overflow: hidden;">

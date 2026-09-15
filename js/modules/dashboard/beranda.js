@@ -567,15 +567,34 @@ export function renderBeranda() {
     }
   }
 
+  // Check pending grafting batches from Dokumen Seleksi III FINAL (Konsisten dengan modul Okulasi)
+  const allSelectionDocs = storage.get('pre_grafting_selection_documents', []);
+  const seleksi3FinalDocs = allSelectionDocs.filter(d => 
+    (d.selectionStage === 'SELEKSI_III' || d.selectionStage === 'SELEKSI_3') &&
+    (d.selectionType === 'PRA_OKULASI' || !d.selectionType) &&
+    d.status === 'DISETUJUI' &&
+    Boolean(d.isFinal)
+  );
   const buddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
   let hasPendingOkulasi = false;
 
-  for (let i = 0; i < seedingTxs.length; i++) {
-    const stx = seedingTxs[i];
-    const populasiBibit = parseInt(stx.totalDisemai || 0);
-    const batchNo = stx.batchNo || `Batch-0${i + 1}`;
+  for (let i = 0; i < seleksi3FinalDocs.length; i++) {
+    const s3Doc = seleksi3FinalDocs[i];
+    const populasiBibit = parseInt(
+      s3Doc.totalLayak !== undefined
+        ? s3Doc.totalLayak
+        : (s3Doc.finalBibitQty !== undefined ? s3Doc.finalBibitQty : (s3Doc.currentBibitQty || 0)),
+      10
+    );
+    const batchNo = s3Doc.batchCode || s3Doc.batchNo || `Batch-0${i + 1}`;
+    const docNo = s3Doc.docNo;
     let ttlRealized = 0;
-    buddingTxs.filter(b => b.seedingIndex === i || b.batchNo === batchNo).forEach(b => {
+    buddingTxs.filter(b => 
+      (b.sourceSelection3DocNo && b.sourceSelection3DocNo === docNo) ||
+      (b.sourceSelection3DocumentId && s3Doc.id && b.sourceSelection3DocumentId === s3Doc.id) ||
+      (b.sourceDocNo && b.sourceDocNo === docNo) ||
+      (b.batchNo === batchNo && !b.sourceSelection3DocNo && !b.sourceDocNo)
+    ).forEach(b => {
       ttlRealized += parseInt(b.jumlah || 0) + parseInt(b.jumlahDitolak || 0);
     });
     if (populasiBibit - ttlRealized > 0) {
@@ -714,8 +733,16 @@ export function renderBeranda() {
   const userCtx = getCurrentUserContext() || resolveUserContext(user);
   const scopedSelectionPool = filterSelectionByScope(selectionPool, userCtx);
 
-  // Hitung seluruh item selection_pool yang belum dideklarasikan sesuai scope
-  scopedSelectionPool.forEach(s => {
+  const isPostGraftingReject = (item) => (
+    item && (
+      item.originType === 'REJECT_OKULASI' ||
+      item.originType === 'REJECT_PEMERIKSAAN' ||
+      item.originType === 'REJECT_REGRAFTING'
+    )
+  );
+
+  // Hitung seluruh item selection_pool pasca-okulasi yang belum dideklarasikan sesuai scope
+  scopedSelectionPool.filter(isPostGraftingReject).forEach(s => {
     if (s.status !== 'DECLARED_CULLED' && !culledPoolDocs.has(s.docNo)) {
       pendingSelectionCount++;
     }
@@ -741,15 +768,18 @@ export function renderBeranda() {
 
   const menuCards = MENU_ITEMS.map((item) => {
     let badgeHtml = '';
-    if (item.id === 'penyeleksian' && pendingSelectionCount > 0) {
+    const hasNotification = (
+      (item.id === 'penyeleksian' && pendingSelectionCount > 0) ||
+      (item.id === 'penyemaian' && hasPendingBenih) ||
+      (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting)) ||
+      (item.id === 'pemeriksaan' && hasPendingPemeriksaan) ||
+      (item.id === 'pengeluaran' && hasPendingPengeluaran) ||
+      (item.id === 'penerimaan' && hasPendingPenerimaan)
+    );
+
+    if (hasNotification) {
       badgeHtml = `
-        <div style="position: absolute; top: 10px; right: 10px; background: #DC2626; color: #FFFFFF; font-size: 0.68rem; font-weight: 800; min-width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 0 4px; box-shadow: 0 2px 4px rgba(220,38,38,0.4); border: 2px solid #FFFFFF; z-index: 5;">
-          ${pendingSelectionCount}
-        </div>
-      `;
-    } else if ((item.id === 'penyemaian' && hasPendingBenih) || (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting)) || (item.id === 'pemeriksaan' && hasPendingPemeriksaan) || (item.id === 'pengeluaran' && hasPendingPengeluaran) || (item.id === 'penerimaan' && hasPendingPenerimaan)) {
-      badgeHtml = `
-        <div style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
     }
 

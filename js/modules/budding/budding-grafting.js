@@ -29,21 +29,37 @@ export function formatBedenganCode(bedengan, bedenganCode) {
 export function renderBuddingGrafting() {
   const app = document.getElementById('app');
 
-  // Load seeding transactions (batches from balanced seedings)
-  const seedingTxs = storage.get('seeding_transactions', []);
+  // Load Seleksi III FINAL documents (Rootstock population source)
+  const allSelectionDocs = storage.get('pre_grafting_selection_documents', []);
+  const seleksi3FinalDocs = allSelectionDocs.filter(d => 
+    (d.selectionStage === 'SELEKSI_III' || d.selectionStage === 'SELEKSI_3') &&
+    (d.selectionType === 'PRA_OKULASI' || !d.selectionType) &&
+    d.status === 'DISETUJUI' &&
+    Boolean(d.isFinal)
+  );
   const buddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
 
   // Process and sort batches: yang belum selesai (Perlu Diokulasi) di ATAS, yang sudah selesai (Selesai Diokulasi) di BAWAH
-  const processedBatchList = seedingTxs.map((stx, idx) => {
-    const batchNo = stx.batchNo || `Batch-0${idx + 1}`;
-    const docNo = stx.docNo || (stx.sourceDocNo ? stx.sourceDocNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', (stx.sourceIndex || 0) + 1));
-    const populasiBibit = parseInt(stx.totalDisemai || 0);
+  const processedBatchList = seleksi3FinalDocs.map((s3Doc, idx) => {
+    const batchNo = s3Doc.batchCode || s3Doc.batchNo || `Batch-0${idx + 1}`;
+    const docNo = s3Doc.docNo || formatStandardDocNo(2026, 'SEL-III', idx + 1);
+    const populasiBibit = parseInt(
+      s3Doc.totalLayak !== undefined
+        ? s3Doc.totalLayak
+        : (s3Doc.finalBibitQty !== undefined ? s3Doc.finalBibitQty : (s3Doc.currentBibitQty || 0)),
+      10
+    );
 
-    // Calculate accumulated budding for this batch
+    // Calculate accumulated budding for this Seleksi III FINAL document
     let ttlDiokulasi = 0;
     let ttlDitolak = 0;
     let ttlKayu = 0;
-    const relatedBuddings = buddingTxs.filter(b => b.seedingIndex === idx || b.batchNo === batchNo);
+    const relatedBuddings = buddingTxs.filter(b => 
+      (b.sourceSelection3DocNo && b.sourceSelection3DocNo === docNo) ||
+      (b.sourceSelection3DocumentId && s3Doc.id && b.sourceSelection3DocumentId === s3Doc.id) ||
+      (b.sourceDocNo && b.sourceDocNo === docNo) ||
+      (b.batchNo === batchNo && !b.sourceSelection3DocNo && !b.sourceDocNo)
+    );
     relatedBuddings.forEach(b => {
       ttlDiokulasi += parseInt(b.jumlah || 0);
       ttlDitolak += parseInt(b.jumlahDitolak || 0);
@@ -78,12 +94,12 @@ export function renderBuddingGrafting() {
     }
 
     // Extract bedengan rows (Tampilkan Kode Bedengan: BED-001, BED-002, dst)
-    const rows = stx.rows || [];
+    const rows = s3Doc.rows || [];
     const bedenganCodes = rows.map(r => formatBedenganCode(r.bedengan, r.bedenganCode)).filter(Boolean);
-    const bedenganDisplay = bedenganCodes.length > 0 ? Array.from(new Set(bedenganCodes)).join(', ') : (formatBedenganCode(stx.bedengan, stx.bedenganCode) || 'BED-001');
+    const bedenganDisplay = bedenganCodes.length > 0 ? Array.from(new Set(bedenganCodes)).join(', ') : (formatBedenganCode(s3Doc.bedengan, s3Doc.bedenganCode) || 'BED-001');
 
     return {
-      stx,
+      s3Doc,
       originalIdx: idx,
       batchNo,
       docNo,
@@ -137,7 +153,7 @@ export function renderBuddingGrafting() {
           <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
             ${processedBatchList.map((item) => {
               const {
-                stx,
+                s3Doc,
                 originalIdx,
                 batchNo,
                 docNo,
@@ -155,7 +171,7 @@ export function renderBuddingGrafting() {
                 statusBadgeBorder,
                 bedenganDisplay
               } = item;
-              const rows = stx.rows || [];
+              const rows = s3Doc.rows || [];
 
               return `
                 <div class="card-batch-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
@@ -175,7 +191,7 @@ export function renderBuddingGrafting() {
                     ${docNo}
                   </div>
                   <div style="font-size: 0.72rem; color: #6B7280; margin-bottom: 10px;">
-                    Penyemaian: ${stx.date || 'Hari ini'}
+                    Dokumen Seleksi III FINAL • Disetujui Asisten Bibitan
                   </div>
 
                   <hr style="border: none; border-top: 1px solid #F3F4F6; margin: 0 0 10px 0;" />
@@ -184,14 +200,14 @@ export function renderBuddingGrafting() {
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 12px;">
                     <div>
                       <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Klon Batang Bawah</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.3;">${stx.klonAwal ? normalizeKlonName(stx.klonAwal) : 'GT 1'}</div>
+                      <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.3;">${s3Doc.klon ? normalizeKlonName(s3Doc.klon) : (s3Doc.clone ? normalizeKlonName(s3Doc.clone) : 'GT 1')}</div>
                     </div>
                     <div>
                       <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Lokasi Bedengan</div>
                       <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.35; word-break: break-word;">${bedenganDisplay}</div>
                     </div>
                     <div>
-                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Populasi Bibit (Disemai)</div>
+                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Populasi Siap Okulasi (Layak)</div>
                       <div style="font-size: 0.82rem; font-weight: 700; color: #116834; line-height: 1.3;">${populasiBibit.toLocaleString('id-ID')} Pkk</div>
                     </div>
                     <div>
@@ -214,11 +230,11 @@ export function renderBuddingGrafting() {
                   <div class="batch-expand-content" style="display: none; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-size: 0.74rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                       <span style="color: #6B7280;">Program Nursery:</span>
-                      <span style="font-weight: 700; color: #111;">${stx.program || 'PRG/NUR/01/2026'}</span>
+                      <span style="font-weight: 700; color: #111;">${s3Doc.programCode || s3Doc.programName || s3Doc.program || 'PRG/NUR/01/2026'}</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                       <span style="color: #6B7280;">Tahapan Pertumbuhan:</span>
-                      <span style="font-weight: 700; color: #111;">${stx.tahapan || 'Rubber Main Nursery'}</span>
+                      <span style="font-weight: 700; color: #111;">${s3Doc.tahapan || 'Rubber Main Nursery (Seleksi III FINAL)'}</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                       <span style="color: #6B7280;">Total Diokulasi SDHI:</span>
@@ -232,6 +248,14 @@ export function renderBuddingGrafting() {
                       <span style="color: #6B7280;">Total Kayu Entres Dipakai:</span>
                       <span style="font-weight: 700; color: #111;">${ttlKayu.toLocaleString('id-ID')} Batang</span>
                     </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                      <span style="color: #6B7280;">Ref. Dokumen Seleksi II:</span>
+                      <span style="font-weight: 700; color: #111;">${s3Doc.sourceSelectionDocNo || s3Doc.sourceDocNo || '-'}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                      <span style="color: #6B7280;">Ref. Dokumen Penyemaian:</span>
+                      <span style="font-weight: 700; color: #111;">${s3Doc.sourceSeedingDocNo || '-'}</span>
+                    </div>
 
                     ${rows.length > 0 ? `
                       <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #D1D5DB;">
@@ -239,8 +263,8 @@ export function renderBuddingGrafting() {
                         <div style="display: flex; flex-direction: column; gap: 3px;">
                           ${rows.map(r => `
                             <div style="display: flex; justify-content: space-between; color: #4B5563;">
-                              <span>• ${formatBedenganCode(r.bedengan, r.bedenganCode) || 'BED-001'} (${r.klon ? normalizeKlonName(r.klon) : (stx.klonAwal ? normalizeKlonName(stx.klonAwal) : 'GT 1')})</span>
-                              <span style="font-weight: 700; color: #116834;">${parseInt(r.disemai || 0).toLocaleString('id-ID')} Pkk</span>
+                              <span>• ${formatBedenganCode(r.bedengan, r.bedenganCode) || 'BED-001'} (${r.klon ? normalizeKlonName(r.klon) : (s3Doc.klon ? normalizeKlonName(s3Doc.klon) : 'GT 1')})</span>
+                              <span style="font-weight: 700; color: #116834;">${parseInt(r.disemai || r.sourceBibitQty || 0).toLocaleString('id-ID')} Pkk</span>
                             </div>
                           `).join('')}
                         </div>
@@ -250,7 +274,7 @@ export function renderBuddingGrafting() {
 
                   <!-- FOOTER ACTION ROW -->
                   ${sisaBelumOkulasi <= 0 ? `
-                    <div class="card-action-rekam" data-index="${originalIdx}" data-completed="true" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: default;">
+                    <div class="card-action-rekam" data-index="${originalIdx}" data-doc="${docNo}" data-id="${s3Doc.id || ''}" data-completed="true" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: default;">
                       <span style="font-size: 0.74rem; color: #116834; font-weight: 700;">✓ Okulasi Selesai (100% Balance)</span>
                       <div style="display: flex; align-items: center; gap: 4px; color: #116834; font-weight: 700; font-size: 0.74rem;">
                         <span>Batch Selesai</span>
@@ -260,7 +284,7 @@ export function renderBuddingGrafting() {
                       </div>
                     </div>
                   ` : `
-                    <div class="card-action-rekam" data-index="${originalIdx}" data-completed="false" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: pointer;">
+                    <div class="card-action-rekam" data-index="${originalIdx}" data-doc="${docNo}" data-id="${s3Doc.id || ''}" data-completed="false" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: pointer;">
                       <span style="font-size: 0.74rem; color: #116834; font-weight: 600;">Ketuk untuk Rekam Okulasi</span>
                       <div style="display: flex; align-items: center; gap: 3px; color: #116834; font-weight: 700; font-size: 0.76rem;">
                         <span>Input Data</span>
@@ -282,9 +306,9 @@ export function renderBuddingGrafting() {
                 <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
               </svg>
             </div>
-            <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Belum Ada Batch Penyemaian</h3>
+            <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Belum Ada Bibit Siap Diokulasi</h3>
             <p style="font-size: 0.78rem; color: #757575; margin: 0; line-height: 1.4;">
-              Lakukan penyemaian terlebih dahulu pada modul <strong>Penyemaian</strong> agar batch otomatis masuk ke tahap Okulasi.
+              Belum ada bibit yang siap diokulasi. Seleksi III belum final.
             </p>
           </div>
         `}
@@ -498,8 +522,12 @@ export function renderBuddingGrafting() {
     card.addEventListener('click', (e) => {
       if (e.currentTarget.dataset.completed === 'true') return;
       const idx = e.currentTarget.dataset.index;
+      const doc = e.currentTarget.dataset.doc;
+      const id = e.currentTarget.dataset.id;
       storage.remove('editing_budding_index');
       storage.set('selected_grafting_batch_index', idx);
+      if (doc) storage.set('selected_grafting_batch_doc_no', doc);
+      if (id) storage.set('selected_grafting_batch_id', id);
       storage.remove('budding_qr_verified');
       navigate('/budding/grafting/scan');
     });
