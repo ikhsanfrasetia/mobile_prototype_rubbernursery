@@ -211,7 +211,7 @@ assert(ESTATE_MASTER.length === 2, 'B10. Master Estate tetap utuh (2)');
 assert(BLOCK_MASTER.length === 40, 'B11. Master Block tetap utuh (40)');
 assert(KLON_MASTER.length === 57, 'B12. Master Clone tetap utuh (57)');
 assert(WORKER_MASTER.length === 24, 'B13. Master Worker tetap utuh (24)');
-assert(CFNA_MASTER.length === 46, 'B14. Master CFNA tetap utuh (46)');
+assert(CFNA_MASTER.length === 54, 'B14. Master CFNA tetap utuh (54)');
 
 const curSession = storage.get('sigma_session', null);
 const curUserContext = storage.get('user_context', null);

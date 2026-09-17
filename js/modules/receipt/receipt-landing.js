@@ -1,6 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
-import { formatStandardDocNo } from '../../core/utils.js';
+import { formatStandardDocNo, formatDate } from '../../core/utils.js';
+import { guardDependency } from '../../core/dependency-guard.js';
 
 export function renderReceiptLanding() {
   const app = document.getElementById('app');
@@ -289,14 +290,7 @@ export function renderReceiptLanding() {
         const docNo = e.currentTarget.dataset.doc || 'Dokumen ini';
         cardPopovers.forEach(p => p.style.display = 'none');
         
-        const toast = document.createElement('div');
-        toast.style.cssText = 'position: absolute; top: 16px; left: 16px; right: 16px; background: #C62828; color: #FFFFFF; padding: 12px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 8px; animation: slideDown 0.25s ease-out;';
-        toast.innerHTML = `
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" style="flex-shrink: 0;"><circle cx="12" cy="12" r="100"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-          <span style="line-height: 1.3;">${docNo} tidak dapat diubah/dihapus karena telah diproses pada tahap Penyemaian.</span>
-        `;
-        app.querySelector('.page').appendChild(toast);
-        setTimeout(() => toast.remove(), 3500);
+        guardDependency(docNo, 'Penerimaan', 'Diubah/Dihapus');
       });
     });
 

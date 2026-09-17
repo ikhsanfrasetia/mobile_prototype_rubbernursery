@@ -19,7 +19,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
-import { getCfnaByCode, getCfnaActivityMappings, MAPPING_STATUS, CFNA_STATUS } from '../../data/cfna-master.js';
+import { getCfnaByCode, getCfnaByName, getCfnaActivityMappings, getActiveCfnaMaster, getAllCfnaMaster, MAPPING_STATUS, CFNA_STATUS } from '../../data/cfna-master.js';
 import {
   getWorkersForUserContext,
   getWorkerById,
@@ -41,30 +41,15 @@ import {
 } from '../../data/block-master.js';
 import { getOpenPrograms, getProgramById } from '../../data/program-master.js';
 
-export const MASTER_AKTIVITAS = [
-  { kode: '122193', nama: 'Treatment & Pengemasan' },
-  { kode: '122192', nama: 'Bongkar Bibit & Potong Serong' },
-  { kode: '122191', nama: 'Topping' },
-  { kode: '122177', nama: 'Perawatan Entrys' },
-  { kode: '122176', nama: 'Seleksi Bibit' },
-  { kode: '122175', nama: 'Pengendalian Hama Penyakit' },
-  { kode: '122174', nama: 'Pemupukan' },
-  { kode: '122173', nama: 'Pengendalian Gulma' },
-  { kode: '122172', nama: 'Penyisipan' },
-  { kode: '122171', nama: 'Penyiraman' },
-  { kode: '122183', nama: 'Buka Perban & Pemeriksaan Okulasi' },
-  { kode: '122182', nama: 'Okulasi' },
-  { kode: '122181', nama: 'Panen Entrys' },
-  { kode: '122162', nama: 'Tanam Entrys Baru' },
-  { kode: '122161', nama: 'Tanam Kelatak di Polybag' },
-  { kode: '122160', nama: 'Pembebanan Biaya dari Bedengan' },
-  { kode: '122141', nama: 'Biaya Polybag' },
-  { kode: '122124', nama: 'Penyiraman di Bedengan' },
-  { kode: '122123', nama: 'Tanam Biji di Bedengan' },
-  { kode: '122122', nama: 'Pemeliharaan Bedengan' },
-  { kode: '122121', nama: 'Persiapan Bedengan' },
-  { kode: '122111', nama: 'Biaya Biji Kelatak' }
-];
+export function getMaintenanceActivities() {
+  return getActiveCfnaMaster().map(c => ({
+    kode: c.code,
+    nama: c.name,
+    id: c.id
+  }));
+}
+
+export const MASTER_AKTIVITAS = getMaintenanceActivities();
 
 /**
  * @deprecated MASTER_PROGRAM_PEMBIBITAN digantikan oleh getOpenPrograms({ estateId }) dari program-master.js
@@ -198,8 +183,17 @@ export function resolveLokasiBlok(lokasiBlok) {
  */
 export function getConfirmedCfnaForActivity(activity) {
   if (!activity) return [];
+  const code = typeof activity === 'string' ? activity : (activity.kode || activity.code || '');
   const actName = (typeof activity === 'string' ? activity : (activity.nama || activity.name || '')).trim().toLowerCase();
   
+  // 1. Direct code lookup
+  if (code && /^[0-9A-Za-z]+$/.test(code)) {
+    const direct = getCfnaByCode(code);
+    if (direct && direct.status === CFNA_STATUS.ACTIVE) {
+      return [direct];
+    }
+  }
+
   let targetType = null;
   if (actName.includes('penyiraman')) {
     targetType = 'PENYIRAMAN';
@@ -760,7 +754,8 @@ export function renderNurseryActivityForm() {
   const availableBlocks = getBlocksForNurseryActivity(userCtx);
   const openPrograms = getOpenPrograms({ estateId: userCtx?.estateId });
 
-  let selectedAktivitasIndex = 0;
+  const availableAktivitas = getActiveCfnaMaster();
+  let selectedAktivitasCode = availableAktivitas[0]?.code || '122171';
   const initialProgram = openPrograms[0] || null;
   let selectedProgramId = initialProgram ? initialProgram.id : null;
   let selectedProgramCode = initialProgram ? initialProgram.code : null;
@@ -771,9 +766,7 @@ export function renderNurseryActivityForm() {
     workerSelectionState[w.id] = false;
   });
 
-  const currentAktivitas = MASTER_AKTIVITAS[selectedAktivitasIndex];
   const currentBlok = availableBlocks[selectedBlokIndex] || availableBlocks[0] || null;
-  const availableCfna = getConfirmedCfnaForActivity(currentAktivitas);
 
   app.innerHTML = `
     <div class="page nursery-activity-page" style="position: relative; display: flex; flex-direction: column; height: 100%; background: #F8FAF9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden;">
@@ -796,39 +789,18 @@ export function renderNurseryActivityForm() {
       <!-- CONTENT BODY (SCROLLABLE) -->
       <main style="flex: 1; overflow-y: auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px;">
         
-        <!-- CARD 1: AKTIVITAS -->
+        <!-- CARD 1: AKTIVITAS PEMBIBITAN (CFNA) -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
           <label for="select-aktivitas" style="display: block; font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 5px;">
-            Aktivitas
+            Aktivitas Pembibitan
           </label>
           <div style="position: relative;">
             <select id="select-aktivitas" style="width: 100%; height: 42px; padding: 0 32px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #1F2937; appearance: none; outline: none; cursor: pointer;">
-              ${MASTER_AKTIVITAS.map((akt, i) => `
-                <option value="${i}" ${i === selectedAktivitasIndex ? 'selected' : ''}>
-                  ${akt.kode} - ${akt.nama}
-                </option>
-              `).join('')}
-            </select>
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </div>
-        </div>
-
-        <!-- CARD 1B: ALOKASI BIAYA (CFNA) -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-          <label for="select-cfna" style="display: block; font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 5px;">
-            Alokasi Biaya (CFNA)
-          </label>
-          <div style="position: relative;">
-            <select id="select-cfna" style="width: 100%; height: 42px; padding: 0 32px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #1F2937; appearance: none; outline: none; cursor: pointer;" ${availableCfna.length === 0 ? 'disabled' : ''}>
-              ${availableCfna.length > 0 ? availableCfna.map(c => `
-                <option value="${c.code}">
+              ${availableAktivitas.map((c) => `
+                <option value="${c.code}" ${c.code === selectedAktivitasCode ? 'selected' : ''}>
                   ${c.code} - ${c.name}
                 </option>
-              `).join('') : `
-                <option value="">Belum tersedia mapping CFNA</option>
-              `}
+              `).join('')}
             </select>
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
               <polyline points="6 9 12 15 18 9"></polyline>
@@ -949,24 +921,6 @@ export function renderNurseryActivityForm() {
     navigate('/nursery-activity');
   });
 
-  // Event Listener: Dynamic Aktivitas -> update CFNA options
-  const selectAktivitas = app.querySelector('#select-aktivitas');
-  const selectCfna = app.querySelector('#select-cfna');
-  selectAktivitas?.addEventListener('change', (e) => {
-    const idx = parseInt(e.target.value, 10);
-    const akt = MASTER_AKTIVITAS[idx] || MASTER_AKTIVITAS[0];
-    const cfnaOptions = getConfirmedCfnaForActivity(akt);
-    if (selectCfna) {
-      if (cfnaOptions.length > 0) {
-        selectCfna.disabled = false;
-        selectCfna.innerHTML = cfnaOptions.map(c => `<option value="${c.code}">${c.code} - ${c.name}</option>`).join('');
-      } else {
-        selectCfna.disabled = true;
-        selectCfna.innerHTML = '<option value="">Belum tersedia mapping CFNA</option>';
-      }
-    }
-  });
-
   // Event Listener: Dropdown Lokasi Blok Change
   const selectBlok = app.querySelector('#select-blok');
   const displayLuasBlok = app.querySelector('#display-luas-blok');
@@ -1042,9 +996,21 @@ export function renderNurseryActivityForm() {
   app.querySelector('#btn-simpan-hasil')?.addEventListener('click', () => {
     const selectAktivitasEl = app.querySelector('#select-aktivitas');
     const selectBlokEl = app.querySelector('#select-blok');
-    const selectCfnaEl = app.querySelector('#select-cfna');
-    const aktIdx = parseInt(selectAktivitasEl?.value || '0', 10);
-    const selectedAkt = MASTER_AKTIVITAS[aktIdx] || MASTER_AKTIVITAS[0];
+    const chosenCode = selectAktivitasEl?.value?.trim() || availableAktivitas[0]?.code;
+    const cfnaRecord = getCfnaByCode(chosenCode);
+
+    if (!cfnaRecord || cfnaRecord.status !== CFNA_STATUS.ACTIVE) {
+      toast('Aktivitas pembibitan yang dipilih tidak valid dalam master data.', 'error');
+      return;
+    }
+
+    const selectedAkt = {
+      kode: cfnaRecord.code,
+      nama: cfnaRecord.name,
+      id: cfnaRecord.id
+    };
+    const allocationCode = cfnaRecord.code;
+    const allocationName = cfnaRecord.name;
     
     const chosenProg = (selectedProgramId ? getProgramById(selectedProgramId) : null) || openPrograms.find(p => p.code === selectedProgramCode) || null;
     const finalProgId = chosenProg ? chosenProg.id : selectedProgramId;
@@ -1102,33 +1068,6 @@ export function renderNurseryActivityForm() {
         position: canonical.position || 'Pekerja Bibitan',
         role: canonical.position || 'Pekerja Bibitan'
       });
-    }
-
-    // Validasi & Ambil Canonical CFNA Data
-    let allocationCode = null;
-    let allocationName = null;
-
-    if (selectCfnaEl && !selectCfnaEl.disabled && selectCfnaEl.value) {
-      const chosenCode = String(selectCfnaEl.value).trim();
-      const cfnaRecord = getCfnaByCode(chosenCode);
-
-      if (!cfnaRecord) {
-        toast('Kode CFNA tidak valid dalam master data.', 'error');
-        return;
-      }
-      if (cfnaRecord.status !== CFNA_STATUS.ACTIVE) {
-        toast('Status CFNA tidak aktif.', 'error');
-        return;
-      }
-      const isConfirmedForActivity = getConfirmedCfnaForActivity(selectedAkt).some(c => c.code === chosenCode);
-      if (!isConfirmedForActivity) {
-        toast('Kode CFNA tidak terkonfirmasi untuk aktivitas ini.', 'error');
-        return;
-      }
-
-      // Name MUST strictly come from master data
-      allocationCode = cfnaRecord.code;
-      allocationName = cfnaRecord.name;
     }
 
     const existingRecords = storage.get('nursery_activity_records', []);

@@ -342,7 +342,7 @@ export function filterReceiptKspByStatus(receipts, statusFilter, currentUser = n
 
   return receipts.filter(r => {
     const s = (r.status || '').toUpperCase();
-    
+
     if (statusFilter === 'ACTIONABLE' || statusFilter === 'MENUNGGU_PENERIMAAN' || statusFilter === 'MENUNGGU_VERIFIKASI') {
       if (userRole === 'PENGURUS') {
         return canPerformPengurusReceiptAction(r, currentUser);
@@ -429,12 +429,11 @@ export function processPengurusInitialReceipt(receiptId, formValues, currentUser
   );
 }
 
-/**
- * Eksekusi Verifikasi & Penentuan Jalur Distribusi oleh Asisten Kepala (Askep)
- */
 export function processAskepVerification(receiptId, formValues, currentUser) {
   if (!receiptId) throw new Error('Receipt ID wajib ada');
-  const { jalurPenerimaan, targetDivisionId, notes } = formValues || {};
+  const rawJalur = formValues?.jalurPenerimaan || formValues?.routingPath || formValues?.routePath || formValues?.destinationType;
+  const jalurPenerimaan = rawJalur ? String(rawJalur).trim().toUpperCase() : '';
+  const { targetDivisionId, notes } = formValues || {};
 
   const receipt = getReceiptKspById(receiptId);
   if (!receipt) {
@@ -1838,11 +1837,11 @@ export function openAsistenLapanganPhysicalReceiptModal(item, currentUser, onSuc
       if ('geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition(
           pos => { lat = pos.coords.latitude; lon = pos.coords.longitude; },
-          () => {},
+          () => { },
           { timeout: 2000 }
         );
       }
-    } catch {}
+    } catch { }
 
     // Simulated camera frame with canvas dataUrl
     const canvas = document.createElement('canvas');
@@ -2516,11 +2515,11 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
       if ('geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition(
           pos => { lat = pos.coords.latitude; lon = pos.coords.longitude; },
-          () => {},
+          () => { },
           { timeout: 2000 }
         );
       }
-    } catch {}
+    } catch { }
 
     const canvas = document.createElement('canvas');
     canvas.width = 320;

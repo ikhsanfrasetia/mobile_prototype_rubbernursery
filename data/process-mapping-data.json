@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "2.2.0",
-    "lastUpdated": "2026-09-14",
+    "lastUpdated": "2026-09-17",
     "updatedBy": "System Architect (Task 10 Finalization)",
     "description": "SIGMA Rubber Nursery Process Mapping Store - Master Baseline Current Locked"
   },
@@ -3641,7 +3641,7 @@
       "revisionOf": null,
       "moduleId": "01-presensi",
       "featureId": "presensi-supervisor",
-      "lastModified": "2026-09-14T12:30:35.930Z"
+      "lastModified": "2026-09-17T14:53:18.478Z"
     },
     {
       "id": "RN-PRS-002",
@@ -11017,6 +11017,32 @@
       "lastModified": "2026-09-14T12:30:36.056Z",
       "archivedAt": "2026-09-14T12:30:36.056Z",
       "restoredAt": "2026-09-14T12:30:36.030Z"
+    },
+    {
+      "id": "__ACC_TEST_REQ_1789656798505__",
+      "title": "Temporary Acceptance Test Req",
+      "role": "Mantri Bibitan",
+      "module": "01-presensi",
+      "moduleId": "01-presensi",
+      "feature": "presensi-supervisor",
+      "featureId": "presensi-supervisor",
+      "type": "KF",
+      "process": "",
+      "input": "test",
+      "validation": "test",
+      "fallback": "test",
+      "output": "test",
+      "businessRule": "",
+      "ruleIds": [],
+      "status": "Draft",
+      "version": 1,
+      "isArchived": true,
+      "isSuperseded": false,
+      "revisionOf": null,
+      "createdAt": "2026-09-17T14:53:18.508Z",
+      "lastModified": "2026-09-17T14:53:18.598Z",
+      "archivedAt": "2026-09-17T14:53:18.598Z",
+      "restoredAt": "2026-09-17T14:53:18.574Z"
     }
   ],
   "businessRules": [

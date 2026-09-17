@@ -12,7 +12,13 @@ import { toast } from '../../components/toast.js';
 import { navigate } from '../../core/router.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
-import { syncAllSeedingsToSelectionPool, filterSelectionByScope } from '../selection/selection-manager.js';
+import { 
+  syncAllSeedingsToSelectionPool, 
+  syncAllSeedingsToPreGraftingSelectionDocuments, 
+  filterSelectionByScope, 
+  hasActionableSelection, 
+  getActionableSelectionCount 
+} from '../selection/selection-manager.js';
 
 /* SVG Icons sesuai desain acuan - proporsional & tajam */
 const ICONS = {
@@ -75,7 +81,6 @@ import {
   getActionableIncomingCount as getActionableIncomingSendiriCount
 } from '../request/request-kebun-sendiri-landing.js';
 import { filterReceiptKspRequests, getActionableReceiptCount } from '../receipt/receipt-kebun-sepupu-landing.js';
-import { getActionableSelectionCount } from '../selection/selection-manager.js';
 import { getActionableDestructionCount } from '../destruction/destruction-manager.js';
 import { ASISTEN_BIBITAN_MAIN_MENUS } from '../../core/menu-registry.js';
 
@@ -212,6 +217,7 @@ function renderBerandaAsisten() {
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const estateReceipts = filterReceiptKspRequests(allReceipts, userCtx);
   const hasActionableReceipt = getActionableReceiptCount(estateReceipts, userCtx) > 0;
+  const hasActionableSelectionBadge = hasActionableSelection(userCtx);
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -235,6 +241,10 @@ function renderBerandaAsisten() {
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
     } else if (item.id === 'penerimaan' && hasActionableReceipt) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'penyeleksian' && hasActionableSelectionBadge) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
@@ -423,7 +433,7 @@ function renderBerandaAsistenBibitan() {
   const hasActionableReceipt = getActionableReceiptCount(estateReceipts, userCtx) > 0;
 
   const allSelections = storage.get('selection_transactions', []);
-  const hasActionableSelection = getActionableSelectionCount(allSelections, userCtx) > 0;
+  const hasActionableSelectionBadge = hasActionableSelection(userCtx);
 
   const allDestructions = storage.get('destruction_transactions', []);
   const hasActionableDestruction = getActionableDestructionCount(allDestructions, userCtx) > 0;
@@ -453,7 +463,7 @@ function renderBerandaAsistenBibitan() {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
-    } else if (item.id === 'pemeriksaan-seleksi' && hasActionableSelection) {
+    } else if (item.id === 'pemeriksaan-seleksi' && hasActionableSelectionBadge) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
@@ -515,6 +525,7 @@ function renderBerandaAsistenBibitan() {
 export function renderBeranda() {
   const app = document.getElementById('app');
   const user = session.get();
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
 
   if (user?.role === ROLES.PENGURUS || user?.role === ROLES.PENGURUS_KEBUN_SEPUPU) {
     renderBerandaPengurus();
@@ -642,111 +653,16 @@ export function renderBeranda() {
     }
   }
 
-  // Sinkronisasi bibit ditolak (Rusak, Mati, Lainnya) dari transaksi penyemaian
+  // Sinkronisasi bibit ditolak (Rusak, Mati, Lainnya) & Dokumen Seleksi Pra-Okulasi dari transaksi penyemaian
   try {
     syncAllSeedingsToSelectionPool();
+    syncAllSeedingsToPreGraftingSelectionDocuments(userCtx);
   } catch (err) {
-    console.warn('[beranda] Gagal sinkronisasi seeding ke selection_pool:', err);
+    console.warn('[beranda] Gagal sinkronisasi data seeding:', err);
   }
 
-  // Hitung pending penyeleksian (dari pemeriksaan gagal, reject okulasi/regrafting, reject penyemaian, dan reject penerimaan APM/benih)
-  let pendingSelectionCount = 0;
-  const culledTxs = storage.get('selection_transactions', []);
-  const culledPoolDocs = new Set(culledTxs.map(c => c.selectionPoolDocNo).filter(Boolean));
-  let selectionPool = storage.get('selection_pool', []);
-
-  // Sinkronisasi data reject dari receipt_transactions (Penerimaan Bibit APM / Benih)
-  const receiptTxs = storage.get('receipt_transactions', []);
-  receiptTxs.forEach((rtx, i) => {
-    const rcvDocNo = rtx.docNo || rtx.nomorDokumen || formatStandardDocNo(2026, 'APR', i + 1);
-    const rows = (rtx.rawState && rtx.rawState.tableRows) || [];
-    if (rows.length > 0) {
-      rows.forEach((row, rIdx) => {
-        const rejected = parseInt(row.rejected || 0);
-        if (rejected > 0) {
-          const poolDocNo = formatStandardDocNo(2026, 'CULL', selectionPool.length + 1);
-          if (!selectionPool.some(s => s.receiptDocNo === rcvDocNo && s.originType === 'REJECT_PENERIMAAN' && s.klon === (row.klon || rtx.klon))) {
-            selectionPool.push({
-              docNo: poolDocNo,
-              originType: 'REJECT_PENERIMAAN',
-              receiptDocNo: rcvDocNo,
-              jumlahAfkir: rejected,
-              status: 'PENDING_DECLARATION'
-            });
-          }
-        }
-      });
-    } else if (parseInt(rtx.rejected || rtx.jumlahDitolak || 0) > 0) {
-      const poolDocNo = formatStandardDocNo(2026, 'CULL', selectionPool.length + 1);
-      if (!selectionPool.some(s => s.receiptDocNo === rcvDocNo && s.originType === 'REJECT_PENERIMAAN')) {
-        selectionPool.push({
-          docNo: poolDocNo,
-          originType: 'REJECT_PENERIMAAN',
-          receiptDocNo: rcvDocNo,
-          jumlahAfkir: parseInt(rtx.rejected || rtx.jumlahDitolak || 0),
-          status: 'PENDING_DECLARATION'
-        });
-      }
-    }
-  });
-
-  // Sinkronisasi data reject dari budding_transactions (Okulasi Grafting & Regrafting)
-  const allBuddingForSel = storage.get('budding_transactions', []);
-  allBuddingForSel.forEach((btx, i) => {
-    const ditolak = parseInt(btx.jumlahDitolak || 0);
-    if (ditolak > 0) {
-      const isRegraft = btx.type === 'REGRAFTING';
-      const originType = isRegraft ? 'REJECT_REGRAFTING' : 'REJECT_OKULASI';
-      if (!selectionPool.some(s => s.buddingDocNo === btx.docNo && s.originType === originType)) {
-        selectionPool.push({
-          docNo: formatStandardDocNo(2026, 'CULL', selectionPool.length + 1),
-          originType,
-          buddingDocNo: btx.docNo,
-          jumlahAfkir: ditolak,
-          status: 'PENDING_DECLARATION'
-        });
-      }
-    }
-  });
-
-  // Sinkronisasi data gagal periksa dari inspection_transactions
-  const allInspectionForSel = storage.get('inspection_transactions', []);
-  allInspectionForSel.forEach((insp, i) => {
-    const gagal = parseInt(insp.jumlahGagal || 0);
-    const toRegraft = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : gagal;
-    const toSelection = insp.totalToSelection !== undefined ? parseInt(insp.totalToSelection || 0) : Math.max(0, gagal - toRegraft);
-    if (toSelection > 0) {
-      if (!selectionPool.some(s => s.inspectionDocNo === insp.docNo && s.originType === 'REJECT_PEMERIKSAAN')) {
-        selectionPool.push({
-          docNo: formatStandardDocNo(2026, 'CULL', selectionPool.length + 1),
-          originType: 'REJECT_PEMERIKSAAN',
-          inspectionDocNo: insp.docNo,
-          jumlahAfkir: toSelection,
-          status: 'PENDING_DECLARATION'
-        });
-      }
-    }
-  });
-
-  storage.set('selection_pool', selectionPool);
-
-  const userCtx = getCurrentUserContext() || resolveUserContext(user);
-  const scopedSelectionPool = filterSelectionByScope(selectionPool, userCtx);
-
-  const isPostGraftingReject = (item) => (
-    item && (
-      item.originType === 'REJECT_OKULASI' ||
-      item.originType === 'REJECT_PEMERIKSAAN' ||
-      item.originType === 'REJECT_REGRAFTING'
-    )
-  );
-
-  // Hitung seluruh item selection_pool pasca-okulasi yang belum dideklarasikan sesuai scope
-  scopedSelectionPool.filter(isPostGraftingReject).forEach(s => {
-    if (s.status !== 'DECLARED_CULLED' && !culledPoolDocs.has(s.docNo)) {
-      pendingSelectionCount++;
-    }
-  });
+  // Hitung apakah terdapat tindakan penyeleksian yang diperlukan untuk user ini
+  const hasPendingPenyeleksian = hasActionableSelection(userCtx);
 
   // Hitung pending pengeluaran bibit untuk Mantri Bibitan
   const allRequests = storage.get('requests_transactions', []);
@@ -769,7 +685,7 @@ export function renderBeranda() {
   const menuCards = MENU_ITEMS.map((item) => {
     let badgeHtml = '';
     const hasNotification = (
-      (item.id === 'penyeleksian' && pendingSelectionCount > 0) ||
+      (item.id === 'penyeleksian' && hasPendingPenyeleksian) ||
       (item.id === 'penyemaian' && hasPendingBenih) ||
       (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting)) ||
       (item.id === 'pemeriksaan' && hasPendingPemeriksaan) ||

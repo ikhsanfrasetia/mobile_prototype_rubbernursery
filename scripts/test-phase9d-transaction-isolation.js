@@ -74,8 +74,8 @@ const rawTxWagiman = applyTransactionActor({
   program: 'PRG/NUR/01/2026',
   lokasiBlok: { blok: 'Block 031/04', luas: 39.68 },
   pekerja: [],
-  allocationCode: '964009',
-  allocationName: 'Penyiraman (Manual)'
+  allocationCode: '122171',
+  allocationName: 'Penyiraman'
 }, AUDIT_EVENT_TYPES.CREATE, wagiman);
 
 const rawTxSupriono = applyTransactionActor({
@@ -85,7 +85,7 @@ const rawTxSupriono = applyTransactionActor({
   program: 'PRG/NUR/02/2027',
   lokasiBlok: { blok: 'Block 036G/19', luas: 0.45 },
   pekerja: [],
-  allocationCode: '964006',
+  allocationCode: '122174',
   allocationName: 'Pemupukan'
 }, AUDIT_EVENT_TYPES.CREATE, supriono);
 
@@ -224,8 +224,8 @@ assert(rawTxSupriono.createdByScopeType === SCOPE_TYPES.DIVISION, 'TEST 34: Scop
 console.log('\n--- SECTION J: Workflow & CFNA Integration Preservation ---');
 
 const confirmedCfna = getConfirmedCfnaForActivity(MASTER_AKTIVITAS.find(a => a.nama === 'Penyiraman'));
-assert(confirmedCfna.length === 1 && confirmedCfna[0].code === '964009', 'TEST 35: CFNA activity filter continues to function properly');
-assert(rawTxSupriono.allocationCode === '964006', 'TEST 36: CFNA allocationCode remains intact in transaction');
+assert(confirmedCfna.length === 1 && confirmedCfna[0].code === '122171', 'TEST 35: CFNA activity filter continues to function properly');
+assert(rawTxSupriono.allocationCode === '122174', 'TEST 36: CFNA allocationCode remains intact in transaction');
 assert(rawTxSupriono.allocationName === 'Pemupukan', 'TEST 37: CFNA allocationName remains intact in transaction');
 
 // --------------------------------------------------

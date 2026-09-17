@@ -1,6 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
+import { guardDependency } from '../../core/dependency-guard.js';
 
 export function renderSeedingLanding() {
   const app = document.getElementById('app');
@@ -358,11 +359,17 @@ export function renderSeedingLanding() {
     app.querySelectorAll('.btn-popover-seeding-edit').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = e.currentTarget.dataset.index;
+        const txs = storage.get('seeding_transactions', []);
+        const txToEdit = txs[idx];
+        
+        if (txToEdit && guardDependency(txToEdit.docNo, 'Penyemaian', 'Diubah')) {
+          return;
+        }
+
         storage.set('editing_seeding_index', idx);
         
         // Find original source index by matching docNo to avoid restoring a blank form
         // (This is just an extra precaution since the form will load from editing state)
-        const txs = storage.get('seeding_transactions', []);
         const editTx = txs[idx];
         if (editTx && editTx.sourceIndex !== undefined) {
           storage.set('seeding_source_index', editTx.sourceIndex);
@@ -374,12 +381,21 @@ export function renderSeedingLanding() {
 
     app.querySelectorAll('.btn-popover-seeding-hapus').forEach(btn => {
       btn.addEventListener('click', (e) => {
+        const idx = e.currentTarget.dataset.index;
+        const txs = storage.get('seeding_transactions', []);
+        const txToDelete = txs[idx];
+        
+        if (!txToDelete) return;
+
+        if (guardDependency(txToDelete.docNo, 'Penyemaian', 'Dihapus')) {
+          return;
+        }
+
         if (window.confirm('Hapus data penyemaian ini?')) {
-          const idx = e.currentTarget.dataset.index;
-          const txs = storage.get('seeding_transactions', []);
           txs.splice(idx, 1);
           storage.set('seeding_transactions', txs);
-          renderSeedingLanding(); // re-render
+          renderSeedingLanding();
+          toast('Data penyemaian berhasil dihapus', 'success');
         }
       });
     });

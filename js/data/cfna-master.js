@@ -1,13 +1,13 @@
 /**
- * data/cfna-master.js — Master Data Cost Field Nursery Allocation (CFNA) Foundation (Phase 9B).
+ * data/cfna-master.js — Master Data Cost Field Nursery Allocation (CFNA) Official Dataset (Phase 9B/TASK-CFNA-REPLACE-02).
  *
  * Prinsip:
- * "SAFETY FIRST."
- * "MASTER DATA FIRST, TRANSACTION LATER."
- * "ADD, DO NOT BREAK."
+ * "SINGLE SOURCE OF TRUTH"
+ * "FULL REPLACEMENT WITH 54 OFFICIAL ACTIVE CODES"
+ * "IMMUTABLE BUSINESS STRINGS"
  *
  * File ini merupakan Master Data tersendiri untuk kodifikasi alokasi biaya pembibitan (CFNA).
- * Bersifat deklaratif & read-only. BELUM diintegrasikan ke transaksi pemeliharaan pada fase ini.
+ * Bersifat deklaratif & read-only.
  */
 
 export const CFNA_STATUS = Object.freeze({
@@ -23,330 +23,352 @@ export const MAPPING_STATUS = Object.freeze({
 });
 
 /**
- * Dataset Master CFNA (46 Record Terverifikasi)
+ * Dataset Master CFNA Resmi Terbaru (54 Record Terverifikasi)
  */
 export const CFNA_MASTER = Object.freeze([
-  // --- KELOMPOK 964: Pemeliharaan Main Nursery ---
+  // --- KELOMPOK 1221: Pembibitan Karet (Main Nursery & Bedengan) ---
   {
-    id: 'CFNA-964009',
-    code: '964009',
-    name: 'Penyiraman (Manual)',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-964008',
-    code: '964008',
-    name: 'Seleksi Bibit',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-964007',
-    code: '964007',
-    name: 'Pengendalian Hama Penyakit',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-964006',
-    code: '964006',
-    name: 'Pemupukan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-964005',
-    code: '964005',
-    name: 'Pengendalian Gulma (Manual)',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-964004',
-    code: '964004',
-    name: 'Pengendalian Gulma (Kimia)',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-964003',
-    code: '964003',
-    name: 'Pemeliharaan Sprinkler/Pipa',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-964002',
-    code: '964002',
-    name: 'Pemeliharaan Mesin Sprinkler',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-964001',
-    code: '964001',
-    name: 'Operator Mesin Sprinkler',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK 955: Pemeliharaan Pre-Nursery / Babybag ---
-  {
-    id: 'CFNA-955005',
-    code: '955005',
-    name: 'Seleksi Bibit',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-955004',
-    code: '955004',
-    name: 'Pengendalian Hama Penyakit',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-955003',
-    code: '955003',
-    name: 'Pemupukan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-955002',
-    code: '955002',
-    name: 'Pengendalian Gulma',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-955001',
-    code: '955001',
-    name: 'Penyiraman',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK 952: Biaya Babybag ---
-  {
-    id: 'CFNA-952001',
-    code: '952001',
-    name: 'Biaya Babybag',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK 966 & 959: Pembebanan Kebun Sepupu ---
-  {
-    id: 'CFNA-966001',
-    code: '966001',
-    name: 'Pembebanan ke Kebun Sepupu',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-959001',
-    code: '959001',
-    name: 'Pembebanan ke Kebun Sepupu',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK 963: Penanaman & Transplanting Polybag ---
-  {
-    id: 'CFNA-963004',
-    code: '963004',
-    name: 'Buat/Pasang No. Kategori',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-963003',
-    code: '963003',
-    name: 'Isi Cangkang/Mulsa',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-963002',
-    code: '963002',
-    name: 'Tanam Bibit di Polybag',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-963001',
-    code: '963001',
-    name: 'Pemindahan Bibit Babybag',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK 954: Penanaman Kecambah Pre-Nursery ---
-  {
-    id: 'CFNA-954002',
-    code: '954002',
-    name: 'Buat/Pasang No. Kategori',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-954001',
-    code: '954001',
-    name: 'Tanam Kecambah',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK 962: Persiapan Media Main Nursery (Polybag) ---
-  {
-    id: 'CFNA-962005',
-    code: '962005',
-    name: 'Susun Polybag di Bibitan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-962004',
-    code: '962004',
-    name: 'Isi Tanah ke Polybag',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-962003',
-    code: '962003',
-    name: 'Ayak/Campur Tanah dgn RP & Solid',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-962002',
-    code: '962002',
-    name: 'Cari/Kumpulkan Tanah/Media',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-962001',
-    code: '962001',
-    name: 'Membersihkan/Meratakan Areal Bibitan',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK 953: Persiapan Media Pre-Nursery (Bedengan/Babybag) ---
-  {
-    id: 'CFNA-953006',
-    code: '953006',
-    name: 'Pemeliharaan Bedengan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-953005',
-    code: '953005',
-    name: 'Persiapan Bedengan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-953004',
-    code: '953004',
-    name: 'Susun Babybag di Bedengan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-953003',
-    code: '953003',
-    name: 'Isi Tanah ke Babybag',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-953002',
-    code: '953002',
-    name: 'Ayak/Campur Tanah dgn RP & Solid',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-953001',
-    code: '953001',
-    name: 'Cari/Kumpulkan Tanah/Media',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK 951: Biaya Benih / Kecambah ---
-  {
-    id: 'CFNA-951001',
-    code: '951001',
-    name: 'Biaya Kecambah',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK 965 & 956: Supervisi & Pengawasan ---
-  {
-    id: 'CFNA-965002',
-    code: '965002',
-    name: 'Gaji mengawasi bibitan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-965001',
-    code: '965001',
-    name: 'Gaji Mantri Bibitan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-956001',
-    code: '956001',
-    name: 'Gaji Mantri Bibitan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-956002',
-    code: '956002',
-    name: 'Mengawasi Bibitan',
-    status: CFNA_STATUS.ACTIVE
-  },
-
-  // --- KELOMPOK TAMBAHAN: Persediaan & Bedengan Standar ---
-  {
-    id: 'CFNA-091A11',
-    code: '091A11',
-    name: 'Persediaan Bibit Komersil',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-091B11',
-    code: '091B11',
-    name: 'Persediaan Bibit Prog. Tanam',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-122124',
-    code: '122124',
-    name: 'Penyiraman di Bedengan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-122123',
-    code: '122123',
-    name: 'Tanam Biji di Bedengan',
-    status: CFNA_STATUS.ACTIVE
-  },
-  {
-    id: 'CFNA-122122',
-    code: '122122',
-    name: 'Pemeliharaan Bedengan',
+    id: 'CFNA-122111',
+    code: '122111',
+    name: 'Kecambah/Klatak',
     status: CFNA_STATUS.ACTIVE
   },
   {
     id: 'CFNA-122121',
     code: '122121',
-    name: 'Persiapan Bedengan',
+    name: 'Persiapan bedengan',
     status: CFNA_STATUS.ACTIVE
   },
   {
-    id: 'CFNA-122111',
-    code: '122111',
-    name: 'Biaya Biji Kelatak',
+    id: 'CFNA-122122',
+    code: '122122',
+    name: 'Pemeliharaan bedengan',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122123',
+    code: '122123',
+    name: 'Penanaman biji dibedengan',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122124',
+    code: '122124',
+    name: 'Penyiraman di bedengan',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122141',
+    code: '122141',
+    name: 'Biaya Polybag',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122151',
+    code: '122151',
+    name: 'Mencari dan mengumpulkan tanah',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122152',
+    code: '122152',
+    name: 'Persiapan media dan pengisian polybag',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122153',
+    code: '122153',
+    name: 'Pembuatan parit',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122154',
+    code: '122154',
+    name: 'Menyusun polybag',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122155',
+    code: '122155',
+    name: 'Ayak tanah dan campur dengan pupuk RP',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122160',
+    code: '122160',
+    name: 'Pembebanan Biaya Dari Bedengan Perkecambahan',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122161',
+    code: '122161',
+    name: 'Menanam kecambah di polybag',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122162',
+    code: '122162',
+    name: 'Tanam Entrys Baru',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122171',
+    code: '122171',
+    name: 'Penyiraman',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122172',
+    code: '122172',
+    name: 'Penyisipan',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122173',
+    code: '122173',
+    name: 'Pengendalian gulma',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122174',
+    code: '122174',
+    name: 'Pemupukan',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122175',
+    code: '122175',
+    name: 'Pengendalian hama penyakit',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122176',
+    code: '122176',
+    name: 'Seleksi bibit',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122177',
+    code: '122177',
+    name: 'Perawatan Entrys Baru',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122181',
+    code: '122181',
+    name: 'Panen Entrys',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122182',
+    code: '122182',
+    name: 'Okulasi',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122183',
+    code: '122183',
+    name: 'Buka Perban dan pemeriksaan okulasi',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122191',
+    code: '122191',
+    name: 'Topping',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122193',
+    code: '122193',
+    name: 'Treatment dan pengemasan',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-1221A1',
+    code: '1221A1',
+    name: 'Gaji Mantri Tanaman',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-1221A2',
+    code: '1221A2',
+    name: 'Gaji jaga malam',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-1221Z1',
+    code: '1221Z1',
+    name: 'Dipakai kebun sendiri',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-1221Z2',
+    code: '1221Z2',
+    name: 'Dipakai / dikirim ke kebun sepupu',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-1221Z3',
+    code: '1221Z3',
+    name: 'Penjualan',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-1221Z4',
+    code: '1221Z4',
+    name: 'Pemindahan Biaya Bibitan ke APM Nursery',
+    status: CFNA_STATUS.ACTIVE
+  },
+
+  // --- KELOMPOK 1223: Pembibitan Karet (High Stump & APM) ---
+  {
+    id: 'CFNA-122311',
+    code: '122311',
+    name: 'Pemindahan Biaya Bibitan dari RN - Green Budding',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122312',
+    code: '122312',
+    name: 'Memancang',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122313',
+    code: '122313',
+    name: 'Melobang',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122314',
+    code: '122314',
+    name: 'Menanam',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122315',
+    code: '122315',
+    name: 'Memupuk',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122316',
+    code: '122316',
+    name: 'Merawat High Stump',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122317',
+    code: '122317',
+    name: 'Pengendalian Penyakit',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122318',
+    code: '122318',
+    name: 'Root Pruning',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122319',
+    code: '122319',
+    name: 'Topping',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-12231A',
+    code: '12231A',
+    name: 'Bongkar High Stump',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-12231B',
+    code: '12231B',
+    name: 'Pemindahan Biaya ke High Stump N2 - N4',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122320',
+    code: '122320',
+    name: 'Pemindahan Biaya dari High Stump N0 - N1',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122321',
+    code: '122321',
+    name: 'Memupuk',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122322',
+    code: '122322',
+    name: 'Merawat High Stump',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122323',
+    code: '122323',
+    name: 'Pengendalian Penyakit',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122324',
+    code: '122324',
+    name: 'Root Pruning',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122325',
+    code: '122325',
+    name: 'Topping',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122326',
+    code: '122326',
+    name: 'Bongkar High Stump',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122391',
+    code: '122391',
+    name: 'Dipakai kebun sendiri',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122392',
+    code: '122392',
+    name: 'Dipakai / dikirim ke kebun sepupu',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122393',
+    code: '122393',
+    name: 'Penjualan',
+    status: CFNA_STATUS.ACTIVE
+  },
+  {
+    id: 'CFNA-122394',
+    code: '122394',
+    name: 'Pemusnahan Bibit',
     status: CFNA_STATUS.ACTIVE
   }
 ]);
 
 /**
- * Metadata Pemetaan Aktivitas Bibitan (Metadata Registry)
+ * Metadata Pemetaan Aktivitas Bibitan Resmi (Metadata Registry)
  */
 export const CFNA_ACTIVITY_MAPPINGS = Object.freeze([
   {
-    cfnaCode: '964009',
-    cfnaName: 'Penyiraman (Manual)',
+    cfnaCode: '122171',
+    cfnaName: 'Penyiraman',
     targetActivityModule: 'KEGIATAN_BIBITAN',
     targetActivityType: 'PENYIRAMAN',
     mappingStatus: MAPPING_STATUS.CONFIRMED,
     source: 'DAK_CFNA_SPEC'
   },
   {
-    cfnaCode: '964008',
-    cfnaName: 'Seleksi Bibit',
-    targetActivityModule: 'PENYELEKSIAN',
-    targetActivityType: 'SELEKSI_BIBIT',
-    mappingStatus: MAPPING_STATUS.CONFIRMED,
-    source: 'DAK_CFNA_SPEC'
-  },
-  {
-    cfnaCode: '964006',
+    cfnaCode: '122174',
     cfnaName: 'Pemupukan',
     targetActivityModule: 'KEGIATAN_BIBITAN',
     targetActivityType: 'PEMUPUKAN',
@@ -354,43 +376,59 @@ export const CFNA_ACTIVITY_MAPPINGS = Object.freeze([
     source: 'DAK_CFNA_SPEC'
   },
   {
-    cfnaCode: '964005',
-    cfnaName: 'Pengendalian Gulma (Manual)',
+    cfnaCode: '122176',
+    cfnaName: 'Seleksi bibit',
+    targetActivityModule: 'PENYELEKSIAN',
+    targetActivityType: 'SELEKSI_BIBIT',
+    mappingStatus: MAPPING_STATUS.CONFIRMED,
+    source: 'DAK_CFNA_SPEC'
+  },
+  {
+    cfnaCode: '122173',
+    cfnaName: 'Pengendalian gulma',
     targetActivityModule: 'KEGIATAN_BIBITAN',
     targetActivityType: 'PENGENDALIAN_GULMA',
     mappingStatus: MAPPING_STATUS.CONFIRMED,
     source: 'DAK_CFNA_SPEC'
   },
   {
-    cfnaCode: '964007',
-    cfnaName: 'Pengendalian Hama Penyakit',
+    cfnaCode: '122175',
+    cfnaName: 'Pengendalian hama penyakit',
     targetActivityModule: 'KEGIATAN_BIBITAN',
     targetActivityType: 'PENGENDALIAN_HAMA_PENYAKIT',
     mappingStatus: MAPPING_STATUS.CONFIRMED,
     source: 'DAK_CFNA_SPEC'
   },
   {
-    cfnaCode: '954001',
-    cfnaName: 'Tanam Kecambah',
+    cfnaCode: '122161',
+    cfnaName: 'Menanam kecambah di polybag',
     targetActivityModule: 'PENYEMAIAN',
     targetActivityType: 'PENANAMAN_KECAMBAH',
     mappingStatus: MAPPING_STATUS.CONFIRMED,
     source: 'DAK_CFNA_SPEC'
   },
   {
-    cfnaCode: '951001',
-    cfnaName: 'Biaya Kecambah',
+    cfnaCode: '122111',
+    cfnaName: 'Kecambah/Klatak',
     targetActivityModule: 'PENERIMAAN',
     targetActivityType: 'PENERIMAAN_BENIH',
     mappingStatus: MAPPING_STATUS.CONFIRMED,
     source: 'DAK_CFNA_SPEC'
   },
   {
-    cfnaCode: '966001',
-    cfnaName: 'Pembebanan ke Kebun Sepupu',
+    cfnaCode: '1221Z1',
+    cfnaName: 'Dipakai kebun sendiri',
+    targetActivityModule: 'PERMINTAAN',
+    targetActivityType: 'PERMINTAAN_KEBUN_SENDIRI',
+    mappingStatus: MAPPING_STATUS.CONFIRMED,
+    source: 'DAK_CFNA_SPEC'
+  },
+  {
+    cfnaCode: '1221Z2',
+    cfnaName: 'Dipakai / dikirim ke kebun sepupu',
     targetActivityModule: 'PERMINTAAN',
     targetActivityType: 'PERMINTAAN_KEBUN_SEPUPU',
-    mappingStatus: MAPPING_STATUS.NEEDS_REVIEW,
+    mappingStatus: MAPPING_STATUS.CONFIRMED,
     source: 'DAK_CFNA_SPEC'
   }
 ]);

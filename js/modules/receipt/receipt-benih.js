@@ -423,7 +423,7 @@ export function renderReceiptBenih() {
   const btnTambahFoto = app.querySelector('#btn-tambah-foto');
   const photoPreviewContainer = app.querySelector('#photo-preview-container');
   const btnTambahSir = app.querySelector('#btn-tambah-sir');
-  
+
   const containerReceiptRows = app.querySelector('#container-receipt-rows');
   const btnTambahData = app.querySelector('#btn-tambah-data');
   const totalQtyEl = app.querySelector('#total-qty');
@@ -432,18 +432,18 @@ export function renderReceiptBenih() {
   const sheetKonfirmasi = app.querySelector('#sheet-konfirmasi');
   const btnKonfirmBatal = app.querySelector('#btn-konfirm-batal');
   const btnKonfirmSimpan = app.querySelector('#btn-konfirm-simpan');
-  
+
   const sectionQrBatch = app.querySelector('#section-qr-batch');
   const btnScanQr = app.querySelector('#btn-scan-qr');
   const btnPilihBatch = app.querySelector('#btn-pilih-batch');
   const selectedBatchContainer = app.querySelector('#selected-batch-container');
   const selectedBatchText = app.querySelector('#selected-batch-text');
   const btnHapusBatch = app.querySelector('#btn-hapus-batch');
-  
+
   const sheetBatch = app.querySelector('#sheet-batch');
   const listBatch = app.querySelector('#list-batch');
   const qrCameraOverlay = app.querySelector('#qr-camera-overlay');
-  
+
   function updateBatchVisibility() {
     if (state.jenisPenerimaan === 'Bibit / Tanaman Muda' && state.tahapanPertumbuhan === 'Rubber Advance Planting Material') {
       sectionQrBatch.style.display = 'block';
@@ -490,10 +490,10 @@ export function renderReceiptBenih() {
       el.addEventListener('click', () => {
         state.jenisPenerimaan = el.dataset.val;
         storage.set('benih_jenis', state.jenisPenerimaan);
-        
+
         labelJenis.textContent = state.jenisPenerimaan;
         const headerTitle = app.querySelector('#header-title');
-        
+
         // Handle Tahapan Pertumbuhan Logic
         if (state.jenisPenerimaan === 'Benih / Biji Kelatak') {
           if (headerTitle) headerTitle.textContent = 'Penerimaan Benih / Biji Kelatak';
@@ -514,7 +514,7 @@ export function renderReceiptBenih() {
           btnTahapan.style.cursor = 'pointer';
           iconTahapan.style.display = 'block';
         }
-        
+
         updateBatchVisibility();
         closeModals();
         validateForm();
@@ -538,7 +538,7 @@ export function renderReceiptBenih() {
       el.addEventListener('click', () => {
         state.tahapanPertumbuhan = el.dataset.val;
         storage.set('benih_tahapan', state.tahapanPertumbuhan);
-        
+
         labelTahapan.textContent = state.tahapanPertumbuhan;
         updateBatchVisibility();
         closeModals();
@@ -564,7 +564,7 @@ export function renderReceiptBenih() {
         state.programNurseryCode = el.dataset.code;
         storage.set('benih_program_id', state.programNurseryId);
         storage.set('benih_program_code', state.programNurseryCode);
-        
+
         // Reset batch if it doesn't match selected program
         if (state.batchId || state.batchCode) {
           const b = getBatchById(state.batchId) || getBatchByCode(state.batchCode);
@@ -599,7 +599,7 @@ export function renderReceiptBenih() {
         state.sourceName = el.dataset.name;
         storage.set('benih_source_id', state.sourceId);
         storage.set('benih_source_name', state.sourceName);
-        
+
         labelSumber.textContent = state.sourceName;
         labelSumber.style.color = '#111111';
         closeModals();
@@ -607,7 +607,7 @@ export function renderReceiptBenih() {
       });
     });
   }
-  
+
   function renderBatchList() {
     const candidateBatches = getActiveBatches({
       estateId: currentEstateId,
@@ -642,7 +642,7 @@ export function renderReceiptBenih() {
         state.batchCode = el.dataset.code;
         storage.set('benih_batch_id', state.batchId);
         storage.set('benih_batch_code', state.batchCode);
-        
+
         updateBatchVisibility();
         closeModals();
         validateForm();
@@ -658,7 +658,7 @@ export function renderReceiptBenih() {
       const legacyOption = (row.klon && !isSelectedInActive)
         ? `<option value="${row.klon}" selected>${row.klon}</option>`
         : '';
-      
+
       const optionsHtml = activeKlons.map(k => {
         const isSelected = row.klon === k.canonicalName || row.klon === k.code || row.klon === k.id;
         return `<option value="${k.canonicalName}" ${isSelected ? 'selected' : ''}>${k.canonicalName}</option>`;
@@ -723,7 +723,7 @@ export function renderReceiptBenih() {
         saveTableState();
       });
     });
-    
+
     containerReceiptRows.querySelectorAll('.input-qty').forEach(el => {
       el.addEventListener('input', (e) => {
         const index = e.target.dataset.index;
@@ -739,7 +739,7 @@ export function renderReceiptBenih() {
         const rawVal = e.target.value.trim();
         const val = rawVal === '' ? '' : parseInt(rawVal || 0);
         state.tableRows[index].rejected = val;
-        
+
         const rowEl = e.target.closest('.receipt-row');
         const reasonSelect = rowEl ? rowEl.querySelector('.input-reason') : null;
         if (reasonSelect) {
@@ -754,7 +754,7 @@ export function renderReceiptBenih() {
             reasonSelect.style.color = state.tableRows[index].reason ? '#111' : '#999';
           }
         }
-        
+
         saveTableState();
         calculateTotals();
       });
@@ -768,7 +768,7 @@ export function renderReceiptBenih() {
         saveTableState();
       });
     });
-    
+
     containerReceiptRows.querySelectorAll('.btn-hapus-row').forEach(el => {
       el.addEventListener('click', (e) => {
         const index = parseInt(e.currentTarget.dataset.index);
@@ -836,21 +836,21 @@ export function renderReceiptBenih() {
     overlay.style.display = 'block';
     sheetSumber.style.display = 'flex';
   });
-  
+
   btnPilihBatch.addEventListener('click', () => {
     renderBatchList();
     overlay.style.display = 'block';
     sheetBatch.style.display = 'flex';
   });
-  
+
   btnScanQr.addEventListener('click', () => {
     qrCameraOverlay.style.display = 'flex';
   });
-  
+
   app.querySelector('#btn-close-qr').addEventListener('click', () => {
     qrCameraOverlay.style.display = 'none';
   });
-  
+
   app.querySelector('#btn-simulate-scan').addEventListener('click', () => {
     qrCameraOverlay.style.display = 'none';
     const candidateBatches = getActiveBatches({
@@ -867,7 +867,7 @@ export function renderReceiptBenih() {
       validateForm();
     }
   });
-  
+
   btnHapusBatch.addEventListener('click', () => {
     state.batchId = null;
     state.batchCode = null;
@@ -909,7 +909,7 @@ export function renderReceiptBenih() {
   // VALIDATION
   function validateForm() {
     let isValid = state.programNurseryId && originTypeRaw && state.sourceId;
-    
+
     // Validate table if Kebun Sendiri or Lainnya
     if (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') {
       const hasValidRow = state.tableRows.every(r => {
@@ -919,19 +919,19 @@ export function renderReceiptBenih() {
       });
       if (!hasValidRow || state.tableRows.length === 0) isValid = false;
     }
-    
+
     // Validasi Foto: Wajib minimal 1 foto
     if (!state.photos || state.photos.length === 0) {
       isValid = false;
     }
-    
+
     // Validasi Batch: jika wajib
     if (state.jenisPenerimaan === 'Bibit / Tanaman Muda' && state.tahapanPertumbuhan === 'Rubber Advance Planting Material') {
       if (!state.batchCode) {
         isValid = false;
       }
     }
-    
+
     if (isValid) {
       btnSimpan.disabled = false;
       btnSimpan.style.background = '#116834';
@@ -949,9 +949,9 @@ export function renderReceiptBenih() {
     overlay.style.display = 'block';
     app.querySelector('#sheet-kembali').style.display = 'flex';
   });
-  
+
   app.querySelector('#btn-kembali-tutup').addEventListener('click', closeModals);
-  
+
   app.querySelector('#btn-kembali-batal').addEventListener('click', () => {
     // Clear temp form storage and clear edit index
     storage.remove('benih_jenis');
@@ -967,11 +967,11 @@ export function renderReceiptBenih() {
     storage.remove('benih_batch_id');
     storage.remove('benih_batch_code');
     storage.remove('editing_transaction_index');
-    
+
     closeModals();
     navigate('/reception');
   });
-  
+
   app.querySelector('#btn-kembali-simpan').addEventListener('click', () => {
     closeModals();
     if (!btnSimpan.disabled) {
@@ -1003,20 +1003,20 @@ export function renderReceiptBenih() {
   btnKonfirmSimpan.addEventListener('click', () => {
     // Simpan dummy data ke storage untuk ditampilkan di landing page
     const today = new Date();
-    const formattedDate = today.getDate().toString().padStart(2, '0') + '/' + (today.getMonth()+1).toString().padStart(2, '0') + '/' + today.getFullYear();
-    
+    const formattedDate = today.getDate().toString().padStart(2, '0') + '/' + (today.getMonth() + 1).toString().padStart(2, '0') + '/' + today.getFullYear();
+
     let totalQtyTable = 0;
     if (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') {
-       state.tableRows.forEach(r => totalQtyTable += parseInt(r.qty || 0));
+      state.tableRows.forEach(r => totalQtyTable += parseInt(r.qty || 0));
     }
-    
+
     const txs = storage.get('receipt_transactions', []);
     const editingIdx = storage.get('editing_transaction_index', null);
 
     const docNo = (editingIdx !== null && txs[editingIdx]?.docNo)
       ? txs[editingIdx].docNo
       : generateUniqueDocNo('reception', txs, 2026);
-    
+
     const batchObj = (state.batchId || state.batchCode) ? (getBatchById(state.batchId) || getBatchByCode(state.batchCode)) : null;
     const finalBatchId = batchObj ? (batchObj.id || batchObj.batchId) : (state.batchId || null);
     const finalBatchCode = batchObj ? (batchObj.batchCode || batchObj.batchNo) : (state.batchCode || null);
@@ -1039,9 +1039,9 @@ export function renderReceiptBenih() {
       batchNo: finalBatchCode,
       blockId: finalBlockId,
       blockCode: finalBlockCode,
-      klon: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') 
-             ? (state.tableRows[0]?.klon || 'GT 1') 
-             : (selectedKlon ? (selectedKlon.title || selectedKlon.canonicalName || 'GT 1') : 'GT 1'),
+      klon: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA')
+        ? (state.tableRows[0]?.klon || 'GT 1')
+        : (selectedKlon ? (selectedKlon.title || selectedKlon.canonicalName || 'GT 1') : 'GT 1'),
       tanggal: formattedDate,
       tipeAsal: originTypeDisplay,
       sumber: state.sourceName || '-',
@@ -1067,7 +1067,7 @@ export function renderReceiptBenih() {
         selectedKlon
       }
     };
-    
+
     if (editingIdx !== null) {
       txs[editingIdx] = newTx;
       storage.remove('editing_transaction_index');
@@ -1075,7 +1075,7 @@ export function renderReceiptBenih() {
       txs.push(newTx);
     }
     storage.set('receipt_transactions', txs);
-    
+
     // Clear temp form storage
     storage.remove('benih_jenis');
     storage.remove('benih_tahapan');
@@ -1089,15 +1089,15 @@ export function renderReceiptBenih() {
     storage.remove('benih_table_rows');
     storage.remove('benih_batch_id');
     storage.remove('benih_batch_code');
-    
+
     closeModals();
-    
+
     // Show banner success
     const banner = document.createElement('div');
     banner.style.cssText = 'position: absolute; top: 0; left: 0; right: 0; background: #689F38; color: white; text-align: center; padding: 12px; font-weight: 600; font-size: 0.95rem; z-index: 1000; transition: top 0.3s ease-out;';
     banner.textContent = 'Data berhasil disimpan';
     app.querySelector('.page').appendChild(banner);
-    
+
     setTimeout(() => {
       navigate('/reception');
     }, 1000);

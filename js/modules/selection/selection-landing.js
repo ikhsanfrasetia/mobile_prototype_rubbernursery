@@ -58,15 +58,21 @@ import {
   getBedenganScopeStatusForSeleksi1,
   validateSeleksi1Execution,
   createSeleksi1ExecutionTransaction,
+  deleteSeleksi1ExecutionTransaction,
   getSeleksi2ExecutionsByDocument,
   getBedenganScopeStatusForSeleksi2,
   validateSeleksi2Execution,
   createSeleksi2ExecutionTransaction,
+  deleteSeleksi2ExecutionTransaction,
   getSeleksi3ExecutionsByDocument,
   getBedenganScopeStatusForSeleksi3,
   validateSeleksi3Execution,
-  createSeleksi3ExecutionTransaction
+  createSeleksi3ExecutionTransaction,
+  updateSeleksi3ExecutionTransaction,
+  deleteSeleksi3ExecutionTransaction,
+  getSeleksi3Metrics
 } from './selection-manager.js';
+import { guardDependency } from '../../core/dependency-guard.js';
 import { getBatchById, getBatchByCode } from '../../data/batch-master.js';
 import { getBedenganById } from '../../data/bedengan-master.js';
 
@@ -102,10 +108,19 @@ export {
   getBedenganScopeStatusForSeleksi1,
   validateSeleksi1Execution,
   createSeleksi1ExecutionTransaction,
+  deleteSeleksi1ExecutionTransaction,
   getSeleksi2ExecutionsByDocument,
   getBedenganScopeStatusForSeleksi2,
   validateSeleksi2Execution,
-  createSeleksi2ExecutionTransaction
+  createSeleksi2ExecutionTransaction,
+  deleteSeleksi2ExecutionTransaction,
+  getSeleksi3ExecutionsByDocument,
+  getBedenganScopeStatusForSeleksi3,
+  validateSeleksi3Execution,
+  createSeleksi3ExecutionTransaction,
+  updateSeleksi3ExecutionTransaction,
+  deleteSeleksi3ExecutionTransaction,
+  getSeleksi3Metrics
 };
 
 let activeAsbTab = 'PENDING'; // 'PENDING' | 'HISTORY'
@@ -220,9 +235,9 @@ function renderAsistenSelectionReview(app, currentUser) {
               ${activeAsbTab === 'PENDING' ? 'Tidak Ada Pengajuan Seleksi' : 'Belum Ada Riwayat'}
             </h3>
             <p style="font-size: 0.78rem; color: #64748B; margin: 0; line-height: 1.45;">
-              ${activeAsbTab === 'PENDING' 
-                ? 'Semua hasil seleksi bibit dari Mantri telah diperiksa atau belum ada pengajuan baru.' 
-                : 'Daftar hasil seleksi yang telah disetujui atau dikembalikan akan tampil di sini.'}
+              ${activeAsbTab === 'PENDING'
+        ? 'Semua hasil seleksi bibit dari Mantri telah diperiksa atau belum ada pengajuan baru.'
+        : 'Daftar hasil seleksi yang telah disetujui atau dikembalikan akan tampil di sini.'}
             </p>
           </div>
         ` : `
@@ -230,122 +245,120 @@ function renderAsistenSelectionReview(app, currentUser) {
             
             <!-- A. SECTION PRE-GRAFTING DOKUMEN SELEKSI I, II & III -->
             ${(activeAsbTab === 'PENDING' ? pendingPreDocs : historyPreDocs).map(doc => {
-              const isSeleksi3 = (
-                doc.selectionStage === SELECTION_STAGES.SELEKSI_3 ||
-                doc.selectionStage === 'SELEKSI_III' ||
-                doc.selectionStage === 'SELEKSI_3'
-              );
-              const isSeleksi2 = (
-                doc.selectionStage === SELECTION_STAGES.SELEKSI_2 ||
-                doc.selectionStage === 'SELEKSI_II' ||
-                doc.selectionStage === 'SELEKSI_2'
-              );
-              const executions = isSeleksi3
-                ? getSeleksi3ExecutionsByDocument(doc.id || doc.docNo)
-                : (isSeleksi2 
-                    ? getSeleksi2ExecutionsByDocument(doc.id || doc.docNo)
-                    : getSeleksi1ExecutionsByDocument(doc.id || doc.docNo));
-              const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
-              const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
-              const totalLayak = parseInt(doc.totalLayak || 0, 10);
-              const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
-              const bedDisplay = formatBedenganDisplayCode(doc);
-              const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
-              const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
-              const isActionable = canPerformAsistenSelectionAction(doc, currentUser);
-              const stageBadgeText = isSeleksi3 ? 'SELEKSI III (PRA-OKULASI)' : (isSeleksi2 ? 'SELEKSI II (PRA-OKULASI)' : 'SELEKSI I (PRA-OKULASI)');
-              const stageLabel = isSeleksi3 ? 'Seleksi III' : (isSeleksi2 ? 'Seleksi II' : 'Seleksi I');
+          const isSeleksi3 = (
+            doc.selectionStage === SELECTION_STAGES.SELEKSI_3 ||
+            doc.selectionStage === 'SELEKSI_III' ||
+            doc.selectionStage === 'SELEKSI_3'
+          );
+          const isSeleksi2 = (
+            doc.selectionStage === SELECTION_STAGES.SELEKSI_2 ||
+            doc.selectionStage === 'SELEKSI_II' ||
+            doc.selectionStage === 'SELEKSI_2'
+          );
+          const executions = isSeleksi3
+            ? getSeleksi3ExecutionsByDocument(doc.id || doc.docNo)
+            : (isSeleksi2
+              ? getSeleksi2ExecutionsByDocument(doc.id || doc.docNo)
+              : getSeleksi1ExecutionsByDocument(doc.id || doc.docNo));
+          const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
+          const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
+          const totalLayak = parseInt(doc.totalLayak || 0, 10);
+          const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
+          const bedDisplay = formatBedenganDisplayCode(doc);
+          const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
+          const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
+          const isActionable = canPerformAsistenSelectionAction(doc, currentUser);
+          const stageBadgeText = isSeleksi3 ? 'Seleksi III (Pra-Okulasi)' : (isSeleksi2 ? 'Seleksi II (Pra-Okulasi)' : 'Seleksi I (Pra-Okulasi)');
+          const stageLabel = isSeleksi3 ? 'Seleksi III' : (isSeleksi2 ? 'Seleksi II' : 'Seleksi I');
 
-              let statusBadge = `<span style="font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A;">MENUNGGU PEMERIKSAAN</span>`;
-              if (isApproved) {
-                statusBadge = `<span style="font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0;">DISETUJUI (FINAL)</span>`;
-              } else if (isReturned) {
-                statusBadge = `<span style="font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA;">DIKEMBALIKAN</span>`;
-              }
+          let statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; white-space: nowrap;">MENUNGGU PEMERIKSAAN</span>`;
+          if (isApproved) {
+            statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; white-space: nowrap;">DISETUJUI (FINAL)</span>`;
+          } else if (isReturned) {
+            statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; white-space: nowrap;">DIKEMBALIKAN</span>`;
+          }
 
-              return `
-                <div class="card-pre-grafting-asb" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+          return `
+                <div class="card-pre-grafting-asb" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
                   
                   <!-- HEADER DOKUMEN -->
-                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-                    <div>
-                      <div style="display: flex; align-items: center; gap: 6px;">
-                        <span style="font-size: 0.64rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE;">
-                          ${stageBadgeText}
-                        </span>
-                        <strong style="font-size: 0.95rem; color: #0F172A;">${esc(doc.docNo)}</strong>
-                      </div>
-                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 3px;">
-                        ${isSeleksi3 ? `
-                          Sumber Seleksi II: <strong style="color: #1E293B;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</strong>
-                          ${doc.sourceSelection1DocNo && doc.sourceSelection1DocNo !== '-' ? `<span style="color: #94A3B8; margin-left: 6px;">(Seleksi I: ${esc(doc.sourceSelection1DocNo)})</span>` : ''}
-                          ${doc.sourceSeedingDocNo && doc.sourceSeedingDocNo !== '-' ? `<span style="color: #94A3B8; margin-left: 6px;">(Penyemaian: ${esc(doc.sourceSeedingDocNo)})</span>` : ''}
-                        ` : (isSeleksi2 ? `
-                          Sumber Seleksi I: <strong style="color: #1E293B;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</strong>
-                          ${doc.sourceSeedingDocNo && doc.sourceSeedingDocNo !== '-' ? `<span style="color: #94A3B8; margin-left: 6px;">(Penyemaian: ${esc(doc.sourceSeedingDocNo)})</span>` : ''}
-                        ` : `
-                          Sumber Penyemaian: <strong style="color: #1E293B;">${esc(doc.sourceDocNo || '-')}</strong>
-                        `)}
+                  <div style="margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 5px;">
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        ${stageBadgeText}
+                      </span>
+                      <div style="flex-shrink: 0;">
+                        ${statusBadge}
                       </div>
                     </div>
-                    <div>
-                      ${statusBadge}
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <strong style="font-size: 0.95rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em;">${esc(doc.docNo)}</strong>
+                      <div style="font-size: 0.70rem; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;">
+                        ${isSeleksi3 ? `
+                          Sumber: <strong style="color: #334155;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</strong>
+                        ` : (isSeleksi2 ? `
+                          Sumber: <strong style="color: #334155;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</strong>
+                        ` : `
+                          Sumber: <strong style="color: #334155;">${esc(doc.sourceDocNo || '-')}</strong>
+                        `)}
+                      </div>
                     </div>
                   </div>
 
                   <!-- METADATA BATCH & BEDENGAN -->
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 0.73rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px;">
-                    <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || '-')}</strong></div>
-                    <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
-                    <div>Bedengan: <strong style="color: #0F172A;">${esc(bedDisplay)}</strong></div>
-                    <div>Program: <strong style="color: #0F172A;">${esc(doc.programCode || doc.programName || '-')}</strong></div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 0.70rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;">
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span style="color: #64748B;">Batch:</span> <strong style="color: #0F172A;">${esc(doc.batchCode || '-')}</strong></div>
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span style="color: #64748B;">Klon:</span> <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span style="color: #64748B;">Bedengan:</span> <strong style="color: #0F172A;">${esc(bedDisplay)}</strong></div>
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span style="color: #64748B;">Program:</span> <strong style="color: #0F172A;">${esc(doc.programCode || doc.programName || '-')}</strong></div>
                   </div>
 
                   <!-- 4-KOLOM METRIK AGREGAT DOKUMEN -->
-                  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px; background: #FFFFFF; margin-bottom: 10px;">
+                  <div style="display: grid; grid-template-columns: repeat(4, 1fr); background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 2px; margin-bottom: 8px; text-align: center;">
                     <div>
-                      <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Polybag Source</div>
-                      <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourcePolybag.toLocaleString('id-ID')}</div>
-                      <div style="font-size: 0.60rem; color: #94A3B8;">Ply</div>
+                      <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Polybag</div>
+                      <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">${sourcePolybag.toLocaleString('id-ID')}</div>
+                      <div style="font-size: 0.58rem; color: #94A3B8;">Ply</div>
                     </div>
                     <div style="border-left: 1px solid #E2E8F0;">
-                      <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">${isSeleksi2 || isSeleksi3 ? 'Bibit Source' : 'Bibit Awal'}</div>
-                      <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourceBibit.toLocaleString('id-ID')}</div>
-                      <div style="font-size: 0.60rem; color: #94A3B8;">Pkk</div>
+                      <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">${isSeleksi2 || isSeleksi3 ? 'Bibit' : 'Bibit Awal'}</div>
+                      <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">${sourceBibit.toLocaleString('id-ID')}</div>
+                      <div style="font-size: 0.58rem; color: #94A3B8;">Pkk</div>
                     </div>
                     <div style="border-left: 1px solid #E2E8F0;">
-                      <div style="font-size: 0.60rem; font-weight: 700; color: #15803D; text-transform: uppercase;">Dipertahankan</div>
-                      <div style="font-size: 0.90rem; font-weight: 800; color: #15803D; margin-top: 2px;">${totalLayak.toLocaleString('id-ID')}</div>
-                      <div style="font-size: 0.60rem; color: #15803D;">${isSeleksi2 ? 'Pkk (1/Ply)' : 'Pkk'}</div>
+                      <div style="font-size: 0.58rem; font-weight: 700; color: #15803D; text-transform: uppercase; letter-spacing: 0.02em;">Layak</div>
+                      <div style="font-size: 0.88rem; font-weight: 800; color: #15803D; line-height: 1.2; margin-top: 1px;">${totalLayak.toLocaleString('id-ID')}</div>
+                      <div style="font-size: 0.58rem; color: #15803D;">${isSeleksi2 ? 'Pkk (1/Ply)' : 'Pkk'}</div>
                     </div>
                     <div style="border-left: 1px solid #E2E8F0;">
-                      <div style="font-size: 0.60rem; font-weight: 700; color: #DC2626; text-transform: uppercase;">Reject ${stageLabel}</div>
-                      <div style="font-size: 0.90rem; font-weight: 800; color: #DC2626; margin-top: 2px;">${totalAfkir.toLocaleString('id-ID')}</div>
-                      <div style="font-size: 0.60rem; color: #DC2626;">Pkk</div>
+                      <div style="font-size: 0.58rem; font-weight: 700; color: #DC2626; text-transform: uppercase; letter-spacing: 0.02em;">Reject</div>
+                      <div style="font-size: 0.88rem; font-weight: 800; color: #DC2626; line-height: 1.2; margin-top: 1px;">${totalAfkir.toLocaleString('id-ID')}</div>
+                      <div style="font-size: 0.58rem; color: #DC2626;">Pkk</div>
                     </div>
                   </div>
 
                   <!-- DETAIL SESI PELAKSANAAN CHILD -->
-                  <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px;">
-                    <div style="font-size: 0.70rem; font-weight: 700; color: #475569; margin-bottom: 6px;">
+                  <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;">
+                    <div style="font-size: 0.68rem; font-weight: 700; color: #475569; margin-bottom: 4px;">
                       Daftar Sesi Pelaksanaan ${stageLabel} (${executions.length} Sesi):
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
                       ${executions.map(tx => `
-                        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; font-size: 0.70rem; display: flex; justify-content: space-between; align-items: center;">
-                          <div>
-                            <div><strong style="color: #0F172A;">${esc(tx.bedenganCode || '-')}</strong> • ${esc(tx.docNo)}</div>
-                            <div style="color: #64748B; font-size: 0.65rem; margin-top: 1px;">
+                        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 5px; padding: 5px 8px; font-size: 0.68rem; display: flex; justify-content: space-between; align-items: center;">
+                          <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 68%;">
+                            <div><strong style="color: #0F172A;">${esc(tx.bedenganCode || '-')}</strong> • <span style="color: #475569;">${esc(tx.docNo)}</span></div>
+                            <div style="color: #64748B; font-size: 0.62rem; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                               ${isSeleksi3
-                                ? `${tx.polybagScope || tx.initialPolybagCount || 0} Ply (${tx.bibitAwal || 0} Pkk) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
-                                : (isSeleksi2 
-                                    ? `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2→1, ${tx.polybag1Bibit || 0}x1→1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
-                                    : `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2, ${tx.polybag1Bibit || 0}x1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`)}
+              ? `${tx.polybagScope || tx.initialPolybagCount || 0} Ply (${tx.bibitAwal || 0} Pkk) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
+              : (isSeleksi2
+                ? `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2→1, ${tx.polybag1Bibit || 0}x1→1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
+                : `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2, ${tx.polybag1Bibit || 0}x1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`)}
                             </div>
                           </div>
-                          <div style="text-align: right;">
-                            <div style="font-weight: 700; color: #15803D;">+${(tx.bibitDipertahankan || tx.jumlahLayak || 0).toLocaleString('id-ID')} Pkk</div>
-                            <div style="font-size: 0.65rem; color: #DC2626;">-${(tx.bibitReject || tx.jumlahAfkir || 0).toLocaleString('id-ID')} Reject</div>
+                          <div style="text-align: right; flex-shrink: 0;">
+                            <div style="font-weight: 700; color: #15803D; font-size: 0.70rem;">+${(tx.bibitDipertahankan || tx.jumlahLayak || 0).toLocaleString('id-ID')} Pkk</div>
+                            <div style="font-size: 0.62rem; font-weight: 600; color: #DC2626;">-${(tx.bibitReject || tx.jumlahAfkir || 0).toLocaleString('id-ID')} Reject</div>
                           </div>
                         </div>
                       `).join('')}
@@ -353,137 +366,141 @@ function renderAsistenSelectionReview(app, currentUser) {
                   </div>
 
                   <!-- METADATA SUBMISSION / VERIFICATION -->
-                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem; color: #64748B; margin-bottom: ${isActionable ? '10px' : '0'};">
-                    <div>
-                      Diajukan oleh: <strong>${esc(doc.submittedByName || doc.completedByName || 'Mantri Bibitan')}</strong>
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: #64748B; margin-bottom: ${isActionable ? '8px' : '0'};">
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      Diajukan oleh: <strong style="color: #334155;">${esc(doc.submittedByName || doc.completedByName || 'Mantri Bibitan')}</strong>
                     </div>
-                    <div>
+                    <div style="flex-shrink: 0;">
                       ${esc(doc.submittedAt ? formatDate(doc.submittedAt) : (doc.completedAt ? formatDate(doc.completedAt) : '-'))}
                     </div>
                   </div>
 
                   ${isReturned && doc.returnReason ? `
-                    <div style="margin-top: 8px; padding: 6px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.72rem; color: #991B1B;">
+                    <div style="margin-top: 6px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.70rem; color: #991B1B;">
                       <strong>Alasan Pengembalian:</strong> ${esc(doc.returnReason)}
                     </div>
                   ` : ''}
 
                   <!-- AKSI ASISTEN BIBITAN UNTUK PRE-GRAFTING DOC -->
                   ${isActionable ? `
-                    <div style="display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #F1F5F9;">
-                      <button type="button" class="btn-asb-pre-return" data-id="${esc(doc.id)}" style="flex: 1; height: 36px; background: #FFFFFF; color: #DC2626; border: 1px solid #FCA5A5; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                    <div style="display: flex; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #F1F5F9;">
+                      <button type="button" class="btn-asb-pre-return" data-id="${esc(doc.id)}" style="flex: 1; height: 34px; background: #FFFFFF; color: #DC2626; border: 1px solid #FCA5A5; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
                           <polyline points="9 14 4 9 9 4"></polyline>
                           <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
                         </svg>
-                        Kembalikan ke Mantri
+                        Kembalikan
                       </button>
-                      <button type="button" class="btn-asb-pre-approve" data-id="${esc(doc.id)}" style="flex: 1.3; height: 36px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
+                      <button type="button" class="btn-asb-pre-approve" data-id="${esc(doc.id)}" style="flex: 1.3; height: 34px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 2px rgba(17,104,52,0.2); white-space: nowrap;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none">
                           <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
-                        Setujui Dokumen ${stageLabel}
+                        Setujui ${stageLabel}
                       </button>
                     </div>
                   ` : ''}
 
                 </div>
               `;
-            }).join('')}
+        }).join('')}
 
             <!-- B. SECTION POST-GRAFTING RECORDS (EXISTING) -->
             ${(activeAsbTab === 'PENDING' ? pendingPostRecords : historyPostRecords).map(item => {
-              const checked = parseInt(item.jumlahDiperiksa || 0, 10);
-              const pass = parseInt(item.jumlahLayak || 0, 10);
-              const cull = parseInt(item.jumlahAfkir || 0, 10);
-              const passPct = checked > 0 ? Math.round((pass / checked) * 100) : 0;
-              const cullPct = checked > 0 ? Math.round((cull / checked) * 100) : 0;
-              const isActionable = canPerformAsistenSelectionAction(item, currentUser);
-              const isApproved = item.status === SELECTION_STATUS.DISETUJUI;
-              const isReturned = item.status === SELECTION_STATUS.DIKEMBALIKAN;
+          const checked = parseInt(item.jumlahDiperiksa || 0, 10);
+          const pass = parseInt(item.jumlahLayak || 0, 10);
+          const cull = parseInt(item.jumlahAfkir || 0, 10);
+          const passPct = checked > 0 ? Math.round((pass / checked) * 100) : 0;
+          const cullPct = checked > 0 ? Math.round((cull / checked) * 100) : 0;
+          const isActionable = canPerformAsistenSelectionAction(item, currentUser);
+          const isApproved = item.status === SELECTION_STATUS.DISETUJUI;
+          const isReturned = item.status === SELECTION_STATUS.DIKEMBALIKAN;
 
-              let statusBadge = `<span style="font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A;">MENUNGGU PEMERIKSAAN</span>`;
-              if (isApproved) {
-                statusBadge = `<span style="font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0;">DISETUJUI</span>`;
-              } else if (isReturned) {
-                statusBadge = `<span style="font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA;">DIKEMBALIKAN</span>`;
-              }
+          let statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; white-space: nowrap;">MENUNGGU PEMERIKSAAN</span>`;
+          if (isApproved) {
+            statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; white-space: nowrap;">DISETUJUI</span>`;
+          } else if (isReturned) {
+            statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; white-space: nowrap;">DIKEMBALIKAN</span>`;
+          }
 
-              return `
-                <div class="card-selection-item" data-id="${esc(item.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          return `
+                <div class="card-selection-item" data-id="${esc(item.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
                   
                   <!-- HEADER BARIS 1 -->
-                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-                    <div>
-                      <div style="font-weight: 800; font-size: 0.95rem; color: #0F172A;">
-                        ${esc(item.batchCode || item.batchNo || 'Batch')} • ${esc(item.clone || item.klon || '-')}
-                      </div>
-                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px;">
-                        ${esc(item.programName || item.programId || 'Program Pembibitan')}
+                  <div style="margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 5px;">
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; white-space: nowrap;">
+                        ${esc(item.selectionType || item.selectionStage || 'PASCA-OKULASI')}
+                      </span>
+                      <div style="flex-shrink: 0;">
+                        ${statusBadge}
                       </div>
                     </div>
-                    <div>
-                      ${statusBadge}
+
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                      <strong style="font-size: 0.95rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em;">${esc(item.docNo || item.selectionNo || '-')}</strong>
+                      <span style="font-size: 0.70rem; color: #64748B; white-space: nowrap;">
+                        ${esc(item.batchCode || item.batchNo || 'Batch')} • ${esc(item.clone || item.klon || '-')}
+                      </span>
                     </div>
                   </div>
 
                   <!-- METADATA BARIS 2 -->
-                  <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #64748B; margin-bottom: 10px; border-bottom: 1px dashed #E2E8F0; padding-bottom: 8px;">
-                    <div>
-                      Bedengan: <strong style="color: #334155;">${esc(item.bedengan || (item.bedenganIds ? item.bedenganIds.join(', ') : '-'))}</strong>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 0.70rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;">
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      <span style="color: #64748B;">Bedengan:</span> <strong style="color: #0F172A;">${esc(item.bedengan || (item.bedenganIds ? item.bedenganIds.join(', ') : '-'))}</strong>
                     </div>
-                    <div>
-                      Dok: <strong style="color: #334155;">${esc(item.docNo || item.selectionNo || '-')}</strong>
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      <span style="color: #64748B;">Program:</span> <strong style="color: #0F172A;">${esc(item.programName || item.programId || '-')}</strong>
                     </div>
                   </div>
 
                   <!-- 3-KOLOM METRIK SELEKSI -->
-                  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px; margin-bottom: 10px; text-align: center;">
+                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 2px; margin-bottom: 8px; text-align: center;">
                     <div>
-                      <div style="font-size: 0.65rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Diperiksa</div>
-                      <div style="font-size: 0.92rem; font-weight: 800; color: #0F172A; margin-top: 2px;">
+                      <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Diperiksa</div>
+                      <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">
                         ${checked.toLocaleString('id-ID')}
                       </div>
-                      <div style="font-size: 0.64rem; color: #94A3B8;">100%</div>
+                      <div style="font-size: 0.58rem; color: #94A3B8;">100%</div>
                     </div>
                     <div style="border-left: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0;">
-                      <div style="font-size: 0.65rem; font-weight: 700; color: #15803D; text-transform: uppercase;">Layak</div>
-                      <div style="font-size: 0.92rem; font-weight: 800; color: #15803D; margin-top: 2px;">
+                      <div style="font-size: 0.58rem; font-weight: 700; color: #15803D; text-transform: uppercase; letter-spacing: 0.02em;">Layak</div>
+                      <div style="font-size: 0.88rem; font-weight: 800; color: #15803D; line-height: 1.2; margin-top: 1px;">
                         ${pass.toLocaleString('id-ID')}
                       </div>
-                      <div style="font-size: 0.64rem; color: #15803D; font-weight: 600;">${passPct}%</div>
+                      <div style="font-size: 0.58rem; color: #15803D; font-weight: 600;">${passPct}%</div>
                     </div>
                     <div>
-                      <div style="font-size: 0.65rem; font-weight: 700; color: #DC2626; text-transform: uppercase;">Afkir</div>
-                      <div style="font-size: 0.92rem; font-weight: 800; color: #DC2626; margin-top: 2px;">
+                      <div style="font-size: 0.58rem; font-weight: 700; color: #DC2626; text-transform: uppercase; letter-spacing: 0.02em;">Afkir</div>
+                      <div style="font-size: 0.88rem; font-weight: 800; color: #DC2626; line-height: 1.2; margin-top: 1px;">
                         ${cull.toLocaleString('id-ID')}
                       </div>
-                      <div style="font-size: 0.64rem; color: #DC2626; font-weight: 600;">${cullPct}%</div>
+                      <div style="font-size: 0.58rem; color: #DC2626; font-weight: 600;">${cullPct}%</div>
                     </div>
                   </div>
 
                   <!-- METADATA SUBMISSION -->
-                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem; color: #64748B; margin-bottom: ${isActionable ? '12px' : '0'};">
-                    <div>
-                      Diajukan oleh: <strong>${esc(item.createdByName || item.mantri || 'Mantri')}</strong>
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: #64748B; margin-bottom: ${isActionable ? '8px' : '0'};">
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      Diajukan oleh: <strong style="color: #334155;">${esc(item.createdByName || item.mantri || 'Mantri')}</strong>
                     </div>
-                    <div>
+                    <div style="flex-shrink: 0;">
                       ${esc(item.tanggalSeleksi || item.tanggal || '-')}
                     </div>
                   </div>
 
                   <!-- AKSI ASISTEN BIBITAN (JIKA ACTIONABLE) -->
                   ${isActionable ? `
-                    <div style="display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #F1F5F9;">
-                      <button type="button" class="btn-asb-return" data-id="${esc(item.id)}" style="flex: 1; height: 36px; background: #FFFFFF; color: #DC2626; border: 1px solid #FCA5A5; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                    <div style="display: flex; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #F1F5F9;">
+                      <button type="button" class="btn-asb-return" data-id="${esc(item.id)}" style="flex: 1; height: 34px; background: #FFFFFF; color: #DC2626; border: 1px solid #FCA5A5; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
                           <polyline points="9 14 4 9 9 4"></polyline>
                           <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
                         </svg>
                         Kembalikan
                       </button>
-                      <button type="button" class="btn-asb-approve" data-id="${esc(item.id)}" style="flex: 1.3; height: 36px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
+                      <button type="button" class="btn-asb-approve" data-id="${esc(item.id)}" style="flex: 1.3; height: 34px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 2px rgba(17,104,52,0.2); white-space: nowrap;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none">
                           <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
                         Setujui Hasil
@@ -493,7 +510,7 @@ function renderAsistenSelectionReview(app, currentUser) {
 
                 </div>
               `;
-            }).join('')}
+        }).join('')}
 
           </div>
         `}
@@ -825,27 +842,33 @@ function renderMantriSelectionLanding(app, user) {
                 <p style="font-size: 0.78rem; color: #64748B; margin: 0; line-height: 1.45;">Dokumen seleksi pra-okulasi otomatis dibentuk saat transaksi Penyemaian dicatat.</p>
               </div>
             ` : `
-              <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+              <!-- LIST DOKUMEN INDUK SELEKSI I (TASK-26 ENHANCE HIERARCHY) -->
+              <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px;">
                 ${seleksi1Docs.map(doc => {
                   const bedScopeList = getBedenganScopeStatusForSeleksi1(doc);
                   const executions = getSeleksi1ExecutionsByDocument(doc.id || doc.docNo);
-                  const isCompleted = Boolean(doc.isCompleted);
-                  const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
-                  const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
-                  const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
-                  const isFinal = Boolean(doc.isFinal);
                   const bedDisplay = formatBedenganDisplayCode(doc);
                   const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
                   const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
                   const totalLayak = parseInt(doc.totalLayak || 0, 10);
                   const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
-                  const totalDiperiksa = parseInt(doc.totalDiperiksa || 0, 10);
-                  const currentBibit = parseInt(doc.currentBibitQty || sourceBibit, 10);
+
+                  // Perhitungan Akurat Sisa Populasi dari Dokumen Induk & Child Transactions
+                  const totalInspectedPolybag = executions.reduce((sum, tx) => sum + parseInt(tx.polybagScope || tx.initialPolybagCount || 0, 10), 0);
+                  const remainingPolybag = Math.max(0, sourcePolybag - totalInspectedPolybag);
+                  const progressPercent = sourcePolybag > 0 ? ((totalInspectedPolybag / sourcePolybag) * 100) : 0;
+                  const formattedProgress = (Math.round(progressPercent * 10) / 10).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+                  const isAllChecked = (sourcePolybag > 0 && totalInspectedPolybag >= sourcePolybag) || (bedScopeList.length > 0 && bedScopeList.every(b => b.remainingPolybag <= 0));
+                  const isCompleted = Boolean(doc.isCompleted) || isAllChecked;
+                  const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
+                  const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
+                  const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
+                  const isFinal = Boolean(doc.isFinal);
 
                   // Cek apakah Dokumen Seleksi II sudah pernah dibuat dari Seleksi I ini
-                  const existingSel2 = seleksi2Docs.find(d => 
-                    d.sourceSelectionDocumentId === doc.id || 
-                    d.sourceSelectionDocNo === doc.docNo || 
+                  const existingSel2 = seleksi2Docs.find(d =>
+                    d.sourceSelectionDocumentId === doc.id ||
+                    d.sourceSelectionDocNo === doc.docNo ||
                     d.sourceDocNo === doc.docNo
                   );
 
@@ -855,43 +878,42 @@ function renderMantriSelectionLanding(app, user) {
                   let badgeBorder = '#FDE68A';
 
                   if (isApproved && isFinal) {
-                    badgeText = 'DISETUJUI (FINAL)';
+                    badgeText = 'Disetujui';
                     badgeBg = '#F0FDF4';
                     badgeColor = '#15803D';
                     badgeBorder = '#BBF7D0';
                   } else if (isReturned) {
-                    badgeText = 'DIKEMBALIKAN';
+                    badgeText = 'Dikembalikan';
                     badgeBg = '#FEF2F2';
                     badgeColor = '#DC2626';
                     badgeBorder = '#FECACA';
                   } else if (isSubmitted) {
-                    badgeText = 'MENUNGGU VERIFIKASI ASISTEN';
+                    badgeText = 'Menunggu Verifikasi';
                     badgeBg = '#EFF6FF';
                     badgeColor = '#1D4ED8';
                     badgeBorder = '#BFDBFE';
-                  } else if (isCompleted) {
-                    badgeText = 'SELESAI (SIAP REVIEW)';
+                  } else if (isAllChecked || isCompleted) {
+                    badgeText = 'Siap Review';
                     badgeBg = '#F0FDF4';
                     badgeColor = '#15803D';
                     badgeBorder = '#BBF7D0';
                   } else if (executions.length > 0) {
-                    badgeText = 'SEDANG BERJALAN';
+                    badgeText = 'Sedang Diperiksa';
                     badgeBg = '#FEF3C7';
                     badgeColor = '#B45309';
                     badgeBorder = '#FDE68A';
                   }
 
                   return `
-                    <div class="card-pre-grafting-doc" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px;">
+                    <!-- CARD DOKUMEN INDUK (COLLAPSED BY DEFAULT, TASK-29 INDEPENDENT EXPAND) -->
+                    <div class="card-pre-grafting-doc card-parent-doc" id="selection-parent-${esc(doc.id)}" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px;">
                       
-                      <!-- 1. HEADER CARD: DOK NO & STATUS -->
+                      <!-- 1. PROGRAM PEMBIBITAN (PALING ATAS) & STATUS BADGE -->
                       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                         <div>
-                          <div style="font-weight: 800; font-size: 0.96rem; color: #0F172A;">
-                            ${esc(doc.docNo || doc.selectionDocNo)}
-                          </div>
-                          <div style="font-size: 0.72rem; color: #64748B; margin-top: 1px;">
-                            Sumber Penyemaian: <strong style="color: #0F172A;">${esc(doc.sourceDocNo || '-')}</strong>
+                          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Program Pembibitan</div>
+                          <div style="font-weight: 800; font-size: 0.90rem; color: #0F172A; margin-top: 1px;">
+                            ${esc(doc.programCode || doc.programName || '-')}
                           </div>
                         </div>
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
@@ -902,131 +924,286 @@ function renderMantriSelectionLanding(app, user) {
                         </div>
                       </div>
 
-                      <!-- 2. BATCH & SCOPE INFO -->
-                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 0.73rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
-                        <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || doc.batchNo || '-')}</strong></div>
-                        <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
-                        <div>Bedengan: <strong style="color: #0F172A;">${esc(bedDisplay)}</strong></div>
-                        <div>Program: <strong style="color: #0F172A;">${esc(doc.programCode || doc.programName || '-')}</strong></div>
-                      </div>
-
-                      <!-- 3. POPULATION & RESULT METRICS (4-KOLOM) -->
-                      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px; background: #FFFFFF;">
+                      <!-- 2. DOKUMEN SELEKSI & 3. SUMBER PENYEMAIAN -->
+                      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
                         <div>
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Polybag Source</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourcePolybag.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #94A3B8;">Ply</div>
+                          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Dokumen Seleksi</div>
+                          <div style="font-weight: 800; font-size: 0.90rem; color: #116834; margin-top: 1px;">
+                            Seleksi I — ${esc(doc.docNo || doc.selectionDocNo)}
+                          </div>
                         </div>
-                        <div style="border-left: 1px solid #E2E8F0;">
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Bibit Awal</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourceBibit.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #94A3B8;">Pkk (2/Ply)</div>
-                        </div>
-                        <div style="border-left: 1px solid #E2E8F0;">
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #15803D; text-transform: uppercase;">Dipertahankan</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #15803D; margin-top: 2px;">${totalLayak.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #15803D;">Pkk</div>
-                        </div>
-                        <div style="border-left: 1px solid #E2E8F0;">
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #DC2626; text-transform: uppercase;">Reject Seleksi I</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #DC2626; margin-top: 2px;">${totalAfkir.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #DC2626;">Pkk</div>
+                        <div style="text-align: right;">
+                          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Sumber Penyemaian</div>
+                          <div style="font-weight: 700; font-size: 0.82rem; color: #0F172A; margin-top: 1px;">
+                            ${esc(doc.sourceDocNo || '-')}
+                          </div>
                         </div>
                       </div>
 
-                      <!-- 4. RIWAYAT SESI PELAKSANAAN SELEKSI I (JIKA ADA) -->
-                      ${executions.length > 0 ? `
-                        <div style="border-top: 1px dashed #CBD5E1; padding-top: 8px;">
-                          <div style="font-size: 0.70rem; font-weight: 700; color: #475569; margin-bottom: 6px;">Riwayat Sesi Pelaksanaan Seleksi I:</div>
-                          <div style="display: flex; flex-direction: column; gap: 6px;">
-                            ${executions.map(tx => `
-                              <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; font-size: 0.70rem; display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                  <div><strong style="color: #0F172A;">${esc(tx.bedenganCode || tx.bedengan || '-')}</strong> • ${esc(tx.docNo)}</div>
-                                  <div style="color: #64748B; font-size: 0.65rem; margin-top: 1px;">
-                                    ${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2, ${tx.polybag1Bibit || 0}x1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}
-                                  </div>
-                                </div>
-                                <div style="text-align: right;">
-                                  <div style="font-weight: 700; color: #15803D;">+${(tx.bibitDipertahankan || tx.jumlahLayak || 0).toLocaleString('id-ID')} Pkk</div>
-                                  <div style="font-size: 0.65rem; color: #DC2626;">-${(tx.bibitReject || tx.jumlahAfkir || 0).toLocaleString('id-ID')} Reject</div>
-                                </div>
-                              </div>
-                            `).join('')}
-                          </div>
-                        </div>
-                      ` : ''}
+                      <!-- 4. BATCH & BEDENGAN -->
+                      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #475569; padding: 0 2px;">
+                        <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || doc.batchNo || '-')}</strong> • Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+                        <div>Bedengan: <strong style="color: #0F172A;">${esc(bedDisplay)}</strong></div>
+                      </div>
 
-                      ${isReturned && doc.returnReason ? `
-                        <div style="padding: 8px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.72rem; color: #991B1B;">
-                          <strong>Catatan Pengembalian Asisten:</strong> ${esc(doc.returnReason)}
-                        </div>
-                      ` : ''}
-
-                      <!-- 5. TOMBOL AKSI, COMPLETION CHECKBOX, SUBMISSION & SELEKSI II GENERATION -->
-                      <div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #F1F5F9; padding-top: 8px;">
-                        
-                        ${!isApproved && !isSubmitted ? `
-                          <button type="button" class="btn-execute-seleksi1" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                              <line x1="12" y1="5" x2="12" y2="19"></line>
-                              <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg>
-                            + Catat Transaksi Pelaksanaan Seleksi I
-                          </button>
-                        ` : ''}
-
-                        ${!isApproved && !isSubmitted ? `
-                          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: #1E293B; cursor: pointer; user-select: none; font-weight: 600; padding: 4px 0;">
-                            <input type="checkbox" class="chk-doc-completed" data-id="${esc(doc.id)}" ${isCompleted ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #116834;">
-                            <span>Seleksi Selesai</span>
-                            <span style="font-size: 0.68rem; color: #64748B; font-weight: normal;">(Deklarasi Manual Mantri)</span>
-                          </label>
-                        ` : ''}
-
-                        ${isCompleted && !isSubmitted && !isApproved ? `
-                          <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #2563EB; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(37,99,235,0.2);">
-                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                              <polyline points="9 11 12 14 22 4"></polyline>
-                              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-                            </svg>
-                            Tinjau & Kirim ke Asisten Bibitan
-                          </button>
-                        ` : ''}
-
-                        ${isSubmitted ? `
-                          <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 34px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.76rem; cursor: pointer;">
-                            Lihat Rincian Verifikasi Data
-                          </button>
-                        ` : ''}
-
-                        ${isApproved ? `
-                          <div style="display: flex; flex-direction: column; gap: 6px;">
-                            <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.72rem; color: #166534;">
-                              ✅ <strong>Data Final:</strong> Disetujui oleh ${esc(doc.verifiedByName || 'Asisten Bibitan')} pada ${doc.verifiedAt ? formatDate(doc.verifiedAt) : '-'}.
+                      <!-- 5. POPULASI PEMERIKSAAN DENGAN VISUAL PROGRESS BAR (TASK-29 TYPOGRAPHY) -->
+                      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                          <span style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px;">Populasi Pemeriksaan</span>
+                          <div style="text-align: right;">
+                            <div style="font-size: 0.92rem; font-weight: 800; color: #0F172A; line-height: 1.2;">
+                              ${totalInspectedPolybag.toLocaleString('id-ID')} / ${sourcePolybag.toLocaleString('id-ID')}
                             </div>
-                            ${existingSel2 ? `
-                              <button type="button" class="btn-view-seleksi2" data-id="${esc(existingSel2.id)}" style="width: 100%; height: 36px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                                <span>Dokumen Seleksi II Terbentuk: <strong>${esc(existingSel2.docNo)}</strong> →</span>
-                              </button>
-                            ` : `
-                              <button type="button" class="btn-create-seleksi2" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                                </svg>
-                                + Buat Dokumen Seleksi II
-                              </button>
-                            `}
+                            <div style="font-size: 0.68rem; font-weight: 600; color: #64748B; line-height: 1.2;">Diperiksa</div>
+                          </div>
+                        </div>
+
+                        <!-- PROGRESS BAR VISUAL HORIZONTAL FULL-WIDTH -->
+                        <div style="background: #E2E8F0; border-radius: 999px; height: 8px; width: 100%; overflow: hidden;">
+                          <div style="background: ${progressPercent >= 100 ? '#15803D' : '#116834'}; height: 100%; width: ${Math.min(100, Math.max(0, progressPercent))}%; border-radius: 999px; transition: width 0.3s ease;"></div>
+                        </div>
+
+                        <!-- TEKS PENDUKUNG: PERSENTASE + SISA -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem;">
+                          <span style="font-weight: 700; color: ${progressPercent >= 100 ? '#15803D' : '#116834'};">${formattedProgress}</span>
+                          <span style="font-weight: 600; color: ${remainingPolybag === 0 ? '#15803D' : '#94A3B8'};">
+                            ${remainingPolybag === 0 ? '✓ Selesai' : 'Sisa ' + remainingPolybag.toLocaleString('id-ID') + ' Polybag'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <!-- 6. STATUS / ACTION -->
+                      ${(isAllChecked || remainingPolybag === 0) ? `
+                        <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.74rem; color: #166534; font-weight: 700; text-align: center;">
+                          ✓ Seluruh populasi telah diperiksa
+                        </div>
+                      ` : (!isApproved && !isSubmitted) ? `
+                        <button type="button" class="btn-execute-seleksi1" data-id="${esc(doc.id)}" style="width: 100%; height: 36px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
+                          Rekam Data Seleksi I
+                        </button>
+                      ` : ''}
+
+                      <!-- 7. KONTROL EXPAND/COLLAPSE DOKUMEN INDUK -->
+                      <div>
+                        <button type="button" class="btn-toggle-parent-detail" data-target="selection-detail-${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; width: 100%; padding: 6px 10px; font-size: 0.74rem; font-weight: 700; color: #116834; cursor: pointer; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box;">
+                          <span class="text-parent-toggle">Lihat Detail</span>
+                          <svg class="icon-parent-toggle" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" style="transition: transform 0.2s ease;">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                          </svg>
+                        </button>
+                      </div>
+
+                      <!-- 8. EXPANDED DETAIL DOKUMEN INDUK (HANYA METADATA TAMBAHAN NON-REDUNDANT) -->
+                      <div class="parent-detail-content" id="selection-detail-${esc(doc.id)}" style="display: none; border-top: 1px dashed #CBD5E1; padding-top: 10px; flex-direction: column; gap: 10px;">
+                        
+                        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; font-size: 0.74rem; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;">
+                          <div>Estate: <strong style="color: #0F172A;">${esc(doc.estateName || doc.estateId || '-')}</strong></div>
+                          <div>Divisi: <strong style="color: #0F172A;">${esc(doc.divisionName || doc.divisionId || '-')}</strong></div>
+                          <div>Tahap: <strong style="color: #0F172A;">Seleksi I (Pra-Okulasi)</strong></div>
+                          <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+                        </div>
+
+                        ${isReturned && doc.returnReason ? `
+                          <div style="padding: 8px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.72rem; color: #991B1B;">
+                            <strong>Catatan Pengembalian Asisten:</strong> ${esc(doc.returnReason)}
                           </div>
                         ` : ''}
 
-                      </div>
+                        <!-- TOMBOL WORKFLOW PADA DOKUMEN INDUK -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                          
+                          ${!isApproved && !isSubmitted ? `
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: #1E293B; cursor: pointer; user-select: none; font-weight: 600; padding: 4px 0;">
+                              <input type="checkbox" class="chk-doc-completed" data-id="${esc(doc.id)}" ${isCompleted ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #116834;">
+                              <span>Seleksi Selesai</span>
+                              <span style="font-size: 0.68rem; color: #64748B; font-weight: normal;">(Centang jika Seleksi I Selesai)</span>
+                            </label>
+                          ` : ''}
 
-                    </div>
+                          ${isCompleted && !isSubmitted && !isApproved ? `
+                            <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
+                              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
+                                <polyline points="9 11 12 14 22 4"></polyline>
+                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                              </svg>
+                              Tinjau & Kirim ke Asisten Bibitan
+                            </button>
+                          ` : ''}
+
+                          ${isSubmitted ? `
+                            <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 34px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.76rem; cursor: pointer;">
+                              Lihat Rincian Verifikasi Data
+                            </button>
+                          ` : ''}
+
+                          ${isApproved ? `
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                              <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.72rem; color: #166534;">
+                                ✅ <strong>Data Final:</strong> Disetujui oleh ${esc(doc.verifiedByName || 'Asisten Bibitan')} pada ${doc.verifiedAt ? formatDate(doc.verifiedAt) : '-'}.
+                              </div>
+                              ${existingSel2 ? `
+                                <button type="button" class="btn-view-seleksi2" data-id="${esc(existingSel2.id)}" style="width: 100%; height: 36px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                  <span>Dokumen Seleksi II Terbentuk: <strong>${esc(existingSel2.docNo)}</strong> →</span>
+                                </button>
+                              ` : `
+                                <button type="button" class="btn-create-seleksi2" data-id="${esc(doc.id)}" style="width: 100%; height: 36px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
+                                  Buat Dokumen Seleksi II
+                                </button>
+                              `}
+                            </div>
+                          ` : ''}
+
+                        </div>
+
+                      </div><!-- END parent-detail-content -->
+
+                    </div><!-- END card-parent-doc -->
                   `;
                 }).join('')}
               </div>
+
+              <!-- GLOBAL CONTAINER RINGKASAN TRANSAKSI PELAKSANAAN (SESUAI POLA MODUL PENYEMAIAN - POIN H, I, J) -->
+              ${(() => {
+                const allRawTxs = storage.get(SELECTION_STORAGE_KEY, []);
+                const allSeleksi1Txs = allRawTxs.filter(tx => {
+                  const isStage1 = (
+                    tx.selectionStage === SELECTION_STAGES.SELEKSI_1 ||
+                    tx.stage === 'SELEKSI_I' ||
+                    tx.transactionType === 'PELAKSANAAN_SELEKSI_I'
+                  );
+                  if (!isStage1) return false;
+                  return seleksi1Docs.some(d =>
+                    d.id === tx.parentSelectionDocumentId ||
+                    d.id === tx.selectionDocumentId ||
+                    d.docNo === tx.parentSelectionDocNo ||
+                    d.docNo === tx.selectionDocNo ||
+                    d.docNo === tx.sourceDocNo
+                  );
+                });
+
+                return `
+                  <div class="section-global-child-transactions" style="margin-top: 20px; padding-top: 14px; border-top: 2px solid #E2E8F0;">
+                    <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                      <h2 style="font-size: 0.92rem; font-weight: 800; color: #0F172A; margin: 0;">
+                        Ringkasan Transaksi (${allSeleksi1Txs.length})
+                      </h2>
+                    </div>
+
+                    ${allSeleksi1Txs.length === 0 ? `
+                      <div style="background: #FFFFFF; border: 1px dashed #CBD5E1; border-radius: 8px; padding: 20px 14px; text-align: center; color: #64748B; font-size: 0.78rem;">
+                        <div style="font-weight: 700; color: #334155; margin-bottom: 2px;">Belum ada transaksi pelaksanaan.</div>
+                        <div>Belum ada pemeriksaan yang dicatat untuk Seleksi I.</div>
+                      </div>
+                    ` : `
+                      <div style="display: flex; flex-direction: column; gap: 10px;">
+                        ${allSeleksi1Txs.map((tx, txIdx) => {
+                          const parentDoc = seleksi1Docs.find(d => 
+                            d.id === tx.parentSelectionDocumentId || 
+                            d.id === tx.selectionDocumentId ||
+                            d.docNo === tx.parentSelectionDocNo ||
+                            d.docNo === tx.selectionDocNo ||
+                            d.docNo === tx.sourceDocNo
+                          ) || {};
+                          const p2 = tx.polybag2Bibit || 0;
+                          const p1 = tx.polybag1Bibit || 0;
+                          const p0 = tx.polybag0Bibit || 0;
+                          const polyChecked = tx.polybagScope || tx.initialPolybagCount || (p2 + p1 + p0);
+                          const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || ((p2 * 2) + p1);
+                          const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || (p1 + (p0 * 2));
+                          const bibitAwal = polyChecked * 2;
+                          const isBalanced = (p2 + p1 + p0 === polyChecked) && (bibitLayak + bibitAfkir === bibitAwal);
+                          const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
+
+                          return `
+                            <!-- CARD TRANSAKSI GLOBAL (DEFAULT: COLLAPSED) -->
+                            <div class="card-child-tx" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                              
+                              <!-- HEADER ROW TRANSAKSI (ALWAYS VISIBLE - POIN I) -->
+                              <div class="btn-toggle-child-tx" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                                <div style="flex: 1; min-width: 0;">
+                                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                    <span style="font-weight: 800; color: #116834; font-size: 0.80rem;">Seleksi I</span>
+                                    <span style="color: #64748B; font-size: 0.72rem;">• Transaksi #${txIdx + 1} (${esc(tx.docNo)})</span>
+                                    <span style="background: #F1F5F9; color: #475569; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">${esc(tx.bedenganCode || tx.bedengan || '-')}</span>
+                                  </div>
+                                  <div style="color: #64748B; font-size: 0.72rem; margin-top: 3px;">
+                                    ${esc(tx.tanggalSeleksi || tx.tanggal || '-')} • <strong style="color: #0F172A;">${polyChecked.toLocaleString('id-ID')} Polybag</strong> • Dok. <strong style="color: #334155;">${esc(parentDoc.docNo || tx.parentSelectionDocNo || tx.selectionDocNo || '-')}</strong>
+                                  </div>
+                                </div>
+                                
+                                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                                  <span style="font-size: 0.65rem; font-weight: 700; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 2px 6px; border-radius: 4px;">
+                                    Selesai
+                                  </span>
+                                  <svg class="icon-child-toggle" viewBox="0 0 24 24" width="14" height="14" stroke="#64748B" stroke-width="2.5" fill="none" style="transition: transform 0.2s ease;">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                  </svg>
+                                </div>
+                              </div>
+
+                              <!-- DETAIL TRANSAKSI EXPANDED (DEFAULT: HIDDEN - POIN J) -->
+                              <div class="child-tx-detail-content" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #E2E8F0;">
+                                
+                                <!-- CONTEXT METADATA -->
+                                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; font-size: 0.72rem; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-bottom: 8px;">
+                                  <div>Program: <strong style="color: #0F172A;">${esc(parentDoc.programCode || parentDoc.programName || tx.programCode || '-')}</strong></div>
+                                  <div>Dokumen Induk: <strong style="color: #0F172A;">${esc(parentDoc.docNo || tx.parentSelectionDocNo || tx.selectionDocNo || '-')}</strong></div>
+                                  <div>Sumber Penyemaian: <strong style="color: #0F172A;">${esc(parentDoc.sourceDocNo || tx.sourceSeedingDocNo || '-')}</strong></div>
+                                  <div>Bedengan: <strong style="color: #0F172A;">${esc(tx.bedenganCode || tx.bedengan || '-')}</strong></div>
+                                  <div>Tanggal Transaksi: <strong style="color: #0F172A;">${esc(tx.tanggalSeleksi || tx.tanggal || '-')}</strong></div>
+                                  <div>Status: <strong style="color: #15803D;">Selesai</strong></div>
+                                </div>
+
+                                <!-- BREAKDOWN P2, P1, P0 -->
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;">
+                                  <div>
+                                    <div style="font-size: 0.60rem; font-weight: 700; color: #15803D;">2 Bibit / Ply (P2)</div>
+                                    <div style="font-size: 0.82rem; font-weight: 800; color: #15803D; margin-top: 1px;">${p2.toLocaleString('id-ID')}</div>
+                                  </div>
+                                  <div style="border-left: 1px solid #E2E8F0;">
+                                    <div style="font-size: 0.60rem; font-weight: 700; color: #D97706;">1 Bibit / Ply (P1)</div>
+                                    <div style="font-size: 0.82rem; font-weight: 800; color: #D97706; margin-top: 1px;">${p1.toLocaleString('id-ID')}</div>
+                                  </div>
+                                  <div style="border-left: 1px solid #E2E8F0;">
+                                    <div style="font-size: 0.60rem; font-weight: 700; color: #DC2626;">0 Bibit / Ply (P0)</div>
+                                    <div style="font-size: 0.82rem; font-weight: 800; color: #DC2626; margin-top: 1px;">${p0.toLocaleString('id-ID')}</div>
+                                  </div>
+                                </div>
+
+                                <!-- METRICS HASIL BIBIT -->
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
+                                  <div>Bibit Awal: <strong style="color: #0F172A;">${bibitAwal.toLocaleString('id-ID')}</strong></div>
+                                  <div>Layak: <strong style="color: #15803D;">${bibitLayak.toLocaleString('id-ID')}</strong></div>
+                                  <div>Reject: <strong style="color: #DC2626;">${bibitAfkir.toLocaleString('id-ID')}</strong></div>
+                                  <div>Balance: <strong style="color: #15803D;">${isBalanced ? 'BALANCE ✅' : 'MISMATCH ❌'}</strong></div>
+                                </div>
+
+                                <!-- PENCATAT & CATATAN -->
+                                <div style="font-size: 0.68rem; color: #64748B; display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px;">
+                                  <div>Pencatat: <strong>${esc(tx.createdByName || tx.createdByUserId || 'Mantri')}</strong> (${esc(tx.createdByRole || 'MANTRI_TANAMAN')})</div>
+                                  ${tx.catatan && tx.catatan !== '-' ? `<div>Catatan: <em>${esc(tx.catatan)}</em></div>` : ''}
+                                </div>
+
+                                <!-- ACTION DELETE -->
+                                ${!isParentApprovedOrSubmitted ? `
+                                  <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #F1F5F9; padding-top: 6px; margin-top: 6px;">
+                                    <button type="button" class="btn-delete-child-tx" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="padding: 4px 10px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; border-radius: 4px; font-size: 0.70rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                      <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                      Hapus
+                                    </button>
+                                  </div>
+                                ` : ''}
+
+                              </div>
+
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    `}
+                  </div>
+                `;
+              })()}
             `}
           ` : activePreGraftingTab === 'SELEKSI_2' ? `
             <!-- VIEW 1B: DOKUMEN SELEKSI II PRA-OKULASI -->
@@ -1047,81 +1224,75 @@ function renderMantriSelectionLanding(app, user) {
             ` : `
               <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
                 ${seleksi2Docs.map(doc => {
-                  const bedScopeList = getBedenganScopeStatusForSeleksi2(doc);
-                  const executions = getSeleksi2ExecutionsByDocument(doc.id || doc.docNo);
-                  const isCompleted = Boolean(doc.isCompleted);
-                  const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
-                  const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
-                  const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
-                  const isFinal = Boolean(doc.isFinal);
-                  const bedDisplay = formatBedenganDisplayCode(doc);
-                  const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
-                  const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
-                  const totalLayak = parseInt(doc.totalLayak || 0, 10);
-                  const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
+    const bedScopeList = getBedenganScopeStatusForSeleksi2(doc);
+    const executions = getSeleksi2ExecutionsByDocument(doc.id || doc.docNo);
+    const isCompleted = Boolean(doc.isCompleted);
+    const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
+    const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
+    const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
+    const isFinal = Boolean(doc.isFinal);
+    const bedDisplay = formatBedenganDisplayCode(doc);
+    const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
+    const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
+    const totalLayak = parseInt(doc.totalLayak || 0, 10);
+    const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
 
-                  // Cek apakah Dokumen Seleksi III sudah pernah dibuat dari Seleksi II ini
-                  const existingSel3 = seleksi3Docs.find(d => 
-                    d.sourceSelectionDocumentId === doc.id || 
-                    d.sourceSelectionDocNo === doc.docNo || 
-                    d.sourceDocNo === doc.docNo
-                  );
+    const totalInspectedPolybag = executions.reduce((sum, tx) => sum + parseInt(tx.polybagScope || 0, 10), 0);
+    const remainingPolybag = Math.max(0, sourcePolybag - totalInspectedPolybag);
+    const isAllChecked = (sourcePolybag > 0 && totalInspectedPolybag >= sourcePolybag);
+    const progressPercent = sourcePolybag > 0 ? Math.min(100, Math.round((totalInspectedPolybag / sourcePolybag) * 100)) : 0;
+    const formattedProgress = `${progressPercent}% Selesai`;
 
-                  let badgeText = 'DRAFT';
-                  let badgeBg = '#FEF3C7';
-                  let badgeColor = '#B45309';
-                  let badgeBorder = '#FDE68A';
+    // Cek apakah Dokumen Seleksi III sudah pernah dibuat dari Seleksi II ini
+    const existingSel3 = seleksi3Docs.find(d =>
+      d.sourceSelectionDocumentId === doc.id ||
+      d.sourceSelectionDocNo === doc.docNo ||
+      d.sourceDocNo === doc.docNo
+    );
 
-                  if (isApproved && isFinal) {
-                    badgeText = 'DISETUJUI (FINAL)';
-                    badgeBg = '#F0FDF4';
-                    badgeColor = '#15803D';
-                    badgeBorder = '#BBF7D0';
-                  } else if (isReturned) {
-                    badgeText = 'DIKEMBALIKAN';
-                    badgeBg = '#FEF2F2';
-                    badgeColor = '#DC2626';
-                    badgeBorder = '#FECACA';
-                  } else if (isSubmitted) {
-                    badgeText = 'MENUNGGU VERIFIKASI ASISTEN';
-                    badgeBg = '#EFF6FF';
-                    badgeColor = '#1D4ED8';
-                    badgeBorder = '#BFDBFE';
-                  } else if (isCompleted) {
-                    badgeText = 'SELESAI (SIAP REVIEW)';
-                    badgeBg = '#F0FDF4';
-                    badgeColor = '#15803D';
-                    badgeBorder = '#BBF7D0';
-                  } else if (executions.length > 0) {
-                    badgeText = 'SEDANG BERJALAN';
-                    badgeBg = '#FEF3C7';
-                    badgeColor = '#B45309';
-                    badgeBorder = '#FDE68A';
-                  }
+    let badgeText = 'DRAFT';
+    let badgeBg = '#FEF3C7';
+    let badgeColor = '#B45309';
+    let badgeBorder = '#FDE68A';
 
-                  return `
-                    <div class="card-pre-grafting-doc card-seleksi2-doc" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px;">
+    if (isApproved && isFinal) {
+      badgeText = 'Disetujui';
+      badgeBg = '#F0FDF4';
+      badgeColor = '#15803D';
+      badgeBorder = '#BBF7D0';
+    } else if (isReturned) {
+      badgeText = 'Dikembalikan';
+      badgeBg = '#FEF2F2';
+      badgeColor = '#DC2626';
+      badgeBorder = '#FECACA';
+    } else if (isSubmitted) {
+      badgeText = 'Menunggu Verifikasi';
+      badgeBg = '#EFF6FF';
+      badgeColor = '#1D4ED8';
+      badgeBorder = '#BFDBFE';
+    } else if (isAllChecked || isCompleted) {
+      badgeText = 'Siap Review';
+      badgeBg = '#F0FDF4';
+      badgeColor = '#15803D';
+      badgeBorder = '#BBF7D0';
+    } else if (executions.length > 0) {
+      badgeText = 'Sedang Diperiksa';
+      badgeBg = '#FEF3C7';
+      badgeColor = '#B45309';
+      badgeBorder = '#FDE68A';
+    }
+
+    return `
+                    <!-- CARD DOKUMEN INDUK SELEKSI II (COLLAPSED BY DEFAULT) -->
+                    <div class="card-pre-grafting-doc card-parent-doc card-seleksi2-doc" id="selection-parent-${esc(doc.id)}" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px;">
                       
-                      <!-- 1. HEADER CARD: DOK NO & STAGE BADGE -->
+                      <!-- 1. PROGRAM PEMBIBITAN (PALING ATAS) & STATUS BADGE -->
                       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                         <div>
-                          <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="font-size: 0.62rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE;">
-                              SELEKSI II (PRA-OKULASI)
-                            </span>
-                            <span style="font-weight: 800; font-size: 0.96rem; color: #0F172A;">
-                              ${esc(doc.docNo)}
-                            </span>
+                          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Program Pembibitan</div>
+                          <div style="font-weight: 800; font-size: 0.90rem; color: #0F172A; margin-top: 1px;">
+                            ${esc(doc.programCode || doc.programName || '-')}
                           </div>
-                          <div style="font-size: 0.72rem; color: #64748B; margin-top: 3px;">
-                            Sumber Seleksi I: <strong style="color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</strong>
-                            <span style="font-size: 0.64rem; font-weight: 700; color: #15803D; margin-left: 4px;">(DISETUJUI FINAL)</span>
-                          </div>
-                          ${doc.sourceSeedingDocNo && doc.sourceSeedingDocNo !== '-' ? `
-                            <div style="font-size: 0.68rem; color: #94A3B8; margin-top: 1px;">
-                              Penyemaian Asal: ${esc(doc.sourceSeedingDocNo)}
-                            </div>
-                          ` : ''}
                         </div>
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
                           <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder};">
@@ -1131,131 +1302,310 @@ function renderMantriSelectionLanding(app, user) {
                         </div>
                       </div>
 
-                      <!-- 2. BATCH & SCOPE INFO -->
-                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 0.73rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
-                        <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || doc.batchNo || '-')}</strong></div>
-                        <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
-                        <div>Bedengan: <strong style="color: #0F172A;">${esc(bedDisplay)}</strong></div>
-                        <div>Program: <strong style="color: #0F172A;">${esc(doc.programCode || doc.programName || '-')}</strong></div>
-                      </div>
-
-                      <!-- 3. POPULATION & RESULT METRICS (4-KOLOM DOKUMEN SELEKSI II) -->
-                      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px; background: #FFFFFF;">
+                      <!-- 2. DOKUMEN SELEKSI & 3. SUMBER SELEKSI I -->
+                      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
                         <div>
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Polybag Source</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourcePolybag.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #94A3B8;">Ply (Dari Sel. I)</div>
+                          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Dokumen Seleksi</div>
+                          <div style="font-weight: 800; font-size: 0.90rem; color: #116834; margin-top: 1px;">
+                            Seleksi II — ${esc(doc.docNo || doc.selectionDocNo)}
+                          </div>
                         </div>
-                        <div style="border-left: 1px solid #E2E8F0;">
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Bibit Source</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourceBibit.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #94A3B8;">Pkk (Final Sel. I)</div>
-                        </div>
-                        <div style="border-left: 1px solid #E2E8F0;">
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #15803D; text-transform: uppercase;">Dipertahankan</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #15803D; margin-top: 2px;">${totalLayak.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #15803D;">Pkk (1 Bibit/Ply)</div>
-                        </div>
-                        <div style="border-left: 1px solid #E2E8F0;">
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #DC2626; text-transform: uppercase;">Reject Seleksi II</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #DC2626; margin-top: 2px;">${totalAfkir.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #DC2626;">Pkk (Dieliminasi)</div>
+                        <div style="text-align: right;">
+                          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Sumber Seleksi I</div>
+                          <div style="font-weight: 700; font-size: 0.82rem; color: #0F172A; margin-top: 1px;">
+                            ${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}
+                          </div>
                         </div>
                       </div>
 
-                      <!-- 4. RIWAYAT SESI PELAKSANAAN SELEKSI II (JIKA ADA) -->
-                      ${executions.length > 0 ? `
-                        <div style="border-top: 1px dashed #CBD5E1; padding-top: 8px;">
-                          <div style="font-size: 0.70rem; font-weight: 700; color: #475569; margin-bottom: 6px;">Riwayat Sesi Pelaksanaan Seleksi II:</div>
-                          <div style="display: flex; flex-direction: column; gap: 6px;">
-                            ${executions.map(tx => `
-                              <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; font-size: 0.70rem; display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                  <div><strong style="color: #0F172A;">${esc(tx.bedenganCode || tx.bedengan || '-')}</strong> • ${esc(tx.docNo)}</div>
-                                  <div style="color: #64748B; font-size: 0.65rem; margin-top: 1px;">
-                                    ${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2→1, ${tx.polybag1Bibit || 0}x1→1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}
-                                  </div>
-                                </div>
-                                <div style="text-align: right;">
-                                  <div style="font-weight: 700; color: #15803D;">+${(tx.bibitDipertahankan || tx.jumlahLayak || 0).toLocaleString('id-ID')} Pkk</div>
-                                  <div style="font-size: 0.65rem; color: #DC2626;">-${(tx.bibitReject || tx.jumlahAfkir || 0).toLocaleString('id-ID')} Reject</div>
-                                </div>
-                              </div>
-                            `).join('')}
-                          </div>
-                        </div>
-                      ` : ''}
+                      <!-- 4. BATCH & BEDENGAN -->
+                      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #475569; padding: 0 2px;">
+                        <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || doc.batchNo || '-')}</strong> • Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+                        <div>Bedengan: <strong style="color: #0F172A;">${esc(bedDisplay)}</strong></div>
+                      </div>
 
-                      ${isReturned && doc.returnReason ? `
-                        <div style="padding: 8px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.72rem; color: #991B1B;">
-                          <strong>Catatan Pengembalian Asisten:</strong> ${esc(doc.returnReason)}
-                        </div>
-                      ` : ''}
-
-                      <!-- 5. TOMBOL AKSI, COMPLETION CHECKBOX & SUBMISSION & SELEKSI III GENERATION -->
-                      <div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #F1F5F9; padding-top: 8px;">
-                        
-                        ${!isApproved && !isSubmitted ? `
-                          <button type="button" class="btn-execute-seleksi2" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                              <line x1="12" y1="5" x2="12" y2="19"></line>
-                              <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg>
-                            + Catat Transaksi Pelaksanaan Seleksi II
-                          </button>
-                        ` : ''}
-
-                        ${!isApproved && !isSubmitted ? `
-                          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: #1E293B; cursor: pointer; user-select: none; font-weight: 600; padding: 4px 0;">
-                            <input type="checkbox" class="chk-doc-completed" data-id="${esc(doc.id)}" ${isCompleted ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #116834;">
-                            <span>Seleksi Selesai</span>
-                            <span style="font-size: 0.68rem; color: #64748B; font-weight: normal;">(Deklarasi Manual Mantri)</span>
-                          </label>
-                        ` : ''}
-
-                        ${isCompleted && !isSubmitted && !isApproved ? `
-                          <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #2563EB; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(37,99,235,0.2);">
-                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                              <polyline points="9 11 12 14 22 4"></polyline>
-                              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-                            </svg>
-                            Tinjau & Kirim ke Asisten Bibitan
-                          </button>
-                        ` : ''}
-
-                        ${isSubmitted ? `
-                          <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 34px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.76rem; cursor: pointer;">
-                            Lihat Rincian Verifikasi Data
-                          </button>
-                        ` : ''}
-
-                        ${isApproved ? `
-                          <div style="display: flex; flex-direction: column; gap: 6px;">
-                            <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.72rem; color: #166534;">
-                              ✅ <strong>Data Final:</strong> Disetujui oleh ${esc(doc.verifiedByName || 'Asisten Bibitan')} pada ${doc.verifiedAt ? formatDate(doc.verifiedAt) : '-'}.
+                      <!-- 5. POPULASI PEMERIKSAAN DENGAN VISUAL PROGRESS BAR -->
+                      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                          <span style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px;">Populasi Pemeriksaan</span>
+                          <div style="text-align: right;">
+                            <div style="font-size: 0.92rem; font-weight: 800; color: #0F172A; line-height: 1.2;">
+                              ${totalInspectedPolybag.toLocaleString('id-ID')} / ${sourcePolybag.toLocaleString('id-ID')}
                             </div>
-                            ${existingSel3 ? `
-                              <button type="button" class="btn-view-seleksi3" data-id="${esc(existingSel3.id)}" style="width: 100%; height: 36px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                                <span>Dokumen Seleksi III Terbentuk: <strong>${esc(existingSel3.docNo)}</strong> →</span>
-                              </button>
-                            ` : `
-                              <button type="button" class="btn-create-seleksi3" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                                </svg>
-                                + Buat Dokumen Seleksi III
-                              </button>
-                            `}
+                            <div style="font-size: 0.68rem; font-weight: 600; color: #64748B; line-height: 1.2;">Diperiksa</div>
+                          </div>
+                        </div>
+
+                        <!-- PROGRESS BAR VISUAL HORIZONTAL FULL-WIDTH -->
+                        <div style="background: #E2E8F0; border-radius: 999px; height: 8px; width: 100%; overflow: hidden;">
+                          <div style="background: ${progressPercent >= 100 ? '#15803D' : '#116834'}; height: 100%; width: ${Math.min(100, Math.max(0, progressPercent))}%; border-radius: 999px; transition: width 0.3s ease;"></div>
+                        </div>
+
+                        <!-- TEKS PENDUKUNG: PERSENTASE + SISA -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem;">
+                          <span style="font-weight: 700; color: ${progressPercent >= 100 ? '#15803D' : '#116834'};">${formattedProgress}</span>
+                          <span style="font-weight: 600; color: ${remainingPolybag === 0 ? '#15803D' : '#94A3B8'};">
+                            ${remainingPolybag === 0 ? '✓ Selesai' : 'Sisa ' + remainingPolybag.toLocaleString('id-ID') + ' Polybag'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <!-- 6. STATUS / ACTION -->
+                      ${(isAllChecked || remainingPolybag === 0) ? `
+                        <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.74rem; color: #166534; font-weight: 700; text-align: center;">
+                          ✓ Seluruh populasi telah diperiksa
+                        </div>
+                      ` : (!isApproved && !isSubmitted) ? `
+                        <button type="button" class="btn-execute-seleksi2" data-id="${esc(doc.id)}" style="width: 100%; height: 36px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
+                          Rekam Data Seleksi II
+                        </button>
+                      ` : ''}
+
+                      <!-- 7. KONTROL EXPAND/COLLAPSE DOKUMEN INDUK -->
+                      <div>
+                        <button type="button" class="btn-toggle-parent-detail" data-target="selection-detail-${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; width: 100%; padding: 6px 10px; font-size: 0.74rem; font-weight: 700; color: #116834; cursor: pointer; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box;">
+                          <span class="text-parent-toggle">Lihat Detail</span>
+                          <svg class="icon-parent-toggle" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" style="transition: transform 0.2s ease;">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                          </svg>
+                        </button>
+                      </div>
+
+                      <!-- 8. EXPANDED DETAIL DOKUMEN INDUK -->
+                      <div class="parent-detail-content" id="selection-detail-${esc(doc.id)}" style="display: none; border-top: 1px dashed #CBD5E1; padding-top: 10px; flex-direction: column; gap: 10px;">
+                        
+                        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; font-size: 0.74rem; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;">
+                          <div>Estate: <strong style="color: #0F172A;">${esc(doc.estateName || doc.estateId || '-')}</strong></div>
+                          <div>Divisi: <strong style="color: #0F172A;">${esc(doc.divisionName || doc.divisionId || '-')}</strong></div>
+                          <div>Tahap: <strong style="color: #0F172A;">Seleksi II (Pra-Okulasi)</strong></div>
+                          <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+                        </div>
+
+                        <!-- 4-KOLOM METRIK SELEKSI II (RINGKAS & RAPI) -->
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 2px; text-align: center;">
+                          <div>
+                            <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Polybag</div>
+                            <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">${sourcePolybag.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: #94A3B8;">Ply</div>
+                          </div>
+                          <div style="border-left: 1px solid #E2E8F0;">
+                            <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Bibit Sumber</div>
+                            <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">${sourceBibit.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: #94A3B8;">Pkk</div>
+                          </div>
+                          <div style="border-left: 1px solid #E2E8F0;">
+                            <div style="font-size: 0.58rem; font-weight: 700; color: #15803D; text-transform: uppercase; letter-spacing: 0.02em;">Layak</div>
+                            <div style="font-size: 0.88rem; font-weight: 800; color: #15803D; line-height: 1.2; margin-top: 1px;">${totalLayak.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: #15803D;">Pkk (1/Ply)</div>
+                          </div>
+                          <div style="border-left: 1px solid #E2E8F0;">
+                            <div style="font-size: 0.58rem; font-weight: 700; color: #DC2626; text-transform: uppercase; letter-spacing: 0.02em;">Reject</div>
+                            <div style="font-size: 0.88rem; font-weight: 800; color: #DC2626; line-height: 1.2; margin-top: 1px;">${totalAfkir.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: #DC2626;">Pkk</div>
+                          </div>
+                        </div>
+
+                        ${isReturned && doc.returnReason ? `
+                          <div style="padding: 8px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.72rem; color: #991B1B;">
+                            <strong>Catatan Pengembalian Asisten:</strong> ${esc(doc.returnReason)}
                           </div>
                         ` : ''}
 
-                      </div>
+                        <!-- TOMBOL WORKFLOW PADA DOKUMEN INDUK -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                          ${!isApproved && !isSubmitted ? `
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: #1E293B; cursor: pointer; user-select: none; font-weight: 600; padding: 4px 0;">
+                              <input type="checkbox" class="chk-doc-completed" data-id="${esc(doc.id)}" ${isCompleted ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #116834;">
+                              <span>Seleksi Selesai</span>
+                              <span style="font-size: 0.68rem; color: #64748B; font-weight: normal;">(Centang jika Seleksi II Selesai)</span>
+                            </label>
+                          ` : ''}
 
-                    </div>
+                          ${isCompleted && !isSubmitted && !isApproved ? `
+                            <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
+                              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
+                                <polyline points="9 11 12 14 22 4"></polyline>
+                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                              </svg>
+                              Tinjau & Kirim ke Asisten Bibitan
+                            </button>
+                          ` : ''}
+
+                          ${isSubmitted ? `
+                            <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 34px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.76rem; cursor: pointer;">
+                              Lihat Rincian Verifikasi Data
+                            </button>
+                          ` : ''}
+
+                          ${isApproved ? `
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                              <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.72rem; color: #166534;">
+                                ✅ <strong>Data Final:</strong> Disetujui oleh ${esc(doc.verifiedByName || 'Asisten Bibitan')} pada ${doc.verifiedAt ? formatDate(doc.verifiedAt) : '-'}.
+                              </div>
+                              ${existingSel3 ? `
+                                <button type="button" class="btn-view-seleksi3" data-id="${esc(existingSel3.id)}" style="width: 100%; height: 36px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                  <span>Dokumen Seleksi III Terbentuk: <strong>${esc(existingSel3.docNo)}</strong> →</span>
+                                </button>
+                              ` : `
+                                <button type="button" class="btn-create-seleksi3" data-id="${esc(doc.id)}" style="width: 100%; height: 36px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
+                                  Buat Dokumen Seleksi III
+                                </button>
+                              `}
+                            </div>
+                          ` : ''}
+
+                        </div>
+
+                      </div><!-- END parent-detail-content -->
+
+                    </div><!-- END card-parent-doc -->
                   `;
                 }).join('')}
               </div>
+
+              <!-- GLOBAL CONTAINER RINGKASAN TRANSAKSI PELAKSANAAN SELEKSI II -->
+              ${(() => {
+                const allRawTxs = storage.get(SELECTION_STORAGE_KEY, []);
+                const allSeleksi2Txs = allRawTxs.filter(tx => {
+                  const isStage2 = (
+                    tx.selectionStage === SELECTION_STAGES.SELEKSI_2 ||
+                    tx.stage === 'SELEKSI_II' ||
+                    tx.stage === 'SELEKSI_2' ||
+                    tx.transactionType === 'PELAKSANAAN_SELEKSI_II'
+                  );
+                  if (!isStage2) return false;
+                  return seleksi2Docs.some(d =>
+                    d.id === tx.parentSelectionDocumentId ||
+                    d.id === tx.selectionDocumentId ||
+                    d.docNo === tx.parentSelectionDocNo ||
+                    d.docNo === tx.selectionDocNo ||
+                    d.docNo === tx.sourceDocNo
+                  );
+                });
+
+                return `
+                  <div class="section-global-child-transactions" style="margin-top: 20px; padding-top: 14px; border-top: 2px solid #E2E8F0;">
+                    <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                      <h2 style="font-size: 0.92rem; font-weight: 800; color: #0F172A; margin: 0;">
+                        Ringkasan Transaksi (${allSeleksi2Txs.length})
+                      </h2>
+                    </div>
+
+                    ${allSeleksi2Txs.length === 0 ? `
+                      <div style="background: #FFFFFF; border: 1px dashed #CBD5E1; border-radius: 8px; padding: 20px 14px; text-align: center; color: #64748B; font-size: 0.78rem;">
+                        <div style="font-weight: 700; color: #334155; margin-bottom: 2px;">Belum ada transaksi pelaksanaan.</div>
+                        <div>Belum ada pemeriksaan yang dicatat untuk Seleksi II.</div>
+                      </div>
+                    ` : `
+                      <div style="display: flex; flex-direction: column; gap: 10px;">
+                        ${allSeleksi2Txs.map((tx, txIdx) => {
+                          const parentDoc = seleksi2Docs.find(d => 
+                            d.id === tx.parentSelectionDocumentId || 
+                            d.id === tx.selectionDocumentId ||
+                            d.docNo === tx.parentSelectionDocNo ||
+                            d.docNo === tx.selectionDocNo ||
+                            d.docNo === tx.sourceDocNo
+                          ) || {};
+                          const p2 = tx.polybag2Bibit || 0;
+                          const p1 = tx.polybag1Bibit || 0;
+                          const p0 = tx.polybag0Bibit || 0;
+                          const polyChecked = tx.polybagScope || tx.initialPolybagCount || (p2 + p1 + p0);
+                          const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || (p2 + p1);
+                          const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || p2;
+                          const bibitAwal = tx.bibitAwal || (p2 * 2 + p1);
+                          const isBalanced = (bibitLayak + bibitAfkir === bibitAwal);
+                          const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
+
+                          return `
+                            <!-- CARD TRANSAKSI GLOBAL (DEFAULT: COLLAPSED) -->
+                            <div class="card-child-tx" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                              
+                              <!-- HEADER ROW TRANSAKSI -->
+                              <div class="btn-toggle-child-tx" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                                <div style="flex: 1; min-width: 0;">
+                                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                    <span style="font-weight: 800; color: #116834; font-size: 0.80rem;">Seleksi II</span>
+                                    <span style="color: #64748B; font-size: 0.72rem;">• Transaksi #${txIdx + 1} (${esc(tx.docNo)})</span>
+                                    <span style="background: #F1F5F9; color: #475569; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">${esc(tx.bedenganCode || tx.bedengan || '-')}</span>
+                                  </div>
+                                  <div style="color: #64748B; font-size: 0.72rem; margin-top: 3px;">
+                                    ${esc(tx.tanggalSeleksi || tx.tanggal || '-')} • <strong style="color: #0F172A;">${polyChecked.toLocaleString('id-ID')} Polybag</strong> • Dok. <strong style="color: #334155;">${esc(parentDoc.docNo || tx.parentSelectionDocNo || tx.selectionDocNo || '-')}</strong>
+                                  </div>
+                                </div>
+                                
+                                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                                  <span style="font-size: 0.65rem; font-weight: 700; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 2px 6px; border-radius: 4px;">
+                                    Selesai
+                                  </span>
+                                  <svg class="icon-child-toggle" viewBox="0 0 24 24" width="14" height="14" stroke="#64748B" stroke-width="2.5" fill="none" style="transition: transform 0.2s ease;">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                  </svg>
+                                </div>
+                              </div>
+
+                              <!-- DETAIL TRANSAKSI EXPANDED -->
+                              <div class="child-tx-detail-content" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #E2E8F0;">
+                                
+                                <!-- CONTEXT METADATA -->
+                                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; font-size: 0.72rem; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-bottom: 8px;">
+                                  <div>Program: <strong style="color: #0F172A;">${esc(parentDoc.programCode || parentDoc.programName || tx.programCode || '-')}</strong></div>
+                                  <div>Dokumen Induk: <strong style="color: #0F172A;">${esc(parentDoc.docNo || tx.parentSelectionDocNo || tx.selectionDocNo || '-')}</strong></div>
+                                  <div>Sumber Seleksi I: <strong style="color: #0F172A;">${esc(parentDoc.sourceSelectionDocNo || parentDoc.sourceDocNo || tx.sourceSelectionDocNo || '-')}</strong></div>
+                                  <div>Bedengan: <strong style="color: #0F172A;">${esc(tx.bedenganCode || tx.bedengan || '-')}</strong></div>
+                                  <div>Tanggal Transaksi: <strong style="color: #0F172A;">${esc(tx.tanggalSeleksi || tx.tanggal || '-')}</strong></div>
+                                  <div>Status: <strong style="color: #15803D;">Selesai</strong></div>
+                                </div>
+
+                                <!-- BREAKDOWN P2, P1, P0 -->
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;">
+                                  <div>
+                                    <div style="font-size: 0.60rem; font-weight: 700; color: #15803D;">Polybag 2 Bibit (P2)</div>
+                                    <div style="font-size: 0.82rem; font-weight: 800; color: #15803D; margin-top: 1px;">${p2.toLocaleString('id-ID')}</div>
+                                  </div>
+                                  <div style="border-left: 1px solid #E2E8F0;">
+                                    <div style="font-size: 0.60rem; font-weight: 700; color: #D97706;">Polybag 1 Bibit (P1)</div>
+                                    <div style="font-size: 0.82rem; font-weight: 800; color: #D97706; margin-top: 1px;">${p1.toLocaleString('id-ID')}</div>
+                                  </div>
+                                  <div style="border-left: 1px solid #E2E8F0;">
+                                    <div style="font-size: 0.60rem; font-weight: 700; color: #DC2626;">Polybag Kosong (P0)</div>
+                                    <div style="font-size: 0.82rem; font-weight: 800; color: #DC2626; margin-top: 1px;">${p0.toLocaleString('id-ID')}</div>
+                                  </div>
+                                </div>
+
+                                <!-- METRICS HASIL BIBIT -->
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
+                                  <div>Bibit Awal: <strong style="color: #0F172A;">${bibitAwal.toLocaleString('id-ID')}</strong></div>
+                                  <div>Layak: <strong style="color: #15803D;">${bibitLayak.toLocaleString('id-ID')}</strong></div>
+                                  <div>Reject: <strong style="color: #DC2626;">${bibitAfkir.toLocaleString('id-ID')}</strong></div>
+                                  <div>Balance: <strong style="color: #15803D;">${isBalanced ? 'BALANCE ✅' : 'MISMATCH ❌'}</strong></div>
+                                </div>
+
+                                <!-- PENCATAT & CATATAN -->
+                                <div style="font-size: 0.68rem; color: #64748B; display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px;">
+                                  <div>Pencatat: <strong>${esc(tx.createdByName || tx.createdByUserId || 'Mantri')}</strong> (${esc(tx.createdByRole || 'MANTRI_TANAMAN')})</div>
+                                  ${tx.catatan && tx.catatan !== '-' ? `<div>Catatan: <em>${esc(tx.catatan)}</em></div>` : ''}
+                                </div>
+
+                                <!-- ACTION DELETE -->
+                                ${!isParentApprovedOrSubmitted ? `
+                                  <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #F1F5F9; padding-top: 6px; margin-top: 6px;">
+                                    <button type="button" class="btn-delete-child-tx" data-stage="SELEKSI_2" data-stage-label="Seleksi II" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="padding: 4px 10px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; border-radius: 4px; font-size: 0.70rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                      <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                      Hapus
+                                    </button>
+                                  </div>
+                                ` : ''}
+
+                              </div>
+
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    `}
+                  </div>
+                `;
+              })()}
             `}
           ` : `
             <!-- VIEW 1C: DOKUMEN SELEKSI III PRA-OKULASI -->
@@ -1276,73 +1626,72 @@ function renderMantriSelectionLanding(app, user) {
             ` : `
               <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
                 ${seleksi3Docs.map(doc => {
-                  const bedDisplay = formatBedenganDisplayCode(doc);
-                  const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
-                  const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
-                  const totalLayak = parseInt(doc.totalLayak || 0, 10);
-                  const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
-                  const executions = getSeleksi3ExecutionsByDocument(doc.id || doc.docNo);
-                  const isCompleted = Boolean(doc.isCompleted);
-                  const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
-                  const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
-                  const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
-                  const isFinal = Boolean(doc.isFinal);
+    const bedDisplay = formatBedenganDisplayCode(doc);
+    const executions = getSeleksi3ExecutionsByDocument(doc.id || doc.docNo);
+    const metrics = getSeleksi3Metrics(doc, executions);
 
-                  let badgeText = 'DRAFT (CONTAINER)';
-                  let badgeBg = '#FEF3C7';
-                  let badgeColor = '#B45309';
-                  let badgeBorder = '#FDE68A';
+    const sourcePolybag = metrics.totalPopulasi;
+    const totalInspectedPolybag = metrics.totalBibitDiperiksa;
+    const totalLayak = metrics.totalBibitLayak;
+    const totalAfkir = metrics.totalBibitReject;
+    const remainingPolybag = metrics.sisaPemeriksaan;
+    const progressPercent = metrics.progress;
+    const formattedProgress = `${progressPercent}% Selesai`;
 
-                  if (isApproved) {
-                    badgeText = 'DISETUJUI (FINAL)';
-                    badgeBg = '#F0FDF4';
-                    badgeColor = '#15803D';
-                    badgeBorder = '#BBF7D0';
-                  } else if (isSubmitted) {
-                    badgeText = 'MENUNGGU VERIFIKASI ASISTEN';
-                    badgeBg = '#EFF6FF';
-                    badgeColor = '#1D4ED8';
-                    badgeBorder = '#BFDBFE';
-                  } else if (isReturned) {
-                    badgeText = 'DIKEMBALIKAN';
-                    badgeBg = '#FEF2F2';
-                    badgeColor = '#DC2626';
-                    badgeBorder = '#FECACA';
-                  } else if (isCompleted) {
-                    badgeText = 'SELESAI (SIAP REVIEW)';
-                    badgeBg = '#F5F3FF';
-                    badgeColor = '#6D28D9';
-                    badgeBorder = '#DDD6FE';
-                  } else if (executions.length > 0) {
-                    badgeText = 'SEDANG BERJALAN';
-                    badgeBg = '#FEF3C7';
-                    badgeColor = '#B45309';
-                    badgeBorder = '#FDE68A';
-                  }
+    const isCompleted = Boolean(doc.isCompleted);
+    const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
+    const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
+    const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
+    const isFinal = Boolean(doc.isFinal);
 
-                  return `
-                    <div class="card-pre-grafting-doc card-seleksi3-doc" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px;">
+    let badgeText = 'Belum Dimulai';
+    let badgeBg = '#F1F5F9';
+    let badgeColor = '#64748B';
+    let badgeBorder = '#E2E8F0';
+
+    if (isApproved && isFinal) {
+      badgeText = 'Disetujui';
+      badgeBg = '#F0FDF4';
+      badgeColor = '#15803D';
+      badgeBorder = '#BBF7D0';
+    } else if (isReturned) {
+      badgeText = 'Dikembalikan';
+      badgeBg = '#FEF2F2';
+      badgeColor = '#DC2626';
+      badgeBorder = '#FECACA';
+    } else if (isSubmitted) {
+      badgeText = 'Menunggu Verifikasi';
+      badgeBg = '#EFF6FF';
+      badgeColor = '#1D4ED8';
+      badgeBorder = '#BFDBFE';
+    } else if (metrics.status === 'Data Tidak Seimbang') {
+      badgeText = 'Data Tidak Seimbang';
+      badgeBg = '#FEF2F2';
+      badgeColor = '#DC2626';
+      badgeBorder = '#FECACA';
+    } else if (metrics.status === 'Siap Review') {
+      badgeText = 'Siap Review';
+      badgeBg = '#F0FDF4';
+      badgeColor = '#15803D';
+      badgeBorder = '#BBF7D0';
+    } else if (metrics.status === 'Sedang Diperiksa') {
+      badgeText = 'Sedang Diperiksa';
+      badgeBg = '#FEF3C7';
+      badgeColor = '#B45309';
+      badgeBorder = '#FDE68A';
+    }
+
+    return `
+                    <!-- CARD DOKUMEN INDUK SELEKSI III (COLLAPSED BY DEFAULT) -->
+                    <div class="card-pre-grafting-doc card-parent-doc card-seleksi3-doc" id="selection-parent-${esc(doc.id)}" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px;">
                       
-                      <!-- 1. HEADER CARD: DOK NO & STAGE BADGE -->
+                      <!-- 1. PROGRAM PEMBIBITAN (PALING ATAS) & STATUS BADGE -->
                       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                         <div>
-                          <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="font-size: 0.62rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: #FDF2F8; color: #9D174D; border: 1px solid #FBCFE8;">
-                              SELEKSI III (PRA-OKULASI)
-                            </span>
-                            <span style="font-weight: 800; font-size: 0.96rem; color: #0F172A;">
-                              ${esc(doc.docNo)}
-                            </span>
+                          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Program Pembibitan</div>
+                          <div style="font-weight: 800; font-size: 0.90rem; color: #0F172A; margin-top: 1px;">
+                            ${esc(doc.programCode || doc.programName || '-')}
                           </div>
-                          <div style="font-size: 0.72rem; color: #64748B; margin-top: 3px;">
-                            Sumber Seleksi II: <strong style="color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</strong>
-                            <span style="font-size: 0.64rem; font-weight: 700; color: #15803D; margin-left: 4px;">(DISETUJUI FINAL)</span>
-                          </div>
-                          ${doc.sourceSeedingDocNo && doc.sourceSeedingDocNo !== '-' ? `
-                            <div style="font-size: 0.68rem; color: #94A3B8; margin-top: 1px;">
-                              Penyemaian Asal: ${esc(doc.sourceSeedingDocNo)}
-                            </div>
-                          ` : ''}
                         </div>
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
                           <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder};">
@@ -1352,114 +1701,305 @@ function renderMantriSelectionLanding(app, user) {
                         </div>
                       </div>
 
-                      ${isReturned && doc.returnReason ? `
-                        <div style="margin-top: 4px; padding: 6px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.72rem; color: #991B1B;">
-                          <strong>Catatan Pengembalian Asisten:</strong> ${esc(doc.returnReason)}
-                        </div>
-                      ` : ''}
-
-                      <!-- 2. BATCH & SCOPE INFO -->
-                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 0.73rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
-                        <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || doc.batchNo || '-')}</strong></div>
-                        <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
-                        <div>Bedengan: <strong style="color: #0F172A;">${esc(bedDisplay)}</strong></div>
-                        <div>Program: <strong style="color: #0F172A;">${esc(doc.programCode || doc.programName || '-')}</strong></div>
-                      </div>
-
-                      <!-- 3. POPULATION & RESULT METRICS (4-KOLOM DOKUMEN SELEKSI III) -->
-                      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px; background: #FFFFFF;">
+                      <!-- 2. DOKUMEN SELEKSI & 3. SUMBER SELEKSI II -->
+                      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
                         <div>
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Polybag Source</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourcePolybag.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #94A3B8;">Ply (Dari Sel. II)</div>
+                          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Dokumen Seleksi</div>
+                          <div style="font-weight: 800; font-size: 0.90rem; color: #116834; margin-top: 1px;">
+                            Seleksi III — ${esc(doc.docNo || doc.selectionDocNo)}
+                          </div>
                         </div>
-                        <div style="border-left: 1px solid #E2E8F0;">
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Bibit Source</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourceBibit.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #94A3B8;">Pkk (Final Sel. II)</div>
-                        </div>
-                        <div style="border-left: 1px solid #E2E8F0;">
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #15803D; text-transform: uppercase;">Dipertahankan</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #15803D; margin-top: 2px;">${totalLayak.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #15803D;">Pkk</div>
-                        </div>
-                        <div style="border-left: 1px solid #E2E8F0;">
-                          <div style="font-size: 0.60rem; font-weight: 700; color: #DC2626; text-transform: uppercase;">Reject Seleksi III</div>
-                          <div style="font-size: 0.90rem; font-weight: 800; color: #DC2626; margin-top: 2px;">${totalAfkir.toLocaleString('id-ID')}</div>
-                          <div style="font-size: 0.60rem; color: #DC2626;">Pkk</div>
+                        <div style="text-align: right;">
+                          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Sumber Seleksi II</div>
+                          <div style="font-weight: 700; font-size: 0.82rem; color: #0F172A; margin-top: 1px;">
+                            ${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}
+                          </div>
                         </div>
                       </div>
 
-                      <!-- 4. RIWAYAT SESI PELAKSANAAN SELEKSI III (JIKA ADA) -->
-                      ${executions.length > 0 ? `
-                        <div style="border-top: 1px dashed #CBD5E1; padding-top: 8px;">
-                          <div style="font-size: 0.70rem; font-weight: 700; color: #475569; margin-bottom: 6px;">Riwayat Sesi Pelaksanaan Seleksi III:</div>
-                          <div style="display: flex; flex-direction: column; gap: 6px;">
-                            ${executions.map(tx => `
-                              <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; font-size: 0.70rem; display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                  <div><strong style="color: #0F172A;">${esc(tx.bedenganCode || tx.bedengan || '-')}</strong> • ${esc(tx.docNo)}</div>
-                                  <div style="color: #64748B; font-size: 0.65rem; margin-top: 1px;">
-                                    ${tx.polybagScope} Ply (${tx.bibitAwal || 0} Pkk) • ${esc(tx.tanggalSeleksi || tx.tanggal)}
-                                  </div>
-                                </div>
-                                <div style="text-align: right;">
-                                  <div style="font-weight: 700; color: #15803D;">${(tx.bibitDipertahankan || 0).toLocaleString('id-ID')} Dipertahankan</div>
-                                  <div style="font-weight: 700; color: #DC2626; font-size: 0.65rem;">${(tx.bibitReject || 0).toLocaleString('id-ID')} Reject</div>
-                                </div>
-                              </div>
-                            `).join('')}
+                      <!-- 4. BATCH & BEDENGAN -->
+                      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #475569; padding: 0 2px;">
+                        <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || doc.batchNo || '-')}</strong> • Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+                        <div>Bedengan: <strong style="color: #0F172A;">${esc(bedDisplay)}</strong></div>
+                      </div>
+
+                      <!-- 5. POPULASI PEMERIKSAAN DENGAN VISUAL PROGRESS BAR -->
+                      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                          <span style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px;">Populasi Pemeriksaan</span>
+                          <div style="text-align: right;">
+                            <div style="font-size: 0.92rem; font-weight: 800; color: #0F172A; line-height: 1.2;">
+                              ${totalInspectedPolybag.toLocaleString('id-ID')} / ${sourcePolybag.toLocaleString('id-ID')}
+                            </div>
+                            <div style="font-size: 0.68rem; font-weight: 600; color: #64748B; line-height: 1.2;">Diperiksa</div>
                           </div>
                         </div>
+
+                        <!-- PROGRESS BAR VISUAL HORIZONTAL FULL-WIDTH -->
+                        <div style="background: #E2E8F0; border-radius: 999px; height: 8px; width: 100%; overflow: hidden;">
+                          <div style="background: ${progressPercent >= 100 ? (metrics.balanceValid ? '#15803D' : '#DC2626') : '#116834'}; height: 100%; width: ${Math.min(100, Math.max(0, progressPercent))}%; border-radius: 999px; transition: width 0.3s ease;"></div>
+                        </div>
+
+                        <!-- TEKS PENDUKUNG: PERSENTASE + SISA -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem;">
+                          <span style="font-weight: 700; color: ${progressPercent >= 100 ? (metrics.balanceValid ? '#15803D' : '#DC2626') : '#116834'};">${formattedProgress}</span>
+                          <span style="font-weight: 600; color: ${remainingPolybag === 0 ? (metrics.balanceValid ? '#15803D' : '#DC2626') : '#94A3B8'};">
+                            ${remainingPolybag === 0 ? (metrics.balanceValid ? '✓ Selesai' : '⚠️ Tidak Seimbang') : 'Sisa ' + remainingPolybag.toLocaleString('id-ID') + ' Bibit'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <!-- 6. STATUS / ACTION -->
+                      ${metrics.seleksiValidUntukSelesai ? `
+                        <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.74rem; color: #166534; font-weight: 700; text-align: center;">
+                          ✓ Seluruh populasi telah diperiksa & seimbang
+                        </div>
+                      ` : (metrics.pemeriksaanSelesai && (!metrics.balanceValid || metrics.belumDiklasifikasikan > 0)) ? `
+                        <div style="padding: 6px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.74rem; color: #DC2626; font-weight: 700; text-align: center;">
+                          ⚠️ Data Tidak Seimbang (Belum diklasifikasikan: ${metrics.belumDiklasifikasikan.toLocaleString('id-ID')} Pkk)
+                        </div>
+                      ` : (!isApproved && !isSubmitted) ? `
+                        <button type="button" class="btn-execute-seleksi3" data-id="${esc(doc.id)}" style="width: 100%; height: 36px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
+                          Rekam Data Seleksi III
+                        </button>
                       ` : ''}
 
-                      <!-- 5. TOMBOL AKSI SELEKSI III -->
-                      <div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #F1F5F9; padding-top: 8px; margin-top: 8px;">
-                        ${!isApproved && !isSubmitted ? `
-                          <button type="button" class="btn-execute-seleksi3" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                              <line x1="12" y1="5" x2="12" y2="19"></line>
-                              <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg>
-                            + Catat Transaksi Pelaksanaan Seleksi III
-                          </button>
-                        ` : ''}
-
-                        ${!isApproved && !isSubmitted ? `
-                          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: #1E293B; cursor: pointer; user-select: none; font-weight: 600; padding: 4px 0;">
-                            <input type="checkbox" class="chk-doc-completed" data-id="${esc(doc.id)}" ${isCompleted ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #116834;">
-                            <span>Seleksi Selesai</span>
-                            <span style="font-size: 0.68rem; color: #64748B; font-weight: normal;">(Deklarasi Manual Mantri)</span>
-                          </label>
-                        ` : ''}
-
-                        ${isCompleted && !isSubmitted && !isApproved ? `
-                          <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #2563EB; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(37,99,235,0.2);">
-                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                              <polyline points="9 11 12 14 22 4"></polyline>
-                              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-                            </svg>
-                            Tinjau & Kirim ke Asisten Bibitan
-                          </button>
-                        ` : ''}
-
-                        ${isSubmitted ? `
-                          <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 34px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.76rem; cursor: pointer;">
-                            Lihat Rincian Verifikasi Data
-                          </button>
-                        ` : ''}
-
-                        ${isApproved ? `
-                          <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.72rem; color: #166534;">
-                            ✅ <strong>Data Final:</strong> Disetujui oleh ${esc(doc.verifiedByName || 'Asisten Bibitan')} pada ${doc.verifiedAt ? formatDate(doc.verifiedAt) : '-'}.
-                          </div>
-                        ` : ''}
+                      <!-- 7. KONTROL EXPAND/COLLAPSE DOKUMEN INDUK -->
+                      <div>
+                        <button type="button" class="btn-toggle-parent-detail" data-target="selection-detail-${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; width: 100%; padding: 6px 10px; font-size: 0.74rem; font-weight: 700; color: #116834; cursor: pointer; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box;">
+                          <span class="text-parent-toggle">Lihat Detail</span>
+                          <svg class="icon-parent-toggle" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" style="transition: transform 0.2s ease;">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                          </svg>
+                        </button>
                       </div>
 
-                    </div>
+                      <!-- 8. EXPANDED DETAIL DOKUMEN INDUK -->
+                      <div class="parent-detail-content" id="selection-detail-${esc(doc.id)}" style="display: none; border-top: 1px dashed #CBD5E1; padding-top: 10px; flex-direction: column; gap: 10px;">
+                        
+                        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; font-size: 0.74rem; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;">
+                          <div>Estate: <strong style="color: #0F172A;">${esc(doc.estateName || doc.estateId || '-')}</strong></div>
+                          <div>Divisi: <strong style="color: #0F172A;">${esc(doc.divisionName || doc.divisionId || '-')}</strong></div>
+                          <div>Tahap: <strong style="color: #0F172A;">Seleksi III (Pra-Okulasi)</strong></div>
+                          <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+                        </div>
+
+                        <!-- 6-KOLOM METRIK LENGKAP SELEKSI III -->
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; text-align: center;">
+                          <div style="border-right: 1px solid #E2E8F0; padding-right: 4px;">
+                            <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Total Populasi</div>
+                            <div style="font-size: 0.86rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">${sourcePolybag.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: #94A3B8;">Ply / Pkk</div>
+                          </div>
+                          <div style="border-right: 1px solid #E2E8F0; padding: 0 4px;">
+                            <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Total Diperiksa</div>
+                            <div style="font-size: 0.86rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">${totalInspectedPolybag.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: #94A3B8;">Pkk</div>
+                          </div>
+                          <div style="padding-left: 4px;">
+                            <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Sisa Periksa</div>
+                            <div style="font-size: 0.86rem; font-weight: 800; color: ${remainingPolybag > 0 ? '#B45309' : '#15803D'}; line-height: 1.2; margin-top: 1px;">${remainingPolybag.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: #94A3B8;">Pkk</div>
+                          </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; text-align: center;">
+                          <div style="border-right: 1px solid #E2E8F0; padding-right: 4px;">
+                            <div style="font-size: 0.58rem; font-weight: 700; color: #15803D; text-transform: uppercase;">Bibit Layak</div>
+                            <div style="font-size: 0.86rem; font-weight: 800; color: #15803D; line-height: 1.2; margin-top: 1px;">${totalLayak.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: #15803D;">Pkk</div>
+                          </div>
+                          <div style="border-right: 1px solid #E2E8F0; padding: 0 4px;">
+                            <div style="font-size: 0.58rem; font-weight: 700; color: #DC2626; text-transform: uppercase;">Bibit Reject</div>
+                            <div style="font-size: 0.86rem; font-weight: 800; color: #DC2626; line-height: 1.2; margin-top: 1px;">${totalAfkir.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: #DC2626;">Pkk</div>
+                          </div>
+                          <div style="padding-left: 4px;">
+                            <div style="font-size: 0.58rem; font-weight: 700; color: ${metrics.belumDiklasifikasikan > 0 ? '#DC2626' : '#64748B'}; text-transform: uppercase;">Belum Diklasifikasi</div>
+                            <div style="font-size: 0.86rem; font-weight: 800; color: ${metrics.belumDiklasifikasikan > 0 ? '#DC2626' : '#0F172A'}; line-height: 1.2; margin-top: 1px;">${metrics.belumDiklasifikasikan.toLocaleString('id-ID')}</div>
+                            <div style="font-size: 0.58rem; color: ${metrics.belumDiklasifikasikan > 0 ? '#DC2626' : '#94A3B8'};">Pkk</div>
+                          </div>
+                        </div>
+
+                        <!-- STATUS BALANCE BAR -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; padding: 6px 10px; background: ${metrics.balanceValid ? '#F0FDF4' : '#FEF2F2'}; border: 1px solid ${metrics.balanceValid ? '#BBF7D0' : '#FECACA'}; border-radius: 6px;">
+                          <span style="font-weight: 600; color: ${metrics.balanceValid ? '#166534' : '#991B1B'};">Status Balance:</span>
+                          <span style="font-weight: 800; color: ${metrics.balanceValid ? '#15803D' : '#DC2626'};">${metrics.balanceValid ? 'VALID (Seimbang) ✅' : 'TIDAK VALID (Mismatch) ❌'}</span>
+                        </div>
+
+                        ${isReturned && doc.returnReason ? `
+                          <div style="padding: 8px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.72rem; color: #991B1B;">
+                            <strong>Catatan Pengembalian Asisten:</strong> ${esc(doc.returnReason)}
+                          </div>
+                        ` : ''}
+
+                        <!-- TOMBOL WORKFLOW PADA DOKUMEN INDUK -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                          ${!isApproved && !isSubmitted ? `
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem; color: ${metrics.seleksiValidUntukSelesai ? '#1E293B' : '#94A3B8'}; cursor: ${metrics.seleksiValidUntukSelesai ? 'pointer' : 'not-allowed'}; user-select: none; font-weight: 600; padding: 4px 0;" title="${!metrics.seleksiValidUntukSelesai ? 'Seluruh populasi harus diperiksa dan balance valid untuk menyelesaikan Seleksi III' : ''}">
+                              <input type="checkbox" class="chk-doc-completed" data-id="${esc(doc.id)}" ${isCompleted && metrics.seleksiValidUntukSelesai ? 'checked' : ''} ${!metrics.seleksiValidUntukSelesai ? 'disabled' : ''} style="width: 16px; height: 16px; cursor: ${metrics.seleksiValidUntukSelesai ? 'pointer' : 'not-allowed'}; accent-color: #116834;">
+                              <span>Seleksi Selesai</span>
+                              <span style="font-size: 0.68rem; color: ${metrics.seleksiValidUntukSelesai ? '#64748B' : '#DC2626'}; font-weight: normal;">
+                                ${metrics.seleksiValidUntukSelesai ? '(Centang jika Seleksi III Selesai)' : (metrics.pemeriksaanSelesai ? '(Data tidak seimbang)' : `(Belum selesai, sisa ${remainingPolybag.toLocaleString('id-ID')} Pkk)`)}
+                              </span>
+                            </label>
+                          ` : ''}
+
+                          ${isCompleted && metrics.seleksiValidUntukSelesai && !isSubmitted && !isApproved ? `
+                            <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
+                              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
+                                <polyline points="9 11 12 14 22 4"></polyline>
+                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                              </svg>
+                              Tinjau & Kirim ke Asisten Bibitan
+                            </button>
+                          ` : ''}
+
+                          ${isSubmitted ? `
+                            <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 34px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.76rem; cursor: pointer;">
+                              Lihat Rincian Verifikasi Data
+                            </button>
+                          ` : ''}
+
+                          ${isApproved ? `
+                            <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.72rem; color: #166534;">
+                              ✅ <strong>Data Final:</strong> Disetujui oleh ${esc(doc.verifiedByName || 'Asisten Bibitan')} pada ${doc.verifiedAt ? formatDate(doc.verifiedAt) : '-'}.
+                            </div>
+                          ` : ''}
+
+                        </div>
+
+                      </div><!-- END parent-detail-content -->
+
+                    </div><!-- END card-parent-doc -->
                   `;
                 }).join('')}
               </div>
+
+              <!-- GLOBAL CONTAINER RINGKASAN TRANSAKSI PELAKSANAAN SELEKSI III -->
+              ${(() => {
+                const allRawTxs = storage.get(SELECTION_STORAGE_KEY, []);
+                const allSeleksi3Txs = allRawTxs.filter(tx => {
+                  const isStage3 = (
+                    tx.selectionStage === SELECTION_STAGES.SELEKSI_3 ||
+                    tx.stage === 'SELEKSI_III' ||
+                    tx.stage === 'SELEKSI_3' ||
+                    tx.transactionType === 'PELAKSANAAN_SELEKSI_III'
+                  );
+                  if (!isStage3) return false;
+                  return seleksi3Docs.some(d =>
+                    d.id === tx.parentSelectionDocumentId ||
+                    d.id === tx.selectionDocumentId ||
+                    d.docNo === tx.parentSelectionDocNo ||
+                    d.docNo === tx.selectionDocNo ||
+                    d.docNo === tx.sourceDocNo
+                  );
+                });
+
+                return `
+                  <div class="section-global-child-transactions" style="margin-top: 20px; padding-top: 14px; border-top: 2px solid #E2E8F0;">
+                    <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                      <h2 style="font-size: 0.92rem; font-weight: 800; color: #0F172A; margin: 0;">
+                        Ringkasan Transaksi (${allSeleksi3Txs.length})
+                      </h2>
+                    </div>
+
+                    ${allSeleksi3Txs.length === 0 ? `
+                      <div style="background: #FFFFFF; border: 1px dashed #CBD5E1; border-radius: 8px; padding: 20px 14px; text-align: center; color: #64748B; font-size: 0.78rem;">
+                        <div style="font-weight: 700; color: #334155; margin-bottom: 2px;">Belum ada transaksi pelaksanaan.</div>
+                        <div>Belum ada pemeriksaan yang dicatat untuk Seleksi III.</div>
+                      </div>
+                    ` : `
+                      <div style="display: flex; flex-direction: column; gap: 10px;">
+                        ${allSeleksi3Txs.map((tx, txIdx) => {
+                          const parentDoc = seleksi3Docs.find(d => 
+                            d.id === tx.parentSelectionDocumentId || 
+                            d.id === tx.selectionDocumentId ||
+                            d.docNo === tx.parentSelectionDocNo ||
+                            d.docNo === tx.selectionDocNo ||
+                            d.docNo === tx.sourceDocNo
+                          ) || {};
+                          const polyChecked = tx.polybagScope || tx.initialPolybagCount || 0;
+                          const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || 0;
+                          const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || 0;
+                          const bibitAwal = tx.bibitAwal || tx.jumlahDiperiksa || (bibitLayak + bibitAfkir);
+                          const isBalanced = (bibitLayak + bibitAfkir === bibitAwal);
+                          const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
+
+                          return `
+                            <!-- CARD TRANSAKSI GLOBAL (DEFAULT: COLLAPSED) -->
+                            <div class="card-child-tx" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                              
+                              <!-- HEADER ROW TRANSAKSI -->
+                              <div class="btn-toggle-child-tx" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                                <div style="flex: 1; min-width: 0;">
+                                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                    <span style="font-weight: 800; color: #116834; font-size: 0.80rem;">Seleksi III</span>
+                                    <span style="color: #64748B; font-size: 0.72rem;">• Transaksi #${txIdx + 1} (${esc(tx.docNo)})</span>
+                                    <span style="background: #F1F5F9; color: #475569; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">${esc(tx.bedenganCode || tx.bedengan || '-')}</span>
+                                  </div>
+                                  <div style="color: #64748B; font-size: 0.72rem; margin-top: 3px;">
+                                    ${esc(tx.tanggalSeleksi || tx.tanggal || '-')} • <strong style="color: #0F172A;">${polyChecked.toLocaleString('id-ID')} Polybag (${bibitAwal.toLocaleString('id-ID')} Bibit)</strong> • Dok. <strong style="color: #334155;">${esc(parentDoc.docNo || tx.parentSelectionDocNo || tx.selectionDocNo || '-')}</strong>
+                                  </div>
+                                </div>
+                                
+                                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                                  <span style="font-size: 0.65rem; font-weight: 700; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 2px 6px; border-radius: 4px;">
+                                    Selesai
+                                  </span>
+                                  <svg class="icon-child-toggle" viewBox="0 0 24 24" width="14" height="14" stroke="#64748B" stroke-width="2.5" fill="none" style="transition: transform 0.2s ease;">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                  </svg>
+                                </div>
+                              </div>
+
+                              <!-- DETAIL TRANSAKSI EXPANDED -->
+                              <div class="child-tx-detail-content" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #E2E8F0;">
+                                
+                                <!-- CONTEXT METADATA -->
+                                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; font-size: 0.72rem; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-bottom: 8px;">
+                                  <div>Program: <strong style="color: #0F172A;">${esc(parentDoc.programCode || parentDoc.programName || tx.programCode || '-')}</strong></div>
+                                  <div>Dokumen Induk: <strong style="color: #0F172A;">${esc(parentDoc.docNo || tx.parentSelectionDocNo || tx.selectionDocNo || '-')}</strong></div>
+                                  <div>Sumber Seleksi II: <strong style="color: #0F172A;">${esc(parentDoc.sourceSelectionDocNo || parentDoc.sourceDocNo || tx.sourceSelectionDocNo || '-')}</strong></div>
+                                  <div>Bedengan: <strong style="color: #0F172A;">${esc(tx.bedenganCode || tx.bedengan || '-')}</strong></div>
+                                  <div>Tanggal Transaksi: <strong style="color: #0F172A;">${esc(tx.tanggalSeleksi || tx.tanggal || '-')}</strong></div>
+                                  <div>Status: <strong style="color: #15803D;">Selesai</strong></div>
+                                </div>
+
+                                <!-- METRICS HASIL BIBIT SELEKSI III -->
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
+                                  <div>Bibit Awal: <strong style="color: #0F172A;">${bibitAwal.toLocaleString('id-ID')}</strong></div>
+                                  <div>Layak: <strong style="color: #15803D;">${bibitLayak.toLocaleString('id-ID')}</strong></div>
+                                  <div>Reject: <strong style="color: #DC2626;">${bibitAfkir.toLocaleString('id-ID')}</strong></div>
+                                  <div>Balance: <strong style="color: #15803D;">${isBalanced ? 'BALANCE ✅' : 'MISMATCH ❌'}</strong></div>
+                                </div>
+
+                                <!-- PENCATAT & CATATAN -->
+                                <div style="font-size: 0.68rem; color: #64748B; display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px;">
+                                  <div>Pencatat: <strong>${esc(tx.createdByName || tx.createdByUserId || 'Mantri')}</strong> (${esc(tx.createdByRole || 'MANTRI_TANAMAN')})</div>
+                                  ${tx.catatan && tx.catatan !== '-' ? `<div>Catatan: <em>${esc(tx.catatan)}</em></div>` : ''}
+                                </div>
+
+                                <!-- ACTION DELETE -->
+                                ${!isParentApprovedOrSubmitted ? `
+                                  <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #F1F5F9; padding-top: 6px; margin-top: 6px;">
+                                    <button type="button" class="btn-delete-child-tx" data-stage="SELEKSI_3" data-stage-label="Seleksi III" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="padding: 4px 10px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; border-radius: 4px; font-size: 0.70rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                      <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                      Hapus
+                                    </button>
+                                  </div>
+                                ` : ''}
+
+                              </div>
+
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    `}
+                  </div>
+                `;
+              })()}
             `}
           `}
         ` : `
@@ -1471,30 +2011,30 @@ function renderMantriSelectionLanding(app, user) {
 
             <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
               ${selectionPool.map((item, idx) => {
-                const isDeclared = item.status === 'DECLARED_CULLED';
-                const displayDocNo = standardizeSelectionDocNo(item.docNo, idx + 1);
-                const sourceLabel = getSelectionSourceLabel(item);
-                const categoryLabel = getSelectionCategoryLabel(item);
-                const batchDisplay = item.batchCode || item.batchNo || 'Batch';
-                const sourceDocNo = item.sourceDocNo || item.seedingDocNo || item.buddingDocNo || item.inspectionDocNo || '-';
-                const bedenganDisplay = formatBedenganDisplayCode(item);
-                const programDisplay = item.programCode || item.programName || item.program || '-';
-                const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+    const isDeclared = item.status === 'DECLARED_CULLED';
+    const displayDocNo = standardizeSelectionDocNo(item.docNo, idx + 1);
+    const sourceLabel = getSelectionSourceLabel(item);
+    const categoryLabel = getSelectionCategoryLabel(item);
+    const batchDisplay = item.batchCode || item.batchNo || 'Batch';
+    const sourceDocNo = item.sourceDocNo || item.seedingDocNo || item.buddingDocNo || item.inspectionDocNo || '-';
+    const bedenganDisplay = formatBedenganDisplayCode(item);
+    const programDisplay = item.programCode || item.programName || item.program || '-';
+    const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
 
-                let categoryBadgeBg = '#FEF2F2';
-                let categoryBadgeColor = '#DC2626';
-                let categoryBadgeBorder = '#FECACA';
-                if (categoryLabel === 'Mati') {
-                  categoryBadgeBg = '#FFF1F2';
-                  categoryBadgeColor = '#BE123C';
-                  categoryBadgeBorder = '#FFE4E6';
-                } else if (categoryLabel === 'Lainnya') {
-                  categoryBadgeBg = '#F1F5F9';
-                  categoryBadgeColor = '#475569';
-                  categoryBadgeBorder = '#CBD5E1';
-                }
+    let categoryBadgeBg = '#FEF2F2';
+    let categoryBadgeColor = '#DC2626';
+    let categoryBadgeBorder = '#FECACA';
+    if (categoryLabel === 'Mati') {
+      categoryBadgeBg = '#FFF1F2';
+      categoryBadgeColor = '#BE123C';
+      categoryBadgeBorder = '#FFE4E6';
+    } else if (categoryLabel === 'Lainnya') {
+      categoryBadgeBg = '#F1F5F9';
+      categoryBadgeColor = '#475569';
+      categoryBadgeBorder = '#CBD5E1';
+    }
 
-                return `
+    return `
                   <div class="card-selection-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; box-sizing: border-box;">
                     
                     <!-- 1. HEADER CARD: BATCH (KIRI) & BADGES (KANAN) -->
@@ -1575,7 +2115,7 @@ function renderMantriSelectionLanding(app, user) {
                     ` : ''}
                   </div>
                 `;
-              }).join('')}
+  }).join('')}
             </div>
           ` : ''}
 
@@ -1597,11 +2137,11 @@ function renderMantriSelectionLanding(app, user) {
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px;">
               ${culledTxs.map((ctx) => {
-                const src = getSelectionSourceLabel(ctx);
-                const cat = getSelectionCategoryLabel(ctx);
-                const qty = parseInt(ctx.jumlahAfkir || ctx.quantity || 0, 10);
-                const bedDisplay = formatBedenganDisplayCode(ctx);
-                return `
+    const src = getSelectionSourceLabel(ctx);
+    const cat = getSelectionCategoryLabel(ctx);
+    const qty = parseInt(ctx.jumlahAfkir || ctx.quantity || 0, 10);
+    const bedDisplay = formatBedenganDisplayCode(ctx);
+    return `
                   <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px;">
                       <div style="min-width: 0;">
@@ -1626,7 +2166,7 @@ function renderMantriSelectionLanding(app, user) {
                     </div>
                   </div>
                 `;
-              }).join('')}
+  }).join('')}
             </div>
           ` : ''}
         `}
@@ -1708,6 +2248,81 @@ function renderMantriSelectionLanding(app, user) {
     btn.addEventListener('click', () => {
       activePreGraftingTab = 'SELEKSI_3';
       renderMantriSelectionLanding(app, user);
+    });
+  });
+
+  // Toggle Parent Document Detail Expand/Collapse (TASK-29 INDEPENDENT)
+  app.querySelectorAll('.btn-toggle-parent-detail').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const targetId = e.currentTarget.dataset.target;
+      if (!targetId) return;
+      const detailContent = document.getElementById(targetId);
+      const textSpan = e.currentTarget.querySelector('.text-parent-toggle');
+      const icon = e.currentTarget.querySelector('.icon-parent-toggle');
+      if (!detailContent) return;
+
+      const isExpanded = detailContent.style.display !== 'none';
+      if (isExpanded) {
+        detailContent.style.display = 'none';
+        if (textSpan) textSpan.textContent = 'Lihat Detail';
+        if (icon) icon.style.transform = 'rotate(0deg)';
+      } else {
+        detailContent.style.display = 'flex';
+        if (textSpan) textSpan.textContent = 'Sembunyikan Detail';
+        if (icon) icon.style.transform = 'rotate(180deg)';
+      }
+    });
+  });
+
+  // Toggle Child Transaction Detail Expand/Collapse (TASK-26)
+  app.querySelectorAll('.btn-toggle-child-tx').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const childCard = e.currentTarget.closest('.card-child-tx');
+      if (!childCard) return;
+      const detailContent = childCard.querySelector('.child-tx-detail-content');
+      const icon = e.currentTarget.querySelector('.icon-child-toggle');
+      if (!detailContent) return;
+
+      const isExpanded = detailContent.style.display !== 'none';
+      if (isExpanded) {
+        detailContent.style.display = 'none';
+        if (icon) icon.style.transform = 'rotate(0deg)';
+      } else {
+        detailContent.style.display = 'block';
+        if (icon) icon.style.transform = 'rotate(180deg)';
+      }
+    });
+  });
+
+  // Delete Child Transaction with Dependency Guard (TASK-26)
+  app.querySelectorAll('.btn-delete-child-tx').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const txId = e.currentTarget.dataset.txId;
+      const docNo = e.currentTarget.dataset.docNo;
+      const stage = e.currentTarget.dataset.stage || 'SELEKSI_1';
+      const stageLabel = e.currentTarget.dataset.stageLabel || (stage === 'SELEKSI_2' ? 'Seleksi II' : stage === 'SELEKSI_3' ? 'Seleksi III' : 'Seleksi I');
+
+      // Dependency Guard check
+      if (guardDependency(docNo, stageLabel, 'Dihapus')) {
+        return;
+      }
+
+      if (window.confirm(`Apakah Anda yakin ingin menghapus transaksi pelaksanaan ${docNo || txId}? Data akan dikembalikan ke sisa populasi Dokumen Induk.`)) {
+        try {
+          if (stage === 'SELEKSI_2' || stage === 'SELEKSI_II') {
+            deleteSeleksi2ExecutionTransaction(txId || docNo, user);
+          } else if (stage === 'SELEKSI_3' || stage === 'SELEKSI_III') {
+            deleteSeleksi3ExecutionTransaction(txId || docNo, user);
+          } else {
+            deleteSeleksi1ExecutionTransaction(txId || docNo, user);
+          }
+          toast(`Transaksi pelaksanaan ${docNo || ''} berhasil dihapus.`, 'success');
+          renderMantriSelectionLanding(app, user);
+        } catch (err) {
+          toast(err.message || 'Gagal menghapus transaksi pelaksanaan', 'error');
+        }
+      }
     });
   });
 
@@ -1875,9 +2490,9 @@ export function openPreGraftingReviewModal({ doc, user, onSubmitted }) {
   );
   const executions = isSeleksi3
     ? getSeleksi3ExecutionsByDocument(doc.id || doc.docNo)
-    : (isSeleksi2 
-        ? getSeleksi2ExecutionsByDocument(doc.id || doc.docNo)
-        : getSeleksi1ExecutionsByDocument(doc.id || doc.docNo));
+    : (isSeleksi2
+      ? getSeleksi2ExecutionsByDocument(doc.id || doc.docNo)
+      : getSeleksi1ExecutionsByDocument(doc.id || doc.docNo));
   const bedDisplay = formatBedenganDisplayCode(doc);
   const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
   const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
@@ -1917,7 +2532,7 @@ export function openPreGraftingReviewModal({ doc, user, onSubmitted }) {
           <div style="font-size: 0.60rem; color: #94A3B8;">Ply</div>
         </div>
         <div style="border-left: 1px solid #E2E8F0;">
-          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">${isSeleksi2 || isSeleksi3 ? 'Bibit Source' : 'Bibit Awal'}</div>
+          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">${isSeleksi2 || isSeleksi3 ? 'Bibit Sumber' : 'Bibit Awal'}</div>
           <div style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourceBibit.toLocaleString('id-ID')}</div>
           <div style="font-size: 0.60rem; color: #94A3B8;">Pkk</div>
         </div>
@@ -1962,7 +2577,7 @@ export function openPreGraftingReviewModal({ doc, user, onSubmitted }) {
           Tutup
         </button>
         ${!isSubmitted && !isApproved ? `
-          <button id="btn-confirm-submit-asb" type="button" style="flex: 1.8; height: 38px; background: #2563EB; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; box-shadow: 0 1px 3px rgba(37,99,235,0.25);">
+          <button id="btn-confirm-submit-asb" type="button" style="flex: 1.8; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25);">
             Kirim ke Asisten Bibitan
           </button>
         ` : ''}
@@ -1998,15 +2613,22 @@ export function openPreGraftingReviewModal({ doc, user, onSubmitted }) {
 export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
   const today = formatDate(new Date().toISOString());
   const bedScopeList = getBedenganScopeStatusForSeleksi1(doc);
-  
-  // Find first bedengan with remaining polybag
-  const initialBed = bedScopeList.find(b => b.remainingPolybag > 0) || bedScopeList[0] || {
+
+  // Check if any bedengan has remaining uninspected polybag
+  const availableBeds = bedScopeList.filter(b => b.remainingPolybag > 0);
+  if (bedScopeList.length > 0 && availableBeds.length === 0) {
+    toast('Seluruh populasi telah diperiksa.', 'warning');
+    return;
+  }
+
+  // Find initial bedengan (first one with remaining polybag > 0)
+  const initialBed = availableBeds[0] || bedScopeList[0] || {
     bedenganCode: 'BED-001',
     remainingPolybag: doc.sourcePolybagQty || 0,
     initialPolybag: doc.sourcePolybagQty || 0
   };
 
-  const initialScope = initialBed.remainingPolybag > 0 ? initialBed.remainingPolybag : (initialBed.initialPolybag || 0);
+  const initialRemaining = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
 
   const bodyContent = `
     <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
@@ -2032,50 +2654,45 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
           <select id="modal-sel1-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.80rem; background: #FFFFFF;">
             ${bedScopeList.map(bed => `
               <option value="${esc(bed.bedenganCode)}" data-remaining="${bed.remainingPolybag}" data-initial="${bed.initialPolybag}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
-                ${esc(bed.bedenganCode)} (Sisa: ${bed.remainingPolybag} / ${bed.initialPolybag} Ply)
+                ${esc(bed.bedenganCode)} (Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} / ${bed.initialPolybag.toLocaleString('id-ID')} Polybag)
               </option>
             `).join('')}
           </select>
         </div>
 
-        <!-- SCOPE POLYBAG -->
+        <!-- TASK-25: POPULASI TERSEDIA UNTUK DIPERIKSA (READ-ONLY) -->
         <div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <label style="font-size: 0.75rem; font-weight: 700; color: #0F172A;">
-              Scope Polybag Diperiksa <span style="color: #DC2626;">*</span>
-            </label>
-            <span id="modal-sel1-bibit-awal-label" style="font-size: 0.70rem; color: #64748B; font-weight: 600;">
-              Bibit Awal: <strong id="modal-sel1-bibit-awal-val" style="color: #0F172A;">${initialScope * 2}</strong> Pkk
-            </span>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Populasi Tersedia untuk Diperiksa
+          </label>
+          <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; font-weight: 800; font-size: 0.88rem; color: #0F172A;">
+            <span id="modal-sel1-populasi-tersedia-val">${initialRemaining.toLocaleString('id-ID')} Polybag</span>
           </div>
-          <input id="modal-sel1-polybag-scope" type="number" min="1" max="${initialBed.remainingPolybag || 1000}" value="${initialScope}" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.85rem; box-sizing: border-box; font-weight: 700;">
-          <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">
-            * Rule baseline: 1 Polybag = 2 Bibit pada populasi awal Penyemaian.
-          </div>
+          <input type="hidden" id="modal-sel1-current-remaining" value="${initialRemaining}">
         </div>
 
-        <!-- BREAKDOWN HASIL PER POLIBAG -->
+        <!-- BREAKDOWN HASIL PER POLIBAG (P2, P1, P0) -->
         <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
           <div style="font-size: 0.74rem; font-weight: 800; color: #0F172A; margin-bottom: 8px; text-transform: uppercase;">
             Hasil Seleksi I per Kondisi Polybag:
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            <!-- 2 BIBIT -->
+            <!-- 2 BIBIT / POLYBAG -->
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <div style="flex: 1;">
-                <div style="font-size: 0.74rem; font-weight: 700; color: #15803D;">Tetap 2 Bibit (Normal)</div>
+                <div style="font-size: 0.74rem; font-weight: 700; color: #15803D;">2 Bibit / Polybag (Normal)</div>
                 <div style="font-size: 0.65rem; color: #64748B;">Polybag dengan 2 bibit bertahan</div>
               </div>
               <div style="width: 100px;">
-                <input id="modal-sel1-p2" type="number" min="0" value="${initialScope}" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; text-align: right; font-weight: 700; box-sizing: border-box;">
+                <input id="modal-sel1-p2" type="number" min="0" value="${initialRemaining}" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; text-align: right; font-weight: 700; box-sizing: border-box;">
               </div>
             </div>
 
-            <!-- 1 BIBIT -->
+            <!-- 1 BIBIT / POLYBAG -->
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <div style="flex: 1;">
-                <div style="font-size: 0.74rem; font-weight: 700; color: #D97706;">Tersisa 1 Bibit</div>
+                <div style="font-size: 0.74rem; font-weight: 700; color: #D97706;">1 Bibit / Polybag</div>
                 <div style="font-size: 0.65rem; color: #64748B;">1 bibit bertahan, 1 bibit reject</div>
               </div>
               <div style="width: 100px;">
@@ -2083,10 +2700,10 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
               </div>
             </div>
 
-            <!-- 0 BIBIT -->
+            <!-- 0 BIBIT / POLYBAG -->
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <div style="flex: 1;">
-                <div style="font-size: 0.74rem; font-weight: 700; color: #DC2626;">Kosong (0 Bibit)</div>
+                <div style="font-size: 0.74rem; font-weight: 700; color: #DC2626;">0 Bibit / Polybag (Kosong)</div>
                 <div style="font-size: 0.65rem; color: #64748B;">2 bibit reject / mati</div>
               </div>
               <div style="width: 100px;">
@@ -2096,21 +2713,22 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
           </div>
         </div>
 
-        <!-- LIVE RESULT SUMMARY -->
+        <!-- LIVE RESULT SUMMARY (TASK-25) -->
         <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px; font-size: 0.74rem;">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;">
-            <div>Total Polybag: <strong id="modal-summary-poly-total">${initialScope}</strong> / <span id="modal-summary-poly-target">${initialScope}</span> Ply</div>
-            <div>Status Balance: <strong id="modal-summary-balance" style="color: #15803D;">BALANCE ✅</strong></div>
-            <div>Bibit Dipertahankan: <strong id="modal-summary-layak" style="color: #15803D;">${initialScope * 2}</strong> Pkk</div>
+            <div>Diperiksa Sesi Ini (P2+P1+P0): <strong id="modal-summary-session-total" style="color: #0F172A;">${initialRemaining.toLocaleString('id-ID')}</strong> Ply</div>
+            <div>Sisa Tersedia: <strong id="modal-summary-rem-target" style="color: #64748B;">${initialRemaining.toLocaleString('id-ID')}</strong> Ply</div>
+            <div>Bibit Dipertahankan: <strong id="modal-summary-layak" style="color: #15803D;">${(initialRemaining * 2).toLocaleString('id-ID')}</strong> Pkk</div>
             <div>Bibit Reject: <strong id="modal-summary-reject" style="color: #DC2626;">0</strong> Pkk</div>
           </div>
+          <div id="modal-sel1-quota-warning" style="display: none; margin-top: 6px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
         </div>
 
-        <!-- TANGGAL & CATATAN -->
+        <!-- TANGGAL TRANSAKSI (READ-ONLY) & CATATAN -->
         <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
           <div>
-            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal</label>
-            <input id="modal-sel1-date" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal Transaksi</label>
+            <input id="modal-sel1-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
           </div>
           <div>
             <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan (Opsional)</label>
@@ -2139,45 +2757,63 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
   });
 
   const selBed = document.getElementById('modal-sel1-bedengan');
-  const inputScope = document.getElementById('modal-sel1-polybag-scope');
   const inputP2 = document.getElementById('modal-sel1-p2');
   const inputP1 = document.getElementById('modal-sel1-p1');
   const inputP0 = document.getElementById('modal-sel1-p0');
-  const inputDate = document.getElementById('modal-sel1-date');
   const inputNotes = document.getElementById('modal-sel1-notes');
+  const hiddenRemaining = document.getElementById('modal-sel1-current-remaining');
+  const labelTersedia = document.getElementById('modal-sel1-populasi-tersedia-val');
 
-  const lblBibitAwalVal = document.getElementById('modal-sel1-bibit-awal-val');
-  const sumPolyTotal = document.getElementById('modal-summary-poly-total');
-  const sumPolyTarget = document.getElementById('modal-summary-poly-target');
-  const sumBalance = document.getElementById('modal-summary-balance');
+  const sumSessionTotal = document.getElementById('modal-summary-session-total');
+  const sumRemTarget = document.getElementById('modal-summary-rem-target');
   const sumLayak = document.getElementById('modal-summary-layak');
   const sumReject = document.getElementById('modal-summary-reject');
+  const warningEl = document.getElementById('modal-sel1-quota-warning');
+  const saveBtn = document.getElementById('btn-modal-save-sel1');
 
   function updateCalculations() {
-    const scope = parseInt(inputScope.value || 0, 10);
+    const rem = parseInt(hiddenRemaining?.value || 0, 10);
     const p2 = parseInt(inputP2.value || 0, 10);
     const p1 = parseInt(inputP1.value || 0, 10);
     const p0 = parseInt(inputP0.value || 0, 10);
 
-    const bibitAwal = scope * 2;
+    const sessionPolybag = p2 + p1 + p0;
     const bibitLayak = (p2 * 2) + (p1 * 1);
     const bibitReject = (p1 * 1) + (p0 * 2);
-    const totalPolyResult = p2 + p1 + p0;
-    const isBalanced = totalPolyResult === scope && (bibitLayak + bibitReject === bibitAwal);
 
-    if (lblBibitAwalVal) lblBibitAwalVal.textContent = bibitAwal;
-    if (sumPolyTotal) sumPolyTotal.textContent = totalPolyResult;
-    if (sumPolyTarget) sumPolyTarget.textContent = scope;
-    if (sumLayak) sumLayak.textContent = bibitLayak;
-    if (sumReject) sumReject.textContent = bibitReject;
+    if (sumSessionTotal) sumSessionTotal.textContent = sessionPolybag.toLocaleString('id-ID');
+    if (sumRemTarget) sumRemTarget.textContent = rem.toLocaleString('id-ID');
+    if (sumLayak) sumLayak.textContent = bibitLayak.toLocaleString('id-ID');
+    if (sumReject) sumReject.textContent = bibitReject.toLocaleString('id-ID');
 
-    if (sumBalance) {
-      if (isBalanced) {
-        sumBalance.textContent = 'BALANCE ✅';
-        sumBalance.style.color = '#15803D';
-      } else {
-        sumBalance.textContent = `MISMATCH ❌ (${totalPolyResult} vs ${scope})`;
-        sumBalance.style.color = '#DC2626';
+    if (sessionPolybag > rem) {
+      if (warningEl) {
+        warningEl.textContent = 'Jumlah polybag melebihi sisa populasi yang belum diperiksa.';
+        warningEl.style.display = 'block';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+    } else if (sessionPolybag <= 0) {
+      if (warningEl) {
+        warningEl.textContent = 'Jumlah polybag yang diperiksa harus lebih besar dari 0.';
+        warningEl.style.display = 'block';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+    } else {
+      if (warningEl) {
+        warningEl.style.display = 'none';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor = 'pointer';
       }
     }
   }
@@ -2185,20 +2821,11 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
   selBed?.addEventListener('change', () => {
     const opt = selBed.options[selBed.selectedIndex];
     const rem = parseInt(opt.getAttribute('data-remaining') || 0, 10);
-    const init = parseInt(opt.getAttribute('data-initial') || 0, 10);
-    const targetVal = rem > 0 ? rem : init;
 
-    inputScope.value = targetVal;
-    inputScope.max = rem > 0 ? rem : init;
-    inputP2.value = targetVal;
-    inputP1.value = 0;
-    inputP0.value = 0;
-    updateCalculations();
-  });
+    if (hiddenRemaining) hiddenRemaining.value = rem;
+    if (labelTersedia) labelTersedia.textContent = `${rem.toLocaleString('id-ID')} Polybag`;
 
-  inputScope?.addEventListener('input', () => {
-    const scope = parseInt(inputScope.value || 0, 10);
-    inputP2.value = scope;
+    inputP2.value = rem;
     inputP1.value = 0;
     inputP0.value = 0;
     updateCalculations();
@@ -2212,12 +2839,23 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
 
   document.getElementById('btn-modal-save-sel1')?.addEventListener('click', () => {
     const bedenganCode = selBed?.value || '';
-    const polybagScope = parseInt(inputScope?.value || 0, 10);
+    const rem = parseInt(hiddenRemaining?.value || 0, 10);
     const p2 = parseInt(inputP2?.value || 0, 10);
     const p1 = parseInt(inputP1?.value || 0, 10);
     const p0 = parseInt(inputP0?.value || 0, 10);
-    const tanggalSeleksi = inputDate?.value ? formatDate(inputDate.value) : today;
+    const polybagScope = p2 + p1 + p0;
+    const tanggalSeleksi = today;
     const catatan = inputNotes?.value || '';
+
+    // Over-quota protection
+    if (polybagScope > rem) {
+      toast('Jumlah polybag melebihi sisa populasi yang belum diperiksa.', 'error');
+      return;
+    }
+    if (polybagScope <= 0) {
+      toast('Jumlah polybag yang diperiksa harus lebih besar dari 0.', 'error');
+      return;
+    }
 
     try {
       const res = createSeleksi1ExecutionTransaction({
@@ -2244,7 +2882,7 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
 
 /**
  * =============================================================================
- * MODAL PELAKSANAAN TRANSAKSI SELEKSI II (TASK-06)
+ * MODAL PELAKSANAAN TRANSAKSI SELEKSI II (TASK-06 / TASK-26)
  * Mengimplementasikan Model Populasi Seleksi II:
  * - Polybag 2 Bibit (P2): 1 dipertahankan + 1 reject (membuang 1 tanaman terhambat)
  * - Polybag 1 Bibit (P1): 1 dipertahankan + 0 reject (tidak dipaksa reject)
@@ -2254,9 +2892,16 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
 export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
   const today = formatDate(new Date().toISOString());
   const bedScopeList = getBedenganScopeStatusForSeleksi2(doc);
-  
+
+  // Check if any bedengan has remaining uninspected polybag
+  const availableBeds = bedScopeList.filter(b => b.remainingPolybag > 0);
+  if (bedScopeList.length > 0 && availableBeds.length === 0) {
+    toast('Seluruh populasi Seleksi II telah diperiksa.', 'warning');
+    return;
+  }
+
   // Find first bedengan with remaining polybag
-  const initialBed = bedScopeList.find(b => b.remainingPolybag > 0) || bedScopeList[0] || {
+  const initialBed = availableBeds[0] || bedScopeList[0] || {
     bedenganCode: 'BED-001',
     remainingPolybag: doc.sourcePolybagQty || 0,
     initialPolybag: doc.sourcePolybagQty || 0,
@@ -2264,7 +2909,7 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
     initialBibit: doc.sourceBibitQty || 0
   };
 
-  const initialScope = initialBed.remainingPolybag > 0 ? initialBed.remainingPolybag : (initialBed.initialPolybag || 0);
+  const initialRemaining = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
 
   const bodyContent = `
     <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
@@ -2274,8 +2919,10 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 0.72rem;">
           <div>Dok. Seleksi II: <strong style="color: #0F172A;">${esc(doc.docNo)}</strong></div>
           <div>Sumber Seleksi I: <strong style="color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo)}</strong></div>
+          <div>Program: <strong style="color: #0F172A;">${esc(doc.programCode || doc.programName || '-')}</strong></div>
           <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || '-')}</strong></div>
           <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+          <div>Tahap: <strong style="color: #0F172A;">Seleksi II (Pra-Okulasi)</strong></div>
         </div>
       </div>
 
@@ -2290,30 +2937,25 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
           <select id="modal-sel2-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.80rem; background: #FFFFFF;">
             ${bedScopeList.map(bed => `
               <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" data-remaining-bibit="${bed.remainingBibit}" data-initial-bibit="${bed.initialBibit}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
-                ${esc(bed.bedenganCode)} (Sisa: ${bed.remainingPolybag} Ply / ${bed.remainingBibit} Pkk)
+                ${esc(bed.bedenganCode)} (Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} Ply / ${bed.remainingBibit.toLocaleString('id-ID')} Pkk)
               </option>
             `).join('')}
           </select>
         </div>
 
-        <!-- SCOPE POLYBAG -->
+        <!-- POPULASI TERSEDIA UNTUK DIPERIKSA (READ-ONLY) -->
         <div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <label style="font-size: 0.75rem; font-weight: 700; color: #0F172A;">
-              Scope Polybag Diperiksa <span style="color: #DC2626;">*</span>
-            </label>
-            <span id="modal-sel2-bibit-awal-label" style="font-size: 0.70rem; color: #64748B; font-weight: 600;">
-              Bibit Awal Scope: <strong id="modal-sel2-bibit-awal-val" style="color: #0F172A;">${initialScope * 2}</strong> Pkk
-            </span>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Populasi Tersedia untuk Diperiksa
+          </label>
+          <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; font-weight: 800; font-size: 0.88rem; color: #0F172A;">
+            <span id="modal-sel2-populasi-tersedia-val">${initialRemaining.toLocaleString('id-ID')} Polybag</span>
           </div>
-          <input id="modal-sel2-polybag-scope" type="number" min="1" max="${initialBed.remainingPolybag || 1000}" value="${initialScope}" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.85rem; box-sizing: border-box; font-weight: 700;">
-          <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">
-            * Seleksi II dilakukan pada stadia payung satu tua untuk menyisakan 1 bibit terbaik per polybag.
-          </div>
+          <input type="hidden" id="modal-sel2-current-remaining" value="${initialRemaining}">
         </div>
 
         <!-- BREAKDOWN KONDISI POLYBAG SAAT INI (SELEKSI II MODEL) -->
-        <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px;">
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
           <div style="font-size: 0.74rem; font-weight: 800; color: #0F172A; margin-bottom: 8px; text-transform: uppercase;">
             Kondisi Polybag & Hasil Seleksi II:
           </div>
@@ -2323,10 +2965,10 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <div style="flex: 1;">
                 <div style="font-size: 0.74rem; font-weight: 700; color: #15803D;">Polybag 2 Bibit (P2)</div>
-                <div style="font-size: 0.65rem; color: #64748B;">→ 1 bibit terbaik dipertahankan + 1 bibit reject</div>
+                <div style="font-size: 0.65rem; color: #64748B;">1 bibit terbaik dipertahankan + 1 bibit reject</div>
               </div>
               <div style="width: 100px;">
-                <input id="modal-sel2-p2" type="number" min="0" value="${initialScope}" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; text-align: right; font-weight: 700; box-sizing: border-box;">
+                <input id="modal-sel2-p2" type="number" min="0" value="${initialRemaining}" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; text-align: right; font-weight: 700; box-sizing: border-box;">
               </div>
             </div>
 
@@ -2334,7 +2976,7 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <div style="flex: 1;">
                 <div style="font-size: 0.74rem; font-weight: 700; color: #D97706;">Polybag 1 Bibit (P1)</div>
-                <div style="font-size: 0.65rem; color: #64748B;">→ 1 bibit dipertahankan (0 reject, tidak dipaksa reject)</div>
+                <div style="font-size: 0.65rem; color: #64748B;">1 bibit dipertahankan (0 reject, tidak dipaksa reject)</div>
               </div>
               <div style="width: 100px;">
                 <input id="modal-sel2-p1" type="number" min="0" value="0" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; text-align: right; font-weight: 700; box-sizing: border-box;">
@@ -2345,7 +2987,7 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <div style="flex: 1;">
                 <div style="font-size: 0.74rem; font-weight: 700; color: #DC2626;">Polybag Kosong (P0)</div>
-                <div style="font-size: 0.65rem; color: #64748B;">→ 0 bibit dipertahankan + 0 reject (kosong)</div>
+                <div style="font-size: 0.65rem; color: #64748B;">0 bibit dipertahankan + 0 reject (kosong)</div>
               </div>
               <div style="width: 100px;">
                 <input id="modal-sel2-p0" type="number" min="0" value="0" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; text-align: right; font-weight: 700; box-sizing: border-box;">
@@ -2357,18 +2999,20 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
         <!-- LIVE RESULT SUMMARY -->
         <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px; font-size: 0.74rem;">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;">
-            <div>Total Polybag: <strong id="modal-sel2-summary-poly-total">${initialScope}</strong> / <span id="modal-sel2-summary-poly-target">${initialScope}</span> Ply</div>
+            <div>Diperiksa Sesi Ini (P2+P1+P0): <strong id="modal-sel2-summary-session-total" style="color: #0F172A;">${initialRemaining.toLocaleString('id-ID')}</strong> Ply</div>
+            <div>Sisa Tersedia: <strong id="modal-sel2-summary-rem-target" style="color: #64748B;">${initialRemaining.toLocaleString('id-ID')}</strong> Ply</div>
             <div>Status Balance: <strong id="modal-sel2-summary-balance" style="color: #15803D;">BALANCE ✅</strong></div>
-            <div>Bibit Dipertahankan: <strong id="modal-sel2-summary-layak" style="color: #15803D;">${initialScope}</strong> Pkk (1/Ply)</div>
-            <div>Bibit Reject Seleksi II: <strong id="modal-sel2-summary-reject" style="color: #DC2626;">${initialScope}</strong> Pkk</div>
+            <div>Bibit Dipertahankan: <strong id="modal-sel2-summary-layak" style="color: #15803D;">${initialRemaining.toLocaleString('id-ID')}</strong> Pkk (1/Ply)</div>
+            <div>Bibit Reject Seleksi II: <strong id="modal-sel2-summary-reject" style="color: #DC2626;">${initialRemaining.toLocaleString('id-ID')}</strong> Pkk</div>
           </div>
+          <div id="modal-sel2-quota-warning" style="display: none; margin-top: 6px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
         </div>
 
-        <!-- TANGGAL & CATATAN -->
+        <!-- TANGGAL TRANSAKSI (READ-ONLY) & CATATAN -->
         <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
           <div>
-            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal</label>
-            <input id="modal-sel2-date" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal Transaksi</label>
+            <input id="modal-sel2-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
           </div>
           <div>
             <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan (Opsional)</label>
@@ -2384,7 +3028,7 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
           Batal
         </button>
         <button id="btn-modal-save-sel2" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25);">
-          Simpan Transaksi Seleksi II
+          Simpan Transaksi
         </button>
       </div>
 
@@ -2392,51 +3036,82 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
   `;
 
   openModal({
-    title: 'Pelaksanaan Seleksi II (Pra-Okulasi)',
+    title: 'Pelaksanaan Seleksi II',
     body: bodyContent
   });
 
   const selBed = document.getElementById('modal-sel2-bedengan');
-  const inputScope = document.getElementById('modal-sel2-polybag-scope');
   const inputP2 = document.getElementById('modal-sel2-p2');
   const inputP1 = document.getElementById('modal-sel2-p1');
   const inputP0 = document.getElementById('modal-sel2-p0');
-  const inputDate = document.getElementById('modal-sel2-date');
   const inputNotes = document.getElementById('modal-sel2-notes');
+  const hiddenRemaining = document.getElementById('modal-sel2-current-remaining');
+  const labelTersedia = document.getElementById('modal-sel2-populasi-tersedia-val');
 
-  const lblBibitAwalVal = document.getElementById('modal-sel2-bibit-awal-val');
-  const sumPolyTotal = document.getElementById('modal-sel2-summary-poly-total');
-  const sumPolyTarget = document.getElementById('modal-sel2-summary-poly-target');
+  const sumSessionTotal = document.getElementById('modal-sel2-summary-session-total');
+  const sumRemTarget = document.getElementById('modal-sel2-summary-rem-target');
   const sumBalance = document.getElementById('modal-sel2-summary-balance');
   const sumLayak = document.getElementById('modal-sel2-summary-layak');
   const sumReject = document.getElementById('modal-sel2-summary-reject');
+  const warningEl = document.getElementById('modal-sel2-quota-warning');
+  const saveBtn = document.getElementById('btn-modal-save-sel2');
 
   function updateCalculations() {
-    const scope = parseInt(inputScope.value || 0, 10);
-    const p2 = parseInt(inputP2.value || 0, 10);
-    const p1 = parseInt(inputP1.value || 0, 10);
-    const p0 = parseInt(inputP0.value || 0, 10);
+    const rem = parseInt(hiddenRemaining?.value || 0, 10);
+    const p2 = parseInt(inputP2?.value || 0, 10);
+    const p1 = parseInt(inputP1?.value || 0, 10);
+    const p0 = parseInt(inputP0?.value || 0, 10);
 
     // Seleksi II: P2 -> 1 layak + 1 reject; P1 -> 1 layak + 0 reject; P0 -> 0 layak + 0 reject
     const bibitAwal = (p2 * 2) + (p1 * 1);
     const bibitLayak = (p2 * 1) + (p1 * 1);
     const bibitReject = (p2 * 1);
     const totalPolyResult = p2 + p1 + p0;
-    const isBalanced = totalPolyResult === scope && (bibitLayak + bibitReject === bibitAwal);
+    const isBalanced = (bibitLayak + bibitReject === bibitAwal);
 
-    if (lblBibitAwalVal) lblBibitAwalVal.textContent = bibitAwal;
-    if (sumPolyTotal) sumPolyTotal.textContent = totalPolyResult;
-    if (sumPolyTarget) sumPolyTarget.textContent = scope;
-    if (sumLayak) sumLayak.textContent = bibitLayak;
-    if (sumReject) sumReject.textContent = bibitReject;
+    if (sumSessionTotal) sumSessionTotal.textContent = totalPolyResult.toLocaleString('id-ID');
+    if (sumRemTarget) sumRemTarget.textContent = rem.toLocaleString('id-ID');
+    if (sumLayak) sumLayak.textContent = bibitLayak.toLocaleString('id-ID');
+    if (sumReject) sumReject.textContent = bibitReject.toLocaleString('id-ID');
 
     if (sumBalance) {
-      if (isBalanced) {
+      if (isBalanced && totalPolyResult > 0 && totalPolyResult <= rem) {
         sumBalance.textContent = 'BALANCE ✅';
         sumBalance.style.color = '#15803D';
       } else {
-        sumBalance.textContent = `MISMATCH ❌ (${totalPolyResult} vs ${scope})`;
+        sumBalance.textContent = `MISMATCH ❌`;
         sumBalance.style.color = '#DC2626';
+      }
+    }
+
+    if (totalPolyResult > rem) {
+      if (warningEl) {
+        warningEl.textContent = 'Jumlah polybag melebihi sisa populasi yang belum diperiksa.';
+        warningEl.style.display = 'block';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+    } else if (totalPolyResult <= 0) {
+      if (warningEl) {
+        warningEl.textContent = 'Jumlah polybag yang diperiksa harus lebih besar dari 0.';
+        warningEl.style.display = 'block';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+    } else {
+      if (warningEl) {
+        warningEl.style.display = 'none';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor = 'pointer';
       }
     }
   }
@@ -2447,19 +3122,11 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
     const initPoly = parseInt(opt.getAttribute('data-initial-poly') || 0, 10);
     const targetVal = remPoly > 0 ? remPoly : initPoly;
 
-    inputScope.value = targetVal;
-    inputScope.max = remPoly > 0 ? remPoly : initPoly;
-    inputP2.value = targetVal;
-    inputP1.value = 0;
-    inputP0.value = 0;
-    updateCalculations();
-  });
-
-  inputScope?.addEventListener('input', () => {
-    const scope = parseInt(inputScope.value || 0, 10);
-    inputP2.value = scope;
-    inputP1.value = 0;
-    inputP0.value = 0;
+    if (hiddenRemaining) hiddenRemaining.value = targetVal;
+    if (labelTersedia) labelTersedia.textContent = `${targetVal.toLocaleString('id-ID')} Polybag`;
+    if (inputP2) inputP2.value = targetVal;
+    if (inputP1) inputP1.value = 0;
+    if (inputP0) inputP0.value = 0;
     updateCalculations();
   });
 
@@ -2471,11 +3138,11 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
 
   document.getElementById('btn-modal-save-sel2')?.addEventListener('click', () => {
     const bedenganCode = selBed?.value || '';
-    const polybagScope = parseInt(inputScope?.value || 0, 10);
     const p2 = parseInt(inputP2?.value || 0, 10);
     const p1 = parseInt(inputP1?.value || 0, 10);
     const p0 = parseInt(inputP0?.value || 0, 10);
-    const tanggalSeleksi = inputDate?.value ? formatDate(inputDate.value) : today;
+    const polybagScope = p2 + p1 + p0;
+    const tanggalSeleksi = today;
     const catatan = inputNotes?.value || '';
 
     try {
@@ -2503,18 +3170,24 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
 
 /**
  * =============================================================================
- * MODAL PELAKSANAAN TRANSAKSI SELEKSI III (TASK-09)
- * - polybagScope (read-only / info)
- * - jumlahDiperiksa (Bibit Awal)
- * - jumlahLayak (Dipertahankan)
- * - jumlahAfkir (Reject)
+ * MODAL PELAKSANAAN TRANSAKSI SELEKSI III (TASK-09 / TASK-26)
+ * - Scope Polybag & Bibit Awal dihitung otomatis dari sisa populasi bedengan
+ * - Mantri mencatat bibit abnormal/sakit (Reject) dan bibit sehat (Layak)
+ * - Tidak menerapkan aturan otomatis 2 menjadi 1
  * =============================================================================
  */
 export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
   const today = formatDate(new Date().toISOString());
   const bedScopeList = getBedenganScopeStatusForSeleksi3(doc);
-  
-  const initialBed = bedScopeList.find(b => b.remainingPolybag > 0) || bedScopeList[0] || {
+
+  // Check if any bedengan has remaining uninspected polybag
+  const availableBeds = bedScopeList.filter(b => b.remainingPolybag > 0);
+  if (bedScopeList.length > 0 && availableBeds.length === 0) {
+    toast('Seluruh populasi Seleksi III telah diperiksa.', 'warning');
+    return;
+  }
+
+  const initialBed = availableBeds[0] || bedScopeList[0] || {
     bedenganCode: 'BED-001',
     remainingPolybag: doc.sourcePolybagQty || 0,
     initialPolybag: doc.sourcePolybagQty || 0,
@@ -2522,8 +3195,8 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
     initialBibit: doc.sourceBibitQty || 0
   };
 
-  const initialScopePoly = initialBed.remainingPolybag > 0 ? initialBed.remainingPolybag : (initialBed.initialPolybag || 0);
-  const initialScopeBibit = initialBed.remainingBibit > 0 ? initialBed.remainingBibit : (initialBed.initialBibit || 0);
+  const initialScopePoly = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
+  const initialScopeBibit = initialBed.remainingBibit !== undefined ? initialBed.remainingBibit : (doc.sourceBibitQty || 0);
 
   const bodyContent = `
     <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
@@ -2533,8 +3206,10 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 0.72rem;">
           <div>Dok. Seleksi III: <strong style="color: #0F172A;">${esc(doc.docNo)}</strong></div>
           <div>Sumber Seleksi II: <strong style="color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo)}</strong></div>
+          <div>Program: <strong style="color: #0F172A;">${esc(doc.programCode || doc.programName || '-')}</strong></div>
           <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || '-')}</strong></div>
           <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+          <div>Tahap: <strong style="color: #0F172A;">Seleksi III (Pra-Okulasi)</strong></div>
         </div>
       </div>
 
@@ -2549,21 +3224,22 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
           <select id="modal-sel3-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.80rem; background: #FFFFFF;">
             ${bedScopeList.map(bed => `
               <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" data-remaining-bibit="${bed.remainingBibit}" data-initial-bibit="${bed.initialBibit}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
-                ${esc(bed.bedenganCode)} (Sisa: ${bed.remainingPolybag} Ply / ${bed.remainingBibit} Pkk)
+                ${esc(bed.bedenganCode)} (Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} Ply / ${bed.remainingBibit.toLocaleString('id-ID')} Pkk)
               </option>
             `).join('')}
           </select>
         </div>
 
-        <!-- SCOPE POLYBAG -->
+        <!-- POPULASI TERSEDIA UNTUK DIPERIKSA (READ-ONLY) -->
         <div>
-          <label style="font-size: 0.75rem; font-weight: 700; color: #0F172A; display: block; margin-bottom: 4px;">
-            Scope Polybag Diperiksa (Unit Container) <span style="color: #DC2626;">*</span>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Populasi Tersedia untuk Diperiksa
           </label>
-          <input id="modal-sel3-polybag-scope" type="number" min="1" max="${initialBed.remainingPolybag || 1000}" value="${initialScopePoly}" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.85rem; box-sizing: border-box; font-weight: 700;">
-          <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">
-            * Polybag adalah unit fisik yang immutable.
+          <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; font-weight: 800; font-size: 0.88rem; color: #0F172A;">
+            <span id="modal-sel3-populasi-tersedia-val">${initialScopePoly.toLocaleString('id-ID')} Polybag (${initialScopeBibit.toLocaleString('id-ID')} Bibit)</span>
           </div>
+          <input type="hidden" id="modal-sel3-current-remaining-poly" value="${initialScopePoly}">
+          <input type="hidden" id="modal-sel3-current-remaining-bibit" value="${initialScopeBibit}">
         </div>
 
         <!-- PERHITUNGAN HASIL SELEKSI III -->
@@ -2580,7 +3256,7 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
                 <div style="font-size: 0.65rem; color: #64748B;">Total bibit yang diperiksa dalam scope ini</div>
               </div>
               <div style="width: 100px;">
-                <input id="modal-sel3-bibit-awal" type="number" min="1" max="${initialBed.remainingBibit || 2000}" value="${initialScopeBibit}" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; text-align: right; font-weight: 700; box-sizing: border-box;">
+                <input id="modal-sel3-bibit-awal" type="number" min="1" max="${initialScopeBibit}" value="${initialScopeBibit}" style="width: 100%; height: 34px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; text-align: right; font-weight: 700; box-sizing: border-box;">
               </div>
             </div>
 
@@ -2609,17 +3285,21 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
 
         <!-- LIVE RESULT SUMMARY -->
         <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px; font-size: 0.74rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>Status Keseimbangan Bibit:</div>
-            <strong id="modal-sel3-summary-balance" style="color: #15803D; font-size: 0.85rem;">BALANCE ✅</strong>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;">
+            <div>Diperiksa Sesi Ini: <strong id="modal-sel3-summary-session-total" style="color: #0F172A;">${initialScopeBibit.toLocaleString('id-ID')}</strong> Pkk</div>
+            <div>Sisa Tersedia: <strong id="modal-sel3-summary-rem-target" style="color: #64748B;">${initialScopeBibit.toLocaleString('id-ID')}</strong> Pkk</div>
+            <div>Status Balance: <strong id="modal-sel3-summary-balance" style="color: #15803D;">BALANCE ✅</strong></div>
+            <div>Bibit Layak: <strong id="modal-sel3-summary-layak" style="color: #15803D;">${initialScopeBibit.toLocaleString('id-ID')}</strong> Pkk</div>
+            <div>Bibit Reject: <strong id="modal-sel3-summary-reject" style="color: #DC2626;">0</strong> Pkk</div>
           </div>
+          <div id="modal-sel3-quota-warning" style="display: none; margin-top: 6px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
         </div>
 
-        <!-- TANGGAL & CATATAN -->
+        <!-- TANGGAL TRANSAKSI (READ-ONLY) & CATATAN -->
         <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
           <div>
-            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal</label>
-            <input id="modal-sel3-date" type="date" value="${today.slice(0, 10)}" style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal Transaksi</label>
+            <input id="modal-sel3-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
           </div>
           <div>
             <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan (Opsional)</label>
@@ -2635,7 +3315,7 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
           Batal
         </button>
         <button id="btn-modal-save-sel3" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25);">
-          Simpan Transaksi Seleksi III
+          Simpan Transaksi
         </button>
       </div>
 
@@ -2643,44 +3323,100 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
   `;
 
   openModal({
-    title: 'Pelaksanaan Seleksi III (Pra-Okulasi)',
+    title: 'Pelaksanaan Seleksi III',
     body: bodyContent
   });
 
   const selBed = document.getElementById('modal-sel3-bedengan');
-  const inputScopePoly = document.getElementById('modal-sel3-polybag-scope');
   const inputBibitAwal = document.getElementById('modal-sel3-bibit-awal');
   const inputLayak = document.getElementById('modal-sel3-layak');
   const inputReject = document.getElementById('modal-sel3-reject');
-  const sumBalance = document.getElementById('modal-sel3-summary-balance');
-  const inputDate = document.getElementById('modal-sel3-date');
   const inputNotes = document.getElementById('modal-sel3-notes');
+  const hiddenRemainingPoly = document.getElementById('modal-sel3-current-remaining-poly');
+  const hiddenRemainingBibit = document.getElementById('modal-sel3-current-remaining-bibit');
+  const labelTersedia = document.getElementById('modal-sel3-populasi-tersedia-val');
+
+  const sumSessionTotal = document.getElementById('modal-sel3-summary-session-total');
+  const sumRemTarget = document.getElementById('modal-sel3-summary-rem-target');
+  const sumBalance = document.getElementById('modal-sel3-summary-balance');
+  const sumLayak = document.getElementById('modal-sel3-summary-layak');
+  const sumReject = document.getElementById('modal-sel3-summary-reject');
+  const warningEl = document.getElementById('modal-sel3-quota-warning');
+  const saveBtn = document.getElementById('btn-modal-save-sel3');
 
   function updateCalculations(changedField) {
-    const awal = parseInt(inputBibitAwal.value || 0, 10);
-    let layak = parseInt(inputLayak.value || 0, 10);
-    let reject = parseInt(inputReject.value || 0, 10);
+    const remBibit = parseInt(hiddenRemainingBibit?.value || 0, 10);
+    const remPoly = parseInt(hiddenRemainingPoly?.value || 0, 10);
+    const awal = parseInt(inputBibitAwal?.value || 0, 10);
+    let layak = parseInt(inputLayak?.value || 0, 10);
+    let reject = parseInt(inputReject?.value || 0, 10);
 
     if (changedField === 'layak') {
       reject = Math.max(0, awal - layak);
-      inputReject.value = reject;
+      if (inputReject) inputReject.value = reject;
     } else if (changedField === 'reject') {
       layak = Math.max(0, awal - reject);
-      inputLayak.value = layak;
+      if (inputLayak) inputLayak.value = layak;
     } else if (changedField === 'awal') {
       layak = Math.max(0, awal - reject);
-      inputLayak.value = layak;
+      if (inputLayak) inputLayak.value = layak;
     }
 
     const isBalanced = (layak + reject === awal);
 
+    if (sumSessionTotal) sumSessionTotal.textContent = awal.toLocaleString('id-ID');
+    if (sumRemTarget) sumRemTarget.textContent = remBibit.toLocaleString('id-ID');
+    if (sumLayak) sumLayak.textContent = layak.toLocaleString('id-ID');
+    if (sumReject) sumReject.textContent = reject.toLocaleString('id-ID');
+
     if (sumBalance) {
-      if (isBalanced) {
+      if (isBalanced && awal > 0 && awal <= remBibit) {
         sumBalance.textContent = 'BALANCE ✅';
         sumBalance.style.color = '#15803D';
       } else {
-        sumBalance.textContent = `MISMATCH ❌ (${layak + reject} vs ${awal})`;
+        sumBalance.textContent = `MISMATCH ❌`;
         sumBalance.style.color = '#DC2626';
+      }
+    }
+
+    if (awal > remBibit) {
+      if (warningEl) {
+        warningEl.textContent = 'Jumlah bibit melebihi sisa bibit yang tersedia pada bedengan ini.';
+        warningEl.style.display = 'block';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+    } else if (awal <= 0) {
+      if (warningEl) {
+        warningEl.textContent = 'Jumlah bibit yang diperiksa harus lebih besar dari 0.';
+        warningEl.style.display = 'block';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+    } else if (!isBalanced) {
+      if (warningEl) {
+        warningEl.textContent = 'Keseimbangan bibit tidak sesuai (Layak + Reject harus sama dengan Bibit Awal).';
+        warningEl.style.display = 'block';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+    } else {
+      if (warningEl) {
+        warningEl.style.display = 'none';
+      }
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor = 'pointer';
       }
     }
   }
@@ -2691,17 +3427,21 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
     const initPoly = parseInt(opt.getAttribute('data-initial-poly') || 0, 10);
     const remBibit = parseInt(opt.getAttribute('data-remaining-bibit') || 0, 10);
     const initBibit = parseInt(opt.getAttribute('data-initial-bibit') || 0, 10);
-    
+
     const targetPoly = remPoly > 0 ? remPoly : initPoly;
     const targetBibit = remBibit > 0 ? remBibit : initBibit;
 
-    inputScopePoly.value = targetPoly;
-    inputScopePoly.max = targetPoly;
-    inputBibitAwal.value = targetBibit;
-    inputBibitAwal.max = targetBibit;
-    inputLayak.value = targetBibit;
-    inputReject.value = 0;
-    
+    if (hiddenRemainingPoly) hiddenRemainingPoly.value = targetPoly;
+    if (hiddenRemainingBibit) hiddenRemainingBibit.value = targetBibit;
+    if (labelTersedia) labelTersedia.textContent = `${targetPoly.toLocaleString('id-ID')} Polybag (${targetBibit.toLocaleString('id-ID')} Bibit)`;
+
+    if (inputBibitAwal) {
+      inputBibitAwal.value = targetBibit;
+      inputBibitAwal.max = targetBibit;
+    }
+    if (inputLayak) inputLayak.value = targetBibit;
+    if (inputReject) inputReject.value = 0;
+
     updateCalculations();
   });
 
@@ -2713,11 +3453,12 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
 
   document.getElementById('btn-modal-save-sel3')?.addEventListener('click', () => {
     const bedenganCode = selBed?.value || '';
-    const polybagScope = parseInt(inputScopePoly?.value || 0, 10);
+    const remPoly = parseInt(hiddenRemainingPoly?.value || 0, 10);
     const bibitAwal = parseInt(inputBibitAwal?.value || 0, 10);
     const layak = parseInt(inputLayak?.value || 0, 10);
     const reject = parseInt(inputReject?.value || 0, 10);
-    const tanggalSeleksi = inputDate?.value ? formatDate(inputDate.value) : today;
+    const polybagScope = remPoly > 0 ? remPoly : bibitAwal; // Polybag is immutable container unit
+    const tanggalSeleksi = today;
     const catatan = inputNotes?.value || '';
 
     try {

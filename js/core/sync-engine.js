@@ -24,7 +24,7 @@ import { getAllPrograms } from '../data/program-master.js';
 import { getAllBedengan } from '../data/bedengan-master.js';
 import { getAllBatches } from '../data/batch-master.js';
 import { KLON_MASTER } from '../data/klon-master.js';
-import { CFNA_MASTER } from '../data/cfna-master.js';
+import { CFNA_MASTER, getAllCfnaMaster } from '../data/cfna-master.js';
 
 // ============================================================================
 // CONSTANTS & STATUSES
@@ -417,7 +417,7 @@ export class DemoErpProvider {
 
   async getCFNA(scope) {
     await this._delay();
-    return getAllCFNA();
+    return getAllCfnaMaster();
   }
 }
 

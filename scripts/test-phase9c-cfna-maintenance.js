@@ -1,9 +1,9 @@
 /**
  * scripts/test-phase9c-cfna-maintenance.js
  * 
- * Phase 9C — CFNA Integration to Maintenance Module Test Suite
+ * Phase 9C — CFNA Integration to Maintenance Module Test Suite (TASK-CFNA-REPLACE-02)
  * 
- * Verifikasi menyeluruh integrasi Master Data CFNA (Phase 9B) ke Modul Pemeliharaan
+ * Verifikasi menyeluruh integrasi Master Data CFNA (54 dataset) ke Modul Pemeliharaan
  * (nursery-activity.js), Context-aware filtering, Actor Identity (Phase 8B),
  * Scope Isolation, Backward Compatibility, dan Validation Rules.
  */
@@ -50,7 +50,7 @@ function assert(condition, message) {
   }
 }
 
-console.log('=== STARTING PHASE 9C CFNA MAINTENANCE INTEGRATION TEST SUITE ===\n');
+console.log('=== STARTING PHASE 9C CFNA MAINTENANCE INTEGRATION TEST SUITE (54 DATASET) ===\n');
 
 // --------------------------------------------------
 // SECTION A: MASTER INTEGRATION & SINGLE SOURCE OF TRUTH
@@ -58,10 +58,10 @@ console.log('=== STARTING PHASE 9C CFNA MAINTENANCE INTEGRATION TEST SUITE ===\n
 console.log('--- SECTION A: Master Integration ---');
 
 assert(typeof getConfirmedCfnaForActivity === 'function', 'TEST 1: getConfirmedCfnaForActivity is exported as helper function');
-assert(Array.isArray(CFNA_MASTER) && CFNA_MASTER.length === 46, 'TEST 2: Single source of truth CFNA_MASTER preserved (46 records)');
+assert(Array.isArray(CFNA_MASTER) && CFNA_MASTER.length === 54, 'TEST 2: Single source of truth CFNA_MASTER preserved (54 records)');
 
-const wateringCfna = getCfnaByCode('964009');
-assert(wateringCfna !== null && wateringCfna.name === 'Penyiraman (Manual)', 'TEST 3: Master API getCfnaByCode returns canonical record');
+const wateringCfna = getCfnaByCode('122171');
+assert(wateringCfna !== null && wateringCfna.name === 'Penyiraman', 'TEST 3: Master API getCfnaByCode returns canonical record for 122171');
 
 // --------------------------------------------------
 // SECTION B: CONTEXT-AWARE ACTIVITY FILTER
@@ -69,47 +69,37 @@ assert(wateringCfna !== null && wateringCfna.name === 'Penyiraman (Manual)', 'TE
 console.log('\n--- SECTION B: Activity Filter ---');
 
 // Activity 1: Penyiraman
-const penyiramanAct = MASTER_AKTIVITAS.find(a => a.nama === 'Penyiraman');
+const penyiramanAct = MASTER_AKTIVITAS.find(a => a.kode === '122171' || a.nama.toLowerCase() === 'penyiraman');
 const penyiramanCfna = getConfirmedCfnaForActivity(penyiramanAct);
-assert(penyiramanCfna.length === 1 && penyiramanCfna[0].code === '964009', 'TEST 4: Penyiraman maps strictly to CONFIRMED 964009 (Penyiraman (Manual))');
+assert(penyiramanCfna.length === 1 && penyiramanCfna[0].code === '122171', 'TEST 4: Penyiraman maps strictly to CONFIRMED 122171 (Penyiraman)');
 
 // Activity 2: Pemupukan
-const pemupukanAct = MASTER_AKTIVITAS.find(a => a.nama === 'Pemupukan');
+const pemupukanAct = MASTER_AKTIVITAS.find(a => a.kode === '122174' || a.nama.toLowerCase() === 'pemupukan');
 const pemupukanCfna = getConfirmedCfnaForActivity(pemupukanAct);
-assert(pemupukanCfna.length === 1 && pemupukanCfna[0].code === '964006', 'TEST 5: Pemupukan maps strictly to CONFIRMED 964006 (Pemupukan)');
+assert(pemupukanCfna.length === 1 && pemupukanCfna[0].code === '122174', 'TEST 5: Pemupukan maps strictly to CONFIRMED 122174 (Pemupukan)');
 
 // Activity 3: Seleksi Bibit
-const seleksiAct = MASTER_AKTIVITAS.find(a => a.nama === 'Seleksi Bibit');
+const seleksiAct = MASTER_AKTIVITAS.find(a => a.kode === '122176' || a.nama.toLowerCase() === 'seleksi bibit');
 const seleksiCfna = getConfirmedCfnaForActivity(seleksiAct);
-assert(seleksiCfna.length === 1 && seleksiCfna[0].code === '964008', 'TEST 6: Seleksi Bibit maps strictly to CONFIRMED 964008 (Seleksi Bibit)');
+assert(seleksiCfna.length === 1 && seleksiCfna[0].code === '122176', 'TEST 6: Seleksi Bibit maps strictly to CONFIRMED 122176 (Seleksi bibit)');
 
 // Activity 4: Pengendalian Gulma
-const gulmaAct = MASTER_AKTIVITAS.find(a => a.nama === 'Pengendalian Gulma');
+const gulmaAct = MASTER_AKTIVITAS.find(a => a.kode === '122173' || a.nama.toLowerCase() === 'pengendalian gulma');
 const gulmaCfna = getConfirmedCfnaForActivity(gulmaAct);
-assert(gulmaCfna.length === 1 && gulmaCfna[0].code === '964005', 'TEST 7: Pengendalian Gulma maps strictly to CONFIRMED 964005');
+assert(gulmaCfna.length === 1 && gulmaCfna[0].code === '122173', 'TEST 7: Pengendalian Gulma maps strictly to CONFIRMED 122173 (Pengendalian gulma)');
 
 // Activity 5: Pengendalian Hama Penyakit
-const hamaAct = MASTER_AKTIVITAS.find(a => a.nama === 'Pengendalian Hama Penyakit');
+const hamaAct = MASTER_AKTIVITAS.find(a => a.kode === '122175' || a.nama.toLowerCase() === 'pengendalian hama penyakit');
 const hamaCfna = getConfirmedCfnaForActivity(hamaAct);
-assert(hamaCfna.length === 1 && hamaCfna[0].code === '964007', 'TEST 8: Pengendalian Hama Penyakit maps strictly to CONFIRMED 964007');
+assert(hamaCfna.length === 1 && hamaCfna[0].code === '122175', 'TEST 8: Pengendalian Hama Penyakit maps strictly to CONFIRMED 122175 (Pengendalian hama penyakit)');
 
-// Unmapped activities (e.g. Topping, Okulasi, Panen Entrys)
-const toppingAct = MASTER_AKTIVITAS.find(a => a.nama === 'Topping');
-const toppingCfna = getConfirmedCfnaForActivity(toppingAct);
-assert(toppingCfna.length === 0, 'TEST 9: Unmapped activity (Topping) returns empty array (Belum tersedia mapping CFNA)');
+// Unmapped activities (e.g. invalid activity object without valid CFNA code)
+const unmappedAct = { nama: 'Kegiatan Tanpa CFNA', kode: 'NON_EXISTENT_999' };
+const unmappedCfna = getConfirmedCfnaForActivity(unmappedAct);
+assert(unmappedCfna.length === 0, 'TEST 9: Unmapped activity (invalid code) returns empty array (Belum tersedia mapping CFNA)');
 
-const okulasiAct = MASTER_AKTIVITAS.find(a => a.nama === 'Okulasi');
-const okulasiCfna = getConfirmedCfnaForActivity(okulasiAct);
-assert(okulasiCfna.length === 0, 'TEST 10: Unmapped activity (Okulasi) returns empty array');
-
-// NEEDS_REVIEW mapping (e.g. 966001) should never be selectable
-const needsReviewMapping = getCfnaActivityMappings().find(m => m.mappingStatus === MAPPING_STATUS.NEEDS_REVIEW);
-assert(needsReviewMapping !== undefined, 'TEST 11.1: NEEDS_REVIEW mapping exists in metadata');
-const isNeedsReviewSelectable = MASTER_AKTIVITAS.some(akt => {
-  const opts = getConfirmedCfnaForActivity(akt);
-  return opts.some(o => o.code === needsReviewMapping.cfnaCode);
-});
-assert(!isNeedsReviewSelectable, 'TEST 11.2: NEEDS_REVIEW mapping (966001) is strictly NOT selectable in Maintenance module');
+const nullActCfna = getConfirmedCfnaForActivity(null);
+assert(nullActCfna.length === 0, 'TEST 10: Null activity returns empty array');
 
 // --------------------------------------------------
 // SECTION C: TRANSACTION INTEGRITY & ACTOR IDENTITY
@@ -135,8 +125,8 @@ const simulatedMaintenanceRecord = {
 // Apply actor identity snapshot
 const enrichedRecord = applyTransactionActor(simulatedMaintenanceRecord, AUDIT_EVENT_TYPES.CREATE, wagimanPersona);
 
-assert(enrichedRecord.allocationCode === '964009', 'TEST 13: Transaction contains valid allocationCode 964009');
-assert(enrichedRecord.allocationName === 'Penyiraman (Manual)', 'TEST 14: Transaction contains canonical allocationName "Penyiraman (Manual)"');
+assert(enrichedRecord.allocationCode === '122171', 'TEST 13: Transaction contains valid allocationCode 122171');
+assert(enrichedRecord.allocationName === 'Penyiraman', 'TEST 14: Transaction contains canonical allocationName "Penyiraman"');
 assert(enrichedRecord.createdByUserId === 'TBS-MNT-001' || enrichedRecord.createdByUserId === 'MNT001', 'TEST 15: Transaction has correct createdByUserId');
 assert(enrichedRecord.createdByName === 'Wagiman', 'TEST 16: Transaction has correct createdByName');
 assert(enrichedRecord.createdByRole === ROLES.MANTRI_TANAMAN, 'TEST 17: Transaction has canonical role MANTRI_TANAMAN');
@@ -196,6 +186,17 @@ const legacyDisplayCFNA = legacyRecord.allocationCode
 assert(legacyDisplayCFNA === 'Tidak ada alokasi CFNA', 'TEST 28: Legacy record displays graceful fallback "Tidak ada alokasi CFNA"');
 assert(legacyRecord.allocationCode === undefined, 'TEST 29: Historical record is NOT mutated or backfilled automatically');
 
+// Historical record with old removed code (e.g. 964009) displays snapshot name gracefully
+const historicalWithOldCode = {
+  id: 'ACT-OLD-001',
+  docNo: 'ACT/NUR/2025/050',
+  allocationCode: '964009',
+  allocationName: 'Penyiraman (Manual)'
+};
+const cfnaLookup = getCfnaByCode(historicalWithOldCode.allocationCode);
+const safeDisplay = cfnaLookup?.name || historicalWithOldCode.allocationName || `Kode CFNA lama: ${historicalWithOldCode.allocationCode}`;
+assert(safeDisplay === 'Penyiraman (Manual)', 'TEST 29b: Historical record with old code preserves snapshot name safely without crash');
+
 // --------------------------------------------------
 // SECTION F: VALIDATION RULES
 // --------------------------------------------------
@@ -205,19 +206,18 @@ console.log('\n--- SECTION F: Validation Rules ---');
 const invalidCode = '999999';
 assert(isCfnaCodeValid(invalidCode) === false, 'TEST 30: Invalid CFNA code 999999 is recognized as invalid');
 
-// Rule 2: Inactive CFNA code rejected
-const inactiveTestRecord = { code: 'TEST_INACTIVE', name: 'Test Inactive', status: CFNA_STATUS.INACTIVE };
-assert(inactiveTestRecord.status !== CFNA_STATUS.ACTIVE, 'TEST 31: Non-active CFNA status rejected');
+// Rule 2: Removed old code 964009 recognized as invalid
+assert(isCfnaCodeValid('964009') === false, 'TEST 31: Removed old code 964009 is recognized as invalid');
 
 // Rule 3: Mismatched allocation name detection
 const spoofedName = 'Pemupukan';
-const actualPenyiramanMaster = getCfnaByCode('964009');
+const actualPenyiramanMaster = getCfnaByCode('122171');
 assert(actualPenyiramanMaster.name !== spoofedName, 'TEST 32: Spoofed allocationName does not match master name');
-assert(actualPenyiramanMaster.name === 'Penyiraman (Manual)', 'TEST 33: Master lookup recovers canonical name "Penyiraman (Manual)"');
+assert(actualPenyiramanMaster.name === 'Penyiraman', 'TEST 33: Master lookup recovers canonical name "Penyiraman"');
 
 // Rule 4: Unconfirmed CFNA for activity rejected
-const is964006ValidForPenyiraman = getConfirmedCfnaForActivity(penyiramanAct).some(c => c.code === '964006');
-assert(is964006ValidForPenyiraman === false, 'TEST 34: CFNA 964006 (Pemupukan) is rejected when selected for Penyiraman');
+const is122174ValidForPenyiraman = getConfirmedCfnaForActivity(penyiramanAct).some(c => c.code === '122174');
+assert(is122174ValidForPenyiraman === false, 'TEST 34: CFNA 122174 (Pemupukan) is rejected when selected for Penyiraman');
 
 // --------------------------------------------------
 // SECTION G: SUMMARY RESULTS

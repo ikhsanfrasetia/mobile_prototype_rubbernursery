@@ -99,9 +99,9 @@ storage.set('nursery_activity_records', allRecordsAfterT2);
 
 recordUat(
   'Test 2: Wagiman create',
-  'Transaction tersimpan (TEST-WAGIMAN-001, CFNA 964009)',
+  'Transaction tersimpan (TEST-WAGIMAN-001, CFNA 122171)',
   `Stored docNo=${wagimanRecord.docNo}, CFNA=${wagimanRecord.allocationCode}`,
-  wagimanRecord.docNo === 'TEST-WAGIMAN-001' && wagimanRecord.allocationCode === '964009' ? 'PASS' : 'FAIL'
+  wagimanRecord.docNo === 'TEST-WAGIMAN-001' && wagimanRecord.allocationCode === '122171' ? 'PASS' : 'FAIL'
 );
 
 // ==========================================
@@ -118,7 +118,7 @@ const test3Pass = (
   wagimanDetail.createdByName === 'Wagiman' &&
   wagimanDetail.createdByRole === 'MANTRI_TANAMAN' &&
   wagimanDetail.createdByEstateName === 'Tanah Besih' &&
-  wagimanDetail.allocationName === 'Penyiraman (Manual)'
+  wagimanDetail.allocationName === 'Penyiraman'
 );
 
 recordUat(

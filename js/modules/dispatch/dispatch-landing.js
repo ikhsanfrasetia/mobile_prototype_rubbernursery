@@ -81,7 +81,7 @@ export const DEFAULT_NURSERY_BATCHES = DEFAULT_CANONICAL_BATCHES;
 /**
  * Mengambil daftar batch nursery yang tersedia di storage / DB
  */
-export function getNurseryBatches(estateId = null, clone = null, growthStage = null, divisionId = null, programId = null) {
+export function getNurseryBatches(estateId = null, clone = null, growthStage = null, divisionId = null, programId = null, bedenganId = null) {
   let batches = storage.get('nursery_batches', null);
   if (batches === null || !Array.isArray(batches)) {
     batches = [...DEFAULT_NURSERY_BATCHES];
@@ -96,12 +96,13 @@ export function getNurseryBatches(estateId = null, clone = null, growthStage = n
     const isAvailable = (b.availableQty || 0) > 0 && b.status !== 'EMPTY' && b.status !== 'INACTIVE';
     const matchEstate = !estateId || (ctx.estateId || '').toUpperCase() === String(estateId).trim().toUpperCase();
     const matchDivision = !divisionId || (ctx.divisionId || '').toUpperCase() === String(divisionId).trim().toUpperCase();
-    const matchProgram = !programId || ctx.programId === programId || (resolveProgram(programId)?.id === ctx.programId);
+    const matchProgram = !programId || ctx.programId === programId || (resolveProgram(programId)?.id === ctx.programId) || (b.programCode === programId) || (b.programId === programId);
+    const matchBedengan = !bedenganId || (ctx.bedenganId || b.bedenganId || '').toUpperCase() === String(bedenganId).trim().toUpperCase() || (ctx.bedenganCode || b.bedenganCode || '').toUpperCase() === String(bedenganId).trim().toUpperCase();
     const batchClone = (b.clone || b.klon || '').trim().toUpperCase();
     const targetClone = (clone || '').trim().toUpperCase();
     const matchClone = !clone || batchClone === targetClone || (targetClone && batchClone.replace(/\s+/g, '') === targetClone.replace(/\s+/g, ''));
     const matchStage = !growthStage || b.stage === growthStage || b.growthStage === growthStage;
-    return isAvailable && matchEstate && matchDivision && matchProgram && matchClone && matchStage;
+    return isAvailable && matchEstate && matchDivision && matchProgram && matchBedengan && matchClone && matchStage;
   });
 }
 
@@ -214,7 +215,7 @@ export function filterDispatchRequests(requests, currentUser) {
         return false;
       }
     }
-    
+
     const status = (tx.status || '').toUpperCase();
     const isRelevant = (
       status === 'TERVERIFIKASI' ||
@@ -556,7 +557,12 @@ export function openDispatchModal(item, currentUser) {
 
   const todayStr = new Date().toISOString().split('T')[0];
   const requiredGrowthStage = item.growthStage;
-  const availableBatches = getNurseryBatches(item.targetEstateId, approvedClone, requiredGrowthStage, item.targetDivisionId, item.programId);
+  const isKebunSendiri = item.type === 'KEBUN_SENDIRI' || item.transactionType === 'KEBUN_SENDIRI';
+  const estateForBatches = isKebunSendiri ? (item.requesterEstateId || item.estateId) : (item.targetEstateId || item.sourceEstateId || item.estateId);
+  const nurseryDiv = item.nurseryDivisionId || null;
+  const nurseryProg = item.nurseryProgramId || null;
+  const nurseryBedengan = item.nurseryBedenganId || item.bedenganId || null;
+  const availableBatches = getNurseryBatches(estateForBatches, approvedClone, requiredGrowthStage, nurseryDiv, nurseryProg, nurseryBedengan);
 
   const totalEligibleStock = availableBatches.reduce((sum, b) => sum + parseInt(b.availableQty || 0, 10), 0);
   const gapStock = Math.max(0, remainingQty - totalEligibleStock);
@@ -571,7 +577,8 @@ export function openDispatchModal(item, currentUser) {
     return availableBatches.map(b => {
       const code = b.batchCode || b.batchNo;
       const isSel = code === selectedCode ? 'selected' : '';
-      return `<option value="${esc(code)}" ${isSel}>${esc(code)} (Tersedia: ${(b.availableQty || 0).toLocaleString('id-ID')} Pkk)</option>`;
+      const bedenganInfo = b.bedenganCode || b.bedenganName || b.bedenganId ? ` • Bedengan: ${b.bedenganCode || b.bedenganName || b.bedenganId}` : '';
+      return `<option value="${esc(code)}" ${isSel}>${esc(code)}${esc(bedenganInfo)} (Tersedia: ${(b.availableQty || 0).toLocaleString('id-ID')} Pkk)</option>`;
     }).join('');
   };
 
@@ -781,10 +788,10 @@ export function openDispatchModal(item, currentUser) {
       reader.onload = (ev) => {
         photoPreview.src = ev.target.result;
         previewContainer.style.display = 'block';
-        
+
         const ts = new Date().toISOString();
         const roleStr = typeof normalizeRole === 'function' ? normalizeRole(currentUser.role || currentUser.rawRole) : (currentUser.role || currentUser.rawRole || 'MANTRI_TANAMAN');
-        
+
         currentPhotoMetadata = {
           image: ev.target.result,
           capturedAt: ts,
@@ -797,7 +804,7 @@ export function openDispatchModal(item, currentUser) {
           longitude: null,
           locationCaptured: false
         };
-        
+
         metaDisplay.innerHTML = `
           <div><strong>Nama:</strong> ${esc(currentPhotoMetadata.capturedByName)}</div>
           <div><strong>Waktu:</strong> ${esc(formatDate(ts))}</div>
@@ -1198,7 +1205,7 @@ export async function renderDispatchLanding() {
       const docNo = item.docNo || '2026/NIR/001';
       const sourceEstate = resolveEstate(item.estateId);
       const sourceEstateName = sourceEstate ? sourceEstate.estate_name : (item.estateId || 'Kebun Peminta');
-      
+
       const approvedQty = parseInt(item.approvedQty || item.requestedQty || 0, 10);
       const totalIssued = parseInt(item.totalIssuedQty || item.actualIssuedQty || 0, 10);
       const remainingQty = approvedQty - totalIssued;
