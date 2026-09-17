@@ -323,9 +323,9 @@ export function renderBuddingGrafting() {
               const docNo = tx.docNo ? tx.docNo.replace('/OKL/', '/GRF/') : formatStandardDocNo(2026, 'GRF', idx + 1);
               const jmlDiokulasi = parseInt(tx.jumlah || 0);
               const jmlKayu = parseInt(tx.jumlahKayu || 0);
-              const rawAvg = (jmlKayu > 0 && jmlDiokulasi > 0) ? Math.round(jmlDiokulasi / jmlKayu) : 0;
-              const avgMataEntresText = rawAvg > 0 ? `${rawAvg} Mata Entres` : '-';
-              const totalMataEntres = (rawAvg > 0 && jmlDiokulasi > 0) ? (jmlDiokulasi * rawAvg) : '-';
+              const jmlMataEntres = (tx.jumlahMataEntres !== undefined && tx.jumlahMataEntres !== null && tx.jumlahMataEntres !== '') 
+                ? parseInt(tx.jumlahMataEntres).toLocaleString('id-ID') 
+                : (jmlDiokulasi > 0 ? jmlDiokulasi.toLocaleString('id-ID') : '-');
 
               return `
                 <div class="card-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative; margin-bottom: 8px;">
@@ -387,38 +387,28 @@ export function renderBuddingGrafting() {
                   <!-- EXPANDABLE CONTENT (TERSEMBUNYI SAAT COLLAPSED, TERBUKA SAAT EXPANDED) -->
                   <div class="summary-expand-content" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #E5E7EB;">
                     
-                    <!-- RINGKASAN PRODUKSI (2x2) -->
-                    <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px;">
-                      <!-- Baris 1, Kolom 1: Total Diokulasi -->
+                    <!-- RINGKASAN PRODUKSI (2x2 GRID HARMONIS) -->
+                    <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 0.74rem;">
                       <div>
-                        <div style="font-size: 0.70rem; color: #6B7280;">Total Diokulasi</div>
-                        <div style="font-size: 0.92rem; font-weight: 800; color: #116834; margin-top: 2px;">${jmlDiokulasi} Pkk</div>
+                        <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 2px;">Total Diokulasi</div>
+                        <div style="font-size: 0.82rem; font-weight: 700; color: #116834; line-height: 1.3;">${jmlDiokulasi.toLocaleString('id-ID')} Pkk</div>
                       </div>
-                      <!-- Baris 1, Kolom 2: Kayu Okulasi -->
                       <div>
-                        <div style="font-size: 0.70rem; color: #6B7280;">Kayu Okulasi</div>
-                        <div style="font-size: 0.92rem; font-weight: 800; color: #116834; margin-top: 2px;">${jmlKayu} Batang</div>
+                        <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 2px;">Kayu Okulasi</div>
+                        <div style="font-size: 0.82rem; font-weight: 700; color: #116834; line-height: 1.3;">${jmlKayu.toLocaleString('id-ID')} Batang</div>
                       </div>
-                      <!-- Baris 2, Kolom 1: Rata-rata Mata Entres / Batang -->
                       <div>
-                        <div style="font-size: 0.70rem; color: #6B7280; line-height: 1.2;">Rata-rata Mata Entres / Batang</div>
-                        <div style="font-size: 0.92rem; font-weight: 800; color: #116834; margin-top: 2px;">${avgMataEntresText}</div>
+                        <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 2px;">Jumlah Mata Entres</div>
+                        <div style="font-size: 0.82rem; font-weight: 700; color: #116834; line-height: 1.3;">${jmlMataEntres}</div>
                       </div>
-                      <!-- Baris 2, Kolom 2: Jumlah Mata Entres -->
                       <div>
-                        <div style="font-size: 0.70rem; color: #6B7280; line-height: 1.2;">Jumlah Mata Entres</div>
-                        <div style="font-size: 0.92rem; font-weight: 800; color: #116834; margin-top: 2px;">${totalMataEntres}</div>
+                        <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 2px;">Batang Bawah</div>
+                        <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.3;">${tx.klonRootstock ? normalizeKlonName(tx.klonRootstock) : 'GT 1'}</div>
                       </div>
-                    </div>
-
-                    <!-- INFORMASI PENDUKUNG -->
-                    <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;">
-                      <div style="font-size: 0.70rem; color: #6B7280;">Batang Bawah:</div>
-                      <div style="font-size: 0.86rem; font-weight: 800; color: #111827; margin-top: 1px;">${tx.klonRootstock ? normalizeKlonName(tx.klonRootstock) : 'GT 1'}</div>
                       ${parseInt(tx.jumlahDitolak || 0) > 0 ? `
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #E5E7EB;">
-                          <span style="font-size: 0.70rem; color: #6B7280;">Bibit Ditolak:</span>
-                          <span style="font-weight: 800; color: #D32F2F; font-size: 0.82rem;">${tx.jumlahDitolak} Pkk</span>
+                        <div style="grid-column: span 2; display: flex; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px dashed #E5E7EB; margin-top: 2px;">
+                          <span style="font-size: 0.68rem; color: #6B7280;">Bibit Ditolak:</span>
+                          <span style="font-size: 0.80rem; font-weight: 700; color: #D32F2F;">${parseInt(tx.jumlahDitolak).toLocaleString('id-ID')} Pkk</span>
                         </div>
                       ` : ''}
                     </div>
@@ -426,12 +416,12 @@ export function renderBuddingGrafting() {
                     <!-- DETAIL PEKERJA LENGKAP -->
                     ${workersList.length > 0 ? `
                       <div>
-                        <div style="font-weight: 700; color: #111827; margin-bottom: 6px; font-size: 0.78rem;">Pekerja Okulasi:</div>
+                        <div style="font-weight: 700; color: #111827; margin-bottom: 6px; font-size: 0.76rem;">Pekerja Okulasi:</div>
                         <div style="display: flex; flex-direction: column; gap: 4px;">
                           ${workersList.map(w => `
-                            <div style="display: flex; justify-content: space-between; align-items: center; color: #4B5563; font-size: 0.76rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; color: #4B5563; font-size: 0.74rem;">
                               <span>• ${w.name} <span style="color: #9CA3AF;">(${w.code})</span></span>
-                              <span style="font-weight: 700; color: #116834; text-align: right;">${parseInt(w.qty || 0)} Pkk</span>
+                              <span style="font-weight: 700; color: #116834; text-align: right;">${parseInt(w.qty || 0).toLocaleString('id-ID')} Pkk</span>
                             </div>
                           `).join('')}
                         </div>

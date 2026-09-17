@@ -300,12 +300,15 @@ export function renderBuddingForm() {
               <input type="number" id="inp-kayu" placeholder="0" min="1" value="${editingTx ? (editingTx.jumlahKayu || '') : ''}" style="width: 100%; height: 38px; border: 1px solid #D1D5DB; border-radius: 6px; padding: 0 10px; font-size: 0.8rem; outline: none; box-sizing: border-box;">
             </div>
 
+            <!-- JLH MATA ENTRES -->
+            <div style="margin-bottom: 14px;">
+              <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #374151; margin-bottom: 6px;">Jlh Mata Entres</label>
+              <input type="number" id="inp-mata-entres" readonly placeholder="0" value="${editingTx ? (editingTx.jumlahMataEntres !== undefined && editingTx.jumlahMataEntres !== null ? editingTx.jumlahMataEntres : (editingTx.jumlah || 0)) : 0}" style="width: 100%; height: 38px; border: 1px solid #E5E7EB; border-radius: 6px; padding: 0 10px; font-size: 0.82rem; font-weight: 700; color: #111827; background: #F9FAFB; cursor: not-allowed; outline: none; box-sizing: border-box;">
+            </div>
+
             <!-- JUMLAH BIBIT DITOLAK -->
             <div style="margin-bottom: 14px;">
-              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-                <label style="font-size: 0.74rem; font-weight: 700; color: #374151;">Jumlah Bibit Ditolak (Pkk) <span style="color:#D32F2F;">*</span></label>
-                <span id="lbl-ditolak-note" style="font-size: 0.68rem; color: #6B7280; font-weight: 600;"></span>
-              </div>
+              <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #374151; margin-bottom: 6px;">Jumlah Bibit Ditolak (Pkk) <span style="color:#D32F2F;">*</span></label>
               <input type="number" id="inp-ditolak" placeholder="0" min="0" value="${editingTx ? (editingTx.jumlahDitolak || 0) : '0'}" style="width: 100%; height: 38px; border: 1px solid #D1D5DB; border-radius: 6px; padding: 0 10px; font-size: 0.8rem; outline: none; box-sizing: border-box; transition: background 0.15s ease;">
             </div>
 
@@ -602,7 +605,6 @@ export function renderBuddingForm() {
       });
 
       const inpDitolak = app.querySelector('#inp-ditolak');
-      const lblDitolakNote = app.querySelector('#lbl-ditolak-note');
 
       // Jika seluruh sisa populasi awal sudah diokulasi, bibit ditolak otomatis 0 dan di-disable
       if (totalDiokulasi >= sisaBelumDiokulasi && sisaBelumDiokulasi > 0) {
@@ -613,10 +615,6 @@ export function renderBuddingForm() {
           inpDitolak.style.cursor = 'not-allowed';
           inpDitolak.style.color = '#6B7280';
         }
-        if (lblDitolakNote) {
-          lblDitolakNote.textContent = '(Otomatis 0 - Seluruh bibit diokulasi)';
-          lblDitolakNote.style.color = '#116834';
-        }
       } else {
         if (inpDitolak) {
           inpDitolak.disabled = false;
@@ -624,14 +622,17 @@ export function renderBuddingForm() {
           inpDitolak.style.cursor = 'text';
           inpDitolak.style.color = '#111827';
         }
-        if (lblDitolakNote) {
-          lblDitolakNote.textContent = '';
-        }
       }
 
       const ditolak = parseInt(inpDitolak?.value || 0);
       const totalRealisasi = totalDiokulasi + ditolak;
       const sisaAkhir = sisaBelumDiokulasi - totalRealisasi;
+
+      // Sinkronisasi otomatis Jlh Mata Entres dengan Total Diokulasi
+      const inpMataEntres = app.querySelector('#inp-mata-entres');
+      if (inpMataEntres) {
+        inpMataEntres.value = totalDiokulasi;
+      }
 
       const lblTotalDiokulasi = app.querySelector('#lbl-total-diokulasi');
       if (lblTotalDiokulasi) {
@@ -770,6 +771,7 @@ export function renderBuddingForm() {
     app.querySelector('#btn-simpan').addEventListener('click', () => {
       const totalDiokulasi = updateTotal();
       const kayuVal = (app.querySelector('#inp-kayu')?.value || '').trim();
+      const mataEntres = totalDiokulasi;
       const ditolakElem = app.querySelector('#inp-ditolak');
       const ditolakVal = (ditolakElem?.value || '').trim();
       const isDitolakDisabled = ditolakElem?.disabled;
@@ -849,6 +851,7 @@ export function renderBuddingForm() {
           workers: canonicalWorkers,
           jumlah: totalDiokulasi,
           jumlahKayu: kayu,
+          jumlahMataEntres: mataEntres,
           jumlahDitolak: ditolak,
           alasan: isRegrafting ? app.querySelector('#sel-alasan')?.value : null
         };
@@ -879,6 +882,7 @@ export function renderBuddingForm() {
           workers: canonicalWorkers,
           jumlah: totalDiokulasi,
           jumlahKayu: kayu,
+          jumlahMataEntres: mataEntres,
           jumlahDitolak: ditolak,
           alasan: isRegrafting ? app.querySelector('#sel-alasan')?.value : null
         });
