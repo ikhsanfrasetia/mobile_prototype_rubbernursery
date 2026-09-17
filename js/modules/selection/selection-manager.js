@@ -1719,7 +1719,7 @@ export function createSelection3DocumentFromSelection2(sourceSelection2IdOrDocNo
 
     klon: sourceDoc.klon || sourceDoc.clone || 'GT 1',
     clone: sourceDoc.clone || sourceDoc.klon || 'GT 1',
-    tahapan: 'Rubber Main Nursery (Seleksi III - Stadia 15-16 Minggu)',
+    tahapan: 'Rubber Main Nursery',
     growthStage: sourceDoc.growthStage || 'Rubber Main Nursery',
 
     rows: rows,

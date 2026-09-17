@@ -217,7 +217,7 @@ export function renderBuddingGrafting() {
                   </div>
 
                   <!-- TOMBOL TOGGLE EXPAND DETAIL -->
-                  <div style="margin-bottom: 6px;">
+                  <div style="margin-bottom: 8px;">
                     <button type="button" class="btn-toggle-expand-batch" style="background: #F0FDF4; border: 1px solid #DCFCE7; border-radius: 6px; width: 100%; padding: 6px 10px; font-size: 0.74rem; font-weight: 700; color: #116834; cursor: pointer; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box;">
                       <span class="text-expand-batch">Tampilkan Detail</span>
                       <svg class="icon-expand-batch" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease;">
@@ -227,44 +227,44 @@ export function renderBuddingGrafting() {
                   </div>
 
                   <!-- EXPANDABLE ACCORDION DETAIL (LOCATED DIRECTLY BELOW BUTTON) -->
-                  <div class="batch-expand-content" style="display: none; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-size: 0.74rem;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                      <span style="color: #6B7280;">Program Nursery:</span>
-                      <span style="font-weight: 700; color: #111;">${s3Doc.programCode || s3Doc.programName || s3Doc.program || 'PRG/NUR/01/2026'}</span>
+                  <div class="batch-expand-content" style="display: none; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-size: 0.74rem; line-height: 1.45;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px;">
+                      <span style="color: #6B7280; flex-shrink: 0;">Program Nursery:</span>
+                      <span style="font-weight: 700; color: #111827; text-align: right; word-break: break-word;">${s3Doc.programCode || s3Doc.programName || s3Doc.program || 'PRG/NUR/01/2026'}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                      <span style="color: #6B7280;">Tahapan Pertumbuhan:</span>
-                      <span style="font-weight: 700; color: #111;">${s3Doc.tahapan || 'Rubber Main Nursery (Seleksi III FINAL)'}</span>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px;">
+                      <span style="color: #6B7280; flex-shrink: 0;">Tahapan Pertumbuhan:</span>
+                      <span style="font-weight: 700; color: #111827; text-align: right; word-break: break-word;">${(s3Doc.tahapan || s3Doc.growthStage || 'Rubber Main Nursery').replace(/\s*\(Seleksi\s*III\s*-\s*Stadia\s*15-16\s*Minggu\)/gi, '').replace(/\s*\(Seleksi\s*III\s*FINAL\)/gi, '').trim() || 'Rubber Main Nursery'}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                      <span style="color: #6B7280;">Total Diokulasi SDHI:</span>
-                      <span style="font-weight: 700; color: #116834;">${ttlDiokulasi.toLocaleString('id-ID')} Pkk (${persenSelesai}%)</span>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px;">
+                      <span style="color: #6B7280; flex-shrink: 0;">Total Diokulasi SDHI:</span>
+                      <span style="font-weight: 700; color: #116834; text-align: right; word-break: break-word;">${ttlDiokulasi.toLocaleString('id-ID')} Pkk (${persenSelesai}%)</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                      <span style="color: #6B7280;">Total Bibit Ditolak:</span>
-                      <span style="font-weight: 700; color: #D32F2F;">${ttlDitolak.toLocaleString('id-ID')} Pkk</span>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px;">
+                      <span style="color: #6B7280; flex-shrink: 0;">Total Bibit Ditolak:</span>
+                      <span style="font-weight: 700; color: #D32F2F; text-align: right; word-break: break-word;">${ttlDitolak.toLocaleString('id-ID')} Pkk</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                      <span style="color: #6B7280;">Total Kayu Entres Dipakai:</span>
-                      <span style="font-weight: 700; color: #111;">${ttlKayu.toLocaleString('id-ID')} Batang</span>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px;">
+                      <span style="color: #6B7280; flex-shrink: 0;">Total Kayu Entres Dipakai:</span>
+                      <span style="font-weight: 700; color: #111827; text-align: right; word-break: break-word;">${ttlKayu.toLocaleString('id-ID')} Batang</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                      <span style="color: #6B7280;">Ref. Dokumen Seleksi II:</span>
-                      <span style="font-weight: 700; color: #111;">${s3Doc.sourceSelectionDocNo || s3Doc.sourceDocNo || '-'}</span>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px;">
+                      <span style="color: #6B7280; flex-shrink: 0;">Ref. Dokumen Seleksi II:</span>
+                      <span style="font-weight: 700; color: #111827; text-align: right; word-break: break-word;">${s3Doc.sourceSelectionDocNo || s3Doc.sourceDocNo || '-'}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                      <span style="color: #6B7280;">Ref. Dokumen Penyemaian:</span>
-                      <span style="font-weight: 700; color: #111;">${s3Doc.sourceSeedingDocNo || '-'}</span>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px;">
+                      <span style="color: #6B7280; flex-shrink: 0;">Ref. Dokumen Penyemaian:</span>
+                      <span style="font-weight: 700; color: #111827; text-align: right; word-break: break-word;">${s3Doc.sourceSeedingDocNo || '-'}</span>
                     </div>
 
                     ${rows.length > 0 ? `
                       <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #D1D5DB;">
                         <div style="font-weight: 700; color: #374151; margin-bottom: 4px;">Rincian Bedengan Asal:</div>
-                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
                           ${rows.map(r => `
-                            <div style="display: flex; justify-content: space-between; color: #4B5563;">
-                              <span>• ${formatBedenganCode(r.bedengan, r.bedenganCode) || 'BED-001'} (${r.klon ? normalizeKlonName(r.klon) : (s3Doc.klon ? normalizeKlonName(s3Doc.klon) : 'GT 1')})</span>
-                              <span style="font-weight: 700; color: #116834;">${parseInt(r.disemai || r.sourceBibitQty || 0).toLocaleString('id-ID')} Pkk</span>
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #4B5563;">
+                              <span style="word-break: break-word;">• ${formatBedenganCode(r.bedengan, r.bedenganCode) || 'BED-001'} (${r.klon ? normalizeKlonName(r.klon) : (s3Doc.klon ? normalizeKlonName(s3Doc.klon) : 'GT 1')})</span>
+                              <span style="font-weight: 700; color: #116834; white-space: nowrap; flex-shrink: 0;">${parseInt(r.disemai || r.sourceBibitQty || 0).toLocaleString('id-ID')} Pkk</span>
                             </div>
                           `).join('')}
                         </div>
@@ -274,11 +274,10 @@ export function renderBuddingGrafting() {
 
                   <!-- FOOTER ACTION ROW -->
                   ${sisaBelumOkulasi <= 0 ? `
-                    <div class="card-action-rekam" data-index="${originalIdx}" data-doc="${docNo}" data-id="${s3Doc.id || ''}" data-completed="true" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: default;">
-                      <span style="font-size: 0.74rem; color: #116834; font-weight: 700;">✓ Okulasi Selesai (100% Balance)</span>
+                    <div class="card-action-rekam" data-index="${originalIdx}" data-doc="${docNo}" data-id="${s3Doc.id || ''}" data-completed="true" style="display: flex; justify-content: flex-end; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: default;">
                       <div style="display: flex; align-items: center; gap: 4px; color: #116834; font-weight: 700; font-size: 0.74rem;">
                         <span>Batch Selesai</span>
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
                           <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
                       </div>
