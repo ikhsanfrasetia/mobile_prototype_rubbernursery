@@ -48,6 +48,8 @@ import { renderRequestKebunSepupuLanding } from './modules/request/request-kebun
 import { renderRequestKebunSepupuForm } from './modules/request/request-kebun-sepupu-form.js';
 import { renderRequestKebunSendiriLanding } from './modules/request/request-kebun-sendiri-landing.js';
 import { renderRequestKebunSendiriForm } from './modules/request/request-kebun-sendiri-form.js';
+import { renderRequestMataEntresLanding } from './modules/request/request-mata-entres-landing.js';
+import { renderRequestMataEntresForm } from './modules/request/request-mata-entres-form.js';
 import { renderDispatchLanding } from './modules/dispatch/dispatch-landing.js';
 import { renderDispatchReport } from './modules/dispatch/dispatch-report.js';
 import { renderMasterBedengan } from './modules/master/master-bedengan.js';
@@ -127,6 +129,8 @@ registerRoute('/request/kebun-sepupu', renderRequestKebunSepupuLanding);
 registerRoute('/request/kebun-sepupu/form', renderRequestKebunSepupuForm);
 registerRoute('/request/kebun-sendiri', renderRequestKebunSendiriLanding);
 registerRoute('/request/kebun-sendiri/form', renderRequestKebunSendiriForm);
+registerRoute('/request/mata-entres', renderRequestMataEntresLanding);
+registerRoute('/request/mata-entres/form', renderRequestMataEntresForm);
 registerRoute('/dispatch', renderDispatchLanding);
 registerRoute('/dispatch/report', renderDispatchReport);
 registerRoute('/entres', renderEntresLanding);

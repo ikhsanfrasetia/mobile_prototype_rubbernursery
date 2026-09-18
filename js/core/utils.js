@@ -135,7 +135,10 @@ export const MODULE_DOC_CODES = {
   KEBUN_SEPUPU: 'NIR',
   PGL: 'PGL',
   attendance: 'PRS',
-  syncQueue: 'SYN'
+  syncQueue: 'SYN',
+  mataEntres: 'REQ/ETRS',
+  MATA_ENTRES: 'REQ/ETRS',
+  'REQ/ETRS': 'REQ/ETRS'
 };
 
 export function getModuleDocCode(modId) {

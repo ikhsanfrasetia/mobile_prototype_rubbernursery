@@ -264,17 +264,21 @@ textarea.field-control {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .modal-title {
-  font-size: 1.05rem;
+  font-size: 0.96rem;
   font-weight: 700;
+  line-height: 1.3;
+  color: var(--text, #0F172A);
 }
 
 .modal-close {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
   display: grid;
   place-items: center;
   border-radius: var(--radius);

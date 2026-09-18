@@ -122,8 +122,8 @@ let modalDocType = DOCUMENT_TYPES.RTM_REPORT;
 let toastMessage = null;
 let toastTimer = null;
 
-// Portal Navigation State ('dashboard' | 'mapping' | 'reference' | 'reports')
-let currentNavTab = 'mapping';
+// Portal Navigation State ('dashboard' | 'reference' | 'reports')
+let currentNavTab = 'dashboard';
 
 // Reference Tab Filter State
 let refFilterType = 'ALL'; // 'ALL' | 'KF' | 'KNF'
@@ -473,7 +473,6 @@ function renderHeader(metadata) {
 
         <nav class="pm-header-nav">
           <button type="button" class="pm-nav-link ${currentNavTab === 'dashboard' ? 'is-active' : ''}" id="pm-nav-dashboard">Dashboard</button>
-          <button type="button" class="pm-nav-link ${currentNavTab === 'mapping' ? 'is-active' : ''}" id="pm-nav-mapping">Process Mapping</button>
           <button type="button" class="pm-nav-link ${currentNavTab === 'reference' ? 'is-active' : ''}" id="pm-nav-reference">Reference</button>
           <button type="button" class="pm-nav-link ${currentNavTab === 'reports' ? 'is-active' : ''}" id="pm-nav-reports">Reports</button>
         </nav>

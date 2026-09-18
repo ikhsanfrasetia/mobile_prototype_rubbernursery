@@ -18,6 +18,9 @@ import {
   filterIncomingRequests as filterIncomingSendiriRequests,
   getActionableIncomingCount as getActionableIncomingSendiriCount
 } from './request-kebun-sendiri-landing.js';
+import {
+  getActionableMataEntresCount
+} from './request-mata-entres-landing.js';
 
 /* SVG Icons sesuai visual baseline approved — proporsional & rapi #116834 */
 const ICONS = {
@@ -52,7 +55,33 @@ const ICONS = {
 
 export function getSubMenuItemsForRole(userRole) {
   const role = normalizeRole(userRole);
-  if (role === 'ASISTEN_BIBITAN' || role === 'ASISTEN') {
+  if (role === 'ASISTEN_BIBITAN') {
+    return [
+      {
+        id: 'ksp-bibit-sendiri',
+        title: 'Permintaan Bibit<br>Kebun Sendiri',
+        rawTitle: 'Permintaan Bibit Kebun Sendiri',
+        icon: ICONS.spbBibit,
+        route: '/request/kebun-sendiri'
+      },
+      {
+        id: 'ksp-bibit',
+        title: 'Verifikasi Permintaan<br>Kebun Sepupu',
+        rawTitle: 'Verifikasi Permintaan Kebun Sepupu',
+        icon: ICONS.approvalKsp,
+        route: '/request/kebun-sepupu'
+      },
+      {
+        id: 'me-bibit',
+        title: 'Verifikasi Permintaan<br>Mata Entres',
+        rawTitle: 'Verifikasi Permintaan Mata Entres',
+        icon: ICONS.spbEntres,
+        route: '/request/mata-entres'
+      }
+    ];
+  }
+
+  if (role === 'ASISTEN') {
     return [
       {
         id: 'ksp-bibit-sendiri',
@@ -69,11 +98,11 @@ export function getSubMenuItemsForRole(userRole) {
         route: '/request/kebun-sepupu'
       },
       {
-        id: 'ksp-bibit-divisi',
-        title: 'Buat Permintaan<br>Bibit Divisi Sendiri',
-        rawTitle: 'Buat Permintaan Bibit Divisi Sendiri',
+        id: 'me-bibit',
+        title: 'Daftar Permintaan<br>Mata Entres',
+        rawTitle: 'Daftar Permintaan Mata Entres',
         icon: ICONS.spbEntres,
-        route: null
+        route: '/request/mata-entres'
       }
     ];
   }
@@ -96,17 +125,16 @@ export function getSubMenuItemsForRole(userRole) {
       },
       {
         id: 'me-bibit',
-        title: 'Buat Permintaan<br>Mata Entres',
-        rawTitle: 'Buat Permintaan Mata Entres',
+        title: 'Verifikasi Permintaan<br>Mata Entres',
+        rawTitle: 'Verifikasi Permintaan Mata Entres',
         icon: ICONS.spbEntres,
-        route: null
+        route: '/request/mata-entres'
       }
     ];
   }
 
-  // MANTRI_TANAMAN: Hanya melihat request yang eligible untuk Dispatch.
-  // TIDAK dapat membuat Permintaan Kebun Sepupu baru.
-  if (role === 'MANTRI_TANAMAN') {
+  // MANTRI_TANAMAN / MANTRI
+  if (role === 'MANTRI_TANAMAN' || role === 'MANTRI') {
     return [
       {
         id: 'ksp-bibit',
@@ -114,11 +142,18 @@ export function getSubMenuItemsForRole(userRole) {
         rawTitle: 'Daftar Permintaan Kebun Sepupu',
         icon: ICONS.approvalKsp,
         route: '/request/kebun-sepupu'
+      },
+      {
+        id: 'me-bibit',
+        title: 'Daftar Permintaan<br>Mata Entres',
+        rawTitle: 'Daftar Permintaan Mata Entres',
+        icon: ICONS.spbEntres,
+        route: '/request/mata-entres'
       }
     ];
   }
 
-  // Default / PENGURUS — satu-satunya role yang membuat Permintaan Kebun Sepupu
+  // Default / PENGURUS
   return [
     {
       id: 'ksp-bibit-sendiri',
@@ -139,7 +174,7 @@ export function getSubMenuItemsForRole(userRole) {
       title: 'Buat Permintaan<br>Mata Entres',
       rawTitle: 'Buat Permintaan Mata Entres',
       icon: ICONS.spbEntres,
-      route: null
+      route: '/request/mata-entres'
     }
   ];
 }
@@ -168,6 +203,8 @@ export async function renderRequestLanding() {
   const incomingSendiri = filterIncomingSendiriRequests(allRequests, userCtx);
   const hasActionableSendiri = getActionableIncomingSendiriCount(incomingSendiri, userCtx) > 0;
 
+  const hasActionableMataEntres = getActionableMataEntresCount(allRequests, userCtx) > 0;
+
   const menuCards = activeSubMenuItems.map((item) => {
     let badgeHtml = '';
     if (item.id === 'ksp-bibit' && hasActionableRequest) {
@@ -175,6 +212,10 @@ export async function renderRequestLanding() {
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 10px; right: 10px; width: 10px; height: 10px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
     } else if (item.id === 'ksp-bibit-sendiri' && hasActionableSendiri) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 10px; right: 10px; width: 10px; height: 10px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'me-bibit' && hasActionableMataEntres) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 10px; right: 10px; width: 10px; height: 10px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;

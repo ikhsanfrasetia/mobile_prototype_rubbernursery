@@ -418,7 +418,7 @@ export function processPengurusInitialReceipt(receiptId, formValues, currentUser
     receivedAt: new Date().toISOString()
   };
 
-  const auditDetails = `Pengurus (${currentUser.name || currentUser.userId}) mencatat penerimaan awal pada tanggal ${formatDate(receivedDate)} dan meneruskan ke Asisten Kepala`;
+  const auditDetails = `Pengurus (${currentUser.name || currentUser.userId}) mencatat penerimaan awal pada tanggal ${formatDate(finalDate)} dan meneruskan ke Asisten Kepala`;
 
   return updateReceiptKsp(
     receiptId,
@@ -1151,7 +1151,7 @@ export function openPengurusInitialReceiptModal(item, currentUser, onSuccess = n
     `
   });
 
-  const modalEl = document.querySelector('.modal-box');
+  const modalEl = document.getElementById('modal-root');
   if (!modalEl) return;
 
   modalEl.querySelector('#btn-cancel-receipt')?.addEventListener('click', () => {
@@ -1307,7 +1307,7 @@ export function openAskepVerificationModal(item, currentUser, onSuccess = null) 
     `
   });
 
-  const modalEl = document.querySelector('.modal-box');
+  const modalEl = document.getElementById('modal-root');
   if (!modalEl) return;
 
   const selectDiv = modalEl.querySelector('#select-target-division');
@@ -1433,7 +1433,7 @@ export function openAskepReturnModal(item, currentUser, onSuccess = null) {
     `
   });
 
-  const modalEl = document.querySelector('.modal-box');
+  const modalEl = document.getElementById('modal-root');
   if (!modalEl) return;
 
   modalEl.querySelector('#btn-cancel-return')?.addEventListener('click', () => {
@@ -1695,7 +1695,7 @@ export function openAsistenLapanganPhysicalReceiptModal(item, currentUser, onSuc
     `
   });
 
-  const modalEl = document.querySelector('.modal-box');
+  const modalEl = document.getElementById('modal-root');
   if (!modalEl) return;
 
   const inputAccepted = modalEl.querySelector('#input-qty-accepted');
@@ -2072,7 +2072,7 @@ export function openAsistenBibitanVerificationModal(item, currentUser, onSuccess
     `
   });
 
-  const modalEl = document.querySelector('.modal-box');
+  const modalEl = document.getElementById('modal-root');
   if (!modalEl) return;
 
   modalEl.querySelector('#btn-asb-cancel')?.addEventListener('click', () => {
@@ -2158,7 +2158,7 @@ export function openAsistenBibitanReturnModal(item, currentUser, onSuccess = nul
     `
   });
 
-  const modalEl = document.querySelector('.modal-box');
+  const modalEl = document.getElementById('modal-root');
   if (!modalEl) return;
 
   modalEl.querySelector('#btn-cancel-asb-return')?.addEventListener('click', () => {
@@ -2449,7 +2449,7 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
     `
   });
 
-  const modalEl = document.querySelector('.modal-box');
+  const modalEl = document.getElementById('modal-root');
   if (!modalEl) return;
 
   const containerDiscrepancy = modalEl.querySelector('#container-discrepancy-reason-mantri');
@@ -2863,7 +2863,7 @@ export function openReceiptDetailModal(item) {
     `
   });
 
-  const modalEl = document.querySelector('.modal-box');
+  const modalEl = document.getElementById('modal-root');
   modalEl?.querySelector('#btn-close-detail')?.addEventListener('click', () => {
     closeModal();
   });

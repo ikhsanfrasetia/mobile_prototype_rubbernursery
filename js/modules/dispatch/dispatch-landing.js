@@ -39,6 +39,12 @@ import {
 import { formatDate, formatStandardDocNo, esc } from '../../core/utils.js';
 import { createReceiptFromDispatch } from '../../core/receipt-ksp-manager.js';
 import { RECEIPT_KSP_STATUS, RECEIPT_KSP_STATUS_LABELS } from '../../core/receipt-ksp-constants.js';
+import { normalizeKlonName } from '../../data/klon-master.js';
+import { initBatchInventory } from '../../core/batch-inventory-service.js';
+import { 
+  openMantriDispatchModal, 
+  openMataEntresDetailModal 
+} from '../request/request-mata-entres-landing.js';
 
 let activeStatusFilter = 'SEMUA'; // 'SEMUA' | 'TERVERIFIKASI' | 'PENGELUARAN_BERJALAN' | 'SELESAI'
 let expandedCardIndex = -1;
@@ -78,6 +84,41 @@ import { DEFAULT_CANONICAL_BATCHES } from '../../data/batch-master.js';
  */
 export const DEFAULT_NURSERY_BATCHES = DEFAULT_CANONICAL_BATCHES;
 
+function matchEstateHelper(batchEstate, filterEstate) {
+  if (!filterEstate || !batchEstate) return true;
+  const bEst = resolveEstate(batchEstate)?.estate_id || resolveEstate(batchEstate)?.estate_name || String(batchEstate).trim().toUpperCase();
+  const fEst = resolveEstate(filterEstate)?.estate_id || resolveEstate(filterEstate)?.estate_name || String(filterEstate).trim().toUpperCase();
+  if (bEst === fEst) return true;
+  const cleanB = String(bEst).replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const cleanF = String(fEst).replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  return cleanB === cleanF || cleanB.includes(cleanF) || cleanF.includes(cleanB);
+}
+
+function matchCloneHelper(batchClone, filterClone) {
+  if (!filterClone) return true;
+  if (!batchClone) return false;
+  const normB = normalizeKlonName(batchClone);
+  const normF = normalizeKlonName(filterClone);
+  if (normB === normF) return true;
+  const cleanB = String(batchClone).replace(/[\s\-_]/g, '').toUpperCase();
+  const cleanF = String(filterClone).replace(/[\s\-_]/g, '').toUpperCase();
+  return cleanB === cleanF;
+}
+
+function matchGrowthStageHelper(batchStage, filterStage) {
+  if (!filterStage || !batchStage) return true;
+  const b = String(batchStage).trim().toUpperCase();
+  const f = String(filterStage).trim().toUpperCase();
+  if (b === f) return true;
+  const isRAPM = (s) => s === 'RAPM' || s.includes('ADVANCE') || s.includes('SIAP TANAM') || s.includes('READY TO PLANT');
+  const isRMN = (s) => s === 'RMN' || s.includes('MAIN NURSERY');
+  const isRootstock = (s) => s.includes('ROOTSTOCK') || s.includes('MOTHER');
+  if (isRAPM(b) && isRAPM(f)) return true;
+  if (isRMN(b) && isRMN(f)) return true;
+  if (isRootstock(b) && isRootstock(f)) return true;
+  return false;
+}
+
 /**
  * Mengambil daftar batch nursery yang tersedia di storage / DB
  */
@@ -88,22 +129,92 @@ export function getNurseryBatches(estateId = null, clone = null, growthStage = n
     storage.set('nursery_batches', batches);
   }
 
-  return batches.map(b => ({
-    ...b,
-    availableQty: getInventoryAvailableQty(b.id || b.batchId || b.batchCode || b.batchNo)
-  })).filter(b => {
+  // 1. Filter existing batches dengan matching fleksibel
+  let filtered = batches.map(b => {
+    let avail = getInventoryAvailableQty(b.id || b.batchId || b.batchCode || b.batchNo);
+    if (avail <= 0 && (Number(b.availableQty) > 0 || Number(b.currentQty) > 0 || Number(b.initialQty) > 0)) {
+      avail = Number(b.availableQty ?? b.currentQty ?? b.initialQty ?? 0);
+      initBatchInventory(b.id || b.batchId || b.batchCode || b.batchNo, b.batchCode || b.batchNo || b.id, avail);
+    }
+    return {
+      ...b,
+      availableQty: avail
+    };
+  }).filter(b => {
     const ctx = getBatchContext(b.id || b.batchId || b.batchCode || b.batchNo) || b;
     const isAvailable = (b.availableQty || 0) > 0 && b.status !== 'EMPTY' && b.status !== 'INACTIVE';
-    const matchEstate = !estateId || (ctx.estateId || '').toUpperCase() === String(estateId).trim().toUpperCase();
-    const matchDivision = !divisionId || (ctx.divisionId || '').toUpperCase() === String(divisionId).trim().toUpperCase();
+    const matchEstate = matchEstateHelper(ctx.estateId || b.estateId, estateId);
+    const matchDivision = !divisionId || (ctx.divisionId || b.divisionId || '').toUpperCase() === String(divisionId).trim().toUpperCase();
     const matchProgram = !programId || ctx.programId === programId || (resolveProgram(programId)?.id === ctx.programId) || (b.programCode === programId) || (b.programId === programId);
     const matchBedengan = !bedenganId || (ctx.bedenganId || b.bedenganId || '').toUpperCase() === String(bedenganId).trim().toUpperCase() || (ctx.bedenganCode || b.bedenganCode || '').toUpperCase() === String(bedenganId).trim().toUpperCase();
-    const batchClone = (b.clone || b.klon || '').trim().toUpperCase();
-    const targetClone = (clone || '').trim().toUpperCase();
-    const matchClone = !clone || batchClone === targetClone || (targetClone && batchClone.replace(/\s+/g, '') === targetClone.replace(/\s+/g, ''));
-    const matchStage = !growthStage || b.stage === growthStage || b.growthStage === growthStage;
-    return isAvailable && matchEstate && matchDivision && matchProgram && matchBedengan && matchClone && matchStage;
+    const matchClone = matchCloneHelper(b.clone || b.klon, clone);
+    const matchStage = matchGrowthStageHelper(b.stage || b.growthStage, growthStage);
+    return isAvailable && matchEstate && matchClone && matchStage && matchDivision && matchProgram && matchBedengan;
   });
+
+  // 2. Fallback jika filter divisi/program/bedengan terlalu restriktif
+  if (filtered.length === 0 && (divisionId || programId || bedenganId)) {
+    filtered = batches.map(b => ({
+      ...b,
+      availableQty: getInventoryAvailableQty(b.id || b.batchId || b.batchCode || b.batchNo) || Number(b.availableQty ?? b.currentQty ?? b.initialQty ?? 0)
+    })).filter(b => {
+      const ctx = getBatchContext(b.id || b.batchId || b.batchCode || b.batchNo) || b;
+      const isAvailable = (b.availableQty || 0) > 0 && b.status !== 'EMPTY' && b.status !== 'INACTIVE';
+      const matchEstate = matchEstateHelper(ctx.estateId || b.estateId, estateId);
+      const matchClone = matchCloneHelper(b.clone || b.klon, clone);
+      const matchStage = matchGrowthStageHelper(b.stage || b.growthStage, growthStage);
+      return isAvailable && matchEstate && matchClone && matchStage;
+    });
+  }
+
+  // 3. Fallback jika belum ada batch terdaftar di storage untuk klon & kebun yang telah diapprove
+  if (filtered.length === 0 && clone) {
+    const resolvedEstateObj = resolveEstate(estateId) || resolveEstate('EST-APM') || { estate_id: 'EST-APM', estate_code: 'APM', estate_name: 'Aek Pamingke' };
+    const estId = resolvedEstateObj.estate_id || 'EST-APM';
+    const estCode = resolvedEstateObj.estate_code || 'APM';
+    const cleanClone = normalizeKlonName(clone) || clone;
+    const cloneCode = cleanClone.replace(/[^A-Z0-9]/gi, '');
+    const batchCode = `BTCH-${cloneCode}-01`;
+    const batchId = `BATCH-${estCode}-${cloneCode}-01`;
+    const defaultQty = 10000;
+
+    const autoBatch = {
+      id: batchId,
+      batchId: batchId,
+      batchCode: batchCode,
+      batchNo: batchCode,
+      name: `Batch ${cleanClone} ${estCode}`,
+      clone: cleanClone,
+      klon: cleanClone,
+      category: 'Polibag Besar',
+      stage: growthStage || 'Rubber Advance Planting Material',
+      growthStage: growthStage || 'Rubber Advance Planting Material',
+      estateId: estId,
+      divisionId: divisionId || (estId === 'EST-APM' ? 'DIV-APM-NUR' : 'DIV-TBS-NUR'),
+      programId: programId || 'PRG-2026-01',
+      programCode: 'PRG/NUR/01/2026',
+      bedenganId: bedenganId || 'BED-001',
+      bedenganCode: 'BED-001',
+      initialQty: defaultQty,
+      receivedQty: defaultQty,
+      availableQty: defaultQty,
+      currentQty: defaultQty,
+      status: 'AVAILABLE',
+      statusMaster: 'ACTIVE',
+      createdAt: new Date().toISOString()
+    };
+
+    batches.push(autoBatch);
+    storage.set('nursery_batches', batches);
+    initBatchInventory(batchId, batchCode, defaultQty);
+
+    filtered = [{
+      ...autoBatch,
+      availableQty: defaultQty
+    }];
+  }
+
+  return filtered;
 }
 
 /**
@@ -147,6 +258,18 @@ export function getDispatchTransactions(parentRequestId = null) {
   return list.filter(d => d.parentRequestId === parentRequestId);
 }
 
+function matchDivisionHelper(divA, divB) {
+  if (!divA || !divB) return true;
+  if (divA === divB) return true;
+  const cleanA = String(divA).trim().toUpperCase();
+  const cleanB = String(divB).trim().toUpperCase();
+  if (cleanA === cleanB) return true;
+  const numA = cleanA.replace(/\D/g, '');
+  const numB = cleanB.replace(/\D/g, '');
+  if (numA && numB && parseInt(numA, 10) === parseInt(numB, 10)) return true;
+  return false;
+}
+
 /**
  * Validasi otorisasi Mantri Bibitan untuk memproses pengeluaran dokumen
  * Otorisasi: Role (MANTRI_TANAMAN) + Estate + Division
@@ -154,20 +277,25 @@ export function getDispatchTransactions(parentRequestId = null) {
 export function canPerformMantriDispatchAction(tx, currentUser) {
   if (!tx || !currentUser) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
-  if (userRole !== 'MANTRI_TANAMAN') return false;
+  if (userRole !== 'MANTRI_TANAMAN' && userRole !== 'MANTRI') return false;
 
   const isKebunSendiri = tx.type === 'KEBUN_SENDIRI' || tx.transactionType === 'KEBUN_SENDIRI';
+  const isMataEntres = tx.type === 'MATA_ENTRES';
   const userEstateId = currentUser.estateId;
-  const targetEstate = isKebunSendiri ? (tx.requesterEstateId || tx.estateId) : (tx.targetNextEstateId || tx.targetEstateId);
-  if (!userEstateId || targetEstate !== userEstateId) return false;
+  const targetEstate = isKebunSendiri ? (tx.requesterEstateId || tx.estateId) : (tx.targetNextEstateId || tx.targetEstateId || tx.targetEstate);
+  if (!userEstateId || !matchEstateHelper(targetEstate, userEstateId)) return false;
 
   // Routing validation: Estate + Division + Role
   const targetDivision = isKebunSendiri ? tx.fulfillmentDivisionId : (tx.targetNextDivisionId || tx.targetDivisionId);
-  if (targetDivision && currentUser.divisionId && currentUser.divisionId !== targetDivision) {
+  if (targetDivision && currentUser.divisionId && !matchDivisionHelper(targetDivision, currentUser.divisionId)) {
     return false;
   }
 
   const status = (tx.status || '').toUpperCase();
+  if (isMataEntres) {
+    return status === 'TERVERIFIKASI' || status === 'MENUNGGU_PENGELUARAN';
+  }
+
   const isActionableStatus = (
     status === 'TERVERIFIKASI' ||
     status === 'MENUNGGU_PENGELUARAN_BIBIT' ||
@@ -196,22 +324,23 @@ export function getActionableDispatchCount(requests, currentUser) {
 export function filterDispatchRequests(requests, currentUser) {
   if (!Array.isArray(requests) || !currentUser) return [];
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
-  const isMantri = userRole === 'MANTRI_TANAMAN';
+  const isMantri = userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI';
 
   return requests.filter(tx => {
     const isKebunSendiri = tx.type === 'KEBUN_SENDIRI' || tx.transactionType === 'KEBUN_SENDIRI';
-    const isRequestType = tx.type === 'KEBUN_SEPUPU' || isKebunSendiri || !tx.type;
+    const isMataEntres = tx.type === 'MATA_ENTRES';
+    const isRequestType = tx.type === 'KEBUN_SEPUPU' || isKebunSendiri || isMataEntres || !tx.type;
     if (!isRequestType) return false;
 
     const userEstateId = currentUser.estateId;
-    const targetEstate = isKebunSendiri ? (tx.requesterEstateId || tx.estateId) : (tx.targetNextEstateId || tx.targetEstateId);
-    const isTarget = targetEstate === userEstateId;
+    const targetEstate = isKebunSendiri ? (tx.requesterEstateId || tx.estateId) : (tx.targetNextEstateId || tx.targetEstateId || tx.targetEstate);
+    const isTarget = matchEstateHelper(targetEstate, userEstateId);
     if (!isTarget) return false;
 
     // Jika Mantri, isolasi berdasarkan Divisi Target
     if (isMantri) {
       const targetDivision = isKebunSendiri ? tx.fulfillmentDivisionId : (tx.targetNextDivisionId || tx.targetDivisionId);
-      if (targetDivision && currentUser.divisionId && currentUser.divisionId !== targetDivision) {
+      if (targetDivision && currentUser.divisionId && !matchDivisionHelper(targetDivision, currentUser.divisionId)) {
         return false;
       }
     }
@@ -220,10 +349,13 @@ export function filterDispatchRequests(requests, currentUser) {
     const isRelevant = (
       status === 'TERVERIFIKASI' ||
       status === 'MENUNGGU_PENGELUARAN_BIBIT' ||
+      status === 'MENUNGGU_PENGELUARAN' ||
       status === 'PENGELUARAN_BERJALAN' ||
       status === 'MENUNGGU_VERIFIKASI_PENGELUARAN' ||
       status === 'MENUNGGU_PENERIMAAN' ||
       status === 'MENUNGGU_PENERIMAAN_PENGURUS' ||
+      status === 'DIKELUARKAN' ||
+      status === 'DITERIMA' ||
       status === 'SELESAI'
     );
 
@@ -241,13 +373,13 @@ export function filterDispatchByStatus(requests, statusFilter) {
   return requests.filter(tx => {
     const s = (tx.status || '').toUpperCase();
     if (statusFilter === 'TERVERIFIKASI') {
-      return s === 'TERVERIFIKASI' || s === 'MENUNGGU_PENGELUARAN_BIBIT';
+      return s === 'TERVERIFIKASI' || s === 'MENUNGGU_PENGELUARAN_BIBIT' || s === 'MENUNGGU_PENGELUARAN';
     }
     if (statusFilter === 'PENGELUARAN_BERJALAN') {
-      return s === 'PENGELUARAN_BERJALAN';
+      return s === 'PENGELUARAN_BERJALAN' || s === 'DIKELUARKAN';
     }
     if (statusFilter === 'SELESAI') {
-      return s === 'SELESAI' || s === 'APPROVED' || s === 'MENUNGGU_PENERIMAAN_PENGURUS';
+      return s === 'SELESAI' || s === 'APPROVED' || s === 'MENUNGGU_PENERIMAAN_PENGURUS' || s === 'DITERIMA';
     }
     return s === statusFilter;
   });
@@ -325,9 +457,9 @@ export function validateShipmentForm(req, formValues, availableBatches = null) {
     }
 
     // Pastikan klon batch sesuai dengan approvedClone
-    const batchClone = (batchObj.clone || batchObj.klon || '').trim().toUpperCase();
-    const reqClone = (req.approvedClone || req.requestedClone || '').trim().toUpperCase();
-    if (batchClone !== reqClone) {
+    const batchClone = (batchObj.clone || batchObj.klon || '').trim();
+    const reqClone = (req.approvedClone || req.requestedClone || '').trim();
+    if (!matchCloneHelper(batchClone, reqClone)) {
       return makeError(`Klon pada batch ${bCode} (${batchObj.clone}) tidak sesuai dengan klon yang disetujui (${req.approvedClone})`);
     }
 
@@ -340,10 +472,10 @@ export function validateShipmentForm(req, formValues, availableBatches = null) {
       return makeError(`Jumlah pengeluaran batch ${bCode} (${bQty.toLocaleString('id-ID')} Pkk) melebihi stok tersedia (${avail.toLocaleString('id-ID')} Pkk)`);
     }
 
-    const reqGrowthStage = (req.growthStage || '').trim().toUpperCase();
-    const batchGrowthStage = (batchObj.stage || batchObj.growthStage || '').trim().toUpperCase();
-    if (reqGrowthStage && batchGrowthStage && batchGrowthStage !== reqGrowthStage) {
-      return makeError(`Tahap pertumbuhan batch ${bCode} (${batchObj.stage}) tidak sesuai dengan dokumen (${req.growthStage})`);
+    const reqGrowthStage = (req.growthStage || '').trim();
+    const batchGrowthStage = (batchObj.stage || batchObj.growthStage || '').trim();
+    if (reqGrowthStage && batchGrowthStage && !matchGrowthStageHelper(batchGrowthStage, reqGrowthStage)) {
+      return makeError(`Tahap pertumbuhan batch ${bCode} (${batchObj.stage || batchObj.growthStage}) tidak sesuai dengan dokumen (${req.growthStage})`);
     }
 
     totalBatchQty += bQty;
@@ -1196,20 +1328,16 @@ export async function renderDispatchLanding() {
         </div>
         <div style="font-size: 0.90rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Tidak ada dokumen pengeluaran</div>
         <div style="font-size: 0.76rem; color: #64748B; max-width: 260px; line-height: 1.4;">
-          ${activeStatusFilter === 'SEMUA' ? 'Belum ada dokumen permintaan bibit yang siap untuk diproses pengeluaran.' : 'Tidak ada dokumen dengan filter status ini.'}
+          ${activeStatusFilter === 'SEMUA' ? 'Belum ada dokumen permintaan bibit / entres yang siap untuk diproses pengeluaran.' : 'Tidak ada dokumen dengan filter status ini.'}
         </div>
       </div>
     `;
   } else {
     cardsHtml = filteredItems.map((item, idx) => {
-      const docNo = item.docNo || '2026/NIR/001';
-      const sourceEstate = resolveEstate(item.estateId);
-      const sourceEstateName = sourceEstate ? sourceEstate.estate_name : (item.estateId || 'Kebun Peminta');
-
-      const approvedQty = parseInt(item.approvedQty || item.requestedQty || 0, 10);
-      const totalIssued = parseInt(item.totalIssuedQty || item.actualIssuedQty || 0, 10);
-      const remainingQty = approvedQty - totalIssued;
-      const approvedClone = item.approvedClone || item.requestedClone || 'IRCA 19';
+      const isMataEntres = item.type === 'MATA_ENTRES';
+      const docNo = item.docNo || (isMataEntres ? '2026/REQ/ETRS/001' : '2026/NIR/001');
+      const sourceEstate = resolveEstate(item.sourceEstateId || item.estateId || item.requesterEstate);
+      const sourceEstateName = sourceEstate ? sourceEstate.estate_name : (item.sourceEstateName || item.estateId || 'Kebun Peminta');
 
       const isActionable = canPerformMantriDispatchAction(item, currentUser);
       const isExpanded = expandedCardIndex === idx;
@@ -1221,33 +1349,70 @@ export async function renderDispatchLanding() {
       let badgeBorder = '#FDE68A';
       let badgeText = 'Siap Keluar';
 
-      if (statusRaw === 'PENGELUARAN_BERJALAN') {
+      if (statusRaw === 'PENGELUARAN_BERJALAN' || statusRaw === 'DIKELUARKAN') {
         badgeBg = '#E0F2FE';
         badgeColor = '#0369A1';
         badgeBorder = '#BAE6FD';
-        badgeText = 'Berjalan';
-      } else if (statusRaw === 'SELESAI') {
+        badgeText = isMataEntres ? 'Dikeluarkan' : 'Berjalan';
+      } else if (statusRaw === 'SELESAI' || statusRaw === 'DITERIMA') {
         badgeBg = '#DCFCE7';
         badgeColor = '#166534';
         badgeBorder = '#BBF7D0';
         badgeText = 'Selesai';
       }
 
+      // Metrics & Summary
+      let summaryHtml = '';
+      if (isMataEntres) {
+        const approvedKlon = item.approval?.approvedKlon || item.klon || 'IRCA 19';
+        const approvedBatang = item.approval?.approvedBatang || item.jumlahBatang || 0;
+        const approvedMata = item.approval?.approvedMataEntres || item.jumlahMataEntres || 0;
+        const issuedBatang = item.jumlahBatangDikeluarkan !== null && item.jumlahBatangDikeluarkan !== undefined ? item.jumlahBatangDikeluarkan : 0;
+        const issuedMata = item.jumlahMataEntresDikeluarkan !== null && item.jumlahMataEntresDikeluarkan !== undefined ? item.jumlahMataEntresDikeluarkan : 0;
+
+        summaryHtml = `
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px;">
+            <div style="display: grid; grid-template-columns: 42% 58%; gap: 4px 6px; font-size: 0.72rem; color: #475569; line-height: 1.35;">
+              <div>Klon: <strong style="color: #1E293B;">${esc(approvedKlon)}</strong></div>
+              <div style="text-align: right;">Disetujui: <strong style="color: #116834;">${approvedBatang.toLocaleString('id-ID')} Btg / ${approvedMata.toLocaleString('id-ID')} Mata</strong></div>
+              <div>Sudah Keluar: <strong style="color: #0369A1;">${issuedBatang.toLocaleString('id-ID')} Btg / ${issuedMata.toLocaleString('id-ID')} Mata</strong></div>
+              <div style="text-align: right;">Status: <strong style="color: ${statusRaw === 'DIKELUARKAN' || statusRaw === 'SELESAI' ? '#166534' : '#B45309'};">${badgeText}</strong></div>
+            </div>
+          </div>
+        `;
+      } else {
+        const approvedQty = parseInt(item.approvedQty || item.requestedQty || 0, 10);
+        const totalIssued = parseInt(item.totalIssuedQty || item.actualIssuedQty || 0, 10);
+        const remainingQty = approvedQty - totalIssued;
+        const approvedClone = item.approvedClone || item.requestedClone || 'IRCA 19';
+
+        summaryHtml = `
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; font-size: 0.72rem; color: #475569; line-height: 1.35;">
+              <div>Klon: <strong style="color: #1E293B;">${esc(approvedClone)}</strong></div>
+              <div style="text-align: right;">Disetujui: <strong style="color: #116834;">${approvedQty.toLocaleString('id-ID')} Pkk</strong></div>
+              <div>Sudah Keluar: <strong style="color: #0369A1;">${totalIssued.toLocaleString('id-ID')} Pkk</strong></div>
+              <div style="text-align: right;">Sisa: <strong style="color: ${remainingQty > 0 ? '#DC2626' : '#166534'};">${remainingQty.toLocaleString('id-ID')} Pkk</strong></div>
+            </div>
+          </div>
+        `;
+      }
+
       // Action buttons
       let actionButtonsHtml = `
-        <button class="btn-card-detail" data-idx="${idx}" type="button" style="padding: 6px 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; color: #475569; font-size: 0.74rem; font-weight: 700; cursor: pointer;">
+        <button class="btn-card-detail" data-idx="${idx}" type="button" style="padding: 6px 14px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; color: #475569; font-size: 0.74rem; font-weight: 700; cursor: pointer;">
           Detail
         </button>
       `;
 
       if (isActionable) {
         actionButtonsHtml = `
-          <div style="display: flex; gap: 6px; width: 100%;">
+          <div style="display: flex; gap: 8px; width: 100%;">
             <button class="btn-card-detail" data-idx="${idx}" type="button" style="flex: 1; padding: 7px 10px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; color: #475569; font-size: 0.74rem; font-weight: 700; cursor: pointer;">
               Detail
             </button>
-            <button class="btn-card-proses-dispatch" data-idx="${idx}" type="button" style="flex: 2; padding: 7px 12px; background: #116834; border: none; border-radius: 6px; color: #FFFFFF; font-size: 0.76rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
-              <span>Proses Pengeluaran</span>
+            <button class="btn-card-proses-dispatch" data-idx="${idx}" type="button" style="flex: 2; padding: 7px 12px; background: #116834; border: none; border-radius: 6px; color: #FFFFFF; font-size: 0.76rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
+              <span>${isMataEntres ? 'Catat Pengeluaran Entres' : 'Proses Pengeluaran'}</span>
             </button>
           </div>
         `;
@@ -1257,33 +1422,25 @@ export async function renderDispatchLanding() {
         <div class="dispatch-card" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
           
           <!-- TOP ROW: DOC NO + STATUS BADGE -->
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-            <div>
-              <div style="font-weight: 800; color: #1E293B; font-size: 0.88rem; line-height: 1.2;">
-                ${esc(docNo)}
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px;">
+            <div style="min-width: 0; flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span style="font-weight: 800; color: #1E293B; font-size: 0.84rem; line-height: 1.25;">${esc(docNo)}</span>
+                ${isMataEntres ? `<span style="font-size: 0.60rem; font-weight: 800; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 1px 6px; border-radius: 4px; white-space: nowrap; line-height: 1.2;">MATA ENTRES</span>` : ''}
               </div>
-              <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
-                Tujuan: <strong>${esc(sourceEstateName)}</strong>
+              <div style="font-size: 0.72rem; color: #64748B; margin-top: 3px;">
+                Tujuan: <strong style="color: #334155;">${esc(sourceEstateName)}</strong>
               </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 4px;">
-              <span style="display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 800; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder};">
+            <div style="flex-shrink: 0;">
+              <span style="display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 800; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;">
                 ${badgeText}
               </span>
             </div>
           </div>
 
           <!-- SUMMARY KUOTA -->
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px; margin-bottom: 10px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #475569; margin-bottom: 4px;">
-              <span>Klon: <strong>${esc(approvedClone)}</strong></span>
-              <span>Disetujui: <strong>${approvedQty.toLocaleString('id-ID')} Pkk</strong></span>
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #475569;">
-              <span>Sudah Keluar: <strong style="color: #0369A1;">${totalIssued.toLocaleString('id-ID')} Pkk</strong></span>
-              <span>Sisa: <strong style="color: ${remainingQty > 0 ? '#DC2626' : '#166534'};">${remainingQty.toLocaleString('id-ID')} Pkk</strong></span>
-            </div>
-          </div>
+          ${summaryHtml}
 
           <!-- ACTIONS -->
           <div style="display: flex; justify-content: flex-end; align-items: center;">
@@ -1308,7 +1465,7 @@ export async function renderDispatchLanding() {
             </svg>
           </button>
           <h1 style="font-size: 0.82rem; font-weight: 700; color: #111111; margin: 0; letter-spacing: -0.015em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;">
-            Pengeluaran Bibit
+            Pengeluaran Bibit & Entres
           </h1>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
@@ -1367,7 +1524,11 @@ export async function renderDispatchLanding() {
       const idx = parseInt(btn.dataset.idx, 10);
       const item = filteredItems[idx];
       if (item) {
-        openDispatchDetailModal(item);
+        if (item.type === 'MATA_ENTRES') {
+          openMataEntresDetailModal(item);
+        } else {
+          openDispatchDetailModal(item);
+        }
       }
     });
   });
@@ -1378,7 +1539,11 @@ export async function renderDispatchLanding() {
       const idx = parseInt(btn.dataset.idx, 10);
       const item = filteredItems[idx];
       if (item) {
-        openDispatchModal(item, currentUser);
+        if (item.type === 'MATA_ENTRES') {
+          openMantriDispatchModal(item, currentUser, () => renderDispatchLanding());
+        } else {
+          openDispatchModal(item, currentUser);
+        }
       }
     });
   });
