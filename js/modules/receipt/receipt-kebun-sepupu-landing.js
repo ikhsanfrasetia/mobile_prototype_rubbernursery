@@ -114,8 +114,20 @@ export function getActiveBlocksForDivision(estateIdOrCode, divisionIdOrCode) {
  * @param {Object} currentUser
  * @returns {boolean}
  */
+/**
+ * Helper pemeriksaan domain: Hanya menerima record domain Bibit Kebun Sepupu
+ * @param {Object} receipt
+ * @returns {boolean}
+ */
+export function isBibitReceipt(receipt) {
+  if (!receipt) return false;
+  if (receipt.type === 'MATA_ENTRES' || receipt.transactionType === 'PENERIMAAN_MATA_ENTRES') return false;
+  return receipt.type === 'KEBUN_SEPUPU' || receipt.transactionType === 'PENERIMAAN_BIBIT' || !receipt.type;
+}
+
 export function canPerformPengurusReceiptAction(receipt, currentUser) {
   if (!receipt || !currentUser) return false;
+  if (!isBibitReceipt(receipt)) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== 'PENGURUS') return false;
 
@@ -142,6 +154,7 @@ export function canPerformPengurusReceiptAction(receipt, currentUser) {
  */
 export function canPerformAskepReceiptAction(receipt, currentUser) {
   if (!receipt || !currentUser) return false;
+  if (!isBibitReceipt(receipt)) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== 'ASKEP' && userRole !== 'ASISTEN_KEPALA') return false;
 
@@ -166,6 +179,7 @@ export function canPerformAskepReceiptAction(receipt, currentUser) {
  */
 export function canPerformAsistenLapanganReceiptAction(receipt, currentUser) {
   if (!receipt || !currentUser) return false;
+  if (!isBibitReceipt(receipt)) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== 'ASISTEN') return false;
 
@@ -199,6 +213,7 @@ export function canPerformAsistenLapanganReceiptAction(receipt, currentUser) {
  */
 export function canPerformAsistenBibitanReceiptAction(receipt, currentUser) {
   if (!receipt || !currentUser) return false;
+  if (!isBibitReceipt(receipt)) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== 'ASISTEN_BIBITAN') return false;
 
@@ -231,6 +246,7 @@ export function canPerformAsistenBibitanReceiptAction(receipt, currentUser) {
  */
 export function canPerformMantriBibitanReceiptAction(receipt, currentUser) {
   if (!receipt || !currentUser) return false;
+  if (!isBibitReceipt(receipt)) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== 'MANTRI_TANAMAN' && userRole !== 'MANTRI') return false;
 
@@ -299,6 +315,9 @@ export function filterReceiptKspRequests(receipts, currentUser) {
   if (!userEstateId) return [];
 
   return receipts.filter(r => {
+    // Isolasi Domain Positif: Hanya record domain Bibit Kebun Sepupu
+    if (!isBibitReceipt(r)) return false;
+
     const matchEstate = r.targetEstateId === userEstateId || r.targetNextEstateId === userEstateId;
     if (!matchEstate) return false;
 

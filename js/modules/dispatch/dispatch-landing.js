@@ -41,9 +41,9 @@ import { createReceiptFromDispatch } from '../../core/receipt-ksp-manager.js';
 import { RECEIPT_KSP_STATUS, RECEIPT_KSP_STATUS_LABELS } from '../../core/receipt-ksp-constants.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
 import { initBatchInventory } from '../../core/batch-inventory-service.js';
-import { 
-  openMantriDispatchModal, 
-  openMataEntresDetailModal 
+import {
+  openMantriDispatchModal,
+  openMataEntresDetailModal
 } from '../request/request-mata-entres-landing.js';
 
 let activeStatusFilter = 'SEMUA'; // 'SEMUA' | 'TERVERIFIKASI' | 'PENGELUARAN_BERJALAN' | 'SELESAI'
@@ -282,18 +282,37 @@ export function canPerformMantriDispatchAction(tx, currentUser) {
   const isKebunSendiri = tx.type === 'KEBUN_SENDIRI' || tx.transactionType === 'KEBUN_SENDIRI';
   const isMataEntres = tx.type === 'MATA_ENTRES';
   const userEstateId = currentUser.estateId;
-  const targetEstate = isKebunSendiri ? (tx.requesterEstateId || tx.estateId) : (tx.targetNextEstateId || tx.targetEstateId || tx.targetEstate);
-  if (!userEstateId || !matchEstateHelper(targetEstate, userEstateId)) return false;
+
+  let senderEstate = null;
+  let senderDivision = null;
+
+  if (isKebunSendiri) {
+    senderEstate = tx.requesterEstateId || tx.estateId;
+    senderDivision = tx.fulfillmentDivisionId;
+  } else if (isMataEntres) {
+    senderEstate = tx.targetEstateId || tx.targetEstate || tx.senderEstateId || (tx.pengeluaran?.capturedByEstateId) || tx.targetNextEstateId;
+    senderDivision = tx.sourceDivisionId || tx.senderDivisionId || tx.approval?.divisionId || tx.pengeluaran?.divisionId || tx.pengeluaran?.capturedByDivisionId || tx.targetDivisionId;
+  } else {
+    // KEBUN_SEPUPU (Bibit)
+    senderEstate = tx.targetEstateId || tx.targetEstate || tx.senderEstateId || tx.targetNextEstateId;
+    senderDivision = tx.fulfillmentDivisionId || tx.sourceDivisionId || tx.senderDivisionId || tx.targetDivisionId;
+  }
+
+  if (!userEstateId || !matchEstateHelper(senderEstate, userEstateId)) return false;
 
   // Routing validation: Estate + Division + Role
-  const targetDivision = isKebunSendiri ? tx.fulfillmentDivisionId : (tx.targetNextDivisionId || tx.targetDivisionId);
-  if (targetDivision && currentUser.divisionId && !matchDivisionHelper(targetDivision, currentUser.divisionId)) {
+  if (senderDivision && currentUser.divisionId && !matchDivisionHelper(senderDivision, currentUser.divisionId)) {
     return false;
   }
 
   const status = (tx.status || '').toUpperCase();
   if (isMataEntres) {
-    return status === 'TERVERIFIKASI' || status === 'MENUNGGU_PENGELUARAN';
+    const isMataActionable = status === 'TERVERIFIKASI' || status === 'MENUNGGU_PENGELUARAN';
+    if (!isMataActionable) return false;
+    const isAlreadyDispatched = tx.pengeluaran !== null && tx.pengeluaran !== undefined;
+    if (isAlreadyDispatched) return false;
+    const approvedBatang = parseInt(tx.approval?.approvedBatang || tx.approvedBatang || tx.jumlahBatang || tx.qty || 0, 10);
+    return approvedBatang > 0;
   }
 
   const isActionableStatus = (
@@ -325,6 +344,7 @@ export function filterDispatchRequests(requests, currentUser) {
   if (!Array.isArray(requests) || !currentUser) return [];
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   const isMantri = userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI';
+  const userEstateId = currentUser.estateId;
 
   return requests.filter(tx => {
     const isKebunSendiri = tx.type === 'KEBUN_SENDIRI' || tx.transactionType === 'KEBUN_SENDIRI';
@@ -332,15 +352,27 @@ export function filterDispatchRequests(requests, currentUser) {
     const isRequestType = tx.type === 'KEBUN_SEPUPU' || isKebunSendiri || isMataEntres || !tx.type;
     if (!isRequestType) return false;
 
-    const userEstateId = currentUser.estateId;
-    const targetEstate = isKebunSendiri ? (tx.requesterEstateId || tx.estateId) : (tx.targetNextEstateId || tx.targetEstateId || tx.targetEstate);
-    const isTarget = matchEstateHelper(targetEstate, userEstateId);
+    let senderEstate = null;
+    let senderDivision = null;
+
+    if (isKebunSendiri) {
+      senderEstate = tx.requesterEstateId || tx.estateId;
+      senderDivision = tx.fulfillmentDivisionId;
+    } else if (isMataEntres) {
+      senderEstate = tx.targetEstateId || tx.targetEstate || tx.senderEstateId || (tx.pengeluaran?.capturedByEstateId) || tx.targetNextEstateId;
+      senderDivision = tx.sourceDivisionId || tx.senderDivisionId || tx.approval?.divisionId || tx.pengeluaran?.divisionId || tx.pengeluaran?.capturedByDivisionId || tx.targetDivisionId;
+    } else {
+      // KEBUN_SEPUPU (Bibit)
+      senderEstate = tx.targetEstateId || tx.targetEstate || tx.senderEstateId || tx.targetNextEstateId;
+      senderDivision = tx.fulfillmentDivisionId || tx.sourceDivisionId || tx.senderDivisionId || tx.targetDivisionId;
+    }
+
+    const isTarget = matchEstateHelper(senderEstate, userEstateId);
     if (!isTarget) return false;
 
-    // Jika Mantri, isolasi berdasarkan Divisi Target
-    if (isMantri) {
-      const targetDivision = isKebunSendiri ? tx.fulfillmentDivisionId : (tx.targetNextDivisionId || tx.targetDivisionId);
-      if (targetDivision && currentUser.divisionId && !matchDivisionHelper(targetDivision, currentUser.divisionId)) {
+    // Jika Mantri, isolasi berdasarkan Divisi Pengirim
+    if (isMantri && senderDivision && currentUser.divisionId) {
+      if (!matchDivisionHelper(senderDivision, currentUser.divisionId)) {
         return false;
       }
     }
@@ -354,8 +386,13 @@ export function filterDispatchRequests(requests, currentUser) {
       status === 'MENUNGGU_VERIFIKASI_PENGELUARAN' ||
       status === 'MENUNGGU_PENERIMAAN' ||
       status === 'MENUNGGU_PENERIMAAN_PENGURUS' ||
+      status === 'MENUNGGU_VERIFIKASI_ASISTEN_KEPALA' ||
+      status === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
+      status === 'MENUNGGU_PENERIMAAN_MANTRI_BIBITAN' ||
+      status === 'SEDANG_DIPROSES' ||
       status === 'DIKELUARKAN' ||
       status === 'DITERIMA' ||
+      status === 'DITERIMA_DENGAN_SELISIH' ||
       status === 'SELESAI'
     );
 
@@ -373,13 +410,33 @@ export function filterDispatchByStatus(requests, statusFilter) {
   return requests.filter(tx => {
     const s = (tx.status || '').toUpperCase();
     if (statusFilter === 'TERVERIFIKASI') {
-      return s === 'TERVERIFIKASI' || s === 'MENUNGGU_PENGELUARAN_BIBIT' || s === 'MENUNGGU_PENGELUARAN';
+      if (s === 'TERVERIFIKASI' || s === 'MENUNGGU_PENGELUARAN_BIBIT' || s === 'MENUNGGU_PENGELUARAN') {
+        if (tx.type === 'MATA_ENTRES') {
+          return !tx.pengeluaran && !tx.jumlahBatangDikeluarkan;
+        }
+        return true;
+      }
+      return false;
     }
     if (statusFilter === 'PENGELUARAN_BERJALAN') {
-      return s === 'PENGELUARAN_BERJALAN' || s === 'DIKELUARKAN';
+      return (
+        s === 'PENGELUARAN_BERJALAN' ||
+        s === 'DIKELUARKAN' ||
+        s === 'MENUNGGU_PENERIMAAN_PENGURUS' ||
+        s === 'MENUNGGU_VERIFIKASI_ASISTEN_KEPALA' ||
+        s === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
+        s === 'MENUNGGU_PENERIMAAN_MANTRI_BIBITAN' ||
+        s === 'MENUNGGU_PENERIMAAN' ||
+        s === 'SEDANG_DIPROSES'
+      );
     }
     if (statusFilter === 'SELESAI') {
-      return s === 'SELESAI' || s === 'APPROVED' || s === 'MENUNGGU_PENERIMAAN_PENGURUS' || s === 'DITERIMA';
+      return (
+        s === 'SELESAI' ||
+        s === 'APPROVED' ||
+        s === 'DITERIMA' ||
+        s === 'DITERIMA_DENGAN_SELISIH'
+      );
     }
     return s === statusFilter;
   });
@@ -503,6 +560,11 @@ export async function processDispatchShipment(parentRequest, formValues, current
   // Re-fetch request terbaru untuk multi-user safety
   const allRequests = storage.get('requests_transactions', []);
   const req = allRequests.find(r => r.id === parentRequest.id) || parentRequest;
+
+  // Domain guard: Pengeluaran Bibit HANYA untuk domain Bibit
+  if (req.type === 'MATA_ENTRES') {
+    throw new Error('Permintaan Mata Entres harus diproses melalui modul Pengeluaran Mata Entres.');
+  }
 
   // Re-fetch batch stok terbaru
   const isKebunSendiri = req.type === 'KEBUN_SENDIRI' || req.transactionType === 'KEBUN_SENDIRI';
@@ -676,6 +738,10 @@ export async function processDispatchShipment(parentRequest, formValues, current
  * Buka Modal Form Proses Pengeluaran Bibit
  */
 export function openDispatchModal(item, currentUser) {
+  if (item?.type === 'MATA_ENTRES') {
+    return openMantriDispatchModal(item, currentUser, () => renderDispatchLanding());
+  }
+
   if (!canPerformMantriDispatchAction(item, currentUser)) {
     toast('Anda tidak memiliki otorisasi untuk memproses pengeluaran pada dokumen ini.', 'error');
     return;
@@ -1290,11 +1356,37 @@ export async function renderDispatchLanding() {
   const actionableCount = getActionableDispatchCount(dispatchRequests, currentUser);
 
   // Status Filter Counts
+  const isBerjalanStatus = (s) => (
+    s === 'PENGELUARAN_BERJALAN' ||
+    s === 'DIKELUARKAN' ||
+    s === 'MENUNGGU_PENERIMAAN_PENGURUS' ||
+    s === 'MENUNGGU_VERIFIKASI_ASISTEN_KEPALA' ||
+    s === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
+    s === 'MENUNGGU_PENERIMAAN_MANTRI_BIBITAN' ||
+    s === 'MENUNGGU_PENERIMAAN' ||
+    s === 'SEDANG_DIPROSES'
+  );
+  const isSelesaiStatus = (s) => (
+    s === 'SELESAI' ||
+    s === 'APPROVED' ||
+    s === 'DITERIMA' ||
+    s === 'DITERIMA_DENGAN_SELISIH'
+  );
+  const isSiapKeluarStatus = (s, item) => {
+    if (s === 'TERVERIFIKASI' || s === 'MENUNGGU_PENGELUARAN_BIBIT' || s === 'MENUNGGU_PENGELUARAN') {
+      if (item.type === 'MATA_ENTRES') {
+        return !item.pengeluaran && !item.jumlahBatangDikeluarkan;
+      }
+      return true;
+    }
+    return false;
+  };
+
   const statusCounts = {
     SEMUA: dispatchRequests.length,
-    TERVERIFIKASI: dispatchRequests.filter(t => (t.status || '').toUpperCase() === 'TERVERIFIKASI' || (t.status || '').toUpperCase() === 'MENUNGGU_PENGELUARAN_BIBIT').length,
-    PENGELUARAN_BERJALAN: dispatchRequests.filter(t => (t.status || '').toUpperCase() === 'PENGELUARAN_BERJALAN').length,
-    SELESAI: dispatchRequests.filter(t => (t.status || '').toUpperCase() === 'SELESAI').length
+    TERVERIFIKASI: dispatchRequests.filter(t => isSiapKeluarStatus((t.status || '').toUpperCase(), t)).length,
+    PENGELUARAN_BERJALAN: dispatchRequests.filter(t => isBerjalanStatus((t.status || '').toUpperCase())).length,
+    SELESAI: dispatchRequests.filter(t => isSelesaiStatus((t.status || '').toUpperCase())).length
   };
 
   // Status Filter Pills Markup
@@ -1349,16 +1441,16 @@ export async function renderDispatchLanding() {
       let badgeBorder = '#FDE68A';
       let badgeText = 'Siap Keluar';
 
-      if (statusRaw === 'PENGELUARAN_BERJALAN' || statusRaw === 'DIKELUARKAN') {
+      if (isBerjalanStatus(statusRaw)) {
         badgeBg = '#E0F2FE';
         badgeColor = '#0369A1';
         badgeBorder = '#BAE6FD';
-        badgeText = isMataEntres ? 'Dikeluarkan' : 'Berjalan';
-      } else if (statusRaw === 'SELESAI' || statusRaw === 'DITERIMA') {
+        badgeText = isMataEntres ? (statusRaw === 'DIKELUARKAN' ? 'Dikeluarkan' : 'Dalam Perjalanan') : 'Berjalan';
+      } else if (isSelesaiStatus(statusRaw)) {
         badgeBg = '#DCFCE7';
         badgeColor = '#166534';
         badgeBorder = '#BBF7D0';
-        badgeText = 'Selesai';
+        badgeText = statusRaw === 'DITERIMA_DENGAN_SELISIH' ? 'Diterima (Selisih)' : 'Selesai';
       }
 
       // Metrics & Summary
@@ -1367,8 +1459,8 @@ export async function renderDispatchLanding() {
         const approvedKlon = item.approval?.approvedKlon || item.klon || 'IRCA 19';
         const approvedBatang = item.approval?.approvedBatang || item.jumlahBatang || 0;
         const approvedMata = item.approval?.approvedMataEntres || item.jumlahMataEntres || 0;
-        const issuedBatang = item.jumlahBatangDikeluarkan !== null && item.jumlahBatangDikeluarkan !== undefined ? item.jumlahBatangDikeluarkan : 0;
-        const issuedMata = item.jumlahMataEntresDikeluarkan !== null && item.jumlahMataEntresDikeluarkan !== undefined ? item.jumlahMataEntresDikeluarkan : 0;
+        const issuedBatang = item.jumlahBatangDikeluarkan !== null && item.jumlahBatangDikeluarkan !== undefined ? item.jumlahBatangDikeluarkan : (item.pengeluaran?.jumlahBatang || 0);
+        const issuedMata = item.jumlahMataEntresDikeluarkan !== null && item.jumlahMataEntresDikeluarkan !== undefined ? item.jumlahMataEntresDikeluarkan : (item.pengeluaran?.jumlahMataEntres || 0);
 
         summaryHtml = `
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px;">
@@ -1376,7 +1468,7 @@ export async function renderDispatchLanding() {
               <div>Klon: <strong style="color: #1E293B;">${esc(approvedKlon)}</strong></div>
               <div style="text-align: right;">Disetujui: <strong style="color: #116834;">${approvedBatang.toLocaleString('id-ID')} Btg / ${approvedMata.toLocaleString('id-ID')} Mata</strong></div>
               <div>Sudah Keluar: <strong style="color: #0369A1;">${issuedBatang.toLocaleString('id-ID')} Btg / ${issuedMata.toLocaleString('id-ID')} Mata</strong></div>
-              <div style="text-align: right;">Status: <strong style="color: ${statusRaw === 'DIKELUARKAN' || statusRaw === 'SELESAI' ? '#166534' : '#B45309'};">${badgeText}</strong></div>
+              <div style="text-align: right;">Status: <strong style="color: ${isSelesaiStatus(statusRaw) ? '#166534' : (isBerjalanStatus(statusRaw) ? '#0369A1' : '#B45309')};">${badgeText}</strong></div>
             </div>
           </div>
         `;
@@ -1412,7 +1504,7 @@ export async function renderDispatchLanding() {
               Detail
             </button>
             <button class="btn-card-proses-dispatch" data-idx="${idx}" type="button" style="flex: 2; padding: 7px 12px; background: #116834; border: none; border-radius: 6px; color: #FFFFFF; font-size: 0.76rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
-              <span>${isMataEntres ? 'Catat Pengeluaran Entres' : 'Proses Pengeluaran'}</span>
+              <span>${isMataEntres ? 'Rekam Pengeluaran Entres' : 'Proses Pengeluaran'}</span>
             </button>
           </div>
         `;

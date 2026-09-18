@@ -367,3 +367,14 @@ export function buildTraceabilityChain(recordType, recordIdOrDocNo) {
     destructions: matchedDestructions
   };
 }
+
+/**
+ * Menghitung jumlah anomali konsolidasi yang actionable untuk role ASISTEN_BIBITAN / ASISTEN
+ */
+export function getActionableConsolidationCount(currentUser) {
+  if (!currentUser) return 0;
+  const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
+  if (userRole !== 'ASISTEN_BIBITAN' && userRole !== 'ASISTEN') return 0;
+  const data = getConsolidatedData(currentUser);
+  return (data.consistency?.errors?.length || 0) + (data.consistency?.warnings?.length || 0);
+}

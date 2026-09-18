@@ -1,10 +1,24 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
+import { session } from '../../core/session.js';
+import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
 import { formatStandardDocNo, formatDate } from '../../core/utils.js';
 import { guardDependency } from '../../core/dependency-guard.js';
+import { filterReceiptKspRequests, getActionableReceiptCount } from './receipt-kebun-sepupu-landing.js';
+import { getActionableMataEntresReceiptCount } from '../request/request-mata-entres-landing.js';
 
 export function renderReceiptLanding() {
   const app = document.getElementById('app');
+
+  const user = session.get();
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
+
+  const allReceipts = storage.get('receipt_ksp_transactions', []);
+  const scopedReceipts = filterReceiptKspRequests(allReceipts, userCtx);
+  const hasActionableBibitReceipt = getActionableReceiptCount(scopedReceipts, userCtx) > 0;
+
+  const allRequests = storage.get('requests_transactions', []);
+  const hasActionableEntresReceipt = getActionableMataEntresReceiptCount(allRequests, userCtx) > 0;
 
   app.innerHTML = `
     <div class="page receipt-landing-page" style="display: flex; flex-direction: column; height: 100%; background: #FAFAFA; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; position: relative;">
@@ -79,6 +93,9 @@ export function renderReceiptLanding() {
             <div style="font-weight: 700; font-size: 0.76rem; color: #116834; text-align: center; line-height: 1.2; letter-spacing: -0.015em; min-height: 30px; display: flex; align-items: center; justify-content: center;">
               Penerimaan<br>Bibit
             </div>
+            ${hasActionableBibitReceipt ? `
+              <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 8px; right: 8px; width: 10px; height: 10px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+            ` : ''}
           </button>
 
           <!-- Card 3: Penerimaan Mata Entres -->
@@ -96,6 +113,9 @@ export function renderReceiptLanding() {
             <div style="font-weight: 700; font-size: 0.76rem; color: #116834; text-align: center; line-height: 1.2; letter-spacing: -0.015em; min-height: 30px; display: flex; align-items: center; justify-content: center;">
               Penerimaan<br>Mata Entres
             </div>
+            ${hasActionableEntresReceipt ? `
+              <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 8px; right: 8px; width: 10px; height: 10px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+            ` : ''}
           </button>
 
         </div>
@@ -225,9 +245,9 @@ export function renderReceiptLanding() {
     navigate('/reception/kebun-sepupu');
   });
 
-  // --- MENU 3: PENERIMAAN MATA ENTRES (NAVIGASI PLACEHOLDER) ---
+  // --- MENU 3: PENERIMAAN MATA ENTRES ---
   app.querySelector('#btn-entres').addEventListener('click', () => {
-    navigate('/reception/placeholder');
+    navigate('/request/mata-entres');
   });
 
   // --- POPOVER & CARD ACTIONS (LIHAT / EDIT / HAPUS) ---

@@ -858,3 +858,36 @@ export function renderInspectionLanding() {
     renderInspectionLanding();
   });
 }
+
+/**
+ * Menghitung jumlah batch okulasi yang membutuhkan tindakan pemeriksaan (populasi > total diperiksa)
+ * terisolasi berdasarkan Estate & Division scope user.
+ */
+export function getActionableInspectionCount(currentUser) {
+  const buddingTxs = storage.get('budding_transactions', []).filter(b => b.type !== 'REGRAFTING');
+  const inspectionTxs = storage.get('inspection_transactions', []);
+  
+  const userEstateId = currentUser?.estateId;
+  const userDivisionId = currentUser?.divisionId;
+
+  let count = 0;
+  buddingTxs.forEach((btx, i) => {
+    if (userEstateId && btx.estateId && btx.estateId !== userEstateId) return;
+    if (userDivisionId && btx.divisionId && btx.divisionId !== userDivisionId) return;
+
+    const populasiDiokulasi = parseInt(btx.jumlah || 0);
+    let totalDiperiksa = 0;
+    inspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo || insp.buddingIndex === i).forEach(insp => {
+      totalDiperiksa += parseInt(insp.totalDiperiksa || (parseInt(insp.jumlahJadi || 0) + parseInt(insp.jumlahGagal || 0)));
+    });
+    if (populasiDiokulasi - totalDiperiksa > 0) {
+      count++;
+    }
+  });
+
+  return count;
+}
+
+export function hasActionableInspection(currentUser) {
+  return getActionableInspectionCount(currentUser) > 0;
+}

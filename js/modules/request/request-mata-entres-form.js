@@ -2,16 +2,17 @@
  * js/modules/request/request-mata-entres-form.js
  * Form Pengajuan Permintaan Mata Entres (Role Pengurus)
  * 
- * Spesifikasi Form:
+ * Spesifikasi Form Final:
  * 1. Format Nomor Dokumen: YYYY/REQ/ETRS/XXX (e.g. 2026/REQ/ETRS/001)
  * 2. Tanggal Permintaan: Current date (default hari ini, otomatis)
- * 3. Tanggal Dibutuhkan: Input Date (required)
- * 4. Jenis Klon: Master Data Klon (getActiveKlons, required)
- * 5. Jlh Batang: Input Number (min="1", required)
- * 6. Jlh Mata Entres: Input Number (min="1", required)
- * 7. Kebun Pemohon: Mengikuti estate user yang login (read-only)
- * 8. Kebun Dituju: Pilihan kebun tujuan (kebun sepupu sumber entres)
- * 9. Catatan Kebutuhan: Input catatan/deskripsi opsional
+ * 3. Kebun Pemohon: Mengikuti estate user yang login (read-only)
+ * 4. Kebun Dituju: Pilihan kebun tujuan (kebun sepupu sumber entres)
+ * 5. Tanggal Dibutuhkan: Input Date (required)
+ * 6. Kode Alokasi: Master CFNA (required)
+ * 7. Jenis Klon: Master Data Klon (getActiveKlons, required)
+ * 8. Jlh Batang: Input Number (min="1", required)
+ * 9. Catatan Permintaan: Input catatan/deskripsi opsional
+ * (Catatan: Field Jlh Mata Entres dihapus dari form input Pengurus)
  */
 
 import { navigate } from '../../core/router.js';
@@ -23,6 +24,7 @@ import { openModal, closeModal } from '../../components/modal.js';
 import { requestRepository } from '../../db/repositories.js';
 import { getActiveKlons, resolveKlon } from '../../data/klon-master.js';
 import { getActiveEstates, resolveEstate } from '../../data/estate-master.js';
+import { getActiveCfnaMaster, getCfnaByCode } from '../../data/cfna-master.js';
 import {
   formatDate,
   formatFullDateIndonesian,
@@ -71,7 +73,13 @@ export async function renderRequestMataEntresForm() {
     <option value="${esc(e.estate_id)}">${esc(e.estate_name)}</option>
   `).join('');
 
-  // 3. Pilihan Klon dari Master Data Klon
+  // 3. Kode Alokasi (Master CFNA)
+  const activeCfna = getActiveCfnaMaster();
+  const cfnaOptions = activeCfna.map(c => `
+    <option value="${esc(c.code)}">${esc(c.code)} - ${esc(c.name)}</option>
+  `).join('');
+
+  // 4. Pilihan Klon dari Master Data Klon
   const activeKlons = getActiveKlons();
   const cloneOptions = activeKlons.map(c => `
     <option value="${esc(c.canonicalName)}">${esc(c.canonicalName)}</option>
@@ -125,7 +133,7 @@ export async function renderRequestMataEntresForm() {
             Rincian Kebutuhan Mata Entres
           </h2>
 
-          <!-- FIELD: KEBUN DITUJU -->
+          <!-- FIELD 1: KEBUN DITUJU -->
           <div style="margin-bottom: 10px;">
             <label for="select-target-estate" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
               Kebun Dituju (Sumber Entres) <span style="color: #DC2626;">*</span>
@@ -136,14 +144,12 @@ export async function renderRequestMataEntresForm() {
               style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-family: inherit; background: #FFFFFF; color: #0F172A;"
               required
             >
+              <option value="" disabled selected>-- Pilih Kebun Dituju --</option>
               ${estateOptions}
             </select>
-            <div style="font-size: 0.68rem; color: #64748B; margin-top: 3px; line-height: 1.2;">
-              Pilih kebun sepupu penyedia kayu/mata entres.
-            </div>
           </div>
 
-          <!-- FIELD: TANGGAL DIBUTUHKAN -->
+          <!-- FIELD 2: TANGGAL DIBUTUHKAN -->
           <div style="margin-bottom: 10px;">
             <label for="input-required-date" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
               Tanggal Dibutuhkan <span style="color: #DC2626;">*</span>
@@ -157,12 +163,25 @@ export async function renderRequestMataEntresForm() {
               style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-family: inherit; background: #FFFFFF; color: #0F172A;"
               required
             />
-            <div style="font-size: 0.68rem; color: #64748B; margin-top: 3px; line-height: 1.2;">
-              Estimasi tanggal pelaksanaan penempelan/okulasi di kebun pemohon.
-            </div>
           </div>
 
-          <!-- FIELD: JENIS KLON -->
+          <!-- FIELD 3: KODE ALOKASI -->
+          <div style="margin-bottom: 10px;">
+            <label for="select-allocation" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
+              Kode Alokasi <span style="color: #DC2626;">*</span>
+            </label>
+            <select 
+              id="select-allocation" 
+              name="allocationCode" 
+              style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 7px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-family: inherit; background: #FFFFFF; color: #0F172A;"
+              required
+            >
+              <option value="" disabled selected>-- Pilih Kode Alokasi --</option>
+              ${cfnaOptions}
+            </select>
+          </div>
+
+          <!-- FIELD 4: JENIS KLON -->
           <div style="margin-bottom: 10px;">
             <label for="select-klon" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
               Jenis Klon <span style="color: #DC2626;">*</span>
@@ -178,51 +197,39 @@ export async function renderRequestMataEntresForm() {
             </select>
           </div>
 
-          <!-- DUAL FIELDS: JLH BATANG & JLH MATA ENTRES -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-            <div>
-              <label for="input-jumlah-batang" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
-                Jlh Batang <span style="color: #DC2626;">*</span>
-              </label>
+          <!-- FIELD 5: JLH BATANG -->
+          <div style="margin-bottom: 10px;">
+            <label for="input-jumlah-batang" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
+              Jlh Batang <span style="color: #DC2626;">*</span>
+            </label>
+            <div style="position: relative; display: flex; align-items: center;">
               <input 
                 type="number" 
                 id="input-jumlah-batang" 
                 name="jumlahBatang" 
                 min="1" 
-                placeholder="0"
-                style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-family: inherit; font-weight: 700; color: #0F172A;"
-                required
+                step="1"
+                placeholder="Masukkan jumlah batang entres" 
+                style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 50px 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.88rem; font-family: inherit; font-weight: 700; color: #0F172A;"
+                required 
               />
-              <div style="font-size: 0.66rem; color: #64748B; margin-top: 2px;">Batang / Kayu</div>
+              <span style="position: absolute; right: 12px; font-size: 0.78rem; font-weight: 700; color: #64748B;">Batang</span>
             </div>
-
-            <div>
-              <label for="input-jumlah-mata" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
-                Jlh Mata Entres <span style="color: #DC2626;">*</span>
-              </label>
-              <input 
-                type="number" 
-                id="input-jumlah-mata" 
-                name="jumlahMataEntres" 
-                min="1" 
-                placeholder="0"
-                style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-family: inherit; font-weight: 700; color: #0F172A;"
-                required
-              />
-              <div style="font-size: 0.66rem; color: #64748B; margin-top: 2px;">Mata Entres</div>
+            <div style="font-size: 0.68rem; color: #64748B; margin-top: 3px;">
+              Jumlah batang kayu entres yang diminta.
             </div>
           </div>
 
-          <!-- FIELD: CATATAN KEBUTUHAN -->
+          <!-- FIELD 6: CATATAN PERMINTAAN -->
           <div style="margin-bottom: 12px;">
             <label for="input-catatan" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
-              Catatan Kebutuhan (Opsional)
+              Catatan Permintaan (Opsional)
             </label>
             <textarea 
               id="input-catatan" 
               name="catatan" 
               rows="2" 
-              placeholder="Contoh: Kebutuhan okulasi baru batch 2 nursery blok B..."
+              placeholder="Contoh: Kebutuhan okulasi baru batch 2 nursery..."
               style="width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem; font-family: inherit; resize: vertical; color: #0F172A;"
             ></textarea>
           </div>
@@ -263,9 +270,9 @@ export async function renderRequestMataEntresForm() {
 
     const targetEstateId = app.querySelector('#select-target-estate')?.value;
     const requiredDate = app.querySelector('#input-required-date')?.value;
+    const allocationCode = app.querySelector('#select-allocation')?.value;
     const klon = app.querySelector('#select-klon')?.value;
     const jumlahBatang = parseInt(app.querySelector('#input-jumlah-batang')?.value, 10);
-    const jumlahMataEntres = parseInt(app.querySelector('#input-jumlah-mata')?.value, 10);
     const catatan = app.querySelector('#input-catatan')?.value || '';
 
     // Validasi
@@ -273,8 +280,16 @@ export async function renderRequestMataEntresForm() {
       toast('Kebun Dituju wajib dipilih', 'error');
       return;
     }
+    if (targetEstateId === user.estateId) {
+      toast('Kebun Dituju tidak boleh sama dengan kebun asal pemohon', 'error');
+      return;
+    }
     if (!requiredDate) {
       toast('Tanggal Dibutuhkan wajib diisi', 'error');
+      return;
+    }
+    if (!allocationCode) {
+      toast('Kode Alokasi wajib dipilih', 'error');
       return;
     }
     if (!klon) {
@@ -283,10 +298,6 @@ export async function renderRequestMataEntresForm() {
     }
     if (isNaN(jumlahBatang) || jumlahBatang <= 0) {
       toast('Jumlah Batang harus berupa angka lebih dari 0', 'error');
-      return;
-    }
-    if (isNaN(jumlahMataEntres) || jumlahMataEntres <= 0) {
-      toast('Jumlah Mata Entres harus berupa angka lebih dari 0', 'error');
       return;
     }
 
@@ -298,31 +309,49 @@ export async function renderRequestMataEntresForm() {
       title: 'Konfirmasi Pengajuan Permintaan',
       body: `
         <div style="font-size: 0.84rem; line-height: 1.5; color: #334155;">
-          <p style="margin: 0 0 10px 0;">Apakah Anda yakin ingin mengajukan Permintaan Mata Entres berikut?</p>
+          <p style="margin: 0 0 10px 0; color: #64748B;">
+            Pastikan data rincian permintaan mata entres di bawah ini sudah benar sebelum diajukan ke Kebun Pengirim:
+          </p>
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-            <div style="display: grid; grid-template-columns: 45% 55%; gap: 6px; font-size: 0.78rem;">
+            <div style="display: grid; grid-template-columns: 42% 58%; gap: 6px; font-size: 0.80rem;">
               <span style="color: #64748B;">No. Dokumen:</span>
               <span style="font-weight: 700; color: #116834;">${esc(docNo)}</span>
-              <span style="color: #64748B;">Kebun Tujuan:</span>
-              <span style="font-weight: 700; color: #1E293B;">${esc(targetEstateName)}</span>
+              
+              <span style="color: #64748B;">Kebun Pemohon:</span>
+              <span style="font-weight: 600;">${esc(userEstateName)}</span>
+
+              <span style="color: #64748B;">Kebun Dituju:</span>
+              <span style="font-weight: 600; color: #1E293B;">${esc(targetEstateName)}</span>
+
+              <span style="color: #64748B;">Tgl Dibutuhkan:</span>
+              <span style="font-weight: 600;">${esc(formatDate(requiredDate))}</span>
+
+              <span style="color: #64748B;">Kode Alokasi:</span>
+              <span style="font-weight: 700; color: #1E293B;">${esc(allocationCode)}</span>
+
               <span style="color: #64748B;">Jenis Klon:</span>
               <span style="font-weight: 700; color: #1E293B;">${esc(klon)}</span>
-              <span style="color: #64748B;">Jlh Batang:</span>
-              <span style="font-weight: 700; color: #1E293B;">${jumlahBatang.toLocaleString('id-ID')} Batang</span>
-              <span style="color: #64748B;">Jlh Mata Entres:</span>
-              <span style="font-weight: 700; color: #116834;">${jumlahMataEntres.toLocaleString('id-ID')} Mata</span>
-              <span style="color: #64748B;">Tgl Dibutuhkan:</span>
-              <span style="font-weight: 700; color: #1E293B;">${esc(requiredDate)}</span>
+
+              <span style="color: #64748B;">Permintaan Batang:</span>
+              <span style="font-weight: 800; color: #116834;">${jumlahBatang.toLocaleString('id-ID')} Batang</span>
+
+              ${catatan ? `
+                <span style="color: #64748B;">Catatan:</span>
+                <span style="color: #475569; font-style: italic;">${esc(catatan)}</span>
+              ` : ''}
             </div>
           </div>
+          <p style="margin: 0; font-size: 0.76rem; color: #64748B;">
+            Permintaan ini akan diteruskan ke Pengurus <strong>${esc(targetEstateName)}</strong> untuk persetujuan kuota.
+          </p>
         </div>
       `,
       footer: `
         <div style="display: flex; gap: 8px; justify-content: flex-end; width: 100%;">
-          <button type="button" id="btn-modal-cancel" style="padding: 8px 16px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-weight: 600; color: #475569; cursor: pointer;">
-            Batal
+          <button type="button" id="btn-cancel-submit" style="flex: 1; padding: 8px 14px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem; font-weight: 600; color: #475569; cursor: pointer;">
+            Periksa Kembali
           </button>
-          <button type="button" id="btn-modal-confirm" style="padding: 8px 18px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.82rem; font-weight: 700; color: #FFFFFF; cursor: pointer;">
+          <button type="button" id="btn-confirm-submit" style="flex: 1.4; padding: 8px 16px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.80rem; font-weight: 700; color: #FFFFFF; cursor: pointer;">
             Ya, Ajukan
           </button>
         </div>
@@ -330,19 +359,19 @@ export async function renderRequestMataEntresForm() {
     });
 
     const modalRoot = document.getElementById('modal-root');
-    modalRoot?.querySelector('#btn-modal-cancel')?.addEventListener('click', closeModal);
-    modalRoot?.querySelector('#btn-modal-confirm')?.addEventListener('click', async () => {
+    modalRoot?.querySelector('#btn-cancel-submit')?.addEventListener('click', closeModal);
+    modalRoot?.querySelector('#btn-confirm-submit')?.addEventListener('click', async () => {
       closeModal();
       await submitMataEntresRequest({
         docNo,
+        user,
         targetEstateId,
         targetEstateName,
         requiredDate,
+        allocationCode,
         klon,
         jumlahBatang,
-        jumlahMataEntres,
-        catatan,
-        user
+        catatan
       });
     });
   });
@@ -354,6 +383,8 @@ export async function renderRequestMataEntresForm() {
 export async function submitMataEntresRequest(data) {
   const resolvedKlon = resolveKlon(data.klon);
   const canonicalKlon = resolvedKlon ? resolvedKlon.canonicalName : (data.klon || '');
+  const resolvedCfna = getCfnaByCode(data.allocationCode);
+  const canonicalAllocation = resolvedCfna ? resolvedCfna.code : (data.allocationCode || '');
 
   const newRecord = {
     id: 'REQ-ME-' + Date.now(),
@@ -391,10 +422,11 @@ export async function submitMataEntresRequest(data) {
     targetNextRole: 'PENGURUS',
 
     // Data Permintaan Awal
+    allocationCode: canonicalAllocation,
     klon: canonicalKlon,
     jumlahBatang: Number(data.jumlahBatang),
-    jumlahMataEntres: Number(data.jumlahMataEntres),
-    qty: Number(data.jumlahMataEntres), // alias
+    jumlahMataEntres: null, // Dihapus dari input pengajuan, dihitung/diisi saat dispatch downstream
+    qty: Number(data.jumlahBatang),
     catatan: data.catatan ? data.catatan.trim() : null,
     notes: data.catatan ? data.catatan.trim() : null,
 

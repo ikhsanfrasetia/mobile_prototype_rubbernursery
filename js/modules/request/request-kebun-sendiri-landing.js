@@ -322,27 +322,39 @@ export async function renderRequestKebunSendiriLanding() {
   // Tombol Buat Permintaan: HANYA muncul untuk ASISTEN_BIBITAN dan ASISTEN (Lapangan)
   const showCreateButton = canUserCreateKebunSendiri(userCtx);
 
+  const incomingActionableCount = getActionableIncomingCount(incomingReqs, userCtx);
+  const myActionableCount = myReqs.filter(tx => canPerformRequesterReceiptAction(tx, userCtx)).length;
+
   // Tabs HTML
   const tabsHtml = isRequesterRole ? `
     <div style="background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
       <div style="display: flex; padding: 0 12px;">
-        <button id="tab-my-requests" type="button" style="flex: 1; padding: 10px 4px; background: transparent; border: none; border-bottom: 2.5px solid ${activeTab === 'MY_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'MY_REQUESTS' ? '800' : '600'}; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
+        <button id="tab-my-requests" type="button" style="flex: 1; padding: 10px 4px; background: transparent; border: none; border-bottom: 2.5px solid ${activeTab === 'MY_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'MY_REQUESTS' ? '800' : '600'}; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; position: relative;">
           <span>Permintaan Saya</span>
           <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; background: ${activeTab === 'MY_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700;">
             ${myReqs.length}
           </span>
+          ${myActionableCount > 0 ? `
+            <span class="notif-dot" style="display: inline-block; width: 7px; height: 7px; background-color: #D32F2F; border-radius: 50%; margin-left: 2px;"></span>
+          ` : ''}
         </button>
-        <button id="tab-incoming-requests" type="button" style="flex: 1; padding: 10px 4px; background: transparent; border: none; border-bottom: 2.5px solid ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'INCOMING_REQUESTS' ? '800' : '600'}; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
+        <button id="tab-incoming-requests" type="button" style="flex: 1; padding: 10px 4px; background: transparent; border: none; border-bottom: 2.5px solid ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'INCOMING_REQUESTS' ? '800' : '600'}; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; position: relative;">
           <span>Daftar Permintaan</span>
           <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; background: ${activeTab === 'INCOMING_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700;">
             ${incomingReqs.length}
           </span>
+          ${incomingActionableCount > 0 ? `
+            <span class="notif-dot" style="display: inline-block; width: 7px; height: 7px; background-color: #D32F2F; border-radius: 50%; margin-left: 2px;"></span>
+          ` : ''}
         </button>
       </div>
     </div>
   ` : `
-    <div style="padding: 10px 16px; background: #F8FAFC; border-bottom: 1px solid #E2E8F0; font-size: 0.80rem; font-weight: 700; color: #334155; flex-shrink: 0;">
-      Daftar Permintaan Masuk (${incomingReqs.length})
+    <div style="padding: 10px 16px; background: #F8FAFC; border-bottom: 1px solid #E2E8F0; font-size: 0.80rem; font-weight: 700; color: #334155; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;">
+      <span>Daftar Permintaan Masuk (${incomingReqs.length})</span>
+      ${incomingActionableCount > 0 ? `
+        <span class="notif-dot" style="display: inline-block; width: 8px; height: 8px; background-color: #D32F2F; border-radius: 50%;"></span>
+      ` : ''}
     </div>
   `;
 

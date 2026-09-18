@@ -106,14 +106,18 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
 
   const allReceipts = storage.get(RECEIPT_KSP_STORAGE_KEY, []);
   
-  // Cek idempoten: jika receipt untuk dispatchId ini sudah ada, kembalikan record existing
-  const existing = allReceipts.find(r => r.dispatchId === dispatchRecord.id);
+  // Cek idempoten: jika receipt untuk dispatchId ini atau parentRequestId (domain sama) sudah ada, kembalikan record existing
+  const isMataEntres = parentRequest.type === 'MATA_ENTRES' || dispatchRecord.transactionType === 'PENGELUARAN_MATA_ENTRES';
+  const existing = allReceipts.find(r => 
+    (r.dispatchId && r.dispatchId === dispatchRecord.id) ||
+    (r.parentRequestId && r.parentRequestId === parentRequest.id && (isMataEntres ? (r.type === 'MATA_ENTRES') : (r.type === 'KEBUN_SEPUPU' || !r.type)))
+  );
   if (existing) {
     return existing;
   }
-
   const receiptDocNo = generateReceiptDocNo(allReceipts, 2026);
-  const shippedQty = parseInt(dispatchRecord.issuedQty || dispatchRecord.qty || 0, 10);
+  const shippedQty = parseInt(dispatchRecord.issuedQty || dispatchRecord.jumlahBatangDikeluarkan || dispatchRecord.qty || parentRequest.jumlahBatang || 0, 10);
+  const shippedMata = parseInt(dispatchRecord.jumlahMataEntresDikeluarkan || parentRequest.jumlahMataEntres || 0, 10);
 
   // Buat detail penerimaan per batch sumber dari dispatchRecord.details
   const rawDetails = Array.isArray(dispatchRecord.details) ? dispatchRecord.details : [];
@@ -121,10 +125,10 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
     id: `RCP-DTL-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`,
     sourceBatchId: b.batchId || b.id || b.batchCode || `BATCH-${idx + 1}`,
     sourceBatchCode: b.batchCode || b.batchNo || '-',
-    cloneId: b.clone || b.klon || parentRequest.approvedClone || parentRequest.requestedClone || '-',
-    growthStage: parentRequest.growthStage || 'Rubber Advance Planting Material',
-    category: parentRequest.category || 'Polibag Besar',
-    qtyShipped: parseInt(b.qty || 0, 10),
+    cloneId: b.clone || b.klon || parentRequest.approvedClone || parentRequest.requestedClone || parentRequest.klon || '-',
+    growthStage: parentRequest.growthStage || (isMataEntres ? 'Kayu Entres' : 'Rubber Advance Planting Material'),
+    category: parentRequest.category || (isMataEntres ? 'Mata Entres' : 'Polibag Besar'),
+    qtyShipped: parseInt(b.qty || (isMataEntres ? shippedQty : 0), 10),
     qtyAccepted: 0,
     qtyRejected: 0,
     rejectReason: null,
@@ -138,9 +142,9 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
       id: `RCP-DTL-${Date.now()}-1`,
       sourceBatchId: dispatchRecord.batchId || 'BATCH-SRC-001',
       sourceBatchCode: dispatchRecord.batchCode || dispatchRecord.batchNo || 'B-001',
-      cloneId: dispatchRecord.clone || parentRequest.approvedClone || parentRequest.requestedClone || '-',
-      growthStage: parentRequest.growthStage || 'Rubber Advance Planting Material',
-      category: parentRequest.category || 'Polibag Besar',
+      cloneId: dispatchRecord.clone || parentRequest.approvedClone || parentRequest.requestedClone || parentRequest.klon || '-',
+      growthStage: parentRequest.growthStage || (isMataEntres ? 'Kayu Entres' : 'Rubber Advance Planting Material'),
+      category: parentRequest.category || (isMataEntres ? 'Mata Entres' : 'Polibag Besar'),
       qtyShipped: shippedQty,
       qtyAccepted: 0,
       qtyRejected: 0,
@@ -154,25 +158,29 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
     id: `RCP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     receiptDocNo: receiptDocNo,
     docNo: receiptDocNo,
+    type: isMataEntres ? 'MATA_ENTRES' : 'KEBUN_SEPUPU',
+    transactionType: isMataEntres ? 'PENERIMAAN_MATA_ENTRES' : 'PENERIMAAN_BIBIT',
     parentRequestId: parentRequest.id,
     parentRequestDocNo: parentRequest.docNo || parentRequest.nomorDokumen || '-',
     dispatchId: dispatchRecord.id,
-    dispatchDocNo: dispatchRecord.docNo,
+    dispatchDocNo: dispatchRecord.docNo || dispatchRecord.dispatchNo,
     dispatchNo: dispatchRecord.dispatchNo || dispatchRecord.docNo,
     
     // Asal & Tujuan
     sourceEstateId: dispatchRecord.estateId || currentUser?.estateId,
     sourceEstateName: dispatchRecord.estateName || currentUser?.estateName || '-',
-    targetEstateId: parentRequest.estateId, // Kebun Pemohon
-    targetEstateName: parentRequest.estateName || '-',
+    targetEstateId: parentRequest.estateId || parentRequest.sourceEstateId, // Kebun Pemohon
+    targetEstateName: parentRequest.estateName || parentRequest.sourceEstateName || '-',
     
     sourceDivisionId: dispatchRecord.divisionId || dispatchRecord.targetDivisionId || null,
     targetDivisionId: parentRequest.divisionId || null,
 
-    jalurPenerimaan: null, // Diisi nanti oleh Asisten Kepala (LAPANGAN | BIBITAN)
+    jalurPenerimaan: isMataEntres ? 'BIBITAN' : null, // Mata entres otomatis BIBITAN
 
     // Kuantitas
     totalShippedQty: shippedQty,
+    totalShippedBatang: isMataEntres ? shippedQty : null,
+    totalShippedMata: isMataEntres ? shippedMata : null,
     totalAcceptedQty: 0,
     totalRejectedQty: 0,
     discrepancyQty: 0,
@@ -183,7 +191,7 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
     statusLabel: RECEIPT_KSP_STATUS_LABELS[RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS],
 
     targetNextRole: 'PENGURUS',
-    targetNextEstateId: parentRequest.estateId, // Ditujukan ke Pengurus Kebun Pemohon
+    targetNextEstateId: parentRequest.estateId || parentRequest.sourceEstateId, // Ditujukan ke Pengurus Kebun Pemohon
     targetNextDivisionId: null,
 
     // Child Data
@@ -198,7 +206,7 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
     createdAt: new Date().toISOString()
   };
 
-  const auditDetails = `Dokumen penerimaan ${receiptDocNo} dibuat otomatis dari pengeluaran ${dispatchRecord.docNo} (${shippedQty.toLocaleString('id-ID')} Pkk)`;
+  const auditDetails = `Dokumen penerimaan ${receiptDocNo} dibuat otomatis dari pengeluaran ${dispatchRecord.docNo} (${shippedQty.toLocaleString('id-ID')} ${isMataEntres ? 'Batang' : 'Pkk'})`;
   const newReceiptRecord = applyTransactionActor(
     initialPayload,
     AUDIT_EVENT_TYPES.CREATE,

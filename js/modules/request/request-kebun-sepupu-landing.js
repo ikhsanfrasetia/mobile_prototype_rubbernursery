@@ -179,14 +179,15 @@ export function filterIncomingRequests(requests, currentUser) {
   return requests.filter(tx => {
     const isRequestType = tx.type === 'KEBUN_SEPUPU' || tx.type === 'KEBUN_SENDIRI' || !tx.type;
     if (!isRequestType) return false;
-    const targetEstate = tx.targetNextEstateId || tx.targetEstateId;
-    const isTargetEstate = targetEstate === currentUser.estateId && tx.estateId !== currentUser.estateId;
+    const targetEstate = tx.targetEstateId || tx.targetEstate || tx.senderEstateId || tx.targetNextEstateId;
+    const sourceEstate = tx.estateId || tx.sourceEstateId || tx.requesterEstate;
+    const isTargetEstate = matchEstateHelper(targetEstate, currentUser.estateId) && !matchEstateHelper(sourceEstate, currentUser.estateId);
     if (!isTargetEstate) return false;
 
     // Jika role adalah Asisten Bibitan, isolasi berdasarkan Divisi Target
     if (userRole === 'ASISTEN_BIBITAN') {
-      const targetDivision = tx.targetNextDivisionId || tx.targetDivisionId;
-      if (targetDivision && currentUser.divisionId && currentUser.divisionId !== targetDivision) {
+      const targetDivision = tx.targetDivisionId || tx.targetNextDivisionId;
+      if (targetDivision && currentUser.divisionId && !matchDivisionHelper(targetDivision, currentUser.divisionId)) {
         return false;
       }
     }

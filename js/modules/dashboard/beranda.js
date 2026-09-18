@@ -80,8 +80,13 @@ import {
   filterIncomingRequests as filterIncomingSendiriRequests,
   getActionableIncomingCount as getActionableIncomingSendiriCount
 } from '../request/request-kebun-sendiri-landing.js';
+import { getActionableMataEntresCount, getActionableMataEntresReceiptCount } from '../request/request-mata-entres-landing.js';
 import { filterReceiptKspRequests, getActionableReceiptCount } from '../receipt/receipt-kebun-sepupu-landing.js';
 import { getActionableDestructionCount } from '../destruction/destruction-manager.js';
+import { getActionableDispatchCount } from '../dispatch/dispatch-landing.js';
+import { getPendingVerificationCount } from '../verification/verification-manager.js';
+import { getActionableConsolidationCount } from '../consolidation/consolidation-manager.js';
+import { hasActionableInspection } from '../inspection/inspection-landing.js';
 import { ASISTEN_BIBITAN_MAIN_MENUS } from '../../core/menu-registry.js';
 
 function hasActionablePermintaan(requests, userCtx) {
@@ -92,7 +97,17 @@ function hasActionablePermintaan(requests, userCtx) {
   const sendiriIncoming = filterIncomingSendiriRequests(requests, userCtx);
   const sendiriCount = getActionableIncomingSendiriCount(sendiriIncoming, userCtx);
 
-  return (kspCount + sendiriCount) > 0;
+  const mataEntresCount = getActionableMataEntresCount(requests, userCtx);
+
+  return (kspCount + sendiriCount + mataEntresCount) > 0;
+}
+
+export function hasActionablePenerimaan(receipts, requests, userCtx) {
+  if (!userCtx) return false;
+  const estateReceipts = filterReceiptKspRequests(receipts || [], userCtx);
+  const bibitCount = getActionableReceiptCount(estateReceipts, userCtx);
+  const entresCount = getActionableMataEntresReceiptCount(requests || [], userCtx);
+  return (bibitCount + entresCount) > 0;
 }
 
 const PENGURUS_MENU_ITEMS = [
@@ -125,10 +140,10 @@ function renderBerandaAskep() {
 
   const allRequests = storage.get('requests_transactions', []);
   const hasActionableRequest = hasActionablePermintaan(allRequests, userCtx);
+  const hasActionableDispatch = getActionableDispatchCount(allRequests, userCtx) > 0;
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
-  const estateReceipts = filterReceiptKspRequests(allReceipts, userCtx);
-  const hasActionableReceipt = getActionableReceiptCount(estateReceipts, userCtx) > 0;
+  const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -152,6 +167,10 @@ function renderBerandaAskep() {
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
     } else if (item.id === 'penerimaan' && hasActionableReceipt) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'pengeluaran-bibit' && hasActionableDispatch) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
@@ -213,11 +232,12 @@ function renderBerandaAsisten() {
 
   const allRequests = storage.get('requests_transactions', []);
   const hasActionableRequest = hasActionablePermintaan(allRequests, userCtx);
+  const hasActionableDispatch = getActionableDispatchCount(allRequests, userCtx) > 0;
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
-  const estateReceipts = filterReceiptKspRequests(allReceipts, userCtx);
-  const hasActionableReceipt = getActionableReceiptCount(estateReceipts, userCtx) > 0;
+  const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
   const hasActionableSelectionBadge = hasActionableSelection(userCtx);
+  const hasActionableInspectionBadge = hasActionableInspection(userCtx);
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -245,6 +265,14 @@ function renderBerandaAsisten() {
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
     } else if (item.id === 'penyeleksian' && hasActionableSelectionBadge) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'pemeriksaan' && hasActionableInspectionBadge) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'pengeluaran-bibit' && hasActionableDispatch) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
@@ -306,10 +334,10 @@ function renderBerandaPengurus() {
 
   const allRequests = storage.get('requests_transactions', []);
   const hasActionableRequest = hasActionablePermintaan(allRequests, userCtx);
+  const hasActionableDispatch = getActionableDispatchCount(allRequests, userCtx) > 0;
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
-  const estateReceipts = filterReceiptKspRequests(allReceipts, userCtx);
-  const hasActionableReceipt = getActionableReceiptCount(estateReceipts, userCtx) > 0;
+  const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -333,6 +361,10 @@ function renderBerandaPengurus() {
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
     } else if (item.id === 'penerimaan' && hasActionableReceipt) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'pengeluaran-bibit' && hasActionableDispatch) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
@@ -427,16 +459,19 @@ function renderBerandaAsistenBibitan() {
 
   const allRequests = storage.get('requests_transactions', []);
   const hasActionableRequest = hasActionablePermintaan(allRequests, userCtx);
+  const hasActionableDispatch = getActionableDispatchCount(allRequests, userCtx) > 0;
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
-  const estateReceipts = filterReceiptKspRequests(allReceipts, userCtx);
-  const hasActionableReceipt = getActionableReceiptCount(estateReceipts, userCtx) > 0;
+  const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
 
   const allSelections = storage.get('selection_transactions', []);
   const hasActionableSelectionBadge = hasActionableSelection(userCtx);
 
   const allDestructions = storage.get('destruction_transactions', []);
   const hasActionableDestruction = getActionableDestructionCount(allDestructions, userCtx) > 0;
+
+  const hasActionableVerification = getPendingVerificationCount(userCtx) > 0;
+  const hasActionableConsolidation = getActionableConsolidationCount(userCtx) > 0;
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -468,6 +503,18 @@ function renderBerandaAsistenBibitan() {
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
     } else if (item.id === 'pemusnahan-bibit' && hasActionableDestruction) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'verifikasi-data' && hasActionableVerification) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'konsolidasi-data' && hasActionableConsolidation) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'pengeluaran-bibit' && hasActionableDispatch) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
@@ -614,21 +661,8 @@ export function renderBeranda() {
     }
   }
 
-  const allBuddingTxs = storage.get('budding_transactions', []);
-  const inspectionTxs = storage.get('inspection_transactions', []);
-  let hasPendingPemeriksaan = false;
-  for (let i = 0; i < allBuddingTxs.length; i++) {
-    const btx = allBuddingTxs[i];
-    const populasiDiokulasi = parseInt(btx.jumlah || 0);
-    let totalDiperiksa = 0;
-    inspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo || insp.buddingIndex === i).forEach(insp => {
-      totalDiperiksa += parseInt(insp.totalDiperiksa || (parseInt(insp.jumlahJadi || 0) + parseInt(insp.jumlahGagal || 0)));
-    });
-    if (populasiDiokulasi - totalDiperiksa > 0) {
-      hasPendingPemeriksaan = true;
-      break;
-    }
-  }
+  // Hitung pending pemeriksaan menggunakan helper terisolasi scope
+  const hasPendingPemeriksaan = hasActionableInspection(userCtx);
 
   const regraftPool = storage.get('regrafting_pool', []);
   const regraftTxs = storage.get('budding_transactions', []).filter(b => b.type === 'REGRAFTING');
@@ -664,23 +698,17 @@ export function renderBeranda() {
   // Hitung apakah terdapat tindakan penyeleksian yang diperlukan untuk user ini
   const hasPendingPenyeleksian = hasActionableSelection(userCtx);
 
-  // Hitung pending pengeluaran bibit untuk Mantri Bibitan
+  // Hitung pending pengeluaran bibit untuk Mantri Bibitan menggunakan helper standar getActionableDispatchCount
   const allRequests = storage.get('requests_transactions', []);
-  const mantriPendingRequests = allRequests.filter(tx => {
-    const isTargetEstate = (tx.targetEstateId === userCtx?.estateId || tx.targetNextEstateId === userCtx?.estateId);
-    const targetDivision = tx.targetNextDivisionId || tx.targetDivisionId;
-    const isTargetDivision = !targetDivision || !userCtx?.divisionId || targetDivision === userCtx?.divisionId;
-    const status = (tx.status || '').toUpperCase();
-    const isActionable = status === 'TERVERIFIKASI' || status === 'MENUNGGU_PENGELUARAN_BIBIT' || status === 'PENGELUARAN_BERJALAN';
-    const remainingQty = (tx.approvedQty || 0) - (tx.totalIssuedQty || tx.actualIssuedQty || 0);
-    return isTargetEstate && isTargetDivision && isActionable && remainingQty > 0;
-  });
-  const hasPendingPengeluaran = mantriPendingRequests.length > 0;
+  const hasPendingPengeluaran = getActionableDispatchCount(allRequests, userCtx) > 0;
 
-  // Hitung pending penerimaan bibit untuk Mantri Bibitan
+  // Hitung pending penerimaan (Bibit & Mata Entres) untuk Mantri Bibitan
   const allReceipts = storage.get('receipt_ksp_transactions', []);
-  const scopedReceipts = filterReceiptKspRequests(allReceipts, userCtx);
-  const hasPendingPenerimaan = getActionableReceiptCount(scopedReceipts, userCtx) > 0;
+  const hasPendingPenerimaan = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
+
+  // Hitung pending verifikasi & konsolidasi untuk Mantri
+  const hasPendingVerifikasi = getPendingVerificationCount(userCtx) > 0;
+  const hasPendingKonsolidasi = getActionableConsolidationCount(userCtx) > 0;
 
   const menuCards = MENU_ITEMS.map((item) => {
     let badgeHtml = '';
@@ -728,12 +756,14 @@ export function renderBeranda() {
       </main>
 
       <footer class="beranda-footer">
-        <button class="beranda-action-btn" id="btn-konsolidasi" type="button">
+        <button class="beranda-action-btn" id="btn-konsolidasi" type="button" style="position: relative;">
           <span class="action-text">Konfirmasi untuk Konsolidasi</span>
+          ${hasPendingKonsolidasi ? `<span class="notif-dot" style="display: inline-block; width: 8px; height: 8px; background-color: #D32F2F; border-radius: 50%; margin-left: 6px;"></span>` : ''}
           <span class="action-arrow">›</span>
         </button>
-        <button class="beranda-action-btn" id="btn-verifikasi" type="button">
+        <button class="beranda-action-btn" id="btn-verifikasi" type="button" style="position: relative;">
           <span class="action-text">Konfirmasi untuk Verifikasi</span>
+          ${hasPendingVerifikasi ? `<span class="notif-dot" style="display: inline-block; width: 8px; height: 8px; background-color: #D32F2F; border-radius: 50%; margin-left: 6px;"></span>` : ''}
           <span class="action-arrow">›</span>
         </button>
       </footer>
