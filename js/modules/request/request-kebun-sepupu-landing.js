@@ -31,8 +31,30 @@ import { toast } from '../../components/toast.js';
 import { requestRepository } from '../../db/repositories.js';
 import { resolveTransactionActor, applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 import { resolveEstate, getNurseryDivisionsByEstate, resolveNurseryDivision } from '../../data/estate-master.js';
-import { getActiveKlons } from '../../data/klon-master.js';
 import { formatDate, esc } from '../../core/utils.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
+
+export function matchEstateHelper(estA, estB) {
+  if (!estA || !estB) return true;
+  const resA = resolveEstate(estA);
+  const resB = resolveEstate(estB);
+  if (resA && resB) return resA.estate_id === resB.estate_id;
+  const cleanA = String(estA).replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const cleanB = String(estB).replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  return cleanA === cleanB || cleanA.includes(cleanB) || cleanB.includes(cleanA);
+}
+
+export function matchDivisionHelper(divA, divB) {
+  if (!divA || !divB) return true;
+  if (divA === divB) return true;
+  const cleanA = String(divA).trim().toUpperCase();
+  const cleanB = String(divB).trim().toUpperCase();
+  if (cleanA === cleanB) return true;
+  const numA = cleanA.replace(/\D/g, '');
+  const numB = cleanB.replace(/\D/g, '');
+  if (numA && numB && parseInt(numA, 10) === parseInt(numB, 10)) return true;
+  return false;
+}
 
 let activeTab = null; // 'MY_REQUESTS' | 'INCOMING_REQUESTS'
 let lastUserRoleId = null; // Track current user role to set default tab on initial role change
@@ -1574,18 +1596,11 @@ function renderEmptyState(tab) {
     ? 'Belum ada permintaan bibit kebun sepupu yang Anda buat.'
     : 'Belum ada permintaan bibit yang ditujukan ke kebun Anda.';
 
-  return `
-    <div style="text-align: center; padding: 40px 16px; background: #FFFFFF; border-radius: 10px; border: 1px dashed #CBD5E1; margin-top: 8px;">
-      <div style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 50%; background: #F1F5F9; color: #64748B; margin-bottom: 10px;">
-        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
-          <rect x="2" y="3" width="20" height="18" rx="2" ry="2"></rect>
-          <line x1="8" y1="12" x2="16" y2="12"></line>
-        </svg>
-      </div>
-      <h3 style="font-size: 0.88rem; font-weight: 700; color: #1E293B; margin: 0 0 4px;">${title}</h3>
-      <p style="font-size: 0.76rem; color: #64748B; margin: 0; line-height: 1.4;">${desc}</p>
-    </div>
-  `;
+  return renderEmptyStateCard({
+    title,
+    description: desc,
+    customStyle: 'text-align: center; padding: 40px 16px; background: #FFFFFF; border-radius: 10px; border: 1px dashed #CBD5E1; margin-top: 8px;'
+  });
 }
 
 /**

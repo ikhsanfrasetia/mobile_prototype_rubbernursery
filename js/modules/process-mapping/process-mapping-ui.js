@@ -2045,7 +2045,13 @@ function renderEndToEndView(pipeline) {
 function renderInProgressRole(roleObj) {
   return `
     <div class="pm-empty-state" style="padding: 48px 24px; text-align: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; margin: 20px;">
-      <div style="font-size: 2.5rem; margin-bottom: 12px;">📋</div>
+      <svg viewBox="0 0 24 24" width="32" height="32" stroke="#000000" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display: block; margin: 0 auto 12px auto;">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <line x1="16" y1="13" x2="8" y2="13"></line>
+        <line x1="16" y1="17" x2="8" y2="17"></line>
+        <polyline points="10 9 9 9 8 9"></polyline>
+      </svg>
       <h3 class="pm-empty-title" style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin-bottom: 8px;">Role ${escapeHtml(roleObj.name)}</h3>
       <p class="pm-empty-desc" style="max-width: 520px; margin: 0 auto 16px; font-size: 0.88rem; color: #64748b; line-height: 1.5;">
         Role <strong>${escapeHtml(roleObj.name)}</strong> berstatus aktif pada daftar role master, tetapi belum memiliki alur proses atau requirement yang didefinisikan pada baseline saat ini.

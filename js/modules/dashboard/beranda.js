@@ -19,6 +19,13 @@ import {
   hasActionableSelection, 
   getActionableSelectionCount 
 } from '../selection/selection-manager.js';
+import {
+  syncDederanIndukDocuments,
+  getDederanIndukDocuments,
+  getDederanTransactions,
+  getBedenganInspectionSummary
+} from '../seeding/dederan-manager.js';
+import { getEligiblePindahSemaiSources } from '../seeding/dederan-pindah-semai-adapter.js';
 
 /* SVG Icons sesuai desain acuan - proporsional & tajam */
 const ICONS = {
@@ -599,31 +606,13 @@ export function renderBeranda() {
     return;
   }
   
-  const txs = storage.get('receipt_transactions', []);
-  const seedingTxs = storage.get('seeding_transactions', []);
-  let hasPendingBenih = false;
-
-  for (let i = 0; i < txs.length; i++) {
-    const tx = txs[i];
-    if (tx.jenis === 'Benih / Biji Kelatak') {
-      const qty = parseInt(tx.qty || 0);
-      let accumulatedDisemai = 0;
-      let accumulatedDitolak = 0;
-      
-      seedingTxs.forEach((s) => {
-        if (s.sourceIndex == i) {
-          accumulatedDisemai += parseInt(s.totalDisemai || 0);
-          accumulatedDitolak += parseInt(s.ditolak || 0);
-        }
-      });
-      
-      const bibitTersedia = qty - accumulatedDisemai - accumulatedDitolak;
-      if (bibitTersedia > 0) {
-        hasPendingBenih = true;
-        break;
-      }
-    }
-  }
+  // Hitung pending Penyemaian (Dederan Belum Selesai ATAU Pindah Semai Eligible Belum Selesai)
+  syncDederanIndukDocuments();
+  const dederIndukDocs = getDederanIndukDocuments();
+  const hasPendingDederan = dederIndukDocs.some(d => (d.sisaBelumDeder || 0) > 0);
+  const eligiblePindahSemai = getEligiblePindahSemaiSources();
+  const hasPendingPindahSemai = eligiblePindahSemai.some(s => (s.remainingQty || 0) > 0);
+  const hasPendingBenih = hasPendingDederan || hasPendingPindahSemai;
 
   // Check pending grafting batches from Dokumen Seleksi III FINAL (Konsisten dengan modul Okulasi)
   const allSelectionDocs = storage.get('pre_grafting_selection_documents', []);
@@ -661,8 +650,20 @@ export function renderBeranda() {
     }
   }
 
-  // Hitung pending pemeriksaan menggunakan helper terisolasi scope
-  const hasPendingPemeriksaan = hasActionableInspection(userCtx);
+  // Hitung pending pemeriksaan (Dederan Siap Periksa ATAU Okulasi Siap Periksa)
+  const dederTxs = getDederanTransactions();
+  let hasPendingDederanInspection = false;
+  for (const dtx of dederTxs) {
+    const p = dederIndukDocs.find(d => d.docNo === dtx.parentDederIndukDocNo || d.id === dtx.parentDederIndukId);
+    if (p && p.sisaBelumDeder === 0) {
+      const summary = getBedenganInspectionSummary(dtx);
+      if (!summary.isComplete && summary.sisaBelumDiperiksa > 0) {
+        hasPendingDederanInspection = true;
+        break;
+      }
+    }
+  }
+  const hasPendingPemeriksaan = hasPendingDederanInspection || hasActionableInspection(userCtx);
 
   const regraftPool = storage.get('regrafting_pool', []);
   const regraftTxs = storage.get('budding_transactions', []).filter(b => b.type === 'REGRAFTING');
@@ -695,8 +696,10 @@ export function renderBeranda() {
     console.warn('[beranda] Gagal sinkronisasi data seeding:', err);
   }
 
-  // Hitung apakah terdapat tindakan penyeleksian yang diperlukan untuk user ini
-  const hasPendingPenyeleksian = hasActionableSelection(userCtx);
+  // Hitung apakah terdapat tindakan penyeleksian (Dederan Rejection PENDING_DECLARATION ATAU Pra/Pasca Okulasi)
+  const selectionPool = storage.get('selection_pool', []);
+  const hasPendingDederanRejection = selectionPool.some(s => s.originType === 'REJECT_DEDERAN' && s.status === 'PENDING_DECLARATION');
+  const hasPendingPenyeleksian = hasPendingDederanRejection || hasActionableSelection(userCtx);
 
   // Hitung pending pengeluaran bibit untuk Mantri Bibitan menggunakan helper standar getActionableDispatchCount
   const allRequests = storage.get('requests_transactions', []);

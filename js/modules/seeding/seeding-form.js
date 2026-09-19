@@ -7,6 +7,7 @@ import { getActiveBatches, getBatchById, getBatchByCode } from '../../data/batch
 import { getActiveBedengan, getBedenganById, getBedenganByCode } from '../../data/bedengan-master.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
 import { integrateSeedingToSelectionPool } from '../selection/selection-manager.js';
+import { getEligiblePindahSemaiSources } from './dederan-pindah-semai-adapter.js';
 
 export function renderSeedingForm() {
   const app = document.getElementById('app');
@@ -14,10 +15,14 @@ export function renderSeedingForm() {
   const userCtx = getCurrentUserContext();
   const today = formatDate(new Date().toISOString());
 
-  // Get source transaction
+  // Get source transaction (from Dederan adapter first, or receipt fallback)
   const sourceIdx = storage.get('seeding_source_index', null);
-  const txs = storage.get('receipt_transactions', []);
-  const sourceTx = txs[sourceIdx] || {};
+  const eligibleSources = getEligiblePindahSemaiSources();
+  let sourceTx = eligibleSources.find(s => s.sourceIndex == sourceIdx || s.docNo == sourceIdx || s.dederanTxDocNo == sourceIdx);
+  if (!sourceTx) {
+    const txs = storage.get('receipt_transactions', []);
+    sourceTx = txs[sourceIdx] || eligibleSources[0] || {};
+  }
   const sourceDocNo = sourceTx.docNo || sourceTx.nomorDokumen || formatStandardDocNo(2026, 'APR', (parseInt(sourceIdx || 0) + 1));
   const docNo = sourceDocNo;
 
@@ -98,13 +103,13 @@ export function renderSeedingForm() {
   const activeKlons = getActiveKlons();
   const klonList = activeKlons.map(k => k.canonicalName);
   
-  const totalPenerimaan = parseInt(sourceTx.qty || 0);
+  const totalPenerimaan = parseInt(sourceTx.totalBerhasil !== undefined ? sourceTx.totalBerhasil : (sourceTx.qty || 0));
 
   // Calculate previous accumulations for this source document
   let accumulatedDisemai = 0;
   let accumulatedDitolak = 0;
   seedingTxs.forEach((s, idx) => {
-    if (s.sourceIndex == sourceIdx) {
+    if (s.sourceIndex == sourceIdx || s.sourceDocNo === sourceDocNo || (s.dederanTxDocNo && sourceTx.dederanTxDocNo && s.dederanTxDocNo === sourceTx.dederanTxDocNo)) {
       // If editing, don't count the current transaction in the previous balance
       if (editIdx === null || editIdx != idx) {
         accumulatedDisemai += parseInt(s.totalDisemai || 0);
@@ -723,6 +728,8 @@ export function renderSeedingForm() {
       docNo: seedingDocNo,
       sourceDocNo: sourceDocNo,
       sourceIndex: sourceIdx,
+      dederanTxDocNo: sourceTx.dederanTxDocNo || null,
+      parentDederIndukDocNo: sourceTx.parentDederIndukDocNo || null,
       // Canonical Foreign Keys
       programId: finalProgramId,
       programCode: finalProgramCode,

@@ -37,6 +37,7 @@ import {
   INVENTORY_TX_TYPE
 } from '../../core/batch-inventory-service.js';
 import { formatDate, formatStandardDocNo, esc } from '../../core/utils.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { createReceiptFromDispatch } from '../../core/receipt-ksp-manager.js';
 import { RECEIPT_KSP_STATUS, RECEIPT_KSP_STATUS_LABELS } from '../../core/receipt-ksp-constants.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
@@ -1413,17 +1414,10 @@ export async function renderDispatchLanding() {
   // Render Card Transaksi
   let cardsHtml = '';
   if (filteredItems.length === 0) {
-    cardsHtml = `
-      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center;">
-        <div style="width: 56px; height: 56px; border-radius: 50%; background: #F1F5F9; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; color: #94A3B8;">
-          ${ICONS.truck}
-        </div>
-        <div style="font-size: 0.90rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Tidak ada dokumen pengeluaran</div>
-        <div style="font-size: 0.76rem; color: #64748B; max-width: 260px; line-height: 1.4;">
-          ${activeStatusFilter === 'SEMUA' ? 'Belum ada dokumen permintaan bibit / entres yang siap untuk diproses pengeluaran.' : 'Tidak ada dokumen dengan filter status ini.'}
-        </div>
-      </div>
-    `;
+    cardsHtml = renderEmptyStateCard({
+      title: 'Tidak ada dokumen pengeluaran',
+      description: activeStatusFilter === 'SEMUA' ? 'Belum ada dokumen permintaan bibit / entres yang siap untuk diproses pengeluaran.' : 'Tidak ada dokumen dengan filter status ini.'
+    });
   } else {
     cardsHtml = filteredItems.map((item, idx) => {
       const isMataEntres = item.type === 'MATA_ENTRES';

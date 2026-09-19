@@ -3,6 +3,7 @@ import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
 import { formatBedenganCode } from './budding-grafting.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 
 export function renderBuddingRegrafting() {
   const app = document.getElementById('app');
@@ -355,21 +356,11 @@ export function renderBuddingRegrafting() {
               `;
             }).join('')}
           </div>
-        ` : `
-          <div style="background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 32px 16px; text-align: center; margin-top: 24px;">
-            <div style="width: 48px; height: 48px; border-radius: 50%; background: #E8F5E9; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; color: #116834;">
-              <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-            </div>
-            <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Belum Ada Bibit Siap Regrafting</h3>
-            <p style="font-size: 0.78rem; color: #757575; margin: 0; line-height: 1.4;">
-              Saat hasil Pemeriksaan Okulasi memiliki bibit tidak berhasil dan opsi <strong>"Perlu Okulasi Janda"</strong> dicentang, data otomatis akan masuk ke sini.
-            </p>
-          </div>
-        `}
+        ` : renderEmptyStateCard({
+          title: 'Belum Ada Bibit Siap Regrafting',
+          description: 'Saat hasil Pemeriksaan Okulasi memiliki bibit tidak berhasil dan opsi "Perlu Okulasi Janda" dicentang, data otomatis akan masuk ke sini.',
+          customStyle: 'margin-top: 24px;'
+        })}
 
         <!-- HISTORI / RINGKASAN DATA REGRAFTING DENGAN MENU AKSI 3-DOTS (...) -->
         ${regraftTxs.length > 0 ? `

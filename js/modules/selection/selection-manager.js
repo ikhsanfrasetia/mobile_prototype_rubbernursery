@@ -246,6 +246,9 @@ export function hasActionableSelection(currentUser) {
  */
 export function getSelectionSourceLabel(item) {
   if (!item) return 'Transaksi Seleksi';
+  if (item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN') {
+    return 'Pemeriksaan Dederan';
+  }
   if (item.sourceModule === 'PENYEMAIAN' || item.originType === 'REJECT_PENYEMAIAN') {
     return 'Transaksi Penyemaian';
   }
@@ -387,7 +390,7 @@ export function findExistingSelectionTransaction(item) {
   const itemCat = normCat(item.category || item.alasanDitolakCategory || 'AFKIR');
   const itemSourceDoc = String(item.sourceDocNo || item.seedingDocNo || item.buddingDocNo || item.inspectionDocNo || '').trim();
   const itemSourceTxId = String(item.sourceTransactionId || itemSourceDoc || item.id || '').trim();
-  const itemDocNo = String(item.docNo || item.selectionNo || '').trim();
+  const itemDocNo = String(item.docNo || item.selectionNo || item.selectionPoolDocNo || '').trim();
 
   return allTxs.find(tx => {
     // 1. Direct match by transaction ID or Selection ID
@@ -400,7 +403,7 @@ export function findExistingSelectionTransaction(item) {
 
     // 2. Direct match by selectionPoolDocNo or docNo
     if (itemDocNo && (tx.selectionPoolDocNo === itemDocNo || tx.docNo === itemDocNo)) {
-      if (itemCat && normCat(tx.category) !== itemCat) return false;
+      if (itemCat && normCat(tx.category) !== itemCat && itemCat !== 'PENDING_DECLARATION' && normCat(tx.category) !== 'PENDING_DECLARATION') return false;
       return true;
     }
 
@@ -409,15 +412,21 @@ export function findExistingSelectionTransaction(item) {
     const txSourceTxId = String(tx.sourceTransactionId || '').trim();
     const txCat = normCat(tx.category || tx.alasanDitolakCategory || 'AFKIR');
 
+    const validItemDoc = itemSourceDoc && itemSourceDoc !== '-';
+    const validTxDoc = txSourceDoc && txSourceDoc !== '-';
+    const validItemTxId = itemSourceTxId && itemSourceTxId !== '-';
+    const validTxTxId = txSourceTxId && txSourceTxId !== '-';
+
     const sourceMatches = (
-      (itemSourceDoc && txSourceDoc && itemSourceDoc === txSourceDoc) ||
-      (itemSourceTxId && txSourceTxId && itemSourceTxId === txSourceTxId) ||
-      (itemSourceDoc && txSourceTxId && itemSourceDoc === txSourceTxId) ||
-      (itemSourceTxId && txSourceDoc && itemSourceTxId === txSourceDoc)
+      (validItemDoc && validTxDoc && itemSourceDoc === txSourceDoc) ||
+      (validItemTxId && validTxTxId && itemSourceTxId === txSourceTxId) ||
+      (validItemDoc && validTxTxId && itemSourceDoc === txSourceTxId) ||
+      (validItemTxId && validTxDoc && itemSourceTxId === txSourceDoc)
     );
 
-    if (sourceMatches && itemCat === txCat) {
-      return true;
+    if (sourceMatches) {
+      if (itemCat === txCat) return true;
+      if (item.originType === tx.originType && (item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN')) return true;
     }
 
     return false;
@@ -2481,7 +2490,7 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = []) 
 
   // Over-quota protection: check against remaining polybag for this bedengan
   if (matchedBed && polybagScope > matchedBed.remainingPolybag) {
-    errors.push('Jumlah polybag melebihi sisa populasi yang belum diperiksa.');
+    errors.push(`Jumlah polybag melebihi sisa populasi yang belum diperiksa (melebihi sisa polybag: ${matchedBed.remainingPolybag}).`);
   }
 
   if (isNaN(p2) || p2 < 0) errors.push('Jumlah polybag 2 bibit tidak boleh negatif.');
@@ -2688,8 +2697,8 @@ export function createSeleksi1ExecutionTransaction(payload, currentUser) {
       emptyPolybagQty: updatedEmptyPolybagQty,
       currentBibitQty: updatedCurrentBibitQty,
       currentPolybagQty: updatedActivePolybagQty,
-      isCompleted: isAllChecked ? true : Boolean(currentParent.isCompleted),
-      status: (isAllChecked || currentParent.isCompleted) ? 'COMPLETED' : 'IN_PROGRESS',
+      isCompleted: Boolean(currentParent.isCompleted),
+      status: currentParent.isCompleted ? 'COMPLETED' : 'IN_PROGRESS',
       updatedAt: new Date().toISOString()
     };
 

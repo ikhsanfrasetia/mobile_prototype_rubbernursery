@@ -2,6 +2,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 
 /**
  * Format string atau kode Bedengan agar seragam menjadi Kode Bedengan (misal: BED-001, BED-002)
@@ -298,19 +299,11 @@ export function renderBuddingGrafting() {
               `;
             }).join('')}
           </div>
-        ` : `
-          <div style="background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 32px 16px; text-align: center; margin-top: 24px;">
-            <div style="width: 48px; height: 48px; border-radius: 50%; background: #E8F5E9; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; color: #116834;">
-              <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
-                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-              </svg>
-            </div>
-            <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 6px 0;">Belum Ada Bibit Siap Diokulasi</h3>
-            <p style="font-size: 0.78rem; color: #757575; margin: 0; line-height: 1.4;">
-              Belum ada bibit yang siap diokulasi. Seleksi III belum final.
-            </p>
-          </div>
-        `}
+        ` : renderEmptyStateCard({
+          title: 'Belum Ada Bibit Siap Diokulasi',
+          description: 'Belum ada bibit yang siap diokulasi. Seleksi III belum final.',
+          customStyle: 'margin-top: 24px;'
+        })}
 
         <!-- HISTORI / RINGKASAN DATA OKULASI DENGAN MENU AKSI 3-DOTS (...) -->
         ${buddingTxs.length > 0 ? `

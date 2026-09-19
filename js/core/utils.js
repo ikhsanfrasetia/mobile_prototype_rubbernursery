@@ -136,6 +136,13 @@ export const MODULE_DOC_CODES = {
   PGL: 'PGL',
   attendance: 'PRS',
   syncQueue: 'SYN',
+  dederanInduk: 'DDR',
+  'DDR': 'DDR',
+  'DED-IND': 'DDR',
+  dederan: 'DED',
+  DED: 'DED',
+  dederanInspection: 'DED-INS',
+  'DED-INS': 'DED-INS',
   mataEntres: 'REQ/ETRS',
   MATA_ENTRES: 'REQ/ETRS',
   'REQ/ETRS': 'REQ/ETRS'

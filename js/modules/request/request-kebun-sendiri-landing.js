@@ -23,6 +23,7 @@ import { resolveEstate } from '../../data/estate-master.js';
 import { getActiveKlons, resolveKlon } from '../../data/klon-master.js';
 import { formatDate, formatFullDateIndonesian, nowISO, todayISO, esc } from '../../core/utils.js';
 import { deductMultiBatchStock, getNurseryBatches } from '../dispatch/dispatch-landing.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 
 let activeTab = null; // 'MY_REQUESTS' | 'INCOMING_REQUESTS'
 let lastUserRoleId = null; // Track current user role to set default tab on initial role change
@@ -372,18 +373,10 @@ export async function renderRequestKebunSendiriLanding() {
   `;
 
   // Request Cards
-  const cardsHtml = filteredList.length === 0 ? `
-    <div style="padding: 48px 20px; text-align: center; color: #94A3B8;">
-      <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" stroke-width="1.5" fill="none" style="margin: 0 auto 12px auto; display: block; opacity: 0.5;">
-        <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-        <line x1="9" y1="9" x2="15" y2="9"></line>
-        <line x1="9" y1="13" x2="15" y2="13"></line>
-        <line x1="9" y1="17" x2="12" y2="17"></line>
-      </svg>
-      <div style="font-size: 0.92rem; font-weight: 700; color: #475569;">Belum Ada Permintaan</div>
-      <div style="font-size: 0.78rem; margin-top: 4px; color: #94A3B8;">Tidak ada dokumen permintaan bibit kebun sendiri pada kategori ini.</div>
-    </div>
-  ` : filteredList.map((tx, idx) => {
+  const cardsHtml = filteredList.length === 0 ? renderEmptyStateCard({
+    title: 'Belum Ada Permintaan',
+    description: 'Tidak ada dokumen permintaan bibit kebun sendiri pada kategori ini.'
+  }) : filteredList.map((tx, idx) => {
     const isExpanded = expandedCardIndex === idx;
     const badge = getStatusBadge(tx.status);
     const requestedQty = (tx.requestedQty || tx.qty || 0).toLocaleString('id-ID');

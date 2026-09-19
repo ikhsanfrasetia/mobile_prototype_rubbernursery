@@ -32,6 +32,7 @@ import {
   requestRepository,
   syncQueueRepository
 } from '../../db/repositories.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 
 // Konfigurasi 12 Modul Transaksi Pembibitan
 const MODULE_CONFIGS = {
@@ -285,16 +286,11 @@ export async function renderTransactionManager() {
 
       <!-- MAIN LIST CONTENT -->
       <main style="flex: 1; overflow-y: auto; padding: 14px 16px;">
-        ${items.length === 0 ? `
-          <div style="text-align: center; padding: 48px 16px; background: #FFFFFF; border-radius: 10px; border: 1px dashed #CBD5E1;">
-            <div style="display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #F1F5F9; color: #64748B; margin-bottom: 12px;">
-              ${currentConfig.icon}
-            </div>
-            <h3 style="font-size: 0.95rem; font-weight: 700; color: #1E293B; margin: 0 0 6px;">Belum Ada Data Transaksi</h3>
-            <p style="font-size: 0.78rem; color: #64748B; margin: 0 0 16px;">Silakan buat transaksi baru menggunakan tombol di bawah ini.</p>
-            <button class="btn-empty-add" style="background: #116834; color: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; padding: 8px 16px; border-radius: 6px; cursor: pointer;">+ Tambah Transaksi</button>
-          </div>
-        ` : `
+        ${items.length === 0 ? renderEmptyStateCard({
+          title: 'Belum Ada Data Transaksi',
+          description: 'Silakan buat transaksi baru menggunakan tombol di bawah ini.',
+          actionHtml: '<button class="btn-empty-add" style="background: #116834; color: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; padding: 8px 16px; border-radius: 6px; cursor: pointer;">+ Tambah Transaksi</button>'
+        }) : `
           <div style="display: flex; flex-direction: column; gap: 10px;">
             ${items.map((item, index) => renderTransactionCard(item, index, activeTab, currentConfig)).join('')}
           </div>

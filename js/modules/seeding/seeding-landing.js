@@ -1,403 +1,536 @@
+/**
+ * modules/seeding/seeding-landing.js
+ * Landing Hub for Penyemaian with Dual-Tab Architecture:
+ * 1. 🌱 Dederan (Dokumen Induk Deder & Transaksi Dederan)
+ * 2. 🌿 Pindah Semai (Consuming Eligible 100% Completed Dederan Inspection Results)
+ *
+ * Preserves all legacy downstream identifiers (seeding_transactions, seedings, SOW, etc.).
+ */
+
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { guardDependency } from '../../core/dependency-guard.js';
+import {
+  syncDederanIndukDocuments,
+  getDederanIndukDocuments,
+  getDederanTransactions,
+  getDederanTransactionsByParent,
+  getBedenganInspectionSummary,
+  deleteDederanTransaction
+} from './dederan-manager.js';
+import { getEligiblePindahSemaiSources } from './dederan-pindah-semai-adapter.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { toast } from '../../components/toast.js';
+
+let activeTab = 'DEDERAN'; // 'DEDERAN' | 'PINDAH_SEMAI'
 
 export function renderSeedingLanding() {
   const app = document.getElementById('app');
+  if (!app) return;
 
-  // Load transactions
-  const txs = storage.get('receipt_transactions', []);
-  // Filter for Benih and keep original index
-  const benihTxs = txs
-    .map((tx, originalIndex) => ({ ...tx, originalIndex }))
-    .filter(tx => tx.jenis === 'Benih / Biji Kelatak');
-  
-  // Seeding transactions
+  // Sync Dederan Induk with Benih receipts (1:1)
+  syncDederanIndukDocuments();
+
+  const dederanIndukDocs = getDederanIndukDocuments();
+  const dederanTxs = getDederanTransactions();
+  const eligiblePindahSemai = getEligiblePindahSemaiSources();
   const seedingTxs = storage.get('seeding_transactions', []);
 
+  // Counts for tab badges
+  const pendingDederCount = dederanIndukDocs.filter(d => (d.sisaBelumDeder || 0) > 0).length;
+  const pendingPindahCount = eligiblePindahSemai.filter(s => (s.remainingQty || 0) > 0).length;
+
   app.innerHTML = `
-    <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: sans-serif;">
+    <div class="page seeding-landing-page" style="display: flex; flex-direction: column; height: 100%; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
       <!-- HEADER -->
-      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #D9D9D9; flex-shrink: 0;">
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
         <div style="display: flex; align-items: center;">
-          <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="#116834" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <line x1="19" y1="12" x2="5" y2="12"></line>
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <span style="margin-left: 8px; font-size: 1.15rem; font-weight: 700; color: #116834;">Penyemaian Benih</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button id="btn-search" type="button" aria-label="Cari" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#999999" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-          </button>
-          <button id="btn-filter" type="button" aria-label="Filter Kalender" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#999999" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
-          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 0 6px; letter-spacing: -0.01em;">Penyemaian & Dederan</h1>
         </div>
       </header>
 
-      <main style="flex: 1; overflow-y: auto;">
-        
-        <!-- PENDING SEEDING CARDS -->
-        <div style="padding: 12px 16px; background: #FFFFFF; border-bottom: 1px solid #D9D9D9;">
-          ${benihTxs.length > 0 ? benihTxs.map((tx, idx) => {
-            const docNo = tx.docNo || tx.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
-            
-            // Accumulate values
-            let ttlDisemaiSDHI = 0;
-            let ttlPolybagSDHI = 0;
-            let ttlDitolakSDHI = 0;
-            const relatedTxs = seedingTxs.filter(s => s.sourceIndex == tx.originalIndex);
-            relatedTxs.forEach(r => {
-              const disemaiVal = parseInt(r.totalDisemai || 0);
-              ttlDisemaiSDHI += disemaiVal;
-              ttlPolybagSDHI += parseInt(r.totalPolybag !== undefined ? r.totalPolybag : Math.ceil(disemaiVal / 2));
-              ttlDitolakSDHI += parseInt(r.ditolak || 0);
-            });
-            const qty = parseInt(tx.qty || 0);
-            const bibitTersedia = qty - ttlDisemaiSDHI - ttlDitolakSDHI;
+      <!-- DUAL TAB NAVIGATION -->
+      <div style="display: flex; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 16px; gap: 16px;">
+        <button id="tab-btn-dederan" type="button" style="padding: 12px 4px; font-size: 0.82rem; font-weight: ${activeTab === 'DEDERAN' ? '700' : '600'}; color: ${activeTab === 'DEDERAN' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeTab === 'DEDERAN' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+          <span>Dederan Benih</span>
+          ${pendingDederCount > 0 ? `<span style="background: #116834; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${pendingDederCount}</span>` : ''}
+        </button>
 
-            // Determine status text and color (PERTAHANKAN LOGIC STATUS)
-            let statusText = 'Belum Disemai';
-            let statusColor = '#999999'; // grey
+        <button id="tab-btn-pindah-semai" type="button" style="padding: 12px 4px; font-size: 0.82rem; font-weight: ${activeTab === 'PINDAH_SEMAI' ? '700' : '600'}; color: ${activeTab === 'PINDAH_SEMAI' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeTab === 'PINDAH_SEMAI' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+          <span>Pindah Semai</span>
+          ${pendingPindahCount > 0 ? `<span style="background: #D97706; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${pendingPindahCount}</span>` : ''}
+        </button>
+      </div>
 
-            if (ttlDisemaiSDHI === 0 && ttlDitolakSDHI === 0) {
-              statusText = 'Belum Disemai';
-              statusColor = '#999999';
-            } else if (bibitTersedia <= 0) {
-              statusText = 'Selesai Disemai';
-              statusColor = '#116834'; // green
-            } else {
-              statusText = 'Semai Belum Selesai';
-              statusColor = '#F57F17'; // orange
-            }
-
-            // Top badge logic
-            let topBadgeText = bibitTersedia <= 0 ? 'Selesai Disemai' : 'Perlu Disemai';
-            let topBadgeBg = bibitTersedia <= 0 ? '#E8F5E9' : '#E53935';
-            let topBadgeColor = bibitTersedia <= 0 ? '#116834' : '#FFFFFF';
-            let topBadgeBorder = bibitTersedia <= 0 ? '1px solid #116834' : 'none';
-
-            return `
-            <div style="border: 1px solid #D9D9D9; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #FFFFFF;">
-              
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-                <div style="flex: 1; min-width: 0;">
-                  <div style="font-size: 0.72rem; font-weight: 700; color: #666666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Dokumen Penerimaan</div>
-                  <div class="btn-seeding-form" data-index="${tx.originalIndex}" data-status="${statusText}" style="font-weight: 700; font-size: 0.95rem; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;">${docNo}</div>
-                  <div style="font-size: 0.8rem; color: #888888; margin-top: 3px;">Tanggal Penerimaan: ${tx.tanggal || '28/08/2026'}</div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                  <span style="background: ${topBadgeBg}; color: ${topBadgeColor}; font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; white-space: nowrap; border: ${topBadgeBorder};">${topBadgeText}</span>
-                  <svg class="btn-seeding-form" data-index="${tx.originalIndex}" data-status="${statusText}" viewBox="0 0 24 24" width="18" height="18" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer;">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                </div>
-              </div>
-              
-              <hr style="border: none; border-top: 1px solid #EFEFEF; margin: 12px 0;" />
-              
-              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px;">
-                <div style="flex: 1; min-width: 0; font-size: 0.88rem; color: #333333;">
-                  <span style="color: #666666; font-size: 0.8rem;">Program:</span> <strong style="color: #111111;">${tx.program || 'PRG/NUR/01/2026'}</strong>
-                </div>
-                <span class="btn-lihat-penerimaan" data-index="${tx.originalIndex}" style="font-size: 0.8rem; color: #4A90E2; cursor: pointer; flex-shrink: 0; text-decoration: none; font-weight: 600;">Lihat Penerimaan</span>
-              </div>
-              
-              <div class="card-details-content" style="display: none; flex-direction: column;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Tahapan Pertumbuhan</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.tahapan || 'Rubber Main Nursery'}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Penerimaan</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${qty.toLocaleString('id-ID')}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Disemai SDHI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${ttlDisemaiSDHI.toLocaleString('id-ID')}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Polybag SDHI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${ttlPolybagSDHI.toLocaleString('id-ID')}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Banyaknya Ditolak SDHI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${ttlDitolakSDHI.toLocaleString('id-ID')}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Sisa Benih Belum Disemai</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${Math.max(0, bibitTersedia).toLocaleString('id-ID')}</span>
-                </div>
-              </div>
-              
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-                <div class="btn-expand-card" style="font-size: 0.8rem; color: #116834; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                  <span class="expand-text">Tampilkan Detail</span>
-                  <svg class="expand-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s;">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </div>
-                <div style="text-align: right; font-weight: 700; font-size: 0.8rem; color: ${statusColor};">
-                  ${statusText}
-                </div>
-              </div>
-            </div>
-            `;
-          }).join('') : `
-            <div style="text-align: center; color: #999999; font-size: 0.9rem; padding: 12px 0;">Tidak ada dokumen penerimaan benih yang perlu disemai.</div>
-          `}
-        </div>
-
-        <!-- RINGKASAN PENYEMAIAN -->
-        <div style="padding: 24px 16px;">
-          <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 24px 0;">Ringkasan Penyemaian (${seedingTxs.length})</h2>
-          
-          ${seedingTxs.length > 0 ? seedingTxs.map((tx, idx) => {
-            const seedingDocNo = (tx.docNo ? tx.docNo.replace('/SEM/', '/SOW/') : formatStandardDocNo(2026, 'SOW', idx + 1));
-            const seedingDisemai = parseInt(tx.totalDisemai || 0);
-            const seedingPolybag = parseInt(tx.totalPolybag !== undefined ? tx.totalPolybag : Math.ceil(seedingDisemai / 2));
-            return `
-            <div style="border: 1px solid #D9D9D9; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #FFFFFF; position: relative;">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-                <div style="flex: 1; min-width: 0;">
-                  <div style="font-weight: 700; font-size: 0.95rem; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${seedingDocNo}</div>
-                  <div style="font-size: 0.8rem; color: #999999; margin-top: 4px;">Penyemaian, ${tx.date || '28/08/2026'}</div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0; position: relative;">
-                  <span style="background: #E8F5E9; color: #116834; font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; white-space: nowrap; border: 1px solid #116834;">Telah Disemai</span>
-                  <button class="btn-card-menu-seeding" data-index="${idx}" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #111;">
-                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="1"></circle>
-                      <circle cx="12" cy="5" r="1"></circle>
-                      <circle cx="12" cy="19" r="1"></circle>
-                    </svg>
-                  </button>
-                  <div class="card-popover-seeding" id="popover-seeding-${idx}" style="display: none; position: absolute; top: 28px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
-                    <button class="btn-popover-seeding-edit" data-index="${idx}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; border-bottom: 1px solid #D9D9D9; font-size: 0.9rem; color: #111111; cursor: pointer;">Edit</button>
-                    <button class="btn-popover-seeding-hapus" data-index="${idx}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.9rem; color: #D32F2F; cursor: pointer;">Hapus</button>
-                  </div>
-                </div>
-              </div>
-              
-              <hr style="border: none; border-top: 1px solid #EFEFEF; margin: 12px 0;" />
-              
-              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px;">
-                <span style="font-weight: 700; font-size: 0.95rem; color: #111111; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${tx.program || 'PRG/NUR/01/2026'}</span>
-              </div>
-              
-              <div class="card-details-content" style="display: none; flex-direction: column;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Nomor Batch</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right; word-break: break-word;">${tx.batchNo || 'Batch-01'}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">No. Bedengan</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.bedengan || (tx.rows && tx.rows.length > 0 ? Array.from(new Set(tx.rows.map(r => r.bedengan).filter(Boolean))).join(', ') : 'Bedengan 01')}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Tahapan Pertumbuhan</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${tx.tahapan || 'Rubber Main Nursery'}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Disemai HI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${seedingDisemai.toLocaleString('id-ID')}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Ttl Polybag HI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${seedingPolybag.toLocaleString('id-ID')}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Banyaknya Ditolak HI</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right; word-break: break-word;">${(parseInt(tx.ditolak || 0)).toLocaleString('id-ID')}</span>
-                </div>
-              </div>
-              
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-                <div class="btn-expand-card" style="font-size: 0.8rem; color: #116834; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                  <span class="expand-text">Tampilkan Detail</span>
-                  <svg class="expand-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s;">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </div>
-                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px; color: #116834; font-weight: 700; font-size: 0.85rem;">
-                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                  </svg>
-                  Tersimpan
-                </div>
-              </div>
-            </div>
-            `;
-          }).join('') : `
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 0;">
-              <div style="margin-bottom: 16px;">
-                <svg viewBox="0 0 24 24" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4Z" fill="#111111"/>
-                  <path d="M16 13H13V16H11V13H8V11H11V8H13V11H16V13Z" fill="#FFFFFF"/>
-                </svg>
-              </div>
-              <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 8px 0; line-height: 1.4;">
-                Belum ada Dokumen<br>Penyemaian Bibit hari ini
-              </h2>
-              <p style="font-size: 0.95rem; color: #999999; text-align: center; margin: 0; line-height: 1.4;">
-                Pilih Dokumen Penyemaian<br>untuk memulai rekam data
-              </p>
-            </div>
-          `}
-        </div>
+      <!-- MAIN SCROLLABLE CONTENT -->
+      <main style="flex: 1; overflow-y: auto; padding: 16px;">
+        ${activeTab === 'DEDERAN' ? renderDederanTabContent(dederanIndukDocs, dederanTxs) : renderPindahSemaiTabContent(eligiblePindahSemai, seedingTxs)}
       </main>
 
-      <!-- POPUP SELESAI -->
-      <div id="popup-selesai" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; padding: 24px;">
-        <div style="background: #FFFFFF; border-radius: 8px; padding: 24px; text-align: center; max-width: 320px; width: 100%;">
-          <svg viewBox="0 0 24 24" width="64" height="64" stroke="#116834" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 16px;">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-          </svg>
-          <h3 style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 12px 0; line-height: 1.4;">Proses Penyemaian pada Dokumen ini Telah Selesai</h3>
-          <p style="font-size: 0.9rem; color: #666666; margin: 0 0 24px 0; line-height: 1.5;">Tidak ada lagi Bibit yang perlu Disemai</p>
-          <button id="btn-tutup-popup" style="width: 100%; padding: 12px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.95rem; cursor: pointer;">Tutup</button>
-        </div>
-      </div>
     </div>
   `;
 
-  app.querySelector('#btn-back').addEventListener('click', () => {
+  // Bind Event Listeners
+  app.querySelector('#btn-back')?.addEventListener('click', () => {
     navigate('/home');
   });
 
-  // Event listener for Lihat Penerimaan
-  app.querySelectorAll('.btn-lihat-penerimaan').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const idx = e.currentTarget.dataset.index;
-      storage.set('viewing_transaction_index', idx);
-      storage.set('summary_back_url', '/seeding'); // for receipt-summary back button if implemented
-      navigate('/reception/summary');
-    });
+  app.querySelector('#tab-btn-dederan')?.addEventListener('click', () => {
+    activeTab = 'DEDERAN';
+    renderSeedingLanding();
   });
 
-  // Expand actions
-  app.querySelectorAll('.btn-expand-card').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const card = e.currentTarget.closest('div[style*="border-radius: 6px"]');
-      if (card) {
-        const details = card.querySelector('.card-details-content');
-        const icon = card.querySelector('.expand-icon');
-        const text = card.querySelector('.expand-text');
-        
-        if (details.style.display === 'none') {
-          details.style.display = 'flex';
-          icon.style.transform = 'rotate(180deg)';
-          text.textContent = 'Sembunyikan';
-        } else {
-          details.style.display = 'none';
-          icon.style.transform = 'rotate(0deg)';
-          text.textContent = 'Tampilkan Detail';
-        }
-      }
-    });
+  app.querySelector('#tab-btn-pindah-semai')?.addEventListener('click', () => {
+    activeTab = 'PINDAH_SEMAI';
+    renderSeedingLanding();
   });
 
-  // Event listener for Form Penyemaian (Chevron or No Dokumen)
-  const popupSelesai = app.querySelector('#popup-selesai');
-  const btnTutupPopup = app.querySelector('#btn-tutup-popup');
-  
-  if (btnTutupPopup) {
-    btnTutupPopup.addEventListener('click', () => {
-      popupSelesai.style.display = 'none';
-    });
-  }
-
-  app.querySelectorAll('.btn-seeding-form').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const status = e.currentTarget.dataset.status;
-      if (status === 'Selesai Disemai') {
-        popupSelesai.style.display = 'flex';
-      } else {
-        const idx = e.currentTarget.dataset.index;
-        storage.set('seeding_source_index', idx);
-        storage.set('editing_seeding_index', null); // clear edit state
-        storage.remove('scanned_bedengan'); // clear previous scan session
-        navigate('/seeding/scan');
-      }
-    });
-  });
-
-  // Popover Actions for Seeding Cards
-  const btnCardMenusSeeding = app.querySelectorAll('.btn-card-menu-seeding');
-  const cardPopoversSeeding = app.querySelectorAll('.card-popover-seeding');
-  
-  if (btnCardMenusSeeding.length > 0) {
-    btnCardMenusSeeding.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation(); // prevent document click from closing it immediately
-        const idx = e.currentTarget.dataset.index;
-        const popover = app.querySelector(`#popover-seeding-${idx}`);
-        cardPopoversSeeding.forEach(p => p.style.display = 'none');
-        popover.style.display = 'flex';
-      });
-    });
-
-    document.addEventListener('click', () => {
-      cardPopoversSeeding.forEach(p => p.style.display = 'none');
-    });
-
-    app.querySelectorAll('.btn-popover-seeding-edit').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const idx = e.currentTarget.dataset.index;
-        const txs = storage.get('seeding_transactions', []);
-        const txToEdit = txs[idx];
-        
-        if (txToEdit && guardDependency(txToEdit.docNo, 'Penyemaian', 'Diubah')) {
-          return;
-        }
-
-        storage.set('editing_seeding_index', idx);
-        
-        // Find original source index by matching docNo to avoid restoring a blank form
-        // (This is just an extra precaution since the form will load from editing state)
-        const editTx = txs[idx];
-        if (editTx && editTx.sourceIndex !== undefined) {
-          storage.set('seeding_source_index', editTx.sourceIndex);
-        }
-
-        navigate('/seeding/form');
-      });
-    });
-
-    app.querySelectorAll('.btn-popover-seeding-hapus').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const idx = e.currentTarget.dataset.index;
-        const txs = storage.get('seeding_transactions', []);
-        const txToDelete = txs[idx];
-        
-        if (!txToDelete) return;
-
-        if (guardDependency(txToDelete.docNo, 'Penyemaian', 'Dihapus')) {
-          return;
-        }
-
-        if (window.confirm('Hapus data penyemaian ini?')) {
-          txs.splice(idx, 1);
-          storage.set('seeding_transactions', txs);
-          renderSeedingLanding();
-          toast('Data penyemaian berhasil dihapus', 'success');
-        }
-      });
-    });
-  }
+  attachDederanEvents(app);
+  attachPindahSemaiEvents(app);
 }
+
+/**
+ * Render Content for Tab 1: Dederan
+ */
+function renderDederanTabContent(indukDocs, dederanTxs = []) {
+  if (indukDocs.length === 0) {
+    return renderEmptyStateCard({
+      title: 'Belum Ada Penerimaan Benih',
+      description: 'Lakukan transaksi <strong>Penerimaan Benih / Biji Kelatak</strong> terlebih dahulu agar Dokumen Induk Deder otomatis terbentuk.'
+    });
+  }
+
+  return `
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      
+      <!-- SECTION 1: DOKUMEN INDUK DEDER -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        ${indukDocs.map((induk) => {
+          const totalPenerimaan = induk.totalNilaiButirPenerimaan || 0;
+          const totalDideder = induk.totalDidederSDHI || 0;
+          const sisa = induk.sisaBelumDeder || 0;
+          const isComplete = sisa === 0 && totalPenerimaan > 0;
+
+          let badgeBg = '#FEF3C7';
+          let badgeColor = '#B45309';
+          let badgeBorder = '#FDE68A';
+          let badgeText = `Sisa ${sisa.toLocaleString('id-ID')} Butir`;
+
+          if (isComplete) {
+            badgeBg = '#F0FDF4';
+            badgeColor = '#15803D';
+            badgeBorder = '#BBF7D0';
+            badgeText = 'Selesai Dideder (100%)';
+          } else if (totalDideder === 0) {
+            badgeBg = '#FEE2E2';
+            badgeColor = '#B91C1C';
+            badgeBorder = '#FECACA';
+            badgeText = 'Belum Dideder';
+          }
+
+          return `
+            <div class="card-dederan-induk" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+              
+              <!-- HEADER -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #F1F5F9; color: #475569; border: 1px solid #E2E8F0;">
+                  DOKUMEN INDUK DEDER
+                </span>
+                <span style="font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder};">
+                  ${badgeText}
+                </span>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
+                <strong style="font-size: 0.95rem; font-weight: 800; color: #0F172A;">${induk.docNo}</strong>
+                <span style="font-size: 0.74rem; color: #64748B;">Klon: <strong style="color: #116834;">${induk.klon || 'GT 1'}</strong></span>
+              </div>
+
+              <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 10px;">
+                Asal Penerimaan: <strong>${induk.sourceReceiptDocNo}</strong> • Tgl: ${induk.tanggalPenerimaan || '-'}
+              </div>
+
+              <!-- METRIC GRID 3-KOLOM -->
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 4px; text-align: center; margin-bottom: 10px;">
+                <div>
+                  <div style="font-size: 0.65rem; color: #64748B;">Total Penerimaan</div>
+                  <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
+                    ${totalPenerimaan.toLocaleString('id-ID')}
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size: 0.65rem; color: #116834;">Sudah Dideder</div>
+                  <div style="font-size: 0.82rem; font-weight: 800; color: #116834; margin-top: 1px;">
+                    ${totalDideder.toLocaleString('id-ID')}
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size: 0.65rem; color: ${sisa > 0 ? '#D97706' : '#116834'};">Sisa Belum Deder</div>
+                  <div style="font-size: 0.82rem; font-weight: 800; color: ${sisa > 0 ? '#D97706' : '#116834'}; margin-top: 1px;">
+                    ${sisa.toLocaleString('id-ID')}
+                  </div>
+                </div>
+              </div>
+
+              <!-- ACTION BUTTON -->
+              <div>
+                ${sisa > 0 ? `
+                  <button type="button" class="btn-tambah-deder" data-doc="${induk.docNo}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
+                    Rekam Data Dederan
+                  </button>
+                ` : `
+                  <button type="button" class="btn-deder-selesai" style="width: 100%; height: 38px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: default; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    ✓ Seluruh Kuota Selesai Dideder
+                  </button>
+                `}
+              </div>
+
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- SECTION 2: RINGKASAN TRANSAKSI DEDERAN -->
+      <div>
+        <h2 style="font-size: 0.90rem; font-weight: 700; color: #0F172A; margin: 0 0 10px 0;">
+          Ringkasan Transaksi Dederan (${dederanTxs.length})
+        </h2>
+
+        ${dederanTxs.length === 0 ? `
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px 16px; text-align: center; font-size: 0.78rem; color: #64748B;">
+            Belum ada transaksi Dederan yang dicatat.
+          </div>
+        ` : `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            ${dederanTxs.map((tx, idx) => {
+              const inspSummary = getBedenganInspectionSummary(tx);
+              const hasInspection = inspSummary.totalDiperiksa > 0;
+
+              return `
+                <div class="card-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
+                  
+                  <!-- IDENTITAS DOKUMEN & 3-DOTS ACTION -->
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="font-weight: 800; font-size: 0.92rem; color: #0F172A; letter-spacing: -0.01em;">${tx.docNo}</span>
+                        <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9;">
+                          Dederan
+                        </span>
+                        ${inspSummary.isComplete ? `
+                          <span style="font-size: 0.62rem; font-weight: 700; background: #DCFCE7; color: #15803D; padding: 2px 6px; border-radius: 4px; border: 1px solid #BBF7D0;">✓ Selesai Periksa</span>
+                        ` : (inspSummary.totalDiperiksa > 0 ? `
+                          <span style="font-size: 0.62rem; font-weight: 700; background: #FEF3C7; color: #B45309; padding: 2px 6px; border-radius: 4px; border: 1px solid #FDE68A;">${inspSummary.totalDiperiksa}/${tx.jumlahDeder} Diperiksa</span>
+                        ` : '')}
+                      </div>
+                      
+                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.3;">
+                        Dok. Induk: <strong style="color: #334155;">${tx.parentDederIndukDocNo || '-'}</strong> • Klon: <strong style="color: #116834;">${tx.klon || 'GT 1'}</strong>
+                      </div>
+                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.3;">
+                        Bedengan: <strong style="color: #0F172A;">${tx.bedenganCode || tx.bedengan || 'BED-001'}</strong> • Tgl: ${tx.tanggalDeder || tx.tanggal || '-'}
+                      </div>
+                    </div>
+
+                    <!-- 3-DOTS ACTION TRIGGER -->
+                    <div style="position: relative; flex-shrink: 0; margin-left: 8px;">
+                      <button type="button" class="btn-tx-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
+                          <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
+                          <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
+                        </svg>
+                      </button>
+
+                      <!-- POPUP MENU -->
+                      <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
+                        ${hasInspection ? `
+                          <button type="button" class="menu-action-locked" style="width: 100%; padding: 8px 12px; text-align: left; background: #FAFAFA; border: none; font-size: 0.75rem; font-weight: 600; color: #9CA3AF; cursor: not-allowed;">
+                            <span>Hapus (Terkunci)</span>
+                          </button>
+                        ` : `
+                          <button type="button" class="menu-action-delete-deder" data-doc="${tx.docNo}" data-index="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            <span>Hapus</span>
+                          </button>
+                        `}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- METRICS CONTAINER -->
+                  <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                    <div>
+                      <span style="font-size: 0.68rem; color: #64748B;">Jumlah Dideder</span>
+                      <div style="font-size: 0.84rem; font-weight: 800; color: #116834; margin-top: 1px;">
+                        ${(tx.jumlahDeder || 0).toLocaleString('id-ID')} Butir
+                      </div>
+                    </div>
+                    <div style="text-align: right;">
+                      <span style="font-size: 0.68rem; color: #64748B;">Hasil Periksa</span>
+                      <div style="font-size: 0.80rem; font-weight: 700; color: ${inspSummary.totalDiperiksa > 0 ? '#15803D' : '#64748B'}; margin-top: 1px;">
+                        ${inspSummary.totalDiperiksa > 0 ? `${inspSummary.totalBerhasil.toLocaleString('id-ID')} Berhasil` : 'Belum Diperiksa'}
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
+
+    </div>
+  `;
+}
+
+/**
+ * Render Content for Tab 2: Pindah Semai (Source strictly from Dederan Inspection Berhasil)
+ */
+function renderPindahSemaiTabContent(eligibleSources, seedingTxs = []) {
+  return `
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      
+      <!-- SECTION 1: ELIGIBLE SOURCES FOR PINDAH SEMAI -->
+      <div>
+        <h2 style="font-size: 0.90rem; font-weight: 700; color: #0F172A; margin: 0 0 10px 0;">
+          Sumber Siap Pindah Semai (Hasil Dederan 100% Selesai Periksa)
+        </h2>
+
+        ${eligibleSources.length === 0 ? `
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 24px 16px; text-align: center;">
+            <div style="font-size: 0.78rem; color: #64748B; line-height: 1.5;">
+              Belum ada hasil Dederan yang siap untuk Pindah Semai.<br>
+              <em>Syarat: Bedengan Dederan harus sudah <strong>100% selesai diperiksa</strong> dengan kuantitas berhasil > 0.</em>
+            </div>
+          </div>
+        ` : `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            ${eligibleSources.map(src => {
+              const isCompleted = src.remainingQty === 0;
+              return `
+                <div style="background: #FFFFFF; border: 1px solid ${isCompleted ? '#E2E8F0' : '#86EFAC'}; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                  <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                    <div>
+                      <span style="font-size: 0.65rem; font-weight: 700; background: #DCFCE7; color: #116834; padding: 2px 6px; border-radius: 4px; border: 1px solid #86EFAC;">
+                        HASIL DEDERAN: ${src.bedenganCode}
+                      </span>
+                      <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 4px;">
+                        ${src.dederanTxDocNo}
+                      </div>
+                    </div>
+                    <span style="font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${isCompleted ? '#F1F5F9' : '#FEF3C7'}; color: ${isCompleted ? '#64748B' : '#B45309'}; border: 1px solid ${isCompleted ? '#CBD5E1' : '#FDE68A'};">
+                      ${isCompleted ? 'Selesai Dipindah Semai' : `Sisa ${src.remainingQty} Butir`}
+                    </span>
+                  </div>
+
+                  <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 8px;">
+                    Induk: ${src.parentDederIndukDocNo} • Klon: <strong>${src.klon}</strong>
+                  </div>
+
+                  <div style="display: flex; justify-content: space-between; font-size: 0.75rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px; margin-bottom: 10px;">
+                    <div>Hasil Berhasil: <strong>${src.totalBerhasil}</strong> Butir</div>
+                    <div>Sudah Disemai: <strong style="color: #116834;">${src.processedQty}</strong></div>
+                    <div>Sisa Kuota: <strong style="color: ${src.remainingQty > 0 ? '#D97706' : '#116834'};">${src.remainingQty}</strong></div>
+                  </div>
+
+                  ${!isCompleted ? `
+                    <button type="button" class="btn-execute-pindah-semai" data-source-id="${src.sourceIndex}" style="width: 100%; height: 36px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
+                      Proses Pindah Semai (Polybag)
+                    </button>
+                  ` : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
+
+      <!-- SECTION 2: RINGKASAN TRANSAKSI PINDAH SEMAI -->
+      <div>
+        <h2 style="font-size: 0.90rem; font-weight: 700; color: #0F172A; margin: 0 0 10px 0;">
+          Ringkasan Transaksi Pindah Semai (${seedingTxs.length})
+        </h2>
+
+        ${seedingTxs.length === 0 ? `
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px 16px; text-align: center; font-size: 0.78rem; color: #64748B;">
+            Belum ada transaksi Pindah Semai yang tercatat.
+          </div>
+        ` : `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            ${seedingTxs.map((stx, idx) => `
+              <div class="card-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
+                
+                <!-- HEADER BARIS 1: NO DOKUMEN & BADGE -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                  <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      <span style="font-weight: 800; font-size: 0.92rem; color: #0F172A; letter-spacing: -0.01em;">${stx.docNo || `2026/SOW/0${idx + 1}`}</span>
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9;">
+                        Pindah Semai
+                      </span>
+                    </div>
+                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.3;">
+                      Sumber Dederan: <strong style="color: #334155;">${stx.sourceDocNo || '-'}</strong> • Klon: <strong style="color: #116834;">${stx.klon || 'GT 1'}</strong>
+                    </div>
+                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.3;">
+                      Bedengan Semai: <strong style="color: #0F172A;">${stx.bedengan || '-'}</strong> • Tgl: ${stx.date || '-'}
+                    </div>
+                  </div>
+
+                  <!-- 3-DOTS ACTION TRIGGER -->
+                  <div style="position: relative; flex-shrink: 0; margin-left: 8px;">
+                    <button type="button" class="btn-tx-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
+                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
+                        <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
+                        <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
+                      </svg>
+                    </button>
+
+                    <!-- POPUP MENU -->
+                    <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
+                      <button type="button" class="menu-action-delete-pindah" data-index="${idx}" data-doc="${stx.docNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <span>Hapus</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- METRICS CONTAINER -->
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                  <div>
+                    <span style="font-size: 0.68rem; color: #64748B;">Bibit Disemai</span>
+                    <div style="font-size: 0.84rem; font-weight: 800; color: #116834; margin-top: 1px;">
+                      ${(stx.totalDisemai || 0).toLocaleString('id-ID')} Pkk
+                    </div>
+                  </div>
+                  <div style="text-align: right;">
+                    <span style="font-size: 0.68rem; color: #64748B;">Polybag Terisi</span>
+                    <div style="font-size: 0.84rem; font-weight: 700; color: #0F172A; margin-top: 1px;">
+                      ${(stx.totalPolybag || 0).toLocaleString('id-ID')} Ply
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+    </div>
+  `;
+}
+
+/**
+ * Event bindings for Dederan Tab
+ */
+function attachDederanEvents(app) {
+  // Tambah Dederan
+  app.querySelectorAll('.btn-tambah-deder').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const docNo = e.currentTarget.dataset.doc;
+      storage.set('active_dederan_parent_doc', docNo);
+      storage.remove('scanned_dederan_bedengan_id');
+      storage.remove('scanned_dederan_bedengan_code');
+      storage.remove('scanned_dederan_bedengan_name');
+      navigate('/seeding/dederan/scan');
+    });
+  });
+
+  // 3-Dots Action Trigger Popovers
+  app.querySelectorAll('.btn-tx-action-trigger').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const parent = e.currentTarget.closest('div');
+      const menu = parent?.querySelector('.tx-action-menu');
+      const isVisible = menu && menu.style.display === 'block';
+
+      // Close all other open menus first
+      app.querySelectorAll('.tx-action-menu').forEach(m => {
+        m.style.display = 'none';
+      });
+
+      if (menu && !isVisible) {
+        menu.style.display = 'block';
+      }
+    });
+  });
+
+  // Close menus on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.btn-tx-action-trigger') && !e.target.closest('.tx-action-menu')) {
+      app.querySelectorAll('.tx-action-menu').forEach(m => {
+        m.style.display = 'none';
+      });
+    }
+  });
+
+  // Delete Dederan Transaction
+  app.querySelectorAll('.menu-action-delete-deder').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const docNo = e.currentTarget.dataset.doc;
+      if (!confirm(`Apakah Anda yakin ingin menghapus transaksi Dederan '${docNo}'?`)) {
+        return;
+      }
+
+      const res = deleteDederanTransaction(docNo);
+      if (res.success) {
+        toast('Transaksi Dederan berhasil dihapus', 'success');
+        renderSeedingLanding();
+      } else {
+        toast(res.error || 'Gagal menghapus transaksi', 'error');
+      }
+    });
+  });
+}
+
+/**
+ * Event bindings for Pindah Semai Tab
+ */
+function attachPindahSemaiEvents(app) {
+  // Proses Pindah Semai
+  app.querySelectorAll('.btn-execute-pindah-semai').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const sourceId = e.currentTarget.dataset.sourceId;
+      storage.set('seeding_source_index', sourceId);
+      storage.set('editing_seeding_index', null);
+      storage.remove('scanned_bedengan');
+      navigate('/seeding/scan');
+    });
+  });
+
+  // Delete Pindah Semai Transaction
+  app.querySelectorAll('.menu-action-delete-pindah').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(e.currentTarget.dataset.index, 10);
+      const docNo = e.currentTarget.dataset.doc;
+
+      if (!confirm(`Apakah Anda yakin ingin menghapus transaksi Pindah Semai '${docNo}'?`)) {
+        return;
+      }
+
+      let txs = storage.get('seeding_transactions', []);
+      if (idx >= 0 && idx < txs.length) {
+        txs.splice(idx, 1);
+        storage.set('seeding_transactions', txs);
+        toast('Transaksi Pindah Semai berhasil dihapus', 'success');
+        renderSeedingLanding();
+      }
+    });
+  });
+}
+

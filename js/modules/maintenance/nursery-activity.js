@@ -19,6 +19,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { getCfnaByCode, getCfnaByName, getCfnaActivityMappings, getActiveCfnaMaster, getAllCfnaMaster, MAPPING_STATUS, CFNA_STATUS } from '../../data/cfna-master.js';
 import {
   getWorkersForUserContext,
@@ -573,23 +574,10 @@ export function renderNurseryActivityLanding() {
               </div>
 
             </div>
-          `;}).join('') : `
-            <!-- EMPTY STATE -->
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 0;">
-              <div style="margin-bottom: 16px;">
-                <svg viewBox="0 0 24 24" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4Z" fill="#111111"/>
-                  <path d="M16 13H13V16H11V13H8V11H11V8H13V11H16V13Z" fill="#FFFFFF"/>
-                </svg>
-              </div>
-              <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 8px 0; line-height: 1.4;">
-                Belum ada Dokumen<br>Pemeliharaan hari ini
-              </h2>
-              <p style="font-size: 0.95rem; color: #999999; text-align: center; margin: 0; line-height: 1.4;">
-                Pilih menu Rekam Aktivitas Bibitan<br>untuk memulai pencatatan
-              </p>
-            </div>
-          `}
+          `;}).join('') : renderEmptyStateCard({
+            title: 'Belum ada Dokumen Pemeliharaan hari ini',
+            description: 'Pilih menu Rekam Aktivitas Bibitan untuk memulai pencatatan'
+          })}
 
         </div>
 

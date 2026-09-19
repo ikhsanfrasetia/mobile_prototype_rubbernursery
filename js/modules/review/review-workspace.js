@@ -7,6 +7,7 @@
 import { getCurrent, navigate } from '../../core/router.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { esc, todayISO, uid, formatStandardDocNo, generateUniqueDocNo, getModuleDocCode, MODULE_DOC_CODES, getAttendanceUniqueKey } from '../../core/utils.js';
 import { session } from '../../core/session.js';
 import { storage } from '../../core/storage.js';
@@ -2145,25 +2146,22 @@ function renderTransactionsWorkspaceTab() {
       <!-- CONTENT AREA: TABLE / EMPTY STATE -->
       <div class="tx-content-card">
         ${filteredList.length === 0
-      ? `
-          <div class="tx-empty-state">
-            <div class="tx-empty-icon-wrap">
-              ${getTxModuleIconSvg(activeTxTab, 26)}
-            </div>
-            <h3 class="tx-empty-title">Belum ada data transaksi</h3>
-            <p class="tx-empty-desc">Belum ada transaksi pada modul ${esc(curMod.title)}. Tambahkan transaksi baru atau muat data dari HP.</p>
-            <div class="tx-empty-actions">
-              <button id="btn-tx-empty-add" class="btn-tx-primary" type="button">
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                <span>Tambah Transaksi</span>
-              </button>
-              <button id="btn-tx-empty-sample" class="btn-tx-secondary" type="button">
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-                <span>Muat Data HP</span>
-              </button>
-            </div>
+      ? renderEmptyStateCard({
+        title: 'Belum ada data transaksi',
+        description: `Belum ada transaksi pada modul ${esc(curMod.title)}. Tambahkan transaksi baru atau muat data dari HP.`,
+        actionHtml: `
+          <div class="tx-empty-actions" style="margin-top: 12px; display: flex; gap: 8px; justify-content: center;">
+            <button id="btn-tx-empty-add" class="btn-tx-primary" type="button">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>Tambah Transaksi</span>
+            </button>
+            <button id="btn-tx-empty-sample" class="btn-tx-secondary" type="button">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+              <span>Muat Data HP</span>
+            </button>
           </div>
         `
+      })
       : `
           <div class="tx-table-responsive">
             ${renderDynamicTxTable(activeTxTab, curMod, filteredList)}

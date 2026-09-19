@@ -17,6 +17,7 @@ import {
 } from './verification-manager.js';
 import { buildTraceabilityChain } from '../consolidation/consolidation-manager.js';
 import { getEstateById } from '../../data/estate-master.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 
 let activeTab = 'PENDING'; // 'PENDING' | 'HISTORY'
 let currentFilters = {
@@ -168,13 +169,11 @@ export function renderVerificationLanding() {
 
 function renderPendingTable(records) {
   if (!records || records.length === 0) {
-    return `
-      <div style="background: #FFFFFF; border-radius: 12px; padding: 48px 20px; text-align: center; border: 1px solid #E2E8F0;">
-        <div style="font-size: 2.5rem; margin-bottom: 12px;">🎉</div>
-        <h3 style="margin: 0 0 6px 0; color: #0F172A; font-size: 1.1rem;">Tidak Ada Data Menunggu Verifikasi</h3>
-        <p style="margin: 0; color: #64748B; font-size: 0.85rem;">Seluruh data transaksi dalam scope Anda sudah terverifikasi dan memenuhi syarat konsistensi.</p>
-      </div>
-    `;
+    return renderEmptyStateCard({
+      title: 'Tidak Ada Data Menunggu Verifikasi',
+      description: 'Seluruh data transaksi dalam scope Anda sudah terverifikasi dan memenuhi syarat konsistensi.',
+      customStyle: 'background: #FFFFFF; border-radius: 12px; padding: 48px 20px; text-align: center; border: 1px solid #E2E8F0;'
+    });
   }
 
   return `
@@ -230,13 +229,11 @@ function renderPendingTable(records) {
 
 function renderHistoryTable(records) {
   if (!records || records.length === 0) {
-    return `
-      <div style="background: #FFFFFF; border-radius: 12px; padding: 48px 20px; text-align: center; border: 1px solid #E2E8F0;">
-        <div style="font-size: 2.5rem; margin-bottom: 12px;">📖</div>
-        <h3 style="margin: 0 0 6px 0; color: #0F172A; font-size: 1.1rem;">Belum Ada Riwayat Verifikasi</h3>
-        <p style="margin: 0; color: #64748B; font-size: 0.85rem;">Catatan audit verifikasi dan keputusan pengembalian akan tercatat di sini.</p>
-      </div>
-    `;
+    return renderEmptyStateCard({
+      title: 'Belum Ada Riwayat Verifikasi',
+      description: 'Catatan audit verifikasi dan keputusan pengembalian akan tercatat di sini.',
+      customStyle: 'background: #FFFFFF; border-radius: 12px; padding: 48px 20px; text-align: center; border: 1px solid #E2E8F0;'
+    });
   }
 
   return `

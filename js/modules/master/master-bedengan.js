@@ -10,6 +10,7 @@ import { toast } from '../../components/toast.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { openQRViewerModal } from '../../components/qr-viewer-modal.js';
 import { esc, formatDate } from '../../core/utils.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 import {
   BEDENGAN_STATUS,
   getAllBedengan,
@@ -325,16 +326,10 @@ export function renderMasterBedengan() {
 
             <!-- LIST OF BEDENGAN -->
             <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-              ${items.length === 0 ? `
-                <div style="text-align: center; padding: 40px 16px; color: #94A3B8;">
-                  <svg viewBox="0 0 24 24" width="36" height="36" stroke="currentColor" stroke-width="1.5" fill="none" style="margin-bottom: 8px;">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <line x1="9" y1="3" x2="9" y2="21"></line>
-                  </svg>
-                  <div style="font-size: 0.95rem; font-weight: 600; color: #475569;">Tidak ada bedengan yang cocok</div>
-                  <div style="font-size: 0.8rem; margin-top: 4px;">Coba ubah kata kunci pencarian atau filter status.</div>
-                </div>
-              ` : `
+              ${items.length === 0 ? renderEmptyStateCard({
+                title: 'Tidak ada bedengan yang cocok',
+                description: 'Coba ubah kata kunci pencarian atau filter status.'
+              }) : `
                 <div style="overflow-x: auto;">
                   <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem; text-align: left;">
                     <thead>

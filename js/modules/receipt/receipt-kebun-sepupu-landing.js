@@ -28,6 +28,7 @@ import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 import { formatDate, esc } from '../../core/utils.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { BLOCK_MASTER, BLOCK_STATUS } from '../../data/block-master.js';
 import { getNurseryDivisionsByEstate } from '../../data/estate-master.js';
 import {
@@ -3081,18 +3082,11 @@ function renderFilterTab(key, label, count, currentActive, hasDot = false) {
 }
 
 function renderEmptyState() {
-  return `
-    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 36px 16px; text-align: center; margin-top: 10px;">
-      <div style="width: 48px; height: 48px; margin: 0 auto 12px; background: #F1F5F9; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #64748B;">
-        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-        </svg>
-      </div>
-      <div style="font-size: 0.88rem; font-weight: 700; color: #1E293B; margin-bottom: 4px;">Tidak Ada Dokumen Penerimaan</div>
-      <div style="font-size: 0.78rem; color: #64748B;">Belum ada pengiriman bibit yang masuk ke divisi/kebun ini untuk filter terpilih.</div>
-    </div>
-  `;
+  return renderEmptyStateCard({
+    title: 'Tidak Ada Dokumen Penerimaan',
+    description: 'Belum ada pengiriman bibit yang masuk ke divisi/kebun ini untuk filter terpilih.',
+    customStyle: 'margin-top: 10px;'
+  });
 }
 
 function renderReceiptCardList(list, currentUser) {

@@ -28,6 +28,7 @@ import {
   createDestructionRecord,
   mutateStockFromDestruction
 } from './destruction-manager.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { getAllBatches, getBatchById } from '../../data/batch-master.js';
 import { getBedenganById } from '../../data/bedengan-master.js';
 
@@ -114,23 +115,12 @@ function renderAsistenDestructionReview(app, currentUser) {
       <!-- MAIN CONTENT LIST -->
       <main style="flex: 1; overflow-y: auto; padding: 16px;">
         
-        ${activeList.length === 0 ? `
-          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 40px 20px; text-align: center; margin-top: 10px;">
-            <div style="width: 56px; height: 56px; border-radius: 50%; background: #F1F5F9; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; color: #64748B;">
-              <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="none">
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </div>
-            <h3 style="font-size: 0.95rem; font-weight: 700; color: #1E293B; margin: 0 0 4px 0;">
-              ${activeTab === 'PENDING' ? 'Tidak Ada Pengajuan Pemusnahan' : 'Belum Ada Riwayat'}
-            </h3>
-            <p style="font-size: 0.78rem; color: #64748B; margin: 0; line-height: 1.45;">
-              ${activeTab === 'PENDING' 
-                ? 'Semua pengajuan pemusnahan bibit telah diverifikasi atau belum ada pengajuan baru dari Mantri.' 
-                : 'Daftar pemusnahan bibit yang telah disetujui atau dikembalikan akan tampil di sini.'}
-            </p>
-          </div>
-        ` : `
+        ${activeList.length === 0 ? renderEmptyStateCard({
+          title: activeTab === 'PENDING' ? 'Tidak Ada Pengajuan Pemusnahan' : 'Belum Ada Riwayat',
+          description: activeTab === 'PENDING' 
+            ? 'Semua pengajuan pemusnahan bibit telah diverifikasi atau belum ada pengajuan baru dari Mantri.' 
+            : 'Daftar pemusnahan bibit yang telah disetujui atau dikembalikan akan tampil di sini.'
+        }) : `
           <div style="display: flex; flex-direction: column; gap: 12px;">
             ${activeList.map((item, idx) => {
               const qty = parseInt(item.quantity || item.destructionQty || 0, 10);

@@ -14,6 +14,7 @@ import { toast } from '../../components/toast.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { openQRViewerModal } from '../../components/qr-viewer-modal.js';
 import { esc, formatDate } from '../../core/utils.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 import {
   BATCH_MASTER_STATUS,
   BATCH_STATUS,
@@ -337,16 +338,10 @@ export function renderMasterBatch() {
 
             <!-- LIST OF BATCHES (PURE MASTER TABLE: 5 KOLOM) -->
             <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-              ${items.length === 0 ? `
-                <div style="text-align: center; padding: 40px 16px; color: #94A3B8;">
-                  <svg viewBox="0 0 24 24" width="36" height="36" stroke="currentColor" stroke-width="1.5" fill="none" style="margin-bottom: 8px;">
-                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                  </svg>
-                  <div style="font-size: 0.95rem; font-weight: 600; color: #475569;">Tidak ada batch yang cocok</div>
-                  <div style="font-size: 0.8rem; margin-top: 4px;">Coba ubah kata kunci pencarian atau filter.</div>
-                </div>
-              ` : `
+              ${items.length === 0 ? renderEmptyStateCard({
+                title: 'Tidak ada batch yang cocok',
+                description: 'Coba ubah kata kunci pencarian atau filter.'
+              }) : `
                 <div style="overflow-x: auto;">
                   <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem; text-align: left;">
                     <thead>

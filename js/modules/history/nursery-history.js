@@ -22,6 +22,7 @@ import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { ROLE_LABELS } from '../../core/permissions.js';
 import { formatDate, formatStandardDocNo } from '../../core/utils.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 
 let selectedProgramFilter = 'ALL';
 let selectedStageFilter = 'ALL'; // 'ALL' | 'Rubber Main Nursery' | 'Rubber Advance Planting Material'
@@ -934,22 +935,11 @@ export function renderNurseryHistory() {
               </div>
             `).join('')}
           </div>
-        ` : `
-          <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 36px 16px; text-align: center; margin-top: 14px;">
-            <div style="width: 48px; height: 48px; border-radius: 50%; background: #F3F4F6; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; color: #9CA3AF;">
-              <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="16" y1="2" x2="16" y2="6"></line>
-                <line x1="8" y1="2" x2="8" y2="6"></line>
-                <line x1="3" y1="10" x2="21" y2="10"></line>
-              </svg>
-            </div>
-            <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0 0 4px 0;">Tidak Ada Transaksi</h3>
-            <p style="font-size: 0.76rem; color: #6B7280; margin: 0;">
-              ${searchQuery ? 'Tidak ditemukan data transaksi yang sesuai kata kunci pencarian.' : 'Belum ada data transaksi pada kriteria filter ini.'}
-            </p>
-          </div>
-        `}
+        ` : renderEmptyStateCard({
+          title: 'Tidak Ada Transaksi',
+          description: searchQuery ? 'Tidak ditemukan data transaksi yang sesuai kata kunci pencarian.' : 'Belum ada data transaksi pada kriteria filter ini.',
+          customStyle: 'margin-top: 14px;'
+        })}
 
       </main>
     </div>

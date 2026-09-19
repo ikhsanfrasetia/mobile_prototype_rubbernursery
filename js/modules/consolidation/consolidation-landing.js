@@ -12,6 +12,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, esc } from '../../core/utils.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { getCurrentUserContext, resolveUserContext, normalizeRole, ROLES } from '../../core/user-context.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import {
@@ -196,7 +197,10 @@ function renderOverviewSection(data) {
 
 function renderRequestsSection(requests) {
   if (!requests || requests.length === 0) {
-    return `<div style="text-align: center; padding: 32px; color: #64748B; background: #FFF; border-radius: 8px;">Tidak ada data permohonan bibit.</div>`;
+    return renderEmptyStateCard({
+      title: 'Tidak Ada Data Permohonan Bibit',
+      description: 'Belum ada data permohonan bibit yang tercatat.'
+    });
   }
 
   return `
@@ -232,7 +236,10 @@ function renderRequestsSection(requests) {
 
 function renderDispatchesSection(dispatches) {
   if (!dispatches || dispatches.length === 0) {
-    return `<div style="text-align: center; padding: 32px; color: #64748B; background: #FFF; border-radius: 8px;">Tidak ada data pengeluaran bibit.</div>`;
+    return renderEmptyStateCard({
+      title: 'Tidak Ada Data Pengeluaran Bibit',
+      description: 'Belum ada data pengeluaran bibit yang tercatat.'
+    });
   }
 
   return `
@@ -263,7 +270,10 @@ function renderDispatchesSection(dispatches) {
 
 function renderReceiptsSection(receipts) {
   if (!receipts || receipts.length === 0) {
-    return `<div style="text-align: center; padding: 32px; color: #64748B; background: #FFF; border-radius: 8px;">Tidak ada data tanda terima KSP.</div>`;
+    return renderEmptyStateCard({
+      title: 'Tidak Ada Data Tanda Terima KSP',
+      description: 'Belum ada data tanda terima KSP yang tercatat.'
+    });
   }
 
   return `
@@ -296,7 +306,10 @@ function renderReceiptsSection(receipts) {
 
 function renderSelectionsSection(selections) {
   if (!selections || selections.length === 0) {
-    return `<div style="text-align: center; padding: 32px; color: #64748B; background: #FFF; border-radius: 8px;">Tidak ada data seleksi bibit.</div>`;
+    return renderEmptyStateCard({
+      title: 'Tidak Ada Data Seleksi Bibit',
+      description: 'Belum ada data seleksi bibit yang tercatat.'
+    });
   }
 
   return `
@@ -332,7 +345,10 @@ function renderSelectionsSection(selections) {
 
 function renderDestructionsSection(destructions) {
   if (!destructions || destructions.length === 0) {
-    return `<div style="text-align: center; padding: 32px; color: #64748B; background: #FFF; border-radius: 8px;">Tidak ada data pemusnahan bibit.</div>`;
+    return renderEmptyStateCard({
+      title: 'Tidak Ada Data Pemusnahan Bibit',
+      description: 'Belum ada data pemusnahan bibit yang tercatat.'
+    });
   }
 
   return `

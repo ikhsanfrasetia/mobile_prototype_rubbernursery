@@ -28,6 +28,7 @@ import { resolveEstate, getNurseryDivisionsByEstate, resolveNurseryDivision } fr
 import { getActiveKlons } from '../../data/klon-master.js';
 import { formatDate, todayISO, nowISO, esc } from '../../core/utils.js';
 import { createReceiptFromDispatch, getReceiptKspTransactions, updateReceiptKsp } from '../../core/receipt-ksp-manager.js';
+import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { RECEIPT_KSP_STATUS, RECEIPT_KSP_STATUS_LABELS } from '../../core/receipt-ksp-constants.js';
 
 let activeTab = null; // 'MY_REQUESTS' | 'INCOMING_REQUESTS'
@@ -2370,16 +2371,11 @@ export async function renderRequestMataEntresLanding() {
   }).join('');
 
   // Cards Markup
-  const cardsHtml = filteredList.length === 0 ? `
-    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 32px 16px; text-align: center; color: #64748B; margin-top: 10px;">
-      <svg viewBox="0 0 24 24" width="36" height="36" stroke="#94A3B8" stroke-width="1.8" fill="none" style="margin-bottom: 8px;">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-        <polyline points="14 2 14 8 20 8"></polyline>
-      </svg>
-      <div style="font-weight: 700; font-size: 0.90rem; color: #334155; margin-bottom: 4px;">Tidak ada transaksi ditemukan</div>
-      <div style="font-size: 0.75rem;">Belum ada dokumen Permintaan Mata Entres pada tab ini.</div>
-    </div>
-  ` : filteredList.map((tx, idx) => {
+  const cardsHtml = filteredList.length === 0 ? renderEmptyStateCard({
+    title: 'Tidak ada transaksi ditemukan',
+    description: 'Belum ada dokumen Permintaan Mata Entres pada tab ini.',
+    customStyle: 'margin-top: 10px;'
+  }) : filteredList.map((tx, idx) => {
     const badge = MATA_ENTRES_STATUS_BADGES[tx.status] || { bg: '#F1F5F9', text: '#475569', border: '#CBD5E1' };
     const label = MATA_ENTRES_STATUS_LABELS[tx.status] || tx.status;
     const isExpanded = expandedCardIndex === idx;

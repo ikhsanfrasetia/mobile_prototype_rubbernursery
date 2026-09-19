@@ -65,8 +65,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Menyajikan file statis PWA (HTML, CSS, JS, Assets, Manifest, SW)
-app.use(express.static(__dirname));
+// Menyajikan file statis PWA (HTML, CSS, JS, Assets, Manifest, SW) dengan no-cache
+app.use(express.static(__dirname, {
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  }
+}));
 
 /* -------------------------------------------------------------
  * API ROUTES: CATATAN PERBAIKAN & REVIEW FEEDBACK
