@@ -559,6 +559,9 @@ export function approveSelectionRecord(recordIdOrDocNo, notes = '', currentUser,
     throw new Error('Anda tidak memiliki otorisasi untuk menyetujui dokumen ini.');
   }
 
+  const isDederan = target.originType === 'REJECT_DEDERAN' || target.sourceModule === 'DEDERAN';
+  const nowIso = new Date().toISOString();
+
   const updatedRecord = applyTransactionActor(
     {
       ...target,
@@ -567,16 +570,34 @@ export function approveSelectionRecord(recordIdOrDocNo, notes = '', currentUser,
       verifiedByUserId: currentUser.userId || currentUser.code || currentUser.id,
       verifiedByName: currentUser.name || 'Asisten Bibitan',
       verifiedByRole: ROLES.ASISTEN_BIBITAN,
-      verifiedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      verifiedAt: nowIso,
+      updatedAt: nowIso
     },
     AUDIT_EVENT_TYPES.APPROVE,
     currentUser,
-    `Persetujuan hasil seleksi untuk batch ${target.batchCode} (${target.jumlahLayak} Layak, ${target.jumlahAfkir} Afkir)`
+    isDederan
+      ? `Persetujuan hasil seleksi Dederan ${target.docNo} (${target.bedengan || target.bedenganCode || '-'}, ${target.jumlahAfkir} Afkir)`
+      : `Persetujuan hasil seleksi untuk batch ${target.batchCode} (${target.jumlahLayak} Layak, ${target.jumlahAfkir} Afkir)`
   );
 
   allRecords[idx] = updatedRecord;
   storage.set(SELECTION_STORAGE_KEY, allRecords);
+
+  // Sync corresponding entry in selection_pool
+  let fullPool = storage.get('selection_pool', []);
+  const poolIdx = fullPool.findIndex(p => 
+    p.selectionTransactionId === target.id ||
+    p.id === target.selectionTransactionId ||
+    p.docNo === target.docNo ||
+    p.selectionDocNo === target.docNo ||
+    (p.dederanDocNo && p.dederanDocNo === target.sourceDocNo)
+  );
+  if (poolIdx !== -1) {
+    fullPool[poolIdx].status = 'DECLARED_CULLED';
+    fullPool[poolIdx].verifiedAt = nowIso;
+    fullPool[poolIdx].verifiedByName = currentUser.name || 'Asisten Bibitan';
+    storage.set('selection_pool', fullPool);
+  }
 
   if (autoMutateStock) {
     const mutationResult = mutateStockFromSelection(updatedRecord.id, currentUser);
@@ -642,7 +663,30 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
     };
   }
 
-  // 5. Muat nursery_batches & Validasi Batch
+  // 5. Dederan handling: Pra-Semai germination tidak terikat batch polybag Main Nursery
+  if (target.originType === 'REJECT_DEDERAN' || target.sourceModule === 'DEDERAN') {
+    const updatedRecord = {
+      ...target,
+      stockMutationStatus: STOCK_MUTATION_STATUS.NOT_REQUIRED,
+      stockMutationAt: new Date().toISOString(),
+      stockMutationBy: currentUser?.userId || currentUser?.id || 'SYSTEM',
+      stockMutationQty: mutationQty,
+      stockMutationError: null,
+      updatedAt: new Date().toISOString()
+    };
+    allRecords[idx] = updatedRecord;
+    storage.set(SELECTION_STORAGE_KEY, allRecords);
+
+    return {
+      status: STOCK_MUTATION_STATUS.NOT_REQUIRED,
+      success: true,
+      message: 'Hasil seleksi Dederan berhasil disetujui (Dederan Pra-Semai tidak terikat batch polybag).',
+      selection: updatedRecord,
+      batch: null
+    };
+  }
+
+  // 6. Muat nursery_batches & Validasi Batch untuk Pasca-Okulasi / Main Nursery
   const allBatches = storage.get('nursery_batches', []);
   const bIdx = allBatches.findIndex(b => b.id === target.batchId || b.batchCode === target.batchCode || b.batchNo === target.batchCode);
   
@@ -661,7 +705,7 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
   const batchObj = allBatches[bIdx];
   const batchCtx = getBatchContext(batchObj.id || batchObj.batchId || target.batchId || target.batchCode) || batchObj;
 
-  // 6. Validasi Program / Estate / Division Alignment via Context Relation Layer
+  // 7. Validasi Program / Estate / Division Alignment via Context Relation Layer
   if (target.estateId && batchCtx.estateId && target.estateId.toUpperCase() !== batchCtx.estateId.toUpperCase()) {
     const failedRecord = {
       ...target,
@@ -686,7 +730,7 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
     throw new Error(`Inkonsistensi divisi: Selection (${target.divisionId}) vs Batch (${batchCtx.divisionId}).`);
   }
 
-  // 7. Validasi Kecukupan Stok via Inventory Service
+  // 8. Validasi Kecukupan Stok via Inventory Service
   const currentAvailable = getInventoryAvailableQty(batchObj.id || batchObj.batchCode || batchObj.batchNo);
   if (currentAvailable < mutationQty) {
     const failedRecord = {
@@ -700,7 +744,7 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
     throw new Error(`Stok batch ${batchObj.batchCode || batchObj.batchNo} tidak mencukupi (Tersedia: ${currentAvailable} < Afkir: ${mutationQty}).`);
   }
 
-  // 8. Atomic Stock Mutation Commit via Inventory Service
+  // 9. Atomic Stock Mutation Commit via Inventory Service
   const updatedInvState = deductInventoryStock(
     batchObj.id || batchObj.batchCode || batchObj.batchNo,
     mutationQty,
@@ -718,7 +762,7 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
     updatedAt: updatedInvState.updatedAt
   };
 
-  // 9. Update Transaction Metadata
+  // 10. Update Transaction Metadata
   const updatedSelection = {
     ...target,
     stockMutationStatus: STOCK_MUTATION_STATUS.APPLIED,
@@ -766,6 +810,9 @@ export function returnSelectionRecord(recordIdOrDocNo, reason, currentUser) {
     throw new Error('Anda tidak memiliki otorisasi untuk mengembalikan dokumen ini.');
   }
 
+  const isDederan = target.originType === 'REJECT_DEDERAN' || target.sourceModule === 'DEDERAN';
+  const nowIso = new Date().toISOString();
+
   const updatedRecord = applyTransactionActor(
     {
       ...target,
@@ -774,16 +821,35 @@ export function returnSelectionRecord(recordIdOrDocNo, reason, currentUser) {
       returnedByUserId: currentUser.userId || currentUser.code || currentUser.id,
       returnedByName: currentUser.name || 'Asisten Bibitan',
       returnedByRole: ROLES.ASISTEN_BIBITAN,
-      returnedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      returnedAt: nowIso,
+      updatedAt: nowIso
     },
     AUDIT_EVENT_TYPES.REJECT,
     currentUser,
-    `Pengembalian hasil seleksi untuk batch ${target.batchCode}: ${reason.trim()}`
+    isDederan
+      ? `Pengembalian hasil seleksi Dederan ${target.docNo}: ${reason.trim()}`
+      : `Pengembalian hasil seleksi untuk batch ${target.batchCode}: ${reason.trim()}`
   );
 
   allRecords[idx] = updatedRecord;
   storage.set(SELECTION_STORAGE_KEY, allRecords);
+
+  // Sync corresponding entry in selection_pool to allow re-declaration
+  let fullPool = storage.get('selection_pool', []);
+  const poolIdx = fullPool.findIndex(p => 
+    p.selectionTransactionId === target.id ||
+    p.id === target.selectionTransactionId ||
+    p.docNo === target.docNo ||
+    p.selectionDocNo === target.docNo ||
+    (p.dederanDocNo && p.dederanDocNo === target.sourceDocNo)
+  );
+  if (poolIdx !== -1) {
+    fullPool[poolIdx].status = SELECTION_STATUS.DIKEMBALIKAN;
+    fullPool[poolIdx].returnReason = reason.trim();
+    fullPool[poolIdx].returnedAt = nowIso;
+    fullPool[poolIdx].returnedByName = currentUser.name || 'Asisten Bibitan';
+    storage.set('selection_pool', fullPool);
+  }
 
   return updatedRecord;
 }
@@ -1024,12 +1090,14 @@ export function getSelectionPhotosByDocNo(selectionDocNo) {
  * Deklarasi hasil seleksi oleh Mantri Bibitan secara idempoten
  * Mencegah duplikasi transaksi dan duplikasi Dok. Seleksi
  */
-export function declareSelectionItem(targetPoolItem, photoResult, user) {
+export function declareSelectionItem(targetPoolItem, photoResult, user, customOptions = {}) {
   if (!targetPoolItem) {
     throw new Error('Data bibit afkir tidak valid.');
   }
 
   const today = formatDate(new Date().toISOString());
+  const selectedCat = customOptions.category || targetPoolItem.category || targetPoolItem.alasanDitolakCategory || 'AFKIR';
+  const customNotes = customOptions.notes || targetPoolItem.catatan || targetPoolItem.alasan || '-';
 
   // 1. Cari existing transaction berdasarkan identitas source selection
   const existingTx = findExistingSelectionTransaction(targetPoolItem);
@@ -1056,21 +1124,37 @@ export function declareSelectionItem(targetPoolItem, photoResult, user) {
 
   if (existingTx) {
     finalTx = existingTx;
+    finalTx.category = selectedCat;
+    finalTx.alasanDitolakCategory = selectedCat;
+    finalTx.status = SELECTION_STATUS.MENUNGGU_VERIFIKASI;
+    finalTx.returnReason = null;
+    finalTx.stockMutationStatus = STOCK_MUTATION_STATUS.PENDING;
+    finalTx.updatedAt = new Date().toISOString();
+    if (user && user.name) {
+      finalTx.mantri = user.name;
+      finalTx.createdByName = user.name;
+      finalTx.createdByUserId = user.userId || user.code || user.id;
+    }
+    if (customNotes && customNotes !== '-') finalTx.catatan = customNotes;
     // Update photo reference if photoResult provided
     if (photoResult && photoResult.dataUrl) {
+      finalTx.photoId = photoResult.id || `PHOTO-SEL-${Date.now()}`;
       finalTx.photoData = photoResult.dataUrl;
-      finalTx.photoCapturedAt = photoResult.capturedAt;
-      finalTx.photoCapturedAtLabel = photoResult.capturedAtLabel;
-      const txIdx = allTxs.findIndex(t => t.id === existingTx.id);
-      if (txIdx !== -1) {
-        allTxs[txIdx] = finalTx;
-        storage.set(SELECTION_STORAGE_KEY, allTxs);
-      }
+      finalTx.photoCapturedAt = photoResult.capturedAt || new Date().toISOString();
+      finalTx.photoCapturedAtLabel = photoResult.capturedAtLabel || today;
+      finalTx.latitude = photoResult.latitude !== undefined ? photoResult.latitude : null;
+      finalTx.longitude = photoResult.longitude !== undefined ? photoResult.longitude : null;
+    }
+    const txIdx = allTxs.findIndex(t => t.id === existingTx.id);
+    if (txIdx !== -1) {
+      allTxs[txIdx] = finalTx;
+      storage.set(SELECTION_STORAGE_KEY, allTxs);
     }
   } else {
     isNewTx = true;
     const newTxId = `SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const photoRecordId = `DOC-SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const isDederan = targetPoolItem.originType === 'REJECT_DEDERAN' || targetPoolItem.sourceModule === 'DEDERAN';
+    const validPhotoId = photoResult?.id || `PHOTO-SEL-${Date.now()}`;
 
     finalTx = {
       id: newTxId,
@@ -1078,12 +1162,13 @@ export function declareSelectionItem(targetPoolItem, photoResult, user) {
       docNo: poolDocNo,
       selectionNo: poolDocNo,
       selectionPoolDocNo: poolDocNo,
-      sourceModule: targetPoolItem.sourceModule || (targetPoolItem.originType === 'REJECT_PENYEMAIAN' ? 'PENYEMAIAN' : (targetPoolItem.originType === 'REJECT_OKULASI' ? 'BUDDING' : 'INSPECTION')),
-      sourceTransactionType: targetPoolItem.sourceTransactionType || (targetPoolItem.originType === 'REJECT_PENYEMAIAN' ? 'SEEDING' : 'GRAFTING'),
+      sourceModule: targetPoolItem.sourceModule || (targetPoolItem.originType === 'REJECT_PENYEMAIAN' ? 'PENYEMAIAN' : (targetPoolItem.originType === 'REJECT_OKULASI' ? 'BUDDING' : 'DEDERAN')),
+      sourceTransactionType: targetPoolItem.sourceTransactionType || (targetPoolItem.originType === 'REJECT_PENYEMAIAN' ? 'SEEDING' : (targetPoolItem.originType === 'REJECT_DEDERAN' ? 'DEDER_INSPECTION' : 'GRAFTING')),
       sourceTransactionId: targetPoolItem.sourceTransactionId || targetPoolItem.sourceDocNo || targetPoolItem.docNo,
-      sourceDocNo: targetPoolItem.sourceDocNo || targetPoolItem.seedingDocNo || targetPoolItem.buddingDocNo || targetPoolItem.inspectionDocNo || '-',
-      category: targetPoolItem.category || targetPoolItem.alasanDitolakCategory || 'AFKIR',
-      originType: targetPoolItem.originType || 'REJECT_PENYEMAIAN',
+      sourceDocNo: targetPoolItem.sourceDocNo || targetPoolItem.seedingDocNo || targetPoolItem.buddingDocNo || targetPoolItem.inspectionDocNo || targetPoolItem.dederanDocNo || '-',
+      category: selectedCat,
+      alasanDitolakCategory: selectedCat,
+      originType: targetPoolItem.originType || (targetPoolItem.sourceModule === 'DEDERAN' ? 'REJECT_DEDERAN' : 'REJECT_PENYEMAIAN'),
       
       estateId: targetPoolItem.estateId || user.estateId || null,
       divisionId: targetPoolItem.divisionId || user.divisionId || null,
@@ -1092,13 +1177,10 @@ export function declareSelectionItem(targetPoolItem, photoResult, user) {
       program: targetPoolItem.program || targetPoolItem.programCode || null,
       programName: targetPoolItem.programName || null,
       
-      batchId: targetPoolItem.batchId || null,
-      batchCode: targetPoolItem.batchCode || targetPoolItem.batchNo || 'Batch-01',
-      batchNo: targetPoolItem.batchNo || targetPoolItem.batchCode || 'Batch-01',
       bedenganId: targetPoolItem.bedenganId || null,
       bedenganCode: targetPoolItem.bedenganCode || null,
       bedenganIds: targetPoolItem.bedenganIds || (targetPoolItem.bedenganId ? [targetPoolItem.bedenganId] : []),
-      bedengan: targetPoolItem.bedengan || '-',
+      bedengan: targetPoolItem.bedengan || targetPoolItem.bedenganCode || '-',
       
       klon: targetPoolItem.klon || 'GT 1',
       clone: targetPoolItem.clone || targetPoolItem.klon || 'GT 1',
@@ -1115,7 +1197,7 @@ export function declareSelectionItem(targetPoolItem, photoResult, user) {
       
       sumberAsal: getSelectionSourceLabel(targetPoolItem),
       alasan: targetPoolItem.alasan || '-',
-      catatan: targetPoolItem.alasan || '-',
+      catatan: customNotes,
       tanggal: today,
       tanggalSeleksi: today,
       mantri: user.name,
@@ -1125,11 +1207,20 @@ export function declareSelectionItem(targetPoolItem, photoResult, user) {
       stockMutationStatus: STOCK_MUTATION_STATUS.PENDING,
       
       // Photo reference
-      photoId: photoRecordId,
+      photoId: photoResult?.dataUrl ? validPhotoId : null,
       photoData: photoResult?.dataUrl || null,
       photoCapturedAt: photoResult?.capturedAt || null,
-      photoCapturedAtLabel: photoResult?.capturedAtLabel || null
+      photoCapturedAtLabel: photoResult?.capturedAtLabel || null,
+      latitude: photoResult?.latitude !== undefined ? photoResult.latitude : null,
+      longitude: photoResult?.longitude !== undefined ? photoResult.longitude : null
     };
+
+    if (!isDederan) {
+      finalTx.batchId = targetPoolItem.batchId || null;
+      finalTx.batchCode = targetPoolItem.batchCode || targetPoolItem.batchNo || null;
+      finalTx.batchNo = targetPoolItem.batchNo || targetPoolItem.batchCode || null;
+    }
+
     allTxs.push(finalTx);
     storage.set(SELECTION_STORAGE_KEY, allTxs);
   }
@@ -1138,23 +1229,26 @@ export function declareSelectionItem(targetPoolItem, photoResult, user) {
   let photoRecord = null;
   if (photoResult && photoResult.dataUrl) {
     photoRecord = {
-      id: finalTx.photoId || `DOC-SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: photoResult.id || finalTx.photoId || `PHOTO-SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       transactionType: 'SELECTION',
       selectionTransactionId: finalTx.id,
       selectionDocNo: finalTx.docNo,
       selectionPoolDocNo: finalTx.docNo,
       sourceTransactionId: finalTx.sourceTransactionId,
       sourceDocNo: finalTx.sourceDocNo,
-      batchId: finalTx.batchId,
-      batchCode: finalTx.batchCode,
       category: finalTx.category,
       quantity: finalTx.jumlahAfkir,
       photoData: photoResult.dataUrl,
-      capturedAt: photoResult.capturedAt,
-      capturedAtLabel: photoResult.capturedAtLabel,
+      capturedAt: photoResult.capturedAt || new Date().toISOString(),
+      capturedAtLabel: photoResult.capturedAtLabel || today,
+      latitude: photoResult.latitude !== undefined ? photoResult.latitude : null,
+      longitude: photoResult.longitude !== undefined ? photoResult.longitude : null,
+      source: photoResult.source || 'CAMERA',
       createdAt: new Date().toISOString(),
       createdBy: user.name
     };
+    if (finalTx.batchId) photoRecord.batchId = finalTx.batchId;
+    if (finalTx.batchCode) photoRecord.batchCode = finalTx.batchCode;
     saveSelectionDocumentationPhoto(photoRecord);
   }
 
@@ -1163,11 +1257,22 @@ export function declareSelectionItem(targetPoolItem, photoResult, user) {
   const poolMatchIdx = fullPool.findIndex(p => (
     (p.id && targetPoolItem.id && p.id === targetPoolItem.id) ||
     (p.docNo && targetPoolItem.docNo && p.docNo === targetPoolItem.docNo) ||
-    (p.sourceDocNo === targetPoolItem.sourceDocNo && p.category === targetPoolItem.category && p.sourceModule === targetPoolItem.sourceModule)
+    (p.sourceDocNo === targetPoolItem.sourceDocNo && p.sourceModule === targetPoolItem.sourceModule) ||
+    (p.dederanDocNo && targetPoolItem.dederanDocNo && p.dederanDocNo === targetPoolItem.dederanDocNo)
   ));
   if (poolMatchIdx !== -1) {
-    fullPool[poolMatchIdx].status = 'DECLARED_CULLED';
-    fullPool[poolMatchIdx].docNo = finalTx.docNo;
+    fullPool[poolMatchIdx] = {
+      ...fullPool[poolMatchIdx],
+      status: SELECTION_STATUS.MENUNGGU_VERIFIKASI,
+      category: selectedCat,
+      alasanDitolakCategory: selectedCat,
+      docNo: finalTx.docNo,
+      selectionTransactionId: finalTx.id,
+      selectionDocNo: finalTx.docNo,
+      declaredAt: new Date().toISOString(),
+      declaredBy: user.name,
+      returnReason: null
+    };
   }
   storage.set('selection_pool', fullPool);
 

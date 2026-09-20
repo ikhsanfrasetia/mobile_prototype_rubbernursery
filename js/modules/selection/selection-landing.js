@@ -230,49 +230,49 @@ function renderAsistenSelectionReview(app, currentUser) {
       <main style="flex: 1; overflow-y: auto; padding: 16px;">
         
         ${(activeAsbTab === 'PENDING' ? totalPendingCount : totalHistoryCount) === 0 ? renderEmptyStateCard({
-          title: activeAsbTab === 'PENDING' ? 'Tidak Ada Pengajuan Seleksi' : 'Belum Ada Riwayat',
-          description: activeAsbTab === 'PENDING'
-            ? 'Semua hasil seleksi bibit dari Mantri telah diperiksa atau belum ada pengajuan baru.'
-            : 'Daftar hasil seleksi yang telah disetujui atau dikembalikan akan tampil di sini.'
-        }) : `
+    title: activeAsbTab === 'PENDING' ? 'Tidak Ada Pengajuan Seleksi' : 'Belum Ada Riwayat',
+    description: activeAsbTab === 'PENDING'
+      ? 'Semua hasil seleksi bibit dari Mantri telah diperiksa atau belum ada pengajuan baru.'
+      : 'Daftar hasil seleksi yang telah disetujui atau dikembalikan akan tampil di sini.'
+  }) : `
           <div style="display: flex; flex-direction: column; gap: 14px;">
             
             <!-- A. SECTION PRE-GRAFTING DOKUMEN SELEKSI I, II & III -->
             ${(activeAsbTab === 'PENDING' ? pendingPreDocs : historyPreDocs).map(doc => {
-          const isSeleksi3 = (
-            doc.selectionStage === SELECTION_STAGES.SELEKSI_3 ||
-            doc.selectionStage === 'SELEKSI_III' ||
-            doc.selectionStage === 'SELEKSI_3'
-          );
-          const isSeleksi2 = (
-            doc.selectionStage === SELECTION_STAGES.SELEKSI_2 ||
-            doc.selectionStage === 'SELEKSI_II' ||
-            doc.selectionStage === 'SELEKSI_2'
-          );
-          const executions = isSeleksi3
-            ? getSeleksi3ExecutionsByDocument(doc.id || doc.docNo)
-            : (isSeleksi2
-              ? getSeleksi2ExecutionsByDocument(doc.id || doc.docNo)
-              : getSeleksi1ExecutionsByDocument(doc.id || doc.docNo));
-          const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
-          const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
-          const totalLayak = parseInt(doc.totalLayak || 0, 10);
-          const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
-          const bedDisplay = formatBedenganDisplayCode(doc);
-          const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
-          const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
-          const isActionable = canPerformAsistenSelectionAction(doc, currentUser);
-          const stageBadgeText = isSeleksi3 ? 'Seleksi III (Pra-Okulasi)' : (isSeleksi2 ? 'Seleksi II (Pra-Okulasi)' : 'Seleksi I (Pra-Okulasi)');
-          const stageLabel = isSeleksi3 ? 'Seleksi III' : (isSeleksi2 ? 'Seleksi II' : 'Seleksi I');
+    const isSeleksi3 = (
+      doc.selectionStage === SELECTION_STAGES.SELEKSI_3 ||
+      doc.selectionStage === 'SELEKSI_III' ||
+      doc.selectionStage === 'SELEKSI_3'
+    );
+    const isSeleksi2 = (
+      doc.selectionStage === SELECTION_STAGES.SELEKSI_2 ||
+      doc.selectionStage === 'SELEKSI_II' ||
+      doc.selectionStage === 'SELEKSI_2'
+    );
+    const executions = isSeleksi3
+      ? getSeleksi3ExecutionsByDocument(doc.id || doc.docNo)
+      : (isSeleksi2
+        ? getSeleksi2ExecutionsByDocument(doc.id || doc.docNo)
+        : getSeleksi1ExecutionsByDocument(doc.id || doc.docNo));
+    const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
+    const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
+    const totalLayak = parseInt(doc.totalLayak || 0, 10);
+    const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
+    const bedDisplay = formatBedenganDisplayCode(doc);
+    const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
+    const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
+    const isActionable = canPerformAsistenSelectionAction(doc, currentUser);
+    const stageBadgeText = isSeleksi3 ? 'Seleksi III (Pra-Okulasi)' : (isSeleksi2 ? 'Seleksi II (Pra-Okulasi)' : 'Seleksi I (Pra-Okulasi)');
+    const stageLabel = isSeleksi3 ? 'Seleksi III' : (isSeleksi2 ? 'Seleksi II' : 'Seleksi I');
 
-          let statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; white-space: nowrap;">MENUNGGU PEMERIKSAAN</span>`;
-          if (isApproved) {
-            statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; white-space: nowrap;">DISETUJUI (FINAL)</span>`;
-          } else if (isReturned) {
-            statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; white-space: nowrap;">DIKEMBALIKAN</span>`;
-          }
+    let statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; white-space: nowrap;">MENUNGGU PEMERIKSAAN</span>`;
+    if (isApproved) {
+      statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; white-space: nowrap;">DISETUJUI (FINAL)</span>`;
+    } else if (isReturned) {
+      statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; white-space: nowrap;">DIKEMBALIKAN</span>`;
+    }
 
-          return `
+    return `
                 <div class="card-pre-grafting-asb" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
                   
                   <!-- HEADER DOKUMEN -->
@@ -344,10 +344,10 @@ function renderAsistenSelectionReview(app, currentUser) {
                             <div><strong style="color: #0F172A;">${esc(tx.bedenganCode || '-')}</strong> • <span style="color: #475569;">${esc(tx.docNo)}</span></div>
                             <div style="color: #64748B; font-size: 0.62rem; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                               ${isSeleksi3
-              ? `${tx.polybagScope || tx.initialPolybagCount || 0} Ply (${tx.bibitAwal || 0} Pkk) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
-              : (isSeleksi2
-                ? `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2→1, ${tx.polybag1Bibit || 0}x1→1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
-                : `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2, ${tx.polybag1Bibit || 0}x1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`)}
+        ? `${tx.polybagScope || tx.initialPolybagCount || 0} Ply (${tx.bibitAwal || 0} Pkk) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
+        : (isSeleksi2
+          ? `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2→1, ${tx.polybag1Bibit || 0}x1→1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
+          : `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2, ${tx.polybag1Bibit || 0}x1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`)}
                             </div>
                           </div>
                           <div style="text-align: right; flex-shrink: 0;">
@@ -396,34 +396,36 @@ function renderAsistenSelectionReview(app, currentUser) {
 
                 </div>
               `;
-        }).join('')}
+  }).join('')}
 
-            <!-- B. SECTION POST-GRAFTING RECORDS (EXISTING) -->
+            <!-- B. SECTION POST-GRAFTING & DEDERAN RECORDS -->
             ${(activeAsbTab === 'PENDING' ? pendingPostRecords : historyPostRecords).map(item => {
-          const checked = parseInt(item.jumlahDiperiksa || 0, 10);
-          const pass = parseInt(item.jumlahLayak || 0, 10);
-          const cull = parseInt(item.jumlahAfkir || 0, 10);
-          const passPct = checked > 0 ? Math.round((pass / checked) * 100) : 0;
-          const cullPct = checked > 0 ? Math.round((cull / checked) * 100) : 0;
-          const isActionable = canPerformAsistenSelectionAction(item, currentUser);
-          const isApproved = item.status === SELECTION_STATUS.DISETUJUI;
-          const isReturned = item.status === SELECTION_STATUS.DIKEMBALIKAN;
+    const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN';
+    const unit = isDederan ? 'Butir' : 'Pkk';
+    const checked = parseInt(item.jumlahDiperiksa || item.quantity || 0, 10);
+    const pass = parseInt(item.jumlahLayak || 0, 10);
+    const cull = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+    const passPct = checked > 0 ? Math.round((pass / checked) * 100) : 0;
+    const cullPct = checked > 0 ? Math.round((cull / checked) * 100) : 0;
+    const isActionable = canPerformAsistenSelectionAction(item, currentUser);
+    const isApproved = item.status === SELECTION_STATUS.DISETUJUI;
+    const isReturned = item.status === SELECTION_STATUS.DIKEMBALIKAN;
 
-          let statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; white-space: nowrap;">MENUNGGU PEMERIKSAAN</span>`;
-          if (isApproved) {
-            statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; white-space: nowrap;">DISETUJUI</span>`;
-          } else if (isReturned) {
-            statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; white-space: nowrap;">DIKEMBALIKAN</span>`;
-          }
+    let statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; white-space: nowrap;">MENUNGGU PEMERIKSAAN</span>`;
+    if (isApproved) {
+      statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; white-space: nowrap;">DISETUJUI</span>`;
+    } else if (isReturned) {
+      statusBadge = `<span style="font-size: 0.64rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; white-space: nowrap;">DIKEMBALIKAN</span>`;
+    }
 
-          return `
+    return `
                 <div class="card-selection-item" data-id="${esc(item.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
                   
                   <!-- HEADER BARIS 1 -->
                   <div style="margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 5px;">
                       <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; white-space: nowrap;">
-                        ${esc(item.selectionType || item.selectionStage || 'PASCA-OKULASI')}
+                        ${isDederan ? 'PASCA-SEMAI (DEDERAN)' : esc(item.selectionType || item.selectionStage || 'PASCA-OKULASI')}
                       </span>
                       <div style="flex-shrink: 0;">
                         ${statusBadge}
@@ -433,7 +435,7 @@ function renderAsistenSelectionReview(app, currentUser) {
                     <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
                       <strong style="font-size: 0.95rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em;">${esc(item.docNo || item.selectionNo || '-')}</strong>
                       <span style="font-size: 0.70rem; color: #64748B; white-space: nowrap;">
-                        ${esc(item.batchCode || item.batchNo || 'Batch')} • ${esc(item.clone || item.klon || '-')}
+                        ${isDederan ? `Klon <strong style="color: #0F172A;">${esc(item.clone || item.klon || '-')}</strong>` : `${esc(item.batchCode || item.batchNo || 'Batch')} • ${esc(item.clone || item.klon || '-')}`}
                       </span>
                     </div>
                   </div>
@@ -444,7 +446,7 @@ function renderAsistenSelectionReview(app, currentUser) {
                       <span style="color: #64748B;">Bedengan:</span> <strong style="color: #0F172A;">${esc(item.bedengan || (item.bedenganIds ? item.bedenganIds.join(', ') : '-'))}</strong>
                     </div>
                     <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                      <span style="color: #64748B;">Program:</span> <strong style="color: #0F172A;">${esc(item.programName || item.programId || '-')}</strong>
+                      <span style="color: #64748B;">Program:</span> <strong style="color: #0F172A;">${esc(item.programName || item.programCode || item.programId || '-')}</strong>
                     </div>
                   </div>
 
@@ -455,7 +457,7 @@ function renderAsistenSelectionReview(app, currentUser) {
                       <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">
                         ${checked.toLocaleString('id-ID')}
                       </div>
-                      <div style="font-size: 0.58rem; color: #94A3B8;">100%</div>
+                      <div style="font-size: 0.58rem; color: #94A3B8;">${unit}</div>
                     </div>
                     <div style="border-left: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0;">
                       <div style="font-size: 0.58rem; font-weight: 700; color: #15803D; text-transform: uppercase; letter-spacing: 0.02em;">Layak</div>
@@ -483,6 +485,12 @@ function renderAsistenSelectionReview(app, currentUser) {
                     </div>
                   </div>
 
+                  ${isReturned && item.returnReason ? `
+                    <div style="margin-top: 6px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; font-size: 0.70rem; color: #991B1B;">
+                      <strong>Alasan Pengembalian:</strong> ${esc(item.returnReason)}
+                    </div>
+                  ` : ''}
+
                   <!-- AKSI ASISTEN BIBITAN (JIKA ACTIONABLE) -->
                   ${isActionable ? `
                     <div style="display: flex; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #F1F5F9;">
@@ -504,7 +512,7 @@ function renderAsistenSelectionReview(app, currentUser) {
 
                 </div>
               `;
-        }).join('')}
+  }).join('')}
 
           </div>
         `}
@@ -641,24 +649,29 @@ function renderAsistenSelectionReview(app, currentUser) {
     });
   });
 
-  // Action Buttons Post-Grafting
+  // Action Buttons Post-Grafting & Dederan
   app.querySelectorAll('.btn-asb-approve').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const id = e.currentTarget.dataset.id;
       const target = allRecords.find(r => r.id === id);
       if (!target) return;
 
+      const isDederan = target.originType === 'REJECT_DEDERAN' || target.sourceModule === 'DEDERAN';
+      const targetUnit = isDederan ? 'Butir' : 'Pkk';
+
       openModal({
         title: 'Persetujuan Hasil Seleksi',
         body: `
           <div style="font-size: 0.84rem; color: #334155; line-height: 1.5;">
             <p style="margin: 0 0 10px 0;">
-              Apakah Anda yakin ingin menyetujui hasil seleksi bibit untuk batch <strong>${esc(target.batchCode)}</strong>?
+              ${isDederan
+            ? `Apakah Anda yakin ingin menyetujui hasil seleksi Dederan <strong>${esc(target.docNo)}</strong> (${esc(target.bedengan || target.bedenganCode || '-')})?`
+            : `Apakah Anda yakin ingin menyetujui hasil seleksi bibit untuk batch <strong>${esc(target.batchCode)}</strong>?`}
             </p>
             <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.78rem;">
-              <div>Diperiksa: <strong>${parseInt(target.jumlahDiperiksa || 0).toLocaleString('id-ID')}</strong> Pkk</div>
-              <div>Layak: <strong style="color: #15803D;">${parseInt(target.jumlahLayak || 0).toLocaleString('id-ID')}</strong> Pkk</div>
-              <div>Afkir: <strong style="color: #DC2626;">${parseInt(target.jumlahAfkir || 0).toLocaleString('id-ID')}</strong> Pkk</div>
+              <div>Diperiksa: <strong>${parseInt(target.jumlahDiperiksa || target.quantity || 0).toLocaleString('id-ID')}</strong> ${targetUnit}</div>
+              <div>Layak: <strong style="color: #15803D;">${parseInt(target.jumlahLayak || 0).toLocaleString('id-ID')}</strong> ${targetUnit}</div>
+              <div>Afkir: <strong style="color: #DC2626;">${parseInt(target.jumlahAfkir || target.quantity || 0).toLocaleString('id-ID')}</strong> ${targetUnit}</div>
             </div>
             <div style="margin-bottom: 14px;">
               <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">Catatan Persetujuan (Opsional)</label>
@@ -693,12 +706,16 @@ function renderAsistenSelectionReview(app, currentUser) {
       const target = allRecords.find(r => r.id === id);
       if (!target) return;
 
+      const isDederan = target.originType === 'REJECT_DEDERAN' || target.sourceModule === 'DEDERAN';
+
       openModal({
         title: 'Kembalikan Hasil Seleksi',
         body: `
           <div style="font-size: 0.84rem; color: #334155; line-height: 1.5;">
             <p style="margin: 0 0 12px 0;">
-              Kembalikan hasil seleksi batch <strong>${esc(target.batchCode)}</strong> ke Mantri untuk perbaikan atau penghitungan ulang.
+              ${isDederan
+            ? `Kembalikan hasil seleksi Dederan <strong>${esc(target.docNo)}</strong> (${esc(target.bedengan || target.bedenganCode || '-')}) ke Mantri untuk perbaikan atau deklarasi ulang.`
+            : `Kembalikan hasil seleksi batch <strong>${esc(target.batchCode)}</strong> ke Mantri untuk perbaikan atau penghitungan ulang.`}
             </p>
             <div style="margin-bottom: 14px;">
               <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">Alasan Pengembalian (Wajib) <span style="color: #DC2626;">*</span></label>
@@ -766,7 +783,22 @@ function renderMantriSelectionLanding(app, user) {
 
   // Filter Selection Pool into Pra-Semai (Dederan) vs Pasca-Okulasi
   let rawSelectionPool = storage.get('selection_pool', []);
-  let scopedPool = filterSelectionByScope(rawSelectionPool, user).filter(item => !findExistingSelectionTransaction(item));
+  let scopedPool = filterSelectionByScope(rawSelectionPool, user).filter(item => {
+    const existing = findExistingSelectionTransaction(item);
+    if (!existing) {
+      return item.status !== 'DECLARED_CULLED' && item.status !== SELECTION_STATUS.DISETUJUI && item.status !== SELECTION_STATUS.MENUNGGU_VERIFIKASI;
+    }
+    // If existing transaction or item is DIKEMBALIKAN, Mantri can see it in the pool to re-declare!
+    if (existing.status === SELECTION_STATUS.DIKEMBALIKAN || item.status === SELECTION_STATUS.DIKEMBALIKAN) {
+      if (existing.returnReason && !item.returnReason) {
+        item.returnReason = existing.returnReason;
+      }
+      item.status = SELECTION_STATUS.DIKEMBALIKAN;
+      return true;
+    }
+    // Otherwise it's either MENUNGGU_VERIFIKASI or DISETUJUI, so it's not in the pending action pool
+    return false;
+  });
 
   const preSowingSelectionPool = scopedPool.filter(item => item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN');
   const postGraftingSelectionPool = scopedPool.filter(item => item.originType !== 'REJECT_DEDERAN' && item.sourceModule !== 'DEDERAN');
@@ -836,72 +868,72 @@ function renderMantriSelectionLanding(app, user) {
             </div>
 
             ${seleksi1Docs.length === 0 ? renderEmptyStateCard({
-              title: 'Belum Ada Dokumen Seleksi I',
-              description: 'Dokumen seleksi pra-okulasi otomatis dibentuk saat transaksi Penyemaian dicatat.'
-            }) : `
+    title: 'Belum Ada Dokumen Seleksi I',
+    description: 'Dokumen seleksi pra-okulasi otomatis dibentuk saat transaksi Penyemaian dicatat.'
+  }) : `
               <!-- LIST DOKUMEN INDUK SELEKSI I (TASK-26 ENHANCE HIERARCHY) -->
               <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px;">
                 ${seleksi1Docs.map(doc => {
-                  const bedScopeList = getBedenganScopeStatusForSeleksi1(doc);
-                  const executions = getSeleksi1ExecutionsByDocument(doc.id || doc.docNo);
-                  const bedDisplay = formatBedenganDisplayCode(doc);
-                  const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
-                  const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
-                  const totalLayak = parseInt(doc.totalLayak || 0, 10);
-                  const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
+    const bedScopeList = getBedenganScopeStatusForSeleksi1(doc);
+    const executions = getSeleksi1ExecutionsByDocument(doc.id || doc.docNo);
+    const bedDisplay = formatBedenganDisplayCode(doc);
+    const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
+    const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
+    const totalLayak = parseInt(doc.totalLayak || 0, 10);
+    const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
 
-                  // Perhitungan Akurat Sisa Populasi dari Dokumen Induk & Child Transactions
-                  const totalInspectedPolybag = executions.reduce((sum, tx) => sum + parseInt(tx.polybagScope || tx.initialPolybagCount || 0, 10), 0);
-                  const remainingPolybag = Math.max(0, sourcePolybag - totalInspectedPolybag);
-                  const progressPercent = sourcePolybag > 0 ? ((totalInspectedPolybag / sourcePolybag) * 100) : 0;
-                  const formattedProgress = (Math.round(progressPercent * 10) / 10).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
-                  const isAllChecked = (sourcePolybag > 0 && totalInspectedPolybag >= sourcePolybag) || (bedScopeList.length > 0 && bedScopeList.every(b => b.remainingPolybag <= 0));
-                  const isCompleted = Boolean(doc.isCompleted) || isAllChecked;
-                  const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
-                  const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
-                  const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
-                  const isFinal = Boolean(doc.isFinal);
+    // Perhitungan Akurat Sisa Populasi dari Dokumen Induk & Child Transactions
+    const totalInspectedPolybag = executions.reduce((sum, tx) => sum + parseInt(tx.polybagScope || tx.initialPolybagCount || 0, 10), 0);
+    const remainingPolybag = Math.max(0, sourcePolybag - totalInspectedPolybag);
+    const progressPercent = sourcePolybag > 0 ? ((totalInspectedPolybag / sourcePolybag) * 100) : 0;
+    const formattedProgress = (Math.round(progressPercent * 10) / 10).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+    const isAllChecked = (sourcePolybag > 0 && totalInspectedPolybag >= sourcePolybag) || (bedScopeList.length > 0 && bedScopeList.every(b => b.remainingPolybag <= 0));
+    const isCompleted = Boolean(doc.isCompleted) || isAllChecked;
+    const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
+    const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
+    const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
+    const isFinal = Boolean(doc.isFinal);
 
-                  // Cek apakah Dokumen Seleksi II sudah pernah dibuat dari Seleksi I ini
-                  const existingSel2 = seleksi2Docs.find(d =>
-                    d.sourceSelectionDocumentId === doc.id ||
-                    d.sourceSelectionDocNo === doc.docNo ||
-                    d.sourceDocNo === doc.docNo
-                  );
+    // Cek apakah Dokumen Seleksi II sudah pernah dibuat dari Seleksi I ini
+    const existingSel2 = seleksi2Docs.find(d =>
+      d.sourceSelectionDocumentId === doc.id ||
+      d.sourceSelectionDocNo === doc.docNo ||
+      d.sourceDocNo === doc.docNo
+    );
 
-                  let badgeText = 'DRAFT';
-                  let badgeBg = '#FEF3C7';
-                  let badgeColor = '#B45309';
-                  let badgeBorder = '#FDE68A';
+    let badgeText = 'DRAFT';
+    let badgeBg = '#FEF3C7';
+    let badgeColor = '#B45309';
+    let badgeBorder = '#FDE68A';
 
-                  if (isApproved && isFinal) {
-                    badgeText = 'Disetujui';
-                    badgeBg = '#F0FDF4';
-                    badgeColor = '#15803D';
-                    badgeBorder = '#BBF7D0';
-                  } else if (isReturned) {
-                    badgeText = 'Dikembalikan';
-                    badgeBg = '#FEF2F2';
-                    badgeColor = '#DC2626';
-                    badgeBorder = '#FECACA';
-                  } else if (isSubmitted) {
-                    badgeText = 'Menunggu Verifikasi';
-                    badgeBg = '#EFF6FF';
-                    badgeColor = '#1D4ED8';
-                    badgeBorder = '#BFDBFE';
-                  } else if (isAllChecked || isCompleted) {
-                    badgeText = 'Siap Review';
-                    badgeBg = '#F0FDF4';
-                    badgeColor = '#15803D';
-                    badgeBorder = '#BBF7D0';
-                  } else if (executions.length > 0) {
-                    badgeText = 'Sedang Diperiksa';
-                    badgeBg = '#FEF3C7';
-                    badgeColor = '#B45309';
-                    badgeBorder = '#FDE68A';
-                  }
+    if (isApproved && isFinal) {
+      badgeText = 'Disetujui';
+      badgeBg = '#F0FDF4';
+      badgeColor = '#15803D';
+      badgeBorder = '#BBF7D0';
+    } else if (isReturned) {
+      badgeText = 'Dikembalikan';
+      badgeBg = '#FEF2F2';
+      badgeColor = '#DC2626';
+      badgeBorder = '#FECACA';
+    } else if (isSubmitted) {
+      badgeText = 'Menunggu Verifikasi';
+      badgeBg = '#EFF6FF';
+      badgeColor = '#1D4ED8';
+      badgeBorder = '#BFDBFE';
+    } else if (isAllChecked || isCompleted) {
+      badgeText = 'Siap Review';
+      badgeBg = '#F0FDF4';
+      badgeColor = '#15803D';
+      badgeBorder = '#BBF7D0';
+    } else if (executions.length > 0) {
+      badgeText = 'Sedang Diperiksa';
+      badgeBg = '#FEF3C7';
+      badgeColor = '#B45309';
+      badgeBorder = '#FDE68A';
+    }
 
-                  return `
+    return `
                     <!-- CARD DOKUMEN INDUK (COLLAPSED BY DEFAULT, TASK-29 INDEPENDENT EXPAND) -->
                     <div class="card-pre-grafting-doc card-parent-doc" id="selection-parent-${esc(doc.id)}" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px;">
                       
@@ -1056,29 +1088,29 @@ function renderMantriSelectionLanding(app, user) {
 
                     </div><!-- END card-parent-doc -->
                   `;
-                }).join('')}
+  }).join('')}
               </div>
 
               <!-- GLOBAL CONTAINER RINGKASAN TRANSAKSI PELAKSANAAN (SESUAI POLA MODUL PENYEMAIAN - POIN H, I, J) -->
               ${(() => {
-                const allRawTxs = storage.get(SELECTION_STORAGE_KEY, []);
-                const allSeleksi1Txs = allRawTxs.filter(tx => {
-                  const isStage1 = (
-                    tx.selectionStage === SELECTION_STAGES.SELEKSI_1 ||
-                    tx.stage === 'SELEKSI_I' ||
-                    tx.transactionType === 'PELAKSANAAN_SELEKSI_I'
-                  );
-                  if (!isStage1) return false;
-                  return seleksi1Docs.some(d =>
-                    d.id === tx.parentSelectionDocumentId ||
-                    d.id === tx.selectionDocumentId ||
-                    d.docNo === tx.parentSelectionDocNo ||
-                    d.docNo === tx.selectionDocNo ||
-                    d.docNo === tx.sourceDocNo
-                  );
-                });
+          const allRawTxs = storage.get(SELECTION_STORAGE_KEY, []);
+          const allSeleksi1Txs = allRawTxs.filter(tx => {
+            const isStage1 = (
+              tx.selectionStage === SELECTION_STAGES.SELEKSI_1 ||
+              tx.stage === 'SELEKSI_I' ||
+              tx.transactionType === 'PELAKSANAAN_SELEKSI_I'
+            );
+            if (!isStage1) return false;
+            return seleksi1Docs.some(d =>
+              d.id === tx.parentSelectionDocumentId ||
+              d.id === tx.selectionDocumentId ||
+              d.docNo === tx.parentSelectionDocNo ||
+              d.docNo === tx.selectionDocNo ||
+              d.docNo === tx.sourceDocNo
+            );
+          });
 
-                return `
+          return `
                   <div class="section-global-child-transactions" style="margin-top: 20px; padding-top: 14px; border-top: 2px solid #E2E8F0;">
                     <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
                       <h2 style="font-size: 0.92rem; font-weight: 800; color: #0F172A; margin: 0;">
@@ -1087,29 +1119,29 @@ function renderMantriSelectionLanding(app, user) {
                     </div>
 
                     ${allSeleksi1Txs.length === 0 ? renderEmptyStateCard({
-                      title: 'Belum ada transaksi pelaksanaan',
-                      description: 'Belum ada pemeriksaan yang dicatat untuk Seleksi I.'
-                    }) : `
+            title: 'Belum ada transaksi pelaksanaan',
+            description: 'Belum ada pemeriksaan yang dicatat untuk Seleksi I.'
+          }) : `
                       <div style="display: flex; flex-direction: column; gap: 10px;">
                         ${allSeleksi1Txs.map((tx, txIdx) => {
-                          const parentDoc = seleksi1Docs.find(d => 
-                            d.id === tx.parentSelectionDocumentId || 
-                            d.id === tx.selectionDocumentId ||
-                            d.docNo === tx.parentSelectionDocNo ||
-                            d.docNo === tx.selectionDocNo ||
-                            d.docNo === tx.sourceDocNo
-                          ) || {};
-                          const p2 = tx.polybag2Bibit || 0;
-                          const p1 = tx.polybag1Bibit || 0;
-                          const p0 = tx.polybag0Bibit || 0;
-                          const polyChecked = tx.polybagScope || tx.initialPolybagCount || (p2 + p1 + p0);
-                          const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || ((p2 * 2) + p1);
-                          const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || (p1 + (p0 * 2));
-                          const bibitAwal = polyChecked * 2;
-                          const isBalanced = (p2 + p1 + p0 === polyChecked) && (bibitLayak + bibitAfkir === bibitAwal);
-                          const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
+            const parentDoc = seleksi1Docs.find(d =>
+              d.id === tx.parentSelectionDocumentId ||
+              d.id === tx.selectionDocumentId ||
+              d.docNo === tx.parentSelectionDocNo ||
+              d.docNo === tx.selectionDocNo ||
+              d.docNo === tx.sourceDocNo
+            ) || {};
+            const p2 = tx.polybag2Bibit || 0;
+            const p1 = tx.polybag1Bibit || 0;
+            const p0 = tx.polybag0Bibit || 0;
+            const polyChecked = tx.polybagScope || tx.initialPolybagCount || (p2 + p1 + p0);
+            const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || ((p2 * 2) + p1);
+            const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || (p1 + (p0 * 2));
+            const bibitAwal = polyChecked * 2;
+            const isBalanced = (p2 + p1 + p0 === polyChecked) && (bibitLayak + bibitAfkir === bibitAwal);
+            const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
 
-                          return `
+            return `
                             <!-- CARD TRANSAKSI GLOBAL (DEFAULT: COLLAPSED) -->
                             <div class="card-child-tx" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
                               
@@ -1193,12 +1225,12 @@ function renderMantriSelectionLanding(app, user) {
 
                             </div>
                           `;
-                        }).join('')}
+          }).join('')}
                       </div>
                     `}
                   </div>
                 `;
-              })()}
+        })()}
             `}
           ` : activePreGraftingTab === 'SELEKSI_2' ? `
             <!-- VIEW 1B: DOKUMEN SELEKSI II PRA-OKULASI -->
@@ -1207,70 +1239,70 @@ function renderMantriSelectionLanding(app, user) {
             </div>
 
             ${seleksi2Docs.length === 0 ? renderEmptyStateCard({
-              title: 'Belum Ada Dokumen Seleksi II',
-              description: 'Dokumen Seleksi II dapat dibuat setelah Dokumen Seleksi I berstatus FINAL disetujui oleh Asisten Bibitan.'
-            }) : `
+          title: 'Belum Ada Dokumen Seleksi II',
+          description: 'Dokumen Seleksi II dapat dibuat setelah Dokumen Seleksi I berstatus FINAL disetujui oleh Asisten Bibitan.'
+        }) : `
               <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
                 ${seleksi2Docs.map(doc => {
-    const bedScopeList = getBedenganScopeStatusForSeleksi2(doc);
-    const executions = getSeleksi2ExecutionsByDocument(doc.id || doc.docNo);
-    const isCompleted = Boolean(doc.isCompleted);
-    const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
-    const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
-    const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
-    const isFinal = Boolean(doc.isFinal);
-    const bedDisplay = formatBedenganDisplayCode(doc);
-    const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
-    const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
-    const totalLayak = parseInt(doc.totalLayak || 0, 10);
-    const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
+          const bedScopeList = getBedenganScopeStatusForSeleksi2(doc);
+          const executions = getSeleksi2ExecutionsByDocument(doc.id || doc.docNo);
+          const isCompleted = Boolean(doc.isCompleted);
+          const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
+          const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
+          const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
+          const isFinal = Boolean(doc.isFinal);
+          const bedDisplay = formatBedenganDisplayCode(doc);
+          const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
+          const sourceBibit = parseInt(doc.sourceBibitQty || 0, 10);
+          const totalLayak = parseInt(doc.totalLayak || 0, 10);
+          const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
 
-    const totalInspectedPolybag = executions.reduce((sum, tx) => sum + parseInt(tx.polybagScope || 0, 10), 0);
-    const remainingPolybag = Math.max(0, sourcePolybag - totalInspectedPolybag);
-    const isAllChecked = (sourcePolybag > 0 && totalInspectedPolybag >= sourcePolybag);
-    const progressPercent = sourcePolybag > 0 ? Math.min(100, Math.round((totalInspectedPolybag / sourcePolybag) * 100)) : 0;
-    const formattedProgress = `${progressPercent}% Selesai`;
+          const totalInspectedPolybag = executions.reduce((sum, tx) => sum + parseInt(tx.polybagScope || 0, 10), 0);
+          const remainingPolybag = Math.max(0, sourcePolybag - totalInspectedPolybag);
+          const isAllChecked = (sourcePolybag > 0 && totalInspectedPolybag >= sourcePolybag);
+          const progressPercent = sourcePolybag > 0 ? Math.min(100, Math.round((totalInspectedPolybag / sourcePolybag) * 100)) : 0;
+          const formattedProgress = `${progressPercent}% Selesai`;
 
-    // Cek apakah Dokumen Seleksi III sudah pernah dibuat dari Seleksi II ini
-    const existingSel3 = seleksi3Docs.find(d =>
-      d.sourceSelectionDocumentId === doc.id ||
-      d.sourceSelectionDocNo === doc.docNo ||
-      d.sourceDocNo === doc.docNo
-    );
+          // Cek apakah Dokumen Seleksi III sudah pernah dibuat dari Seleksi II ini
+          const existingSel3 = seleksi3Docs.find(d =>
+            d.sourceSelectionDocumentId === doc.id ||
+            d.sourceSelectionDocNo === doc.docNo ||
+            d.sourceDocNo === doc.docNo
+          );
 
-    let badgeText = 'DRAFT';
-    let badgeBg = '#FEF3C7';
-    let badgeColor = '#B45309';
-    let badgeBorder = '#FDE68A';
+          let badgeText = 'DRAFT';
+          let badgeBg = '#FEF3C7';
+          let badgeColor = '#B45309';
+          let badgeBorder = '#FDE68A';
 
-    if (isApproved && isFinal) {
-      badgeText = 'Disetujui';
-      badgeBg = '#F0FDF4';
-      badgeColor = '#15803D';
-      badgeBorder = '#BBF7D0';
-    } else if (isReturned) {
-      badgeText = 'Dikembalikan';
-      badgeBg = '#FEF2F2';
-      badgeColor = '#DC2626';
-      badgeBorder = '#FECACA';
-    } else if (isSubmitted) {
-      badgeText = 'Menunggu Verifikasi';
-      badgeBg = '#EFF6FF';
-      badgeColor = '#1D4ED8';
-      badgeBorder = '#BFDBFE';
-    } else if (isAllChecked || isCompleted) {
-      badgeText = 'Siap Review';
-      badgeBg = '#F0FDF4';
-      badgeColor = '#15803D';
-      badgeBorder = '#BBF7D0';
-    } else if (executions.length > 0) {
-      badgeText = 'Sedang Diperiksa';
-      badgeBg = '#FEF3C7';
-      badgeColor = '#B45309';
-      badgeBorder = '#FDE68A';
-    }
+          if (isApproved && isFinal) {
+            badgeText = 'Disetujui';
+            badgeBg = '#F0FDF4';
+            badgeColor = '#15803D';
+            badgeBorder = '#BBF7D0';
+          } else if (isReturned) {
+            badgeText = 'Dikembalikan';
+            badgeBg = '#FEF2F2';
+            badgeColor = '#DC2626';
+            badgeBorder = '#FECACA';
+          } else if (isSubmitted) {
+            badgeText = 'Menunggu Verifikasi';
+            badgeBg = '#EFF6FF';
+            badgeColor = '#1D4ED8';
+            badgeBorder = '#BFDBFE';
+          } else if (isAllChecked || isCompleted) {
+            badgeText = 'Siap Review';
+            badgeBg = '#F0FDF4';
+            badgeColor = '#15803D';
+            badgeBorder = '#BBF7D0';
+          } else if (executions.length > 0) {
+            badgeText = 'Sedang Diperiksa';
+            badgeBg = '#FEF3C7';
+            badgeColor = '#B45309';
+            badgeBorder = '#FDE68A';
+          }
 
-    return `
+          return `
                     <!-- CARD DOKUMEN INDUK SELEKSI II (COLLAPSED BY DEFAULT) -->
                     <div class="card-pre-grafting-doc card-parent-doc card-seleksi2-doc" id="selection-parent-${esc(doc.id)}" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px;">
                       
@@ -1448,30 +1480,30 @@ function renderMantriSelectionLanding(app, user) {
 
                     </div><!-- END card-parent-doc -->
                   `;
-                }).join('')}
+        }).join('')}
               </div>
 
               <!-- GLOBAL CONTAINER RINGKASAN TRANSAKSI PELAKSANAAN SELEKSI II -->
               ${(() => {
-                const allRawTxs = storage.get(SELECTION_STORAGE_KEY, []);
-                const allSeleksi2Txs = allRawTxs.filter(tx => {
-                  const isStage2 = (
-                    tx.selectionStage === SELECTION_STAGES.SELEKSI_2 ||
-                    tx.stage === 'SELEKSI_II' ||
-                    tx.stage === 'SELEKSI_2' ||
-                    tx.transactionType === 'PELAKSANAAN_SELEKSI_II'
-                  );
-                  if (!isStage2) return false;
-                  return seleksi2Docs.some(d =>
-                    d.id === tx.parentSelectionDocumentId ||
-                    d.id === tx.selectionDocumentId ||
-                    d.docNo === tx.parentSelectionDocNo ||
-                    d.docNo === tx.selectionDocNo ||
-                    d.docNo === tx.sourceDocNo
-                  );
-                });
+          const allRawTxs = storage.get(SELECTION_STORAGE_KEY, []);
+          const allSeleksi2Txs = allRawTxs.filter(tx => {
+            const isStage2 = (
+              tx.selectionStage === SELECTION_STAGES.SELEKSI_2 ||
+              tx.stage === 'SELEKSI_II' ||
+              tx.stage === 'SELEKSI_2' ||
+              tx.transactionType === 'PELAKSANAAN_SELEKSI_II'
+            );
+            if (!isStage2) return false;
+            return seleksi2Docs.some(d =>
+              d.id === tx.parentSelectionDocumentId ||
+              d.id === tx.selectionDocumentId ||
+              d.docNo === tx.parentSelectionDocNo ||
+              d.docNo === tx.selectionDocNo ||
+              d.docNo === tx.sourceDocNo
+            );
+          });
 
-                return `
+          return `
                   <div class="section-global-child-transactions" style="margin-top: 20px; padding-top: 14px; border-top: 2px solid #E2E8F0;">
                     <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
                       <h2 style="font-size: 0.92rem; font-weight: 800; color: #0F172A; margin: 0;">
@@ -1480,29 +1512,29 @@ function renderMantriSelectionLanding(app, user) {
                     </div>
 
                     ${allSeleksi2Txs.length === 0 ? renderEmptyStateCard({
-                      title: 'Belum ada transaksi pelaksanaan',
-                      description: 'Belum ada pemeriksaan yang dicatat untuk Seleksi II.'
-                    }) : `
+            title: 'Belum ada transaksi pelaksanaan',
+            description: 'Belum ada pemeriksaan yang dicatat untuk Seleksi II.'
+          }) : `
                       <div style="display: flex; flex-direction: column; gap: 10px;">
                         ${allSeleksi2Txs.map((tx, txIdx) => {
-                          const parentDoc = seleksi2Docs.find(d => 
-                            d.id === tx.parentSelectionDocumentId || 
-                            d.id === tx.selectionDocumentId ||
-                            d.docNo === tx.parentSelectionDocNo ||
-                            d.docNo === tx.selectionDocNo ||
-                            d.docNo === tx.sourceDocNo
-                          ) || {};
-                          const p2 = tx.polybag2Bibit || 0;
-                          const p1 = tx.polybag1Bibit || 0;
-                          const p0 = tx.polybag0Bibit || 0;
-                          const polyChecked = tx.polybagScope || tx.initialPolybagCount || (p2 + p1 + p0);
-                          const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || (p2 + p1);
-                          const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || p2;
-                          const bibitAwal = tx.bibitAwal || (p2 * 2 + p1);
-                          const isBalanced = (bibitLayak + bibitAfkir === bibitAwal);
-                          const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
+            const parentDoc = seleksi2Docs.find(d =>
+              d.id === tx.parentSelectionDocumentId ||
+              d.id === tx.selectionDocumentId ||
+              d.docNo === tx.parentSelectionDocNo ||
+              d.docNo === tx.selectionDocNo ||
+              d.docNo === tx.sourceDocNo
+            ) || {};
+            const p2 = tx.polybag2Bibit || 0;
+            const p1 = tx.polybag1Bibit || 0;
+            const p0 = tx.polybag0Bibit || 0;
+            const polyChecked = tx.polybagScope || tx.initialPolybagCount || (p2 + p1 + p0);
+            const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || (p2 + p1);
+            const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || p2;
+            const bibitAwal = tx.bibitAwal || (p2 * 2 + p1);
+            const isBalanced = (bibitLayak + bibitAfkir === bibitAwal);
+            const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
 
-                          return `
+            return `
                             <!-- CARD TRANSAKSI GLOBAL (DEFAULT: COLLAPSED) -->
                             <div class="card-child-tx" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
                               
@@ -1586,12 +1618,12 @@ function renderMantriSelectionLanding(app, user) {
 
                             </div>
                           `;
-                        }).join('')}
+          }).join('')}
                       </div>
                     `}
                   </div>
                 `;
-              })()}
+        })()}
             `}
           ` : `
             <!-- VIEW 1C: DOKUMEN SELEKSI III PRA-OKULASI -->
@@ -1600,67 +1632,67 @@ function renderMantriSelectionLanding(app, user) {
             </div>
 
             ${seleksi3Docs.length === 0 ? renderEmptyStateCard({
-              title: 'Belum Ada Dokumen Seleksi III',
-              description: 'Dokumen Seleksi III dapat dibuat setelah Dokumen Seleksi II berstatus FINAL disetujui oleh Asisten Bibitan.'
-            }) : `
+          title: 'Belum Ada Dokumen Seleksi III',
+          description: 'Dokumen Seleksi III dapat dibuat setelah Dokumen Seleksi II berstatus FINAL disetujui oleh Asisten Bibitan.'
+        }) : `
               <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
                 ${seleksi3Docs.map(doc => {
-    const bedDisplay = formatBedenganDisplayCode(doc);
-    const executions = getSeleksi3ExecutionsByDocument(doc.id || doc.docNo);
-    const metrics = getSeleksi3Metrics(doc, executions);
+          const bedDisplay = formatBedenganDisplayCode(doc);
+          const executions = getSeleksi3ExecutionsByDocument(doc.id || doc.docNo);
+          const metrics = getSeleksi3Metrics(doc, executions);
 
-    const sourcePolybag = metrics.totalPopulasi;
-    const totalInspectedPolybag = metrics.totalBibitDiperiksa;
-    const totalLayak = metrics.totalBibitLayak;
-    const totalAfkir = metrics.totalBibitReject;
-    const remainingPolybag = metrics.sisaPemeriksaan;
-    const progressPercent = metrics.progress;
-    const formattedProgress = `${progressPercent}% Selesai`;
+          const sourcePolybag = metrics.totalPopulasi;
+          const totalInspectedPolybag = metrics.totalBibitDiperiksa;
+          const totalLayak = metrics.totalBibitLayak;
+          const totalAfkir = metrics.totalBibitReject;
+          const remainingPolybag = metrics.sisaPemeriksaan;
+          const progressPercent = metrics.progress;
+          const formattedProgress = `${progressPercent}% Selesai`;
 
-    const isCompleted = Boolean(doc.isCompleted);
-    const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
-    const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
-    const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
-    const isFinal = Boolean(doc.isFinal);
+          const isCompleted = Boolean(doc.isCompleted);
+          const isSubmitted = doc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || doc.status === 'DIAJUKAN';
+          const isApproved = doc.status === SELECTION_STATUS.DISETUJUI;
+          const isReturned = doc.status === SELECTION_STATUS.DIKEMBALIKAN;
+          const isFinal = Boolean(doc.isFinal);
 
-    let badgeText = 'Belum Dimulai';
-    let badgeBg = '#F1F5F9';
-    let badgeColor = '#64748B';
-    let badgeBorder = '#E2E8F0';
+          let badgeText = 'Belum Dimulai';
+          let badgeBg = '#F1F5F9';
+          let badgeColor = '#64748B';
+          let badgeBorder = '#E2E8F0';
 
-    if (isApproved && isFinal) {
-      badgeText = 'Disetujui';
-      badgeBg = '#F0FDF4';
-      badgeColor = '#15803D';
-      badgeBorder = '#BBF7D0';
-    } else if (isReturned) {
-      badgeText = 'Dikembalikan';
-      badgeBg = '#FEF2F2';
-      badgeColor = '#DC2626';
-      badgeBorder = '#FECACA';
-    } else if (isSubmitted) {
-      badgeText = 'Menunggu Verifikasi';
-      badgeBg = '#EFF6FF';
-      badgeColor = '#1D4ED8';
-      badgeBorder = '#BFDBFE';
-    } else if (metrics.status === 'Data Tidak Seimbang') {
-      badgeText = 'Data Tidak Seimbang';
-      badgeBg = '#FEF2F2';
-      badgeColor = '#DC2626';
-      badgeBorder = '#FECACA';
-    } else if (metrics.status === 'Siap Review') {
-      badgeText = 'Siap Review';
-      badgeBg = '#F0FDF4';
-      badgeColor = '#15803D';
-      badgeBorder = '#BBF7D0';
-    } else if (metrics.status === 'Sedang Diperiksa') {
-      badgeText = 'Sedang Diperiksa';
-      badgeBg = '#FEF3C7';
-      badgeColor = '#B45309';
-      badgeBorder = '#FDE68A';
-    }
+          if (isApproved && isFinal) {
+            badgeText = 'Disetujui';
+            badgeBg = '#F0FDF4';
+            badgeColor = '#15803D';
+            badgeBorder = '#BBF7D0';
+          } else if (isReturned) {
+            badgeText = 'Dikembalikan';
+            badgeBg = '#FEF2F2';
+            badgeColor = '#DC2626';
+            badgeBorder = '#FECACA';
+          } else if (isSubmitted) {
+            badgeText = 'Menunggu Verifikasi';
+            badgeBg = '#EFF6FF';
+            badgeColor = '#1D4ED8';
+            badgeBorder = '#BFDBFE';
+          } else if (metrics.status === 'Data Tidak Seimbang') {
+            badgeText = 'Data Tidak Seimbang';
+            badgeBg = '#FEF2F2';
+            badgeColor = '#DC2626';
+            badgeBorder = '#FECACA';
+          } else if (metrics.status === 'Siap Review') {
+            badgeText = 'Siap Review';
+            badgeBg = '#F0FDF4';
+            badgeColor = '#15803D';
+            badgeBorder = '#BBF7D0';
+          } else if (metrics.status === 'Sedang Diperiksa') {
+            badgeText = 'Sedang Diperiksa';
+            badgeBg = '#FEF3C7';
+            badgeColor = '#B45309';
+            badgeBorder = '#FDE68A';
+          }
 
-    return `
+          return `
                     <!-- CARD DOKUMEN INDUK SELEKSI III (COLLAPSED BY DEFAULT) -->
                     <div class="card-pre-grafting-doc card-parent-doc card-seleksi3-doc" id="selection-parent-${esc(doc.id)}" data-id="${esc(doc.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px;">
                       
@@ -1852,30 +1884,30 @@ function renderMantriSelectionLanding(app, user) {
 
                     </div><!-- END card-parent-doc -->
                   `;
-                }).join('')}
+        }).join('')}
               </div>
 
               <!-- GLOBAL CONTAINER RINGKASAN TRANSAKSI PELAKSANAAN SELEKSI III -->
               ${(() => {
-                const allRawTxs = storage.get(SELECTION_STORAGE_KEY, []);
-                const allSeleksi3Txs = allRawTxs.filter(tx => {
-                  const isStage3 = (
-                    tx.selectionStage === SELECTION_STAGES.SELEKSI_3 ||
-                    tx.stage === 'SELEKSI_III' ||
-                    tx.stage === 'SELEKSI_3' ||
-                    tx.transactionType === 'PELAKSANAAN_SELEKSI_III'
-                  );
-                  if (!isStage3) return false;
-                  return seleksi3Docs.some(d =>
-                    d.id === tx.parentSelectionDocumentId ||
-                    d.id === tx.selectionDocumentId ||
-                    d.docNo === tx.parentSelectionDocNo ||
-                    d.docNo === tx.selectionDocNo ||
-                    d.docNo === tx.sourceDocNo
-                  );
-                });
+        const allRawTxs = storage.get(SELECTION_STORAGE_KEY, []);
+        const allSeleksi3Txs = allRawTxs.filter(tx => {
+          const isStage3 = (
+            tx.selectionStage === SELECTION_STAGES.SELEKSI_3 ||
+            tx.stage === 'SELEKSI_III' ||
+            tx.stage === 'SELEKSI_3' ||
+            tx.transactionType === 'PELAKSANAAN_SELEKSI_III'
+          );
+          if (!isStage3) return false;
+          return seleksi3Docs.some(d =>
+            d.id === tx.parentSelectionDocumentId ||
+            d.id === tx.selectionDocumentId ||
+            d.docNo === tx.parentSelectionDocNo ||
+            d.docNo === tx.selectionDocNo ||
+            d.docNo === tx.sourceDocNo
+          );
+        });
 
-                return `
+        return `
                   <div class="section-global-child-transactions" style="margin-top: 20px; padding-top: 14px; border-top: 2px solid #E2E8F0;">
                     <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
                       <h2 style="font-size: 0.92rem; font-weight: 800; color: #0F172A; margin: 0;">
@@ -1884,26 +1916,26 @@ function renderMantriSelectionLanding(app, user) {
                     </div>
 
                     ${allSeleksi3Txs.length === 0 ? renderEmptyStateCard({
-                      title: 'Belum ada transaksi pelaksanaan',
-                      description: 'Belum ada pemeriksaan yang dicatat untuk Seleksi III.'
-                    }) : `
+          title: 'Belum ada transaksi pelaksanaan',
+          description: 'Belum ada pemeriksaan yang dicatat untuk Seleksi III.'
+        }) : `
                       <div style="display: flex; flex-direction: column; gap: 10px;">
                         ${allSeleksi3Txs.map((tx, txIdx) => {
-                          const parentDoc = seleksi3Docs.find(d => 
-                            d.id === tx.parentSelectionDocumentId || 
-                            d.id === tx.selectionDocumentId ||
-                            d.docNo === tx.parentSelectionDocNo ||
-                            d.docNo === tx.selectionDocNo ||
-                            d.docNo === tx.sourceDocNo
-                          ) || {};
-                          const polyChecked = tx.polybagScope || tx.initialPolybagCount || 0;
-                          const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || 0;
-                          const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || 0;
-                          const bibitAwal = tx.bibitAwal || tx.jumlahDiperiksa || (bibitLayak + bibitAfkir);
-                          const isBalanced = (bibitLayak + bibitAfkir === bibitAwal);
-                          const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
+          const parentDoc = seleksi3Docs.find(d =>
+            d.id === tx.parentSelectionDocumentId ||
+            d.id === tx.selectionDocumentId ||
+            d.docNo === tx.parentSelectionDocNo ||
+            d.docNo === tx.selectionDocNo ||
+            d.docNo === tx.sourceDocNo
+          ) || {};
+          const polyChecked = tx.polybagScope || tx.initialPolybagCount || 0;
+          const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || 0;
+          const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || 0;
+          const bibitAwal = tx.bibitAwal || tx.jumlahDiperiksa || (bibitLayak + bibitAfkir);
+          const isBalanced = (bibitLayak + bibitAfkir === bibitAwal);
+          const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
 
-                          return `
+          return `
                             <!-- CARD TRANSAKSI GLOBAL (DEFAULT: COLLAPSED) -->
                             <div class="card-child-tx" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
                               
@@ -1971,12 +2003,12 @@ function renderMantriSelectionLanding(app, user) {
 
                             </div>
                           `;
-                        }).join('')}
+        }).join('')}
                       </div>
                     `}
                   </div>
                 `;
-              })()}
+      })()}
             `}
           `}
         ` : activeMantriTab === 'PRE_SOWING' ? `
@@ -2257,25 +2289,27 @@ function renderMantriSelectionLanding(app, user) {
 
       const displayDocNo = standardizeSelectionDocNo(targetPoolItem.docNo, 1);
 
-      // STEP 1: Modal Konfirmasi
+      // STEP 1: Modal Konfirmasi Deklarasi
       openSelectionConfirmationModal({
         item: targetPoolItem,
         displayDocNo,
         user,
-        onConfirm: () => {
-          // STEP 2: Kamera
+        onConfirm: ({ category, notes }) => {
+          // STEP 2: Kamera / Upload Dokumentasi Foto
           openSelectionCameraModal({
             item: targetPoolItem,
             displayDocNo,
             user,
+            category,
+            notes,
             onCaptureCancel: () => {
               toast('Pengambilan foto dokumentasi dibatalkan. Deklarasi belum disimpan.', 'info');
             },
             onCaptureSuccess: (photoResult) => {
               try {
-                const res = declareSelectionItem(targetPoolItem, photoResult, user);
+                const res = declareSelectionItem(targetPoolItem, photoResult, user, { category, notes });
                 if (res.isNew) {
-                  toast(`Pengurangan stok seleksi ${getSelectionCategoryLabel(targetPoolItem)} (${res.transaction.docNo}) berhasil dideklarasikan dan dokumentasi tersimpan.`, 'success');
+                  toast(`Deklarasi bibit afkir (${res.transaction.docNo}) berhasil disimpan dan dokumentasi tercatat.`, 'success');
                 } else {
                   toast(`Data seleksi (${res.transaction.docNo}) sudah tercatat sebelumnya. Dokumentasi diperbarui.`, 'info');
                 }
@@ -2289,6 +2323,464 @@ function renderMantriSelectionLanding(app, user) {
         }
       });
     });
+  });
+}
+
+/**
+ * Standardize Selection Document Number helper at module scope
+ */
+export function standardizeSelectionDocNo(rawDocNo, index = 1) {
+  if (!rawDocNo || typeof rawDocNo !== 'string') {
+    return formatStandardDocNo(2026, 'CULL', index);
+  }
+  const clean = rawDocNo.trim();
+  if (clean.startsWith('2026/CULL/')) return clean;
+  const match = clean.match(/(\d+)(?:_\d+)?$/);
+  const seq = match ? parseInt(match[1], 10) : index;
+  return formatStandardDocNo(2026, 'CULL', seq > 0 ? seq : index);
+}
+
+/**
+ * =============================================================================
+ * MODAL KONFIRMASI DEKLARASI BIBIT AFKIR (PASCA SEMAI / DEDERAN)
+ * =============================================================================
+ */
+export function openSelectionConfirmationModal({ item, displayDocNo, user, onConfirm }) {
+  const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN';
+  const sourceLabel = getSelectionSourceLabel(item);
+  const bedenganDisplay = formatBedenganDisplayCode(item);
+  const sourceDocNo = item.sourceDocNo || item.dederanDocNo || item.seedingDocNo || item.buddingDocNo || item.inspectionDocNo || '-';
+  const programDisplay = item.programCode || item.programName || item.program || '-';
+  const batchDisplay = isDederan ? null : (item.batchCode || item.batchNo || null);
+  const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+  const unit = item.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
+
+  const defaultCategory = (item.category || item.alasanDitolakCategory || 'AFKIR').toUpperCase();
+
+  const body = `
+    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
+      <!-- SOURCE CONTEXT SUMMARY -->
+      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 0.74rem;">
+          <div>
+            <span style="color: #64748B; display: block; font-size: 0.66rem;">Sumber</span>
+            <strong style="color: #0F172A;">${esc(sourceLabel)}</strong>
+          </div>
+          <div>
+            <span style="color: #64748B; display: block; font-size: 0.66rem;">Bedengan</span>
+            <strong style="color: #0F172A;">${esc(bedenganDisplay)}</strong>
+          </div>
+          <div>
+            <span style="color: #64748B; display: block; font-size: 0.66rem;">Dokumen Asal</span>
+            <strong style="color: #0F172A;">${esc(sourceDocNo)}</strong>
+          </div>
+          <div>
+            <span style="color: #64748B; display: block; font-size: 0.66rem;">${isDederan ? 'Program' : 'Batch & Program'}</span>
+            <strong style="color: #0F172A;">${isDederan ? esc(programDisplay) : `${esc(batchDisplay || '-')} • ${esc(programDisplay)}`}</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- KUANTITAS TIDAK BERHASIL BOX -->
+      <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-size: 0.68rem; font-weight: 700; color: #991B1B; text-transform: uppercase; letter-spacing: 0.5px;">Jumlah Tidak Berhasil</div>
+          <div style="font-size: 0.72rem; color: #64748B; margin-top: 1px;">Dok. Seleksi: <strong style="color: #334155;">${esc(displayDocNo)}</strong></div>
+        </div>
+        <div style="text-align: right;">
+          <span style="font-size: 1.40rem; font-weight: 900; color: #DC2626; line-height: 1;">${qtyAfkir.toLocaleString('id-ID')}</span>
+          <span style="font-size: 0.74rem; font-weight: 700; color: #991B1B; margin-left: 2px;">${unit}</span>
+        </div>
+      </div>
+
+      <!-- PILIHAN KLASIFIKASI DEKLARASI -->
+      <div style="margin-bottom: 14px;">
+        <label style="display: block; font-size: 0.76rem; font-weight: 700; color: #0F172A; margin-bottom: 6px;">
+          Klasifikasi Deklarasi Bibit <span style="color: #DC2626;">*</span>
+        </label>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;" id="declaration-category-group">
+          <label style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; border: 1.5px solid #CBD5E1; border-radius: 6px; cursor: pointer; background: #FFFFFF; text-align: center; user-select: none; transition: all 0.15s ease;" class="cat-radio-label">
+            <input type="radio" name="sel-declare-category" value="AFKIR" ${defaultCategory === 'AFKIR' ? 'checked' : ''} style="margin-bottom: 4px; accent-color: #116834;">
+            <span style="font-weight: 700; font-size: 0.78rem; color: #0F172A;">Afkir</span>
+            <span style="font-size: 0.62rem; color: #64748B;">Culling</span>
+          </label>
+          <label style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; border: 1.5px solid #CBD5E1; border-radius: 6px; cursor: pointer; background: #FFFFFF; text-align: center; user-select: none; transition: all 0.15s ease;" class="cat-radio-label">
+            <input type="radio" name="sel-declare-category" value="REJECT" ${defaultCategory === 'REJECT' ? 'checked' : ''} style="margin-bottom: 4px; accent-color: #116834;">
+            <span style="font-weight: 700; font-size: 0.78rem; color: #0F172A;">Reject</span>
+            <span style="font-size: 0.62rem; color: #64748B;">Kerdil/Cacat</span>
+          </label>
+          <label style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; border: 1.5px solid #CBD5E1; border-radius: 6px; cursor: pointer; background: #FFFFFF; text-align: center; user-select: none; transition: all 0.15s ease;" class="cat-radio-label">
+            <input type="radio" name="sel-declare-category" value="MATI" ${defaultCategory === 'MATI' ? 'checked' : ''} style="margin-bottom: 4px; accent-color: #116834;">
+            <span style="font-weight: 700; font-size: 0.78rem; color: #0F172A;">Mati</span>
+            <span style="font-size: 0.62rem; color: #64748B;">Busuk/Mati</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- CATATAN OPSIONAL -->
+      <div style="margin-bottom: 6px;">
+        <label style="display: block; font-size: 0.74rem; font-weight: 600; color: #475569; margin-bottom: 4px;">
+          Catatan / Keterangan (Opsional)
+        </label>
+        <textarea id="modal-declare-notes" rows="2" placeholder="Tuliskan catatan kondisi bibit jika ada..." style="width: 100%; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px; font-size: 0.78rem; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <div style="display: flex; gap: 8px; width: 100%;">
+      <button type="button" class="btn btn-ghost" id="btn-modal-declare-cancel" style="flex: 1; height: 38px; font-size: 0.80rem;">Batal</button>
+      <button type="button" class="btn btn-primary" id="btn-modal-declare-next" style="flex: 2; height: 38px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.80rem; border: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center;">
+        Lanjut Foto Dokumentasi
+      </button>
+    </div>
+  `;
+
+  openModal({
+    title: 'Konfirmasi Deklarasi Bibit',
+    body,
+    footer
+  });
+
+  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) return;
+
+  const btnCancel = modalRoot.querySelector('#btn-modal-declare-cancel');
+  const btnNext = modalRoot.querySelector('#btn-modal-declare-next');
+  const notesInput = modalRoot.querySelector('#modal-declare-notes');
+
+  btnCancel?.addEventListener('click', () => {
+    closeModal();
+  });
+
+  btnNext?.addEventListener('click', () => {
+    const selectedRadio = modalRoot.querySelector('input[name="sel-declare-category"]:checked');
+    const category = selectedRadio ? selectedRadio.value : 'AFKIR';
+    const notes = notesInput ? notesInput.value.trim() : '';
+
+    closeModal();
+    if (onConfirm) {
+      onConfirm({ category, notes });
+    }
+  });
+}
+
+/**
+ * =============================================================================
+ * MODAL KAMERA & DOKUMENTASI FOTO DEKLARASI SELEKSI BIBIT
+ * =============================================================================
+ */
+export function openSelectionCameraModal({ item, displayDocNo, user, category = 'AFKIR', notes = '', onCaptureSuccess, onCaptureCancel }) {
+  const bedLabel = formatBedenganDisplayCode(item);
+  const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+  const unit = item.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
+
+  let currentStream = null;
+  let isCameraActive = false;
+  let capturedDataUrl = null;
+  let capturedPhotoRecord = null;
+  let capturedLat = null;
+  let capturedLon = null;
+
+  // Initial timestamp display
+  const initialDate = new Date();
+  const initialDateFormatted = formatDate(initialDate.toISOString());
+  const initialTimeFormatted = initialDate.toTimeString().split(' ')[0];
+  let currentTimestampStr = `${initialDateFormatted} ${initialTimeFormatted} WIB`;
+
+  // Geolocation pre-fetch (Evidence only, non-blocking)
+  try {
+    if (navigator && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (pos && pos.coords) {
+            capturedLat = Number(pos.coords.latitude.toFixed(6));
+            capturedLon = Number(pos.coords.longitude.toFixed(6));
+            updateOverlayWatermark();
+          }
+        },
+        (err) => {
+          console.info('[Selection Camera] GPS not available or permission denied (Evidence fallback used):', err?.message || err);
+        },
+        { timeout: 3000, enableHighAccuracy: false }
+      );
+    }
+  } catch (geoErr) {
+    console.info('[Selection Camera] Geolocation error:', geoErr?.message || geoErr);
+  }
+
+  const getLatLongDisplay = () => {
+    const latDisplay = (capturedLat !== null && capturedLat !== undefined) ? String(capturedLat) : '-';
+    const lonDisplay = (capturedLon !== null && capturedLon !== undefined) ? String(capturedLon) : '-';
+    return { latDisplay, lonDisplay, text: `Lat: ${latDisplay} | Long: ${lonDisplay}` };
+  };
+
+  const body = `
+    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
+      <!-- TOP INFO BAR -->
+      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem;">
+        <div style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <span style="color: #64748B;">Dok:</span> <strong style="color: #0F172A;">${esc(displayDocNo)}</strong> • <strong style="color: #116834;">${esc(category)} (${qtyAfkir.toLocaleString('id-ID')} ${unit})</strong>
+        </div>
+        <div style="flex-shrink: 0; font-weight: 700; color: #334155; margin-left: 8px;">
+          ${esc(bedLabel)}
+        </div>
+      </div>
+
+      <!-- CAMERA / PREVIEW VIEWPORT (REUSE SIGMA CAMERA PATTERN) -->
+      <div style="position: relative; width: 100%; height: 260px; background: #0F172A; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">
+        
+        <video id="sel-camera-video" playsinline autoplay muted style="width: 100%; height: 100%; object-fit: cover; display: none;"></video>
+        
+        <canvas id="sel-camera-canvas" style="display: none;"></canvas>
+
+        <img id="sel-camera-preview-img" style="width: 100%; height: 100%; object-fit: cover; display: none;" alt="Preview Foto Dokumentasi">
+
+        <!-- FALLBACK NO CAMERA VIEW -->
+        <div id="sel-camera-fallback" style="text-align: center; color: #94A3B8; padding: 20px;">
+          <svg viewBox="0 0 24 24" width="40" height="40" stroke="#64748B" stroke-width="1.8" fill="none" style="margin: 0 auto 8px auto; display: block;">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          <div style="font-size: 0.78rem; font-weight: 600; color: #E2E8F0;">Kamera Aktif / Mode Simulasi SIGMA</div>
+          <div style="font-size: 0.68rem; color: #94A3B8; margin-top: 2px;">Gunakan tombol "Ambil Foto" untuk mengambil foto dokumentasi seleksi bibit.</div>
+        </div>
+
+        <!-- WATERMARK OVERLAY BAR -->
+        <div id="sel-camera-watermark-overlay" style="position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.72); color: #FFFFFF; padding: 6px 10px; font-size: 0.62rem; line-height: 1.35; display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none;">
+          <div>
+            <div style="font-weight: 700; color: #FFFFFF;">SIGMA | ${esc(bedLabel)}</div>
+            <div id="sel-watermark-time" style="color: #E2E8F0;">${currentTimestampStr}</div>
+            <div id="sel-watermark-coords" style="color: #CBD5E1;">${getLatLongDisplay().text}</div>
+          </div>
+          <div style="font-weight: 700; color: #BBF7D0; text-align: right; flex-shrink: 0;">DEKLARASI ${esc(category)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <div style="display: flex; gap: 8px; width: 100%; align-items: stretch;">
+      <button type="button" class="btn btn-ghost" id="btn-camera-cancel" style="flex: 1; min-width: 60px; height: 38px; font-size: 0.78rem; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; background: #FFFFFF; color: #475569; cursor: pointer;">
+        Batal
+      </button>
+      <button type="button" class="btn" id="btn-camera-shutter" style="flex: 1.2; min-width: 85px; height: 38px; background: #1E293B; color: #FFFFFF; font-weight: 700; font-size: 0.78rem; border: none; border-radius: 6px; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center;">
+        Ambil Foto
+      </button>
+      <button type="button" class="btn btn-primary" id="btn-camera-save" style="flex: 2.2; min-width: 140px; height: 38px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.76rem; line-height: 1.2; border: none; border-radius: 6px; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
+        Simpan dan Kirim ke Asisten
+      </button>
+    </div>
+  `;
+
+  openModal({
+    title: 'Dokumentasi Foto Seleksi',
+    body,
+    footer,
+    onClose: () => {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+        currentStream = null;
+      }
+    }
+  });
+
+  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) return;
+
+  const videoEl = modalRoot.querySelector('#sel-camera-video');
+  const canvasEl = modalRoot.querySelector('#sel-camera-canvas');
+  const previewImgEl = modalRoot.querySelector('#sel-camera-preview-img');
+  const fallbackEl = modalRoot.querySelector('#sel-camera-fallback');
+  const btnShutter = modalRoot.querySelector('#btn-camera-shutter');
+  const btnSave = modalRoot.querySelector('#btn-camera-save');
+  const btnCancel = modalRoot.querySelector('#btn-camera-cancel');
+  const watermarkTimeEl = modalRoot.querySelector('#sel-watermark-time');
+  const watermarkCoordsEl = modalRoot.querySelector('#sel-watermark-coords');
+
+  function updateOverlayWatermark(timestampText = null) {
+    if (timestampText && watermarkTimeEl) {
+      watermarkTimeEl.textContent = timestampText;
+    }
+    if (watermarkCoordsEl) {
+      watermarkCoordsEl.textContent = getLatLongDisplay().text;
+    }
+  }
+
+  async function initCameraStream() {
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          currentStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+          });
+        } catch (errRear) {
+          currentStream = await navigator.mediaDevices.getUserMedia({
+            video: true
+          });
+        }
+        if (videoEl) {
+          videoEl.srcObject = currentStream;
+          await videoEl.play();
+          isCameraActive = true;
+          videoEl.style.display = 'block';
+          if (fallbackEl) fallbackEl.style.display = 'none';
+        }
+      }
+    } catch (e) {
+      console.info('[Selection Camera] Using canvas/simulation mode:', e?.message || e);
+      isCameraActive = false;
+      if (videoEl) videoEl.style.display = 'none';
+      if (fallbackEl) fallbackEl.style.display = 'block';
+    }
+  }
+
+  initCameraStream();
+
+  function generateTimestampedCanvas(sourceImgOrVideo = null, captureTimestampStr = null) {
+    if (!canvasEl) return '';
+    const w = 480;
+    const h = 360;
+    canvasEl.width = w;
+    canvasEl.height = h;
+    const ctx = canvasEl.getContext('2d');
+
+    const ts = captureTimestampStr || currentTimestampStr;
+    const { latDisplay, lonDisplay } = getLatLongDisplay();
+
+    if (sourceImgOrVideo && (sourceImgOrVideo.videoWidth || sourceImgOrVideo.naturalWidth || sourceImgOrVideo.width)) {
+      ctx.drawImage(sourceImgOrVideo, 0, 0, w, h);
+    } else {
+      // Elegant simulated camera capture frame
+      ctx.fillStyle = '#064E3B';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 1.5;
+      for (let x = 30; x < w; x += 30) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      for (let y = 30; y < h; y += 30) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`DOKUMENTASI BIBIT ${category.toUpperCase()}`, w / 2, h / 2 - 20);
+
+      ctx.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = '#D1FAE5';
+      ctx.fillText(`${bedLabel} • ${qtyAfkir.toLocaleString('id-ID')} ${unit}`, w / 2, h / 2 + 10);
+      ctx.fillText(`Ref: ${displayDocNo}`, w / 2, h / 2 + 32);
+    }
+
+    // WATERMARK OVERLAY BAR AT BOTTOM OF PHOTO
+    const barHeight = 58;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+    ctx.fillRect(0, h - barHeight, w, barHeight);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`SIGMA | ${bedLabel}`, 10, h - 42);
+
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#E2E8F0';
+    ctx.fillText(`${ts}`, 10, h - 28);
+    ctx.fillText(`Lat: ${latDisplay} | Long: ${lonDisplay}`, 10, h - 14);
+
+    ctx.fillStyle = '#BBF7D0';
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`DEKLARASI ${category.toUpperCase()}`, w - 10, h - 42);
+
+    return canvasEl.toDataURL('image/jpeg', 0.85);
+  }
+
+  btnShutter?.addEventListener('click', () => {
+    // Generate snapshot timestamp at exact capture moment
+    const captureDate = new Date();
+    const captureDateFormatted = formatDate(captureDate.toISOString());
+    const captureTimeFormatted = captureDate.toTimeString().split(' ')[0];
+    const captureTimestampStr = `${captureDateFormatted} ${captureTimeFormatted} WIB`;
+    currentTimestampStr = captureTimestampStr;
+
+    if (isCameraActive && videoEl && videoEl.videoWidth) {
+      capturedDataUrl = generateTimestampedCanvas(videoEl, captureTimestampStr);
+    } else {
+      capturedDataUrl = generateTimestampedCanvas(null, captureTimestampStr);
+    }
+
+    updateOverlayWatermark(captureTimestampStr);
+
+    const photoRecordId = `PHOTO-SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    capturedPhotoRecord = {
+      id: photoRecordId,
+      dataUrl: capturedDataUrl,
+      capturedAt: captureDate.toISOString(),
+      capturedAtLabel: captureTimestampStr,
+      latitude: capturedLat,
+      longitude: capturedLon,
+      source: 'CAMERA'
+    };
+
+    if (previewImgEl) {
+      previewImgEl.src = capturedDataUrl;
+      previewImgEl.style.display = 'block';
+    }
+    if (videoEl) videoEl.style.display = 'none';
+    if (fallbackEl) fallbackEl.style.display = 'none';
+    toast('Foto dokumentasi seleksi berhasil diambil.', 'success');
+  });
+
+  btnSave?.addEventListener('click', () => {
+    if (!capturedPhotoRecord) {
+      const captureDate = new Date();
+      const captureDateFormatted = formatDate(captureDate.toISOString());
+      const captureTimeFormatted = captureDate.toTimeString().split(' ')[0];
+      const captureTimestampStr = `${captureDateFormatted} ${captureTimeFormatted} WIB`;
+      currentTimestampStr = captureTimestampStr;
+
+      capturedDataUrl = generateTimestampedCanvas(isCameraActive && videoEl?.videoWidth ? videoEl : null, captureTimestampStr);
+      const photoRecordId = `PHOTO-SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      capturedPhotoRecord = {
+        id: photoRecordId,
+        dataUrl: capturedDataUrl,
+        capturedAt: captureDate.toISOString(),
+        capturedAtLabel: captureTimestampStr,
+        latitude: capturedLat,
+        longitude: capturedLon,
+        source: 'CAMERA'
+      };
+    }
+
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+
+    closeModal();
+    if (onCaptureSuccess) {
+      onCaptureSuccess(capturedPhotoRecord);
+    }
+  });
+
+  btnCancel?.addEventListener('click', () => {
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+    closeModal();
+    if (onCaptureCancel) {
+      onCaptureCancel();
+    }
   });
 }
 
@@ -2348,73 +2840,86 @@ export function openPreGraftingReviewModal({ doc, user, onSubmitted }) {
       <!-- METRIK LENGKAP -->
       <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px; background: #FFFFFF; margin-bottom: 12px;">
         <div>
-          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Polybag</div>
+          <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Total Populasi</div>
           <div style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourcePolybag.toLocaleString('id-ID')}</div>
-          <div style="font-size: 0.60rem; color: #94A3B8;">Ply</div>
+          <div style="font-size: 0.58rem; color: #94A3B8;">${isSeleksi3 ? 'Ply / Pkk' : 'Polybag'}</div>
         </div>
-        <div style="border-left: 1px solid #E2E8F0;">
-          <div style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase;">${isSeleksi2 || isSeleksi3 ? 'Bibit Sumber' : 'Bibit Awal'}</div>
+        <div>
+          <div style="font-size: 0.60rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Bibit Sumber</div>
           <div style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin-top: 2px;">${sourceBibit.toLocaleString('id-ID')}</div>
-          <div style="font-size: 0.60rem; color: #94A3B8;">Pkk</div>
+          <div style="font-size: 0.58rem; color: #94A3B8;">Pkk</div>
         </div>
-        <div style="border-left: 1px solid #E2E8F0;">
-          <div style="font-size: 0.62rem; font-weight: 700; color: #15803D; text-transform: uppercase;">Dipertahankan</div>
+        <div>
+          <div style="font-size: 0.60rem; font-weight: 700; color: #15803D; text-transform: uppercase;">Bibit Layak</div>
           <div style="font-size: 0.95rem; font-weight: 800; color: #15803D; margin-top: 2px;">${totalLayak.toLocaleString('id-ID')}</div>
-          <div style="font-size: 0.60rem; color: #15803D;">${isSeleksi2 ? 'Pkk (1/Ply)' : 'Pkk'}</div>
+          <div style="font-size: 0.58rem; color: #15803D;">Pkk</div>
         </div>
-        <div style="border-left: 1px solid #E2E8F0;">
-          <div style="font-size: 0.62rem; font-weight: 700; color: #DC2626; text-transform: uppercase;">Reject ${stageLabel}</div>
+        <div>
+          <div style="font-size: 0.60rem; font-weight: 700; color: #DC2626; text-transform: uppercase;">Bibit Reject</div>
           <div style="font-size: 0.95rem; font-weight: 800; color: #DC2626; margin-top: 2px;">${totalAfkir.toLocaleString('id-ID')}</div>
-          <div style="font-size: 0.60rem; color: #DC2626;">Pkk</div>
+          <div style="font-size: 0.58rem; color: #DC2626;">Pkk</div>
         </div>
       </div>
 
-      <!-- DETAIL PER SESI TRANSAKSI -->
-      <div style="margin-bottom: 14px;">
+      <!-- DAFTAR TRANSAKSI PELAKSANAAN -->
+      <div style="margin-bottom: 12px;">
         <div style="font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 6px;">
-          Rincian Transaksi Pelaksanaan ${stageLabel}:
+          Rincian Transaksi Pelaksanaan (${executions.length} Sesi):
         </div>
-        <div style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto;">
-          ${executions.map((tx, idx) => `
-            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; font-size: 0.72rem; display: flex; justify-content: space-between; align-items: center;">
+        <div style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px;">
+          ${executions.map((tx, i) => `
+            <div style="background: #F8FAFC; border-radius: 4px; padding: 6px 8px; font-size: 0.72rem; display: flex; justify-content: space-between; align-items: center;">
               <div>
-                <div><strong>${idx + 1}. Bedengan ${esc(tx.bedenganCode || '-')}</strong> (${esc(tx.docNo)})</div>
-                <div style="color: #64748B; font-size: 0.66rem; margin-top: 2px;">
-                  Scope: ${tx.polybagScope || tx.initialPolybagCount || 0} Ply ${isSeleksi3 ? `(${tx.bibitAwal || 0} Pkk)` : (isSeleksi2 ? `(${tx.polybag2Bibit || 0}x2→1, ${tx.polybag1Bibit || 0}x1→1, ${tx.polybag0Bibit || 0}x0)` : `(${tx.polybag2Bibit || 0}x2, ${tx.polybag1Bibit || 0}x1, ${tx.polybag0Bibit || 0}x0)`)} • ${esc(tx.tanggalSeleksi || tx.tanggal)}
-                </div>
+                <strong>#${i + 1} (${esc(tx.docNo || tx.id)})</strong> — ${esc(tx.bedenganCode || '-')} • ${esc(tx.tanggalSeleksi || tx.tanggal || '-')}
               </div>
               <div style="text-align: right;">
-                <div style="font-weight: 700; color: #15803D;">+${(tx.bibitDipertahankan || tx.jumlahLayak || 0).toLocaleString('id-ID')} Pkk</div>
-                <div style="font-size: 0.65rem; color: #DC2626;">-${(tx.bibitReject || tx.jumlahAfkir || 0).toLocaleString('id-ID')} Reject</div>
+                <span style="color: #15803D; font-weight: 700;">+${(tx.bibitDipertahankan || tx.jumlahLayak || 0).toLocaleString('id-ID')} Layak</span> • 
+                <span style="color: #DC2626; font-weight: 700;">-${(tx.bibitReject || tx.jumlahAfkir || 0).toLocaleString('id-ID')} Afkir</span>
               </div>
             </div>
           `).join('')}
         </div>
       </div>
 
-      <!-- ACTION BUTTONS -->
-      <div style="display: flex; gap: 8px;">
-        <button id="btn-close-review" type="button" style="flex: 1; height: 38px; background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; cursor: pointer;">
-          Tutup
-        </button>
-        ${!isSubmitted && !isApproved ? `
-          <button id="btn-confirm-submit-asb" type="button" style="flex: 1.8; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25);">
-            Kirim ke Asisten Bibitan
-          </button>
-        ` : ''}
-      </div>
+      ${isSubmitted ? `
+        <div style="padding: 10px 12px; background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px; font-size: 0.76rem; color: #1D4ED8;">
+          ℹ️ Dokumen ini telah diajukan ke <strong>Asisten Bibitan</strong> dan sedang menunggu verifikasi/persetujuan.
+        </div>
+      ` : ''}
+
+      ${isApproved ? `
+        <div style="padding: 10px 12px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.76rem; color: #166534;">
+          ✅ Dokumen ini telah <strong>Disetujui</strong> oleh Asisten Bibitan.
+        </div>
+      ` : ''}
 
     </div>
   `;
 
+  const modalFooter = `
+    <div style="display: flex; gap: 8px; width: 100%;">
+      <button type="button" class="btn btn-ghost" id="btn-close-review-modal" style="flex: 1; height: 38px; font-size: 0.80rem;">Tutup</button>
+      ${!isSubmitted && !isApproved ? `
+        <button type="button" class="btn btn-primary" id="btn-submit-to-asisten" style="flex: 2; height: 38px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.80rem; border: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+          Kirim ke Asisten Bibitan
+        </button>
+      ` : ''}
+    </div>
+  `;
+
   openModal({
-    title: `Verifikasi Data ${stageLabel} (Mantri)`,
-    body: modalBody
+    title: `Verifikasi Data ${stageLabel}`,
+    body: modalBody,
+    footer: modalFooter
   });
 
-  document.getElementById('btn-close-review')?.addEventListener('click', closeModal);
+  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) return;
 
-  document.getElementById('btn-confirm-submit-asb')?.addEventListener('click', () => {
+  modalRoot.querySelector('#btn-close-review-modal')?.addEventListener('click', closeModal);
+
+  modalRoot.querySelector('#btn-submit-to-asisten')?.addEventListener('click', () => {
     try {
       submitPreGraftingSelectionDocumentToAsisten(doc.id, user);
       closeModal();
@@ -2427,74 +2932,66 @@ export function openPreGraftingReviewModal({ doc, user, onSubmitted }) {
 }
 
 /**
- * Render reusable pool and history list for Afkir declarations
+ * =============================================================================
+ * RENDER PASCA SEMAI & AFKIR POOL LIST (HARMONISASI UI & MOBILE RESPONSIVE)
+ * =============================================================================
  */
 function renderAfkirPoolList(poolItems, culledItems, emptyTitle, emptyDesc, poolTitle, today) {
   return `
     ${poolItems.length > 0 ? `
-      <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-        <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">${poolTitle} (${poolItems.length})</h2>
+      <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin: 0;">${poolTitle} (${poolItems.length})</h2>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
         ${poolItems.map((item, idx) => {
-          const isDeclared = item.status === 'DECLARED_CULLED';
-          const displayDocNo = item.docNo || formatStandardDocNo(2026, 'CULL', idx + 1);
-          const sourceLabel = getSelectionSourceLabel(item);
-          const categoryLabel = getSelectionCategoryLabel(item);
-          const batchDisplay = item.batchCode || item.batchNo || (item.originType === 'REJECT_DEDERAN' ? (item.bedenganCode || 'Bedengan Dederan') : 'Batch');
-          const sourceDocNo = item.sourceDocNo || item.dederanDocNo || item.seedingDocNo || item.buddingDocNo || item.inspectionDocNo || '-';
-          const bedenganDisplay = formatBedenganDisplayCode(item);
-          const programDisplay = item.programCode || item.programName || item.program || '-';
-          const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
-          const unit = item.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
+    const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN';
+    const isReturned = item.status === SELECTION_STATUS.DIKEMBALIKAN;
+    const displayDocNo = item.docNo || formatStandardDocNo(2026, 'CULL', idx + 1);
+    const sourceLabel = getSelectionSourceLabel(item);
+    const bedenganDisplay = formatBedenganDisplayCode(item);
+    const cardHeaderTitle = isDederan
+      ? (bedenganDisplay && bedenganDisplay !== '-' ? bedenganDisplay : (item.dederanDocNo || item.sourceDocNo || 'Dederan'))
+      : (item.batchCode || item.batchNo || 'Batch');
+    const sourceDocNo = item.sourceDocNo || item.dederanDocNo || item.seedingDocNo || item.buddingDocNo || item.inspectionDocNo || '-';
+    const programDisplay = item.programCode || item.programName || item.program || '-';
+    const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+    const unit = isDederan ? 'Butir' : 'Pkk';
+    const klonDisplay = item.clone || item.klon || null;
 
-          let categoryBadgeBg = '#FEF2F2';
-          let categoryBadgeColor = '#DC2626';
-          let categoryBadgeBorder = '#FECACA';
-          if (categoryLabel === 'Mati') {
-            categoryBadgeBg = '#FFF1F2';
-            categoryBadgeColor = '#BE123C';
-            categoryBadgeBorder = '#FFE4E6';
-          } else if (categoryLabel === 'Lainnya') {
-            categoryBadgeBg = '#F1F5F9';
-            categoryBadgeColor = '#475569';
-            categoryBadgeBorder = '#CBD5E1';
-          }
-
-          return `
-            <div class="card-selection-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; box-sizing: border-box;">
+    return `
+            <!-- CARD PENYELEKSIAN BIBIT AFKIR -->
+            <div class="card-selection-wrapper card-pasca-semai" data-pool-id="${esc(item.id || item.docNo)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; min-width: 0;">
               
-              <!-- 1. HEADER CARD: BATCH (KIRI) & BADGES (KANAN) -->
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+              <!-- 1. HEADER CARD: BEDENGAN / BATCH + KLON (KIRI) & STATUS BADGE (KANAN) -->
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                 <div style="min-width: 0;">
                   <div style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em; word-break: break-word;">
-                    ${esc(batchDisplay)}
+                    ${esc(cardHeaderTitle)}${klonDisplay ? ` <span style="font-size: 0.76rem; font-weight: 600; color: #64748B;">• Klon ${esc(klonDisplay)}</span>` : ''}
                   </div>
                 </div>
-                <div style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
-                  <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: ${categoryBadgeBg}; color: ${categoryBadgeColor}; border: 1px solid ${categoryBadgeBorder}; white-space: nowrap;">
-                    ${esc(categoryLabel)}
-                  </span>
-                  <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: ${isDeclared ? '#F0FDF4' : '#FEF2F2'}; color: ${isDeclared ? '#15803D' : '#DC2626'}; border: 1px solid ${isDeclared ? '#BBF7D0' : '#FECACA'}; white-space: nowrap;">
-                    ${isDeclared ? 'Telah Dikurangi' : 'Perlu Deklarasi'}
+                <div style="flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end;">
+                  <span style="font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: ${isReturned ? '#FEF2F2' : '#FEF3C7'}; color: ${isReturned ? '#DC2626' : '#B45309'}; border: 1px solid ${isReturned ? '#FECACA' : '#FDE68A'}; white-space: nowrap;">
+                    ${isReturned ? 'Dikembalikan' : 'Perlu Deklarasi'}
                   </span>
                 </div>
               </div>
 
-              <!-- 2. INFORMASI SUMBER (COMPACT 1-BARIS) -->
-              <div style="font-size: 0.74rem; color: #64748B; margin-bottom: 8px;">
-                Sumber: <strong style="color: #0F172A; font-weight: 700;">${esc(sourceLabel)}</strong>
+              <!-- 2. SUMBER INFORMASI SINGKAT -->
+              <div style="font-size: 0.72rem; color: #64748B;">
+                Sumber: <strong style="color: #0F172A;">${esc(sourceLabel)}</strong>
               </div>
 
-              <!-- 3. INFORMASI REFERENSI COMPACT (GRID 2 KOLOM) -->
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 7px 0; border-top: 1px solid #F1F5F9; border-bottom: 1px solid #F1F5F9; margin-bottom: 9px; font-size: 0.74rem;">
-                <div style="min-width: 0;">
-                  <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 1px;">Bedengan</div>
-                  <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
-                    ${esc(bedenganDisplay)}
-                  </div>
+              <!-- 3. CATATAN PENGEMBALIAN DARI ASISTEN (JIKA STATUS DIKEMBALIKAN) -->
+              ${isReturned && item.returnReason ? `
+                <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 8px 10px; font-size: 0.72rem; color: #991B1B; line-height: 1.4;">
+                  <strong style="display: block; font-size: 0.68rem; color: #DC2626; margin-bottom: 2px;">Catatan Pengembalian Asisten:</strong>
+                  ${esc(item.returnReason)}
                 </div>
+              ` : ''}
+
+              <!-- 4. METADATA GRID 2-KOLOM -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 8px 0; border-top: 1px solid #F1F5F9; border-bottom: 1px solid #F1F5F9; font-size: 0.74rem;">
                 <div style="min-width: 0;">
                   <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 1px;">Dok. Asal</div>
                   <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
@@ -2513,82 +3010,119 @@ function renderAfkirPoolList(poolItems, culledItems, emptyTitle, emptyDesc, pool
                     ${esc(displayDocNo)}
                   </div>
                 </div>
+                <div style="min-width: 0;">
+                  <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 1px;">${isDederan ? 'Bedengan' : 'Kategori'}</div>
+                  <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
+                    ${esc(isDederan ? bedenganDisplay : (item.category || item.alasanDitolakCategory || 'Afkir'))}
+                  </div>
+                </div>
               </div>
 
-              <!-- 4. PANEL JUMLAH AFKIR (HORIZONTAL & COMPACT) -->
-              <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-radius: 8px; padding: 8px 12px; margin-bottom: 9px; display: flex; justify-content: space-between; align-items: center; gap: 10px; box-sizing: border-box;">
+              <!-- 5. QUANTITY SUMMARY -->
+              <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; box-sizing: border-box;">
                 <div style="min-width: 0; flex: 1;">
-                  <div style="font-size: 0.65rem; font-weight: 800; color: #DC2626; text-transform: uppercase; letter-spacing: 0.03em;">
-                    BIBIT AFKIR (${categoryLabel.toUpperCase()})
+                  <div style="font-size: 0.66rem; font-weight: 800; color: #DC2626; text-transform: uppercase; letter-spacing: 0.03em;">
+                    Bibit Tidak Berhasil
                   </div>
-                  <div style="font-size: 0.70rem; color: #4B5563; margin-top: 1px; word-break: break-word; line-height: 1.3;">
-                    ${esc(item.alasan || `Bibit ${categoryLabel} saat ${sourceLabel}`)}${sourceDocNo && sourceDocNo !== '-' && !item.alasan?.includes(sourceDocNo) ? ` (${esc(sourceDocNo)})` : ''}
+                  <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px; word-break: break-word; line-height: 1.3;">
+                    ${esc(isDederan ? 'Afkir Pemeriksaan Dederan' : (item.alasan || 'Bibit Afkir'))}
                   </div>
                 </div>
                 <div style="text-align: right; flex-shrink: 0;">
-                  <div style="font-size: 1.30rem; font-weight: 900; color: #DC2626; line-height: 1; letter-spacing: -0.02em;">
+                  <div style="font-size: 1.35rem; font-weight: 900; color: #DC2626; line-height: 1; letter-spacing: -0.02em;">
                     ${qtyAfkir.toLocaleString('id-ID')}
                   </div>
-                  <div style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-top: 1px;">
+                  <div style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-top: 2px;">
                     ${unit}
                   </div>
                 </div>
               </div>
 
-              <!-- 5. TOMBOL DEKLARASI -->
-              ${!isDeclared ? `
-                <button type="button" class="btn-deklarasi-afkir" data-pool-id="${esc(item.id || item.docNo)}" style="width: 100%; height: 38px; background: #DC2626; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 2px rgba(220,38,38,0.2); transition: background 0.15s ease;">
-                  Deklarasi Bibit Afkir (${qtyAfkir.toLocaleString('id-ID')} ${unit})
-                </button>
-              ` : ''}
+              <!-- 6. PRIMARY ACTION: TOMBOL DEKLARASI (TANPA ICON, SIGMA GREEN) -->
+              <button type="button" class="btn-deklarasi-afkir" data-pool-id="${esc(item.id || item.docNo)}" style="width: 100%; min-height: 40px; height: 40px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.82rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25); text-align: center; transition: background 0.15s ease;">
+                ${isReturned ? 'Deklarasi Ulang Bibit Afkir' : 'Deklarasi Bibit Afkir'}
+              </button>
             </div>
           `;
-        }).join('')}
+  }).join('')}
       </div>
     ` : ''}
 
     ${poolItems.length === 0 && culledItems.length === 0 ? renderEmptyStateCard({
-      title: emptyTitle,
-      description: emptyDesc
-    }) : ''}
+    title: emptyTitle,
+    description: emptyDesc
+  }) : ''}
 
     ${culledItems.length > 0 ? `
       <div style="margin: 20px 0 10px 0;">
-        <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">Histori Deklarasi Pengurangan Stok (${culledItems.length})</h2>
+        <h2 style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin: 0;">Histori Deklarasi & Verifikasi (${culledItems.length})</h2>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
         ${culledItems.map((ctx) => {
-          const src = getSelectionSourceLabel(ctx);
-          const cat = getSelectionCategoryLabel(ctx);
-          const qty = parseInt(ctx.jumlahAfkir || ctx.quantity || 0, 10);
-          const bedDisplay = formatBedenganDisplayCode(ctx);
-          const unit = ctx.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
-          return `
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px;">
+    const src = getSelectionSourceLabel(ctx);
+    const isHistDederan = ctx.originType === 'REJECT_DEDERAN' || ctx.sourceModule === 'DEDERAN';
+    const qty = parseInt(ctx.jumlahAfkir || ctx.quantity || 0, 10);
+    const bedDisplay = formatBedenganDisplayCode(ctx);
+    const histCardTitle = isHistDederan
+      ? (bedDisplay && bedDisplay !== '-' ? bedDisplay : (ctx.dederanDocNo || ctx.sourceDocNo || 'Dederan'))
+      : (ctx.batchCode || ctx.batchNo || 'Batch');
+    const unit = isHistDederan ? 'Butir' : 'Pkk';
+    const klonDisplay = ctx.clone || ctx.klon || null;
+
+    const isApproved = ctx.status === SELECTION_STATUS.DISETUJUI;
+    const isReturned = ctx.status === SELECTION_STATUS.DIKEMBALIKAN;
+
+    let badgeHtml = `<span style="font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; white-space: nowrap;">MENUNGGU VERIFIKASI</span>`;
+    if (isApproved) {
+      badgeHtml = `<span style="font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; white-space: nowrap;">DISETUJUI</span>`;
+    } else if (isReturned) {
+      badgeHtml = `<span style="font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; white-space: nowrap;">DIKEMBALIKAN</span>`;
+    }
+
+    return `
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
                 <div style="min-width: 0;">
-                  <div style="font-weight: 800; font-size: 0.88rem; color: #0F172A; word-break: break-word;">
-                    ${esc(ctx.batchCode || ctx.batchNo || (ctx.originType === 'REJECT_DEDERAN' ? (ctx.bedenganCode || 'Bedengan Dederan') : 'Batch'))}
+                  <div style="font-weight: 800; font-size: 0.90rem; color: #0F172A; word-break: break-word;">
+                    ${esc(histCardTitle)}${klonDisplay ? ` <span style="font-size: 0.74rem; font-weight: 600; color: #64748B;">• Klon ${esc(klonDisplay)}</span>` : ''}
                   </div>
-                  <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">
-                    Sumber: <strong style="color: #0F172A;">${esc(src)}</strong> • <span style="color: #DC2626; font-weight: 600;">${esc(cat)}</span>
+                  <div style="font-size: 0.70rem; color: #64748B; margin-top: 2px;">
+                    Dok. Seleksi: <strong style="color: #0F172A;">${esc(ctx.docNo || '-')}</strong> • Sumber: <strong style="color: #0F172A;">${esc(src)}</strong>
                   </div>
                 </div>
-                <div style="text-align: right; flex-shrink: 0;">
-                  <span style="font-weight: 900; font-size: 0.95rem; color: #DC2626;">-${qty.toLocaleString('id-ID')}</span>
-                  <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-left: 1px;">${unit}</span>
+                <div style="flex-shrink: 0; text-align: right;">
+                  <div>${badgeHtml}</div>
+                  <div style="margin-top: 4px;">
+                    <span style="font-weight: 900; font-size: 0.95rem; color: #DC2626;">-${qty.toLocaleString('id-ID')}</span>
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-left: 1px;">${unit}</span>
+                  </div>
                 </div>
               </div>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 0.70rem; color: #64748B; padding-top: 6px; border-top: 1px solid #F1F5F9;">
-                <div>Bedengan: <strong style="color: #334155;">${esc(bedDisplay)}</strong></div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 0.70rem; color: #64748B; padding: 6px 0; border-top: 1px solid #F1F5F9; border-bottom: 1px solid #F1F5F9;">
                 <div>Dok. Asal: <strong style="color: #334155;">${esc(ctx.sourceDocNo || '-')}</strong></div>
+                <div>Program: <strong style="color: #334155;">${esc(ctx.programName || ctx.programCode || '-')}</strong></div>
               </div>
-              <div style="font-size: 0.68rem; color: #94A3B8; margin-top: 4px;">
-                Pengaju: <strong>${esc(ctx.createdByName || ctx.mantri || user.name)}</strong> • ${esc(ctx.tanggalSeleksi || ctx.tanggal || today)}
+
+              ${isApproved && ctx.approvalNotes ? `
+                <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 4px; padding: 6px 8px; font-size: 0.70rem; color: #15803D; margin-top: 6px;">
+                  <strong>Catatan Persetujuan:</strong> ${esc(ctx.approvalNotes)}
+                </div>
+              ` : ''}
+
+              ${isReturned && ctx.returnReason ? `
+                <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; padding: 6px 8px; font-size: 0.70rem; color: #DC2626; margin-top: 6px;">
+                  <strong>Alasan Pengembalian:</strong> ${esc(ctx.returnReason)}
+                </div>
+              ` : ''}
+
+              <div style="font-size: 0.68rem; color: #94A3B8; margin-top: 6px; display: flex; justify-content: space-between;">
+                <div>Pengaju: <strong>${esc(ctx.createdByName || ctx.mantri || user.name)}</strong></div>
+                <div>${esc(ctx.tanggalSeleksi || ctx.tanggal || today)}</div>
               </div>
             </div>
           `;
-        }).join('')}
+  }).join('')}
       </div>
     ` : ''}
   `;

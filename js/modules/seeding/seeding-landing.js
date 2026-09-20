@@ -9,7 +9,7 @@
 
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
-import { formatStandardDocNo } from '../../core/utils.js';
+import { formatStandardDocNo, esc } from '../../core/utils.js';
 import { guardDependency } from '../../core/dependency-guard.js';
 import {
   syncDederanIndukDocuments,
@@ -19,7 +19,7 @@ import {
   getBedenganInspectionSummary,
   deleteDederanTransaction
 } from './dederan-manager.js';
-import { getEligiblePindahSemaiSources } from './dederan-pindah-semai-adapter.js';
+import { getEligiblePindahSemaiSources, getAllInspectedDederanSources } from './dederan-pindah-semai-adapter.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { toast } from '../../components/toast.js';
 
@@ -35,6 +35,8 @@ export function renderSeedingLanding() {
   const dederanIndukDocs = getDederanIndukDocuments();
   const dederanTxs = getDederanTransactions();
   const eligiblePindahSemai = getEligiblePindahSemaiSources();
+  const allInspectedSources = getAllInspectedDederanSources();
+  const pendingApprovalSources = allInspectedSources.filter(s => !s.isApproved);
   const seedingTxs = storage.get('seeding_transactions', []);
 
   // Counts for tab badges
@@ -66,13 +68,13 @@ export function renderSeedingLanding() {
 
         <button id="tab-btn-pindah-semai" type="button" style="padding: 12px 4px; font-size: 0.82rem; font-weight: ${activeTab === 'PINDAH_SEMAI' ? '700' : '600'}; color: ${activeTab === 'PINDAH_SEMAI' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeTab === 'PINDAH_SEMAI' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px;">
           <span>Pindah Semai</span>
-          ${pendingPindahCount > 0 ? `<span style="background: #D97706; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${pendingPindahCount}</span>` : ''}
+          ${pendingPindahCount > 0 ? `<span style="background: #116834; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${pendingPindahCount}</span>` : ''}
         </button>
       </div>
 
       <!-- MAIN SCROLLABLE CONTENT -->
       <main style="flex: 1; overflow-y: auto; padding: 16px;">
-        ${activeTab === 'DEDERAN' ? renderDederanTabContent(dederanIndukDocs, dederanTxs) : renderPindahSemaiTabContent(eligiblePindahSemai, seedingTxs)}
+        ${activeTab === 'DEDERAN' ? renderDederanTabContent(dederanIndukDocs, dederanTxs) : renderPindahSemaiTabContent(eligiblePindahSemai, seedingTxs, pendingApprovalSources)}
       </main>
 
     </div>
@@ -114,67 +116,66 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
       <!-- SECTION 1: DOKUMEN INDUK DEDER -->
       <div style="display: flex; flex-direction: column; gap: 10px;">
         ${indukDocs.map((induk) => {
-          const totalPenerimaan = induk.totalNilaiButirPenerimaan || 0;
-          const totalDideder = induk.totalDidederSDHI || 0;
-          const sisa = induk.sisaBelumDeder || 0;
-          const isComplete = sisa === 0 && totalPenerimaan > 0;
+    const totalPenerimaan = induk.totalNilaiButirPenerimaan || 0;
+    const totalDideder = induk.totalDidederSDHI || 0;
+    const sisa = induk.sisaBelumDeder || 0;
+    const isComplete = sisa === 0 && totalPenerimaan > 0;
 
-          let badgeBg = '#FEF3C7';
-          let badgeColor = '#B45309';
-          let badgeBorder = '#FDE68A';
-          let badgeText = `Sisa ${sisa.toLocaleString('id-ID')} Butir`;
+    let badgeBg = '#FEF3C7';
+    let badgeColor = '#B45309';
+    let badgeBorder = '#FDE68A';
+    let badgeText = `Sisa ${sisa.toLocaleString('id-ID')} Butir`;
 
-          if (isComplete) {
-            badgeBg = '#F0FDF4';
-            badgeColor = '#15803D';
-            badgeBorder = '#BBF7D0';
-            badgeText = 'Selesai Dideder (100%)';
-          } else if (totalDideder === 0) {
-            badgeBg = '#FEE2E2';
-            badgeColor = '#B91C1C';
-            badgeBorder = '#FECACA';
-            badgeText = 'Belum Dideder';
-          }
+    if (isComplete) {
+      badgeBg = '#F0FDF4';
+      badgeColor = '#15803D';
+      badgeBorder = '#BBF7D0';
+      badgeText = 'Selesai Dideder (100%)';
+    } else if (totalDideder === 0) {
+      badgeBg = '#FEE2E2';
+      badgeColor = '#B91C1C';
+      badgeBorder = '#FECACA';
+      badgeText = 'Belum Dideder';
+    }
 
-          return `
-            <div class="card-dederan-induk" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+    return `
+            <div class="card-dederan-induk" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px; min-width: 0;">
               
-              <!-- HEADER -->
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #F1F5F9; color: #475569; border: 1px solid #E2E8F0;">
-                  DOKUMEN INDUK DEDER
-                </span>
-                <span style="font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder};">
-                  ${badgeText}
-                </span>
+              <!-- HEADER: DOC NO & STATUS BADGE -->
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <div style="min-width: 0; flex: 1;">
+                  <strong style="font-size: 1.02rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em; word-break: break-word;">${induk.docNo}</strong>
+                </div>
+                <div style="flex-shrink: 0;">
+                  <span style="font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;">
+                    ${badgeText}
+                  </span>
+                </div>
               </div>
 
-              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
-                <strong style="font-size: 0.95rem; font-weight: 800; color: #0F172A;">${induk.docNo}</strong>
-                <span style="font-size: 0.74rem; color: #64748B;">Klon: <strong style="color: #116834;">${induk.klon || 'GT 1'}</strong></span>
-              </div>
-
-              <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 10px;">
-                Asal Penerimaan: <strong>${induk.sourceReceiptDocNo}</strong> • Tgl: ${induk.tanggalPenerimaan || '-'}
+              <!-- SUBTITLE METADATA -->
+              <div style="font-size: 0.74rem; color: #64748B; line-height: 1.4;">
+                <div>Asal Penerimaan: <strong style="color: #1E293B;">${induk.sourceReceiptDocNo}</strong></div>
+                <div style="margin-top: 2px;">Klon: <strong style="color: #116834;">${induk.klon || 'GT 1'}</strong> • Tgl: ${induk.tanggalPenerimaan || '-'}</div>
               </div>
 
               <!-- METRIC GRID 3-KOLOM -->
-              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 4px; text-align: center; margin-bottom: 10px;">
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 6px; text-align: center;">
                 <div>
-                  <div style="font-size: 0.65rem; color: #64748B;">Total Penerimaan</div>
-                  <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
+                  <div style="font-size: 0.65rem; color: #64748B; font-weight: 600;">Total Penerimaan</div>
+                  <div style="font-size: 0.85rem; font-weight: 800; color: #0F172A; margin-top: 2px;">
                     ${totalPenerimaan.toLocaleString('id-ID')}
                   </div>
                 </div>
                 <div>
-                  <div style="font-size: 0.65rem; color: #116834;">Sudah Dideder</div>
-                  <div style="font-size: 0.82rem; font-weight: 800; color: #116834; margin-top: 1px;">
+                  <div style="font-size: 0.65rem; color: #116834; font-weight: 600;">Sudah Dideder</div>
+                  <div style="font-size: 0.85rem; font-weight: 800; color: #116834; margin-top: 2px;">
                     ${totalDideder.toLocaleString('id-ID')}
                   </div>
                 </div>
                 <div>
-                  <div style="font-size: 0.65rem; color: ${sisa > 0 ? '#D97706' : '#116834'};">Sisa Belum Deder</div>
-                  <div style="font-size: 0.82rem; font-weight: 800; color: ${sisa > 0 ? '#D97706' : '#116834'}; margin-top: 1px;">
+                  <div style="font-size: 0.65rem; color: ${sisa > 0 ? '#D97706' : '#64748B'}; font-weight: 600;">Sisa Belum Deder</div>
+                  <div style="font-size: 0.85rem; font-weight: 800; color: ${sisa > 0 ? '#D97706' : '#116834'}; margin-top: 2px;">
                     ${sisa.toLocaleString('id-ID')}
                   </div>
                 </div>
@@ -183,19 +184,19 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
               <!-- ACTION BUTTON -->
               <div>
                 ${sisa > 0 ? `
-                  <button type="button" class="btn-tambah-deder" data-doc="${induk.docNo}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
+                  <button type="button" class="btn-tambah-deder" data-doc="${induk.docNo}" style="width: 100%; height: 40px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(17,104,52,0.25); transition: background 0.15s ease;">
                     Rekam Data Dederan
                   </button>
                 ` : `
-                  <button type="button" class="btn-deder-selesai" style="width: 100%; height: 38px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: default; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                    ✓ Seluruh Kuota Selesai Dideder
-                  </button>
+                  <div style="width: 100%; height: 38px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; border-radius: 6px; font-weight: 700; font-size: 0.78rem; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+                    Seluruh Benih Telah Selesai Dideder
+                  </div>
                 `}
               </div>
 
             </div>
           `;
-        }).join('')}
+  }).join('')}
       </div>
 
       <!-- SECTION 2: RINGKASAN TRANSAKSI DEDERAN -->
@@ -211,10 +212,10 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
         ` : `
           <div style="display: flex; flex-direction: column; gap: 10px;">
             ${dederanTxs.map((tx, idx) => {
-              const inspSummary = getBedenganInspectionSummary(tx);
-              const hasInspection = inspSummary.totalDiperiksa > 0;
+    const inspSummary = getBedenganInspectionSummary(tx);
+    const hasInspection = inspSummary.totalDiperiksa > 0;
 
-              return `
+    return `
                 <div class="card-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
                   
                   <!-- IDENTITAS DOKUMEN & 3-DOTS ACTION -->
@@ -284,7 +285,7 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
 
                 </div>
               `;
-            }).join('')}
+  }).join('')}
           </div>
         `}
       </div>
@@ -294,78 +295,169 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
 }
 
 /**
- * Render Content for Tab 2: Pindah Semai (Source strictly from Dederan Inspection Berhasil)
+ * Render Content for Tab 2: Pindah Semai (Source strictly from Dederan Inspection Berhasil + Seleksi DISETUJUI)
  */
-function renderPindahSemaiTabContent(eligibleSources, seedingTxs = []) {
+function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingApprovalSources = []) {
   return `
-    <div style="display: flex; flex-direction: column; gap: 16px;">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
       
-      <!-- SECTION 1: ELIGIBLE SOURCES FOR PINDAH SEMAI -->
+      <!-- SECTION 1: ELIGIBLE SOURCES FOR PINDAH SEMAI (APPROVED BY ASISTEN) -->
       <div>
-        <h2 style="font-size: 0.90rem; font-weight: 700; color: #0F172A; margin: 0 0 10px 0;">
-          Sumber Siap Pindah Semai (Hasil Dederan 100% Selesai Periksa)
-        </h2>
+        <div style="margin-bottom: 12px;">
+          <h2 style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -0.01em;">
+            Bedengan Siap Pindah Semai (${eligibleSources.length})
+          </h2>
+        </div>
 
-        ${eligibleSources.length === 0 ? `
-          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 24px 16px; text-align: center;">
-            <div style="font-size: 0.78rem; color: #64748B; line-height: 1.5;">
-              Belum ada hasil Dederan yang siap untuk Pindah Semai.<br>
-              <em>Syarat: Bedengan Dederan harus sudah <strong>100% selesai diperiksa</strong> dengan kuantitas berhasil > 0.</em>
-            </div>
-          </div>
-        ` : `
-          <div style="display: flex; flex-direction: column; gap: 10px;">
+        ${eligibleSources.length === 0 ? renderEmptyStateCard({
+    title: 'Belum Ada Sumber Siap Pindah Semai',
+    description: 'Hasil Dederan 100% selesai periksa dan telah disetujui Asisten Bibitan akan tampil di sini.'
+  }) : `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
             ${eligibleSources.map(src => {
-              const isCompleted = src.remainingQty === 0;
-              return `
-                <div style="background: #FFFFFF; border: 1px solid ${isCompleted ? '#E2E8F0' : '#86EFAC'}; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-                  <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                    <div>
-                      <span style="font-size: 0.65rem; font-weight: 700; background: #DCFCE7; color: #116834; padding: 2px 6px; border-radius: 4px; border: 1px solid #86EFAC;">
-                        HASIL DEDERAN: ${src.bedenganCode}
-                      </span>
-                      <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 4px;">
-                        ${src.dederanTxDocNo}
+    const isCompleted = src.remainingQty === 0;
+    return `
+                <div class="card-pindah-semai-wrapper" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; min-width: 0;">
+                  
+                  <!-- SUMMARY HEADER (ALWAYS VISIBLE) -->
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                    <div style="min-width: 0; flex: 1;">
+                      <div style="font-size: 0.92rem; font-weight: 800; color: #0F172A; word-break: break-word;">
+                        ${esc(src.dederanTxDocNo || src.docNo)}
+                      </div>
+                      <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
+                        Bedengan: <strong style="color: #0F172A;">${esc(src.bedenganCode || src.bedengan || '-')}</strong> • Klon: <strong style="color: #116834;">${esc(src.klon || 'GT 1')}</strong>
                       </div>
                     </div>
-                    <span style="font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${isCompleted ? '#F1F5F9' : '#FEF3C7'}; color: ${isCompleted ? '#64748B' : '#B45309'}; border: 1px solid ${isCompleted ? '#CBD5E1' : '#FDE68A'};">
-                      ${isCompleted ? 'Selesai Dipindah Semai' : `Sisa ${src.remainingQty} Butir`}
-                    </span>
+                    <div style="text-align: right; flex-shrink: 0;">
+                      <span style="font-size: 0.65rem; color: #64748B; display: block;">Belum Pindah</span>
+                      <span style="font-size: 0.85rem; font-weight: 800; color: #116834;">${(src.remainingQty || 0).toLocaleString('id-ID')} Butir</span>
+                    </div>
                   </div>
 
-                  <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 8px;">
-                    Induk: ${src.parentDederIndukDocNo} • Klon: <strong>${src.klon}</strong>
+                  <!-- EXPAND / COLLAPSE TOGGLE TRIGGER -->
+                  <button type="button" class="btn-toggle-pindah-expand" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px; font-size: 0.70rem; font-weight: 600; color: #475569; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; width: 100%;">
+                    <span class="toggle-text">Lihat Rincian Data</span>
+                    <svg class="toggle-icon" viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" style="transition: transform 0.2s ease;">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
+
+                  <!-- EXPANDABLE CONTENT (COLLAPSED BY DEFAULT) -->
+                  <div class="pindah-expandable-content" style="display: none; flex-direction: column; gap: 10px;">
+                    <!-- STRUCTURED METADATA GRID (2x2) -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 0.74rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+                      <div style="min-width: 0;">
+                        <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 2px;">Dokumen Dederan</div>
+                        <div style="font-weight: 700; color: #1E293B; word-break: break-word;">
+                          ${esc(src.dederanTxDocNo || src.docNo)}
+                        </div>
+                      </div>
+                      <div style="min-width: 0;">
+                        <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 2px;">Klon Batang Bawah</div>
+                        <div style="font-weight: 700; color: #1E293B; word-break: break-word;">
+                          ${esc(src.klon || 'GT 1')}
+                        </div>
+                      </div>
+                      <div style="min-width: 0;">
+                        <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 2px;">Disetujui Oleh</div>
+                        <div style="font-weight: 700; color: #116834; word-break: break-word;">
+                          ${esc(src.selectionApprovedBy || 'Annisa')}
+                        </div>
+                      </div>
+                      <div style="min-width: 0;">
+                        <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 2px;">Bedengan</div>
+                        <div style="font-weight: 800; color: #0F172A; word-break: break-word;">
+                          ${esc(src.bedenganCode || src.bedengan || '-')}
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- RINGKASAN PINDAH SEMAI -->
+                    <div>
+                      <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;">
+                        Ringkasan Pindah Semai
+                      </div>
+                      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem;">
+                          <span style="color: #64748B;">Jlh Berhasil Dideder</span>
+                          <strong style="color: #0F172A; font-size: 0.82rem;">${(src.totalBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem;">
+                          <span style="color: #64748B;">Jlh Pindah Semai</span>
+                          <strong style="color: #475569; font-size: 0.82rem;">${(src.processedQty || 0).toLocaleString('id-ID')} Butir</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem; border-top: 1px dashed #CBD5E1; padding-top: 6px;">
+                          <span style="color: #0F172A; font-weight: 700;">Jlh Belum Pindah Semai</span>
+                          <strong style="color: #116834; font-size: 0.95rem; font-weight: 900;">${(src.remainingQty || 0).toLocaleString('id-ID')} Butir</strong>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div style="display: flex; justify-content: space-between; font-size: 0.75rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px; margin-bottom: 10px;">
-                    <div>Hasil Berhasil: <strong>${src.totalBerhasil}</strong> Butir</div>
-                    <div>Sudah Disemai: <strong style="color: #116834;">${src.processedQty}</strong></div>
-                    <div>Sisa Kuota: <strong style="color: ${src.remainingQty > 0 ? '#D97706' : '#116834'};">${src.remainingQty}</strong></div>
-                  </div>
-
+                  <!-- PRIMARY ACTION (ALWAYS VISIBLE) -->
                   ${!isCompleted ? `
-                    <button type="button" class="btn-execute-pindah-semai" data-source-id="${src.sourceIndex}" style="width: 100%; height: 36px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
+                    <button type="button" class="btn-execute-pindah-semai" data-source-id="${src.sourceIndex}" style="width: 100%; min-height: 40px; height: 40px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(17,104,52,0.25); text-align: center; transition: background 0.15s ease;">
                       Proses Pindah Semai (Polybag)
                     </button>
-                  ` : ''}
+                  ` : `
+                    <div style="text-align: center; font-size: 0.72rem; font-weight: 600; color: #64748B; background: #F1F5F9; border-radius: 6px; padding: 8px 12px;">
+                      Selesai Dipindah Semai (Kuota Habis)
+                    </div>
+                  `}
                 </div>
               `;
-            }).join('')}
+  }).join('')}
           </div>
         `}
       </div>
 
-      <!-- SECTION 2: RINGKASAN TRANSAKSI PINDAH SEMAI -->
-      <div>
-        <h2 style="font-size: 0.90rem; font-weight: 700; color: #0F172A; margin: 0 0 10px 0;">
-          Ringkasan Transaksi Pindah Semai (${seedingTxs.length})
-        </h2>
-
-        ${seedingTxs.length === 0 ? `
-          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px 16px; text-align: center; font-size: 0.78rem; color: #64748B;">
-            Belum ada transaksi Pindah Semai yang tercatat.
+      <!-- SECTION 1B: INFORMATIONAL QUEUE - MENUNGGU PERSETUJUAN ASISTEN BIBITAN -->
+      ${pendingApprovalSources.length > 0 ? `
+        <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="font-size: 0.85rem; font-weight: 800; color: #92400E; display: flex; align-items: center; gap: 6px;">
+              <span>Menunggu Persetujuan Asisten Bibitan</span>
+            </div>
+            <span style="font-size: 0.65rem; font-weight: 700; background: #FEF3C7; color: #B45309; padding: 2px 7px; border-radius: 4px; border: 1px solid #FCD34D;">
+              ${pendingApprovalSources.length} Bedengan
+            </span>
           </div>
-        ` : `
+
+          <div style="font-size: 0.72rem; color: #78350F; margin-bottom: 12px; line-height: 1.4;">
+            Bedengan berikut telah selesai diperiksa tetapi hasil Seleksi Pra-Semai belum disetujui oleh Asisten Bibitan sehingga belum dapat dipindah semai.
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${pendingApprovalSources.map(psrc => `
+              <div style="background: #FFFFFF; border: 1px solid #FDE68A; border-radius: 8px; padding: 10px 12px; font-size: 0.74rem; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px;">
+                  <strong style="color: #0F172A; font-size: 0.82rem;">${esc(psrc.bedenganCode)} • ${esc(psrc.dederanTxDocNo)}</strong>
+                  <span style="font-size: 0.65rem; font-weight: 700; color: #B45309; background: #FEF3C7; padding: 2px 6px; border-radius: 4px;">
+                    ${esc(psrc.selectionStatusLabel || 'Menunggu Persetujuan')}
+                  </span>
+                </div>
+                <div style="color: #64748B; font-size: 0.70rem;">
+                  Hasil Berhasil: <strong>${(psrc.totalBerhasil || 0).toLocaleString('id-ID')}</strong> Butir • Afkir: <strong>${(psrc.totalTidakBerhasil || 0).toLocaleString('id-ID')}</strong> Butir
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- SECTION 2: RINGKASAN DATA TRANSAKSI -->
+      <div>
+        <div style="margin-bottom: 12px;">
+          <h2 style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -0.01em;">
+            Ringkasan Data Transaksi (${seedingTxs.length})
+          </h2>
+        </div>
+
+        ${seedingTxs.length === 0 ? renderEmptyStateCard({
+    title: 'Belum Ada Transaksi Pindah Semai',
+    description: 'Transaksi Pindah Semai yang telah dicatat akan tampil pada daftar ini.'
+  }) : `
           <div style="display: flex; flex-direction: column; gap: 10px;">
             ${seedingTxs.map((stx, idx) => `
               <div class="card-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
@@ -374,16 +466,16 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = []) {
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
                   <div style="flex: 1; min-width: 0;">
                     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <span style="font-weight: 800; font-size: 0.92rem; color: #0F172A; letter-spacing: -0.01em;">${stx.docNo || `2026/SOW/0${idx + 1}`}</span>
+                      <span style="font-weight: 800; font-size: 0.92rem; color: #0F172A; letter-spacing: -0.01em;">${esc(stx.docNo || `2026/SOW/0${idx + 1}`)}</span>
                       <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9;">
                         Pindah Semai
                       </span>
                     </div>
                     <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.3;">
-                      Sumber Dederan: <strong style="color: #334155;">${stx.sourceDocNo || '-'}</strong> • Klon: <strong style="color: #116834;">${stx.klon || 'GT 1'}</strong>
+                      Sumber Dederan: <strong style="color: #334155;">${esc(stx.sourceDocNo || '-')}</strong> • Klon: <strong style="color: #116834;">${esc(stx.klon || 'GT 1')}</strong>
                     </div>
                     <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.3;">
-                      Bedengan Semai: <strong style="color: #0F172A;">${stx.bedengan || '-'}</strong> • Tgl: ${stx.date || '-'}
+                      Bedengan Semai: <strong style="color: #0F172A;">${esc(stx.bedengan || '-')}</strong> • Tgl: ${esc(stx.date || '-')}
                     </div>
                   </div>
 
@@ -399,7 +491,7 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = []) {
 
                     <!-- POPUP MENU -->
                     <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
-                      <button type="button" class="menu-action-delete-pindah" data-index="${idx}" data-doc="${stx.docNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                      <button type="button" class="menu-action-delete-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
                         <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                         <span>Hapus</span>
                       </button>
@@ -501,6 +593,29 @@ function attachDederanEvents(app) {
  * Event bindings for Pindah Semai Tab
  */
 function attachPindahSemaiEvents(app) {
+  // Expand / Collapse Toggle Data
+  app.querySelectorAll('.btn-toggle-pindah-expand').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const card = e.currentTarget.closest('.card-pindah-semai-wrapper');
+      const content = card?.querySelector('.pindah-expandable-content');
+      const textSpan = e.currentTarget.querySelector('.toggle-text');
+      const icon = e.currentTarget.querySelector('.toggle-icon');
+
+      if (content) {
+        const isHidden = content.style.display === 'none' || !content.style.display;
+        if (isHidden) {
+          content.style.display = 'flex';
+          if (textSpan) textSpan.textContent = 'Tutup Rincian Data';
+          if (icon) icon.style.transform = 'rotate(180deg)';
+        } else {
+          content.style.display = 'none';
+          if (textSpan) textSpan.textContent = 'Lihat Rincian Data';
+          if (icon) icon.style.transform = 'rotate(0deg)';
+        }
+      }
+    });
+  });
+
   // Proses Pindah Semai
   app.querySelectorAll('.btn-execute-pindah-semai').forEach(btn => {
     btn.addEventListener('click', (e) => {

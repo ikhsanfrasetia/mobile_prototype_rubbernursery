@@ -12,13 +12,27 @@ import { normalizeKlonName } from '../../data/klon-master.js';
 import { getActiveBedengan, getBedenganById, getBedenganByCode, getBedenganByQR, BEDENGAN_STATUS } from '../../data/bedengan-master.js';
 import { isProgramOpen } from '../../data/program-master.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
+import { getEligiblePindahSemaiSources } from './dederan-pindah-semai-adapter.js';
 
 export function renderSeedingScan() {
   const app = document.getElementById('app');
 
   const sourceIdx = storage.get('seeding_source_index', null);
-  const txs = storage.get('receipt_transactions', []);
-  const sourceTx = (sourceIdx !== null && txs[sourceIdx]) ? txs[sourceIdx] : {};
+  const eligibleSources = getEligiblePindahSemaiSources();
+  let sourceTx = eligibleSources.find(s => s.sourceIndex == sourceIdx || s.docNo == sourceIdx || s.dederanTxDocNo == sourceIdx);
+  
+  // Defense-in-Depth Guard: If Dederan source is not approved, BLOCK and redirect
+  const isDederanSource = sourceIdx && String(sourceIdx).startsWith('DED_');
+  if (isDederanSource && !sourceTx) {
+    toast('Data belum disetujui oleh Asisten Bibitan. Pindah Semai belum dapat dilakukan.', 'error');
+    navigate('/seeding');
+    return;
+  }
+
+  if (!sourceTx) {
+    const txs = storage.get('receipt_transactions', []);
+    sourceTx = (sourceIdx !== null && txs[sourceIdx]) ? txs[sourceIdx] : {};
+  }
   const docNo = sourceTx.docNo || sourceTx.nomorDokumen || formatStandardDocNo(2026, 'APR', (parseInt(sourceIdx || 0) + 1));
   const program = sourceTx.program || sourceTx.rawState?.programNurseryCode || 'PRG/NUR/01/2026';
   const klon = sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1';
@@ -33,7 +47,26 @@ export function renderSeedingScan() {
     divisionId: effectiveDivisionId,
     programId: effectiveProgramId || undefined
   });
-  const bedListSource = scopedBeds.length > 0 ? scopedBeds : getActiveBedengan({ estateId: effectiveEstateId });
+  const expectedBedenganCode = sourceTx.bedenganCode || sourceTx.bedengan || null;
+
+  let bedListSource = scopedBeds.length > 0 ? [...scopedBeds] : getActiveBedengan({ estateId: effectiveEstateId });
+  if (expectedBedenganCode && !bedListSource.some(b => b.bedenganCode?.toUpperCase() === expectedBedenganCode.toUpperCase() || b.name?.toUpperCase() === expectedBedenganCode.toUpperCase())) {
+    const specificBed = getBedenganByCode(expectedBedenganCode) || getBedenganById(expectedBedenganCode);
+    if (specificBed) {
+      bedListSource.unshift(specificBed);
+    } else {
+      bedListSource.unshift({
+        bedenganId: expectedBedenganCode,
+        name: expectedBedenganCode,
+        bedenganCode: expectedBedenganCode,
+        qrCode: expectedBedenganCode,
+        capacity: 1000,
+        status: BEDENGAN_STATUS.ACTIVE,
+        estateId: effectiveEstateId,
+        divisionId: effectiveDivisionId
+      });
+    }
+  }
 
   const bedenganList = bedListSource.map(b => ({
     id: b.bedenganId,
@@ -43,6 +76,18 @@ export function renderSeedingScan() {
     capacity: `${Number(b.capacity || 1000).toLocaleString('id-ID')} Bibit`,
     status: b.status === BEDENGAN_STATUS.ACTIVE ? 'Tersedia' : 'Tidak Aktif'
   }));
+
+  const simBedList = expectedBedenganCode
+    ? [
+        ...bedenganList.filter(b => b.code?.toUpperCase() === expectedBedenganCode.toUpperCase() || b.name?.toUpperCase() === expectedBedenganCode.toUpperCase()),
+        ...bedenganList.filter(b => b.code?.toUpperCase() !== expectedBedenganCode.toUpperCase() && b.name?.toUpperCase() !== expectedBedenganCode.toUpperCase()).slice(0, 4)
+      ]
+    : bedenganList.slice(0, 6);
+
+  const manualBedList = expectedBedenganCode
+    ? bedenganList.filter(b => b.code?.toUpperCase() === expectedBedenganCode.toUpperCase() || b.name?.toUpperCase() === expectedBedenganCode.toUpperCase() || b.id?.toUpperCase() === expectedBedenganCode.toUpperCase())
+    : bedenganList;
+  const displayManualList = manualBedList.length > 0 ? manualBedList : bedenganList;
 
   app.innerHTML = `
     <div class="page seeding-scan-page" style="display: flex; flex-direction: column; height: 100%; background: #0F172A; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; position: relative; overflow: hidden;">
@@ -72,8 +117,10 @@ export function renderSeedingScan() {
         <!-- INFO DOKUMEN PENYEMAIAN -->
         <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 8px 14px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; backdrop-filter: blur(4px);">
           <div>
-            <div style="font-size: 0.66rem; color: #94A3B8;">Program / Klon:</div>
-            <div style="font-size: 0.78rem; font-weight: 700; color: #F8FAFC;">${program} • ${klon}</div>
+            <div style="font-size: 0.66rem; color: #94A3B8;">Target Bedengan • Klon:</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #F8FAFC;">
+              ${expectedBedenganCode ? `<strong style="color: #4ADE80;">${expectedBedenganCode}</strong> • ` : ''}${klon}
+            </div>
           </div>
           <span style="font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: rgba(34, 197, 94, 0.2); color: #4ADE80; border: 1px solid rgba(34, 197, 94, 0.3);">Siap Semai</span>
         </div>
@@ -127,9 +174,9 @@ export function renderSeedingScan() {
             </button>
           </div>
           <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
-            ${bedenganList.slice(0, 6).map(b => `
-              <button type="button" class="btn-mock-qr-scan" data-id="${b.id}" data-code="${b.code}" data-bedengan="${b.id}" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #F1F5F9; font-size: 0.72rem; font-weight: 600; padding: 5px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.15s ease;">
-                🏷️ ${b.name}
+            ${simBedList.map(b => `
+              <button type="button" class="btn-mock-qr-scan" data-id="${b.id}" data-code="${b.code}" data-bedengan="${b.id}" style="background: ${expectedBedenganCode && (b.code?.toUpperCase() === expectedBedenganCode.toUpperCase() || b.name?.toUpperCase() === expectedBedenganCode.toUpperCase()) ? 'rgba(34,197,94,0.25); border-color: #22C55E;' : 'rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2);'} color: #F1F5F9; font-size: 0.72rem; font-weight: 600; padding: 5px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all 0.15s ease;">
+                🏷️ ${b.name}${expectedBedenganCode && (b.code?.toUpperCase() === expectedBedenganCode.toUpperCase() || b.name?.toUpperCase() === expectedBedenganCode.toUpperCase()) ? ' (Sesuai)' : ''}
               </button>
             `).join('')}
           </div>
@@ -165,13 +212,15 @@ export function renderSeedingScan() {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
           <div>
             <h2 style="font-size: 0.98rem; font-weight: 800; color: #111827; margin: 0 0 2px;">Pilih Bedengan Manual</h2>
-            <p style="font-size: 0.72rem; color: #64748B; margin: 0;">Gunakan opsi ini bila patok fisik belum dipasang barcode QR.</p>
+            <p style="font-size: 0.72rem; color: #64748B; margin: 0;">
+              ${expectedBedenganCode ? `Bedengan terikat dokumen: <strong style="color: #116834;">${expectedBedenganCode}</strong>` : 'Gunakan opsi ini bila patok fisik belum dipasang barcode QR.'}
+            </p>
           </div>
           <button id="btn-close-manual-sheet" type="button" style="background: #F1F5F9; border: none; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569;">✕</button>
         </div>
 
         <div style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px;">
-          ${bedenganList.map((b) => `
+          ${displayManualList.map((b) => `
             <div class="card-pick-manual-bedengan" data-id="${b.id}" data-bedengan="${b.id}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.15s ease;">
               <div>
                 <div style="font-weight: 800; font-size: 0.88rem; color: #1E293B;">${b.name}</div>
@@ -283,6 +332,22 @@ export function renderSeedingScan() {
     if (!bedObj) {
       toast('Bedengan tidak ditemukan dalam master data.', 'error');
       return;
+    }
+
+    // Validasi 0: Kesesuaian Bedengan dengan Dokumen Transaksi (Pindah Semai)
+    if (expectedBedenganCode) {
+      const scannedCode = (bedObj.bedenganCode || bedObj.name || '').toUpperCase();
+      const targetCode = expectedBedenganCode.toUpperCase();
+      
+      const isMatch = scannedCode === targetCode ||
+        (bedObj.name && bedObj.name.toUpperCase() === targetCode) ||
+        (bedObj.bedenganId && bedObj.bedenganId.toUpperCase() === targetCode);
+
+      if (!isMatch) {
+        toast(`QR Code tidak sesuai! Dokumen terikat dengan Bedengan ${expectedBedenganCode}, bukan ${bedObj.name || bedObj.bedenganCode}.`, 'error');
+        triggerScanFailure();
+        return;
+      }
     }
 
     // Validasi 1: Status Master Bedengan

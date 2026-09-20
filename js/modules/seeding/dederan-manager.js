@@ -61,6 +61,16 @@ export function syncDederanIndukDocuments() {
     }
   });
 
+  // Auto-clean any legacy batchNo on existing induk documents
+  indukDocs.forEach(induk => {
+    if ('batchNo' in induk || 'batchCode' in induk || 'batchId' in induk) {
+      delete induk.batchNo;
+      delete induk.batchCode;
+      delete induk.batchId;
+      hasChange = true;
+    }
+  });
+
   benihTxs.forEach((rtx, idx) => {
     const sourceReceiptDocNo = rtx.docNo || rtx.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
     let induk = indukDocs.find(d => d.sourceReceiptDocNo === sourceReceiptDocNo || d.sourceReceiptIndex === rtx.originalIndex);
@@ -83,7 +93,7 @@ export function syncDederanIndukDocuments() {
     }
 
     if (!induk) {
-      // Create new Induk Doc with DDR format
+      // Create new Induk Doc with DDR format (tanpa Batch)
       const docNo = generateUniqueDocNo('dederanInduk', indukDocs, 2026);
       induk = {
         id: `DDR-${sourceReceiptDocNo.replace(/\//g, '-')}`,
@@ -96,7 +106,6 @@ export function syncDederanIndukDocuments() {
         estateId: rtx.estateId || 'EST-TBS',
         divisionId: rtx.divisionId || 'DIV-001',
         klon: rtx.klon || 'GT 1',
-        batchNo: rtx.batchNo || 'Batch-01',
         tahapan: rtx.tahapan || 'Rubber Main Nursery',
         tanggalPenerimaan: rtx.tanggal || formatDate(new Date().toISOString()),
         totalNilaiButirPenerimaan,
@@ -133,6 +142,9 @@ export function syncDederanIndukDocuments() {
   if (hasChange) {
     storage.set(DEDERAN_STORAGE_KEYS.INDUK, indukDocs);
   }
+
+  // Jalankan pembersihan lineage Batch pada runtime data Dederan
+  cleanupDederanBatchLineage();
 
   return indukDocs;
 }
@@ -273,7 +285,6 @@ export function saveDederanTransaction(txPayload) {
     programId: parent.programId,
     programCode: parent.programCode,
     klon: parent.klon,
-    batchNo: txPayload.batchNo || parent.batchNo || 'Batch-01',
     bedenganId: bedId,
     bedenganCode: bedCode,
     bedengan: bedCode,
@@ -381,70 +392,36 @@ export function validateDederanInspection(payload) {
   if (isNaN(jumlahDiperiksa) || jumlahDiperiksa <= 0) {
     return { isValid: false, error: 'Jumlah Diperiksa harus lebih dari 0.' };
   }
-
   if (jumlahDiperiksa > prevSummary.remainingToInspect) {
-    return { isValid: false, error: `Jumlah Diperiksa (${jumlahDiperiksa.toLocaleString('id-ID')}) melebihi sisa bibit yang belum diperiksa pada bedengan ini (${prevSummary.remainingToInspect.toLocaleString('id-ID')}).` };
+    return { isValid: false, error: `Jumlah Diperiksa (${jumlahDiperiksa.toLocaleString('id-ID')}) melebihi sisa yang belum diperiksa (${prevSummary.remainingToInspect.toLocaleString('id-ID')}).` };
   }
-
   if (isNaN(jumlahBerhasil) || jumlahBerhasil < 0) {
     return { isValid: false, error: 'Jumlah Berhasil tidak boleh bernilai negatif.' };
   }
-
   if (jumlahBerhasil > jumlahDiperiksa) {
-    return { isValid: false, error: `Jumlah Berhasil (${jumlahBerhasil.toLocaleString('id-ID')}) tidak boleh melebihi Jumlah Diperiksa (${jumlahDiperiksa.toLocaleString('id-ID')}).` };
+    return { isValid: false, error: 'Jumlah Berhasil tidak boleh melebihi Jumlah Diperiksa.' };
   }
 
-  return { isValid: true };
+  return { isValid: true, dederTx, prevSummary };
 }
 
 /**
- * Saves a Pemeriksaan Dederan record per bedengan with validations:
- * - jumlahDiperiksa > 0
- * - jumlahBerhasil >= 0 && <= jumlahDiperiksa
- * - jumlahTidakBerhasil = jumlahDiperiksa - jumlahBerhasil (auto-calculated)
- * - cumulative inspected <= jumlahDeder
- * - Partial inspection: Does NOT create eligible Pindah Semai until bedengan is 100% inspected.
- * - 100% Complete Bedengan:
- *     1) Rejection quantity sent to selection_pool as PENDING_DECLARATION, originType: 'REJECT_DEDERAN' (not MATI)
- *     2) Successful quantity becomes eligible for Pindah Semai adapter
+ * Creates a new Pemeriksaan Dederan record and updates the selection pool
  */
-export function saveDederanInspection(payload) {
-  if (!payload) throw new Error('Data pemeriksaan dederan tidak valid.');
-
-  const dederTxDocNo = payload.dederanTxDocNo;
-  const dederTxs = storage.get(DEDERAN_STORAGE_KEYS.TRANSACTIONS, []);
-  const dederTx = dederTxs.find(t => t.docNo === dederTxDocNo || t.id === dederTxDocNo);
-
-  if (!dederTx) {
-    throw new Error(`Transaksi Dederan '${dederTxDocNo}' tidak ditemukan.`);
+export function createDederanInspection(payload) {
+  const validation = validateDederanInspection(payload);
+  if (!validation.isValid) {
+    throw new Error(validation.error);
   }
 
-  const jumlahDeder = parseInt(dederTx.jumlahDeder || 0, 10);
-  const prevSummary = getBedenganInspectionSummary(dederTx);
-
-  const jumlahDiperiksa = parseInt(payload.jumlahDiperiksa || 0, 10);
-  const jumlahBerhasil = parseInt(payload.jumlahBerhasil || 0, 10);
-
-  if (isNaN(jumlahDiperiksa) || jumlahDiperiksa <= 0) {
-    throw new Error('Jumlah Diperiksa harus lebih dari 0.');
-  }
-
-  if (jumlahDiperiksa > prevSummary.remainingToInspect) {
-    throw new Error(`Jumlah Diperiksa (${jumlahDiperiksa.toLocaleString('id-ID')}) melebihi sisa bibit yang belum diperiksa pada bedengan ini (${prevSummary.remainingToInspect.toLocaleString('id-ID')}).`);
-  }
-
-  if (isNaN(jumlahBerhasil) || jumlahBerhasil < 0) {
-    throw new Error('Jumlah Berhasil tidak boleh bernilai negatif.');
-  }
-
-  if (jumlahBerhasil > jumlahDiperiksa) {
-    throw new Error(`Jumlah Berhasil (${jumlahBerhasil.toLocaleString('id-ID')}) tidak boleh melebihi Jumlah Diperiksa (${jumlahDiperiksa.toLocaleString('id-ID')}).`);
-  }
-
-  const jumlahTidakBerhasil = jumlahDiperiksa - jumlahBerhasil;
-
+  const { dederTx } = validation;
   const allInspections = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
   const docNo = generateUniqueDocNo('dederanInspection', allInspections, 2026);
+
+  const jumlahDeder = parseInt(dederTx.jumlahDeder || 0, 10);
+  const jumlahDiperiksa = parseInt(payload.jumlahDiperiksa || 0, 10);
+  const jumlahBerhasil = parseInt(payload.jumlahBerhasil || 0, 10);
+  const jumlahTidakBerhasil = jumlahDiperiksa - jumlahBerhasil;
 
   const newInspection = {
     id: `DED-INS-${docNo.replace(/\//g, '-')}`,
@@ -477,8 +454,8 @@ export function saveDederanInspection(payload) {
   // Check cumulative status for this bedengan
   const newSummary = getBedenganInspectionSummary(dederTx);
 
-  // Consolidate rejection to selection_pool as PENDING_DECLARATION
-  if (newSummary.totalTidakBerhasil > 0) {
+  // Consolidate rejection / inspection result to selection_pool as PENDING_DECLARATION
+  if (newSummary.isComplete || newSummary.totalTidakBerhasil > 0) {
     integrateDederanRejectionToSelectionPool(newInspection, newSummary.totalTidakBerhasil);
   }
 
@@ -488,13 +465,16 @@ export function saveDederanInspection(payload) {
   };
 }
 
+export const saveDederanInspection = createDederanInspection;
+
 /**
  * Integrates failed dederan inspection quantities to selection_pool as PENDING_DECLARATION
  * NOTE: Category is NOT set to MATI here; it is determined later in Pasca Semai.
+ * Batch is NOT propagated for Dederan rejections.
  */
 export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTidakBerhasilQty) {
   const qty = parseInt(totalTidakBerhasilQty !== undefined ? totalTidakBerhasilQty : inspectionTx.jumlahTidakBerhasil, 10);
-  if (isNaN(qty) || qty <= 0) return;
+  if (isNaN(qty) || qty < 0) return;
 
   let selectionPool = storage.get('selection_pool', []);
 
@@ -535,9 +515,6 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
     programId: inspectionTx.programId || existingItem?.programId || null,
     programCode: inspectionTx.programCode || inspectionTx.program || (existingItem?.programCode || null),
     program: inspectionTx.program || inspectionTx.programCode || (existingItem?.program || null),
-    batchId: inspectionTx.batchId || existingItem?.batchId || null,
-    batchCode: inspectionTx.batchCode || inspectionTx.batchNo || (existingItem?.batchCode || 'Batch-01'),
-    batchNo: inspectionTx.batchNo || inspectionTx.batchCode || (existingItem?.batchNo || 'Batch-01'),
     bedenganId: inspectionTx.bedenganId || existingItem?.bedenganId || null,
     bedenganCode: inspectionTx.bedenganCode || existingItem?.bedenganCode || null,
     klon: inspectionTx.klon || existingItem?.klon || 'GT 1',
@@ -553,7 +530,11 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
   };
 
   if (existingIdx >= 0) {
-    selectionPool[existingIdx] = { ...selectionPool[existingIdx], ...poolEntry, id: selectionPool[existingIdx].id };
+    const merged = { ...selectionPool[existingIdx], ...poolEntry, id: selectionPool[existingIdx].id };
+    delete merged.batchId;
+    delete merged.batchCode;
+    delete merged.batchNo;
+    selectionPool[existingIdx] = merged;
   } else {
     selectionPool.push(poolEntry);
   }
@@ -563,13 +544,88 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
 }
 
 /**
+ * Membersihkan metadata Batch dari seluruh record runtime proses Dederan
+ */
+export function cleanupDederanBatchLineage() {
+  // 1. Clean dederan_induk_documents
+  let indukDocs = storage.get(DEDERAN_STORAGE_KEYS.INDUK, []);
+  let indukChanged = false;
+  indukDocs.forEach(d => {
+    if ('batchNo' in d || 'batchCode' in d || 'batchId' in d) {
+      delete d.batchNo;
+      delete d.batchCode;
+      delete d.batchId;
+      indukChanged = true;
+    }
+  });
+  if (indukChanged) storage.set(DEDERAN_STORAGE_KEYS.INDUK, indukDocs);
+
+  // 2. Clean dederan_transactions
+  let dederTxs = storage.get(DEDERAN_STORAGE_KEYS.TRANSACTIONS, []);
+  let txChanged = false;
+  dederTxs.forEach(t => {
+    if ('batchNo' in t || 'batchCode' in t || 'batchId' in t) {
+      delete t.batchNo;
+      delete t.batchCode;
+      delete t.batchId;
+      txChanged = true;
+    }
+  });
+  if (txChanged) storage.set(DEDERAN_STORAGE_KEYS.TRANSACTIONS, dederTxs);
+
+  // 3. Clean dederan_inspections
+  let inspections = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
+  let insChanged = false;
+  inspections.forEach(i => {
+    if ('batchNo' in i || 'batchCode' in i || 'batchId' in i) {
+      delete i.batchNo;
+      delete i.batchCode;
+      delete i.batchId;
+      insChanged = true;
+    }
+  });
+  if (insChanged) storage.set(DEDERAN_STORAGE_KEYS.INSPECTIONS, inspections);
+
+  // 4. Clean selection_pool for REJECT_DEDERAN
+  let pool = storage.get('selection_pool', []);
+  let poolChanged = false;
+  pool.forEach(p => {
+    if (p.originType === 'REJECT_DEDERAN' || p.sourceModule === 'DEDERAN') {
+      if ('batchNo' in p || 'batchCode' in p || 'batchId' in p) {
+        delete p.batchNo;
+        delete p.batchCode;
+        delete p.batchId;
+        poolChanged = true;
+      }
+    }
+  });
+  if (poolChanged) storage.set('selection_pool', pool);
+
+  // 5. Clean selection_transactions for REJECT_DEDERAN
+  let selTxs = storage.get('selection_transactions', []);
+  let selChanged = false;
+  selTxs.forEach(t => {
+    if (t.originType === 'REJECT_DEDERAN' || t.sourceModule === 'DEDERAN') {
+      if ('batchNo' in t || 'batchCode' in t || 'batchId' in t) {
+        delete t.batchNo;
+        delete t.batchCode;
+        delete t.batchId;
+        selChanged = true;
+      }
+    }
+  });
+  if (selChanged) storage.set('selection_transactions', selTxs);
+}
+
+/**
  * Sinkronisasi seluruh rejection hasil pemeriksaan dederan ke selection_pool
  */
 export function syncAllDederanRejectionsToSelectionPool() {
+  cleanupDederanBatchLineage();
   const dederTxs = getDederanTransactions();
   dederTxs.forEach(dtx => {
     const summary = getBedenganInspectionSummary(dtx);
-    if (summary.totalTidakBerhasil > 0) {
+    if (summary.isComplete || summary.totalTidakBerhasil > 0) {
       integrateDederanRejectionToSelectionPool(dtx, summary.totalTidakBerhasil);
     }
   });

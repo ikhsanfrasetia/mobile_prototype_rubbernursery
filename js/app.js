@@ -57,6 +57,7 @@ import { renderDispatchLanding } from './modules/dispatch/dispatch-landing.js';
 import { renderDispatchReport } from './modules/dispatch/dispatch-report.js';
 import { renderMasterBedengan } from './modules/master/master-bedengan.js';
 import { renderMasterBatch } from './modules/master/master-batch.js';
+import { renderMaterialMaster } from './modules/master/material-master.js';
 import { renderDestructionLanding } from './modules/destruction/destruction-landing.js';
 import { renderConsolidationLanding } from './modules/consolidation/consolidation-landing.js';
 import { renderVerificationLanding } from './modules/verification/verification-landing.js';
@@ -127,8 +128,8 @@ registerRoute('/selection', renderSelectionLanding);
 registerRoute('/history', renderNurseryHistory);
 registerRoute('/transactions', renderTransactionManager);
 
-/* Modul dalam tahap analisis & operasional */
-registerRoute('/material', renderAnalysisPlaceholder);
+/* Modul Material & Simulasi Issue Gudang */
+registerRoute('/material', renderMaterialMaster);
 registerRoute('/nursery-activity', renderNurseryActivityLanding);
 registerRoute('/nursery-activity/form', renderNurseryActivityForm);
 registerRoute('/request', renderRequestLanding);

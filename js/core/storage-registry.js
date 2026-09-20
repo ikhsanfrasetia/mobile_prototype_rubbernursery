@@ -113,7 +113,8 @@ export const DATA_STORAGE_REGISTRY = {
     'role_registry',
     'permissions',
     'menu_registry',
-    'personas'
+    'personas',
+    'master_materials'
   ],
   SESSION: [
     'sigma_session',
