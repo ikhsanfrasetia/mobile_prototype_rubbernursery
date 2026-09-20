@@ -16,6 +16,10 @@
 import { storage } from '../../core/storage.js';
 import { DEDERAN_STORAGE_KEYS, getBedenganInspectionSummary, getDederanTransactionsByParent } from './dederan-manager.js';
 import { SELECTION_STATUS } from '../selection/selection-manager.js';
+import { 
+  getAllIssueDocuments, 
+  calculateRemainingIssueBalance as calcRemainingIssueBalance 
+} from '../../data/material-master.js';
 
 /**
  * Finds the selection transaction record associated with a specific Dederan transaction
@@ -122,6 +126,8 @@ export function getEligiblePindahSemaiSources() {
     let processedQty = 0;
     seedingTxs.forEach(stx => {
       if (
+        stx.sourceDederTxId === dtx.id ||
+        stx.sourceDederDocNo === dtx.docNo ||
         stx.sourceDocNo === dtx.docNo ||
         stx.dederanTxDocNo === dtx.docNo ||
         stx.dederanDocNo === dtx.docNo ||
@@ -138,6 +144,9 @@ export function getEligiblePindahSemaiSources() {
 
     const normalizedSource = {
       sourceType: 'DEDER_INSPECTION',
+      // Canonical Source Deder References
+      sourceDederTxId: dtx.id || dtx.docNo,
+      sourceDederDocNo: dtx.docNo,
       sourceDocNo: dtx.docNo,
       sourceInspectionDocNo: primaryInsp.docNo || dtx.docNo,
       dederanTxDocNo: dtx.docNo,
@@ -193,6 +202,8 @@ export function getAllInspectedDederanSources() {
     let processedQty = 0;
     seedingTxs.forEach(stx => {
       if (
+        stx.sourceDederTxId === dtx.id ||
+        stx.sourceDederDocNo === dtx.docNo ||
         stx.sourceDocNo === dtx.docNo ||
         stx.dederanTxDocNo === dtx.docNo ||
         stx.dederanDocNo === dtx.docNo ||
@@ -207,6 +218,8 @@ export function getAllInspectedDederanSources() {
 
     sources.push({
       sourceType: 'DEDER_INSPECTION',
+      sourceDederTxId: dtx.id || dtx.docNo,
+      sourceDederDocNo: dtx.docNo,
       sourceDocNo: dtx.docNo,
       sourceInspectionDocNo: primaryInsp.docNo || dtx.docNo,
       dederanTxDocNo: dtx.docNo,
@@ -251,4 +264,100 @@ export function getRemainingPindahSemaiQuota(dederTxDocNo) {
   const source = sources.find(s => s.dederanTxDocNo === dederTxDocNo || s.sourceDocNo === dederTxDocNo);
   return source ? source.remainingQty : 0;
 }
+
+// ============================================================
+// PINDAH SEMAI (POLYBAG) HELPERS
+// ============================================================
+
+/**
+ * Checks if a Batch is already used in any Pindah Semai transaction (seeding_transactions ONLY).
+ * Scope: seeding_transactions — NOT the global 18-key isBatchUsedInTransactions().
+ * @param {string} batchId - Batch ID to check
+ * @param {string|null} batchCode - Batch Code to check
+ * @param {string|null} excludeDocNo - Exclude this transaction docNo (for edit mode)
+ * @returns {boolean}
+ */
+export function isBatchUsedInPindahSemai(batchId, batchCode = null, excludeDocNo = null) {
+  if (!batchId && !batchCode) return false;
+  const seedingTxs = storage.get('seeding_transactions', []);
+
+  return seedingTxs.some(tx => {
+    if (excludeDocNo && tx.docNo === excludeDocNo) return false;
+
+    // 1. Check root-level batch fields (new transaction structure)
+    const matchRootId = batchId && (tx.batchId === batchId || tx.batch_id === batchId);
+    const matchRootCode = batchCode && (tx.batchCode === batchCode || tx.batchNo === batchCode || tx.batch_code === batchCode);
+    if (matchRootId || matchRootCode) return true;
+
+    // 2. Check legacy rows-level batch fields (historical transactions)
+    if (Array.isArray(tx.rows)) {
+      return tx.rows.some(r =>
+        (batchId && (r.batchId === batchId || r.batch_id === batchId)) ||
+        (batchCode && (r.batchCode === batchCode || r.batchNo === batchCode || r.batch_code === batchCode))
+      );
+    }
+    return false;
+  });
+}
+
+/**
+ * Calculates the remaining balance for a specific Issue Item using the Single Source of Truth.
+ * @param {string} noIssue - Issue Document number or ID
+ * @param {string} issueItemId - Specific item ID within the Issue document
+ * @param {string|null} itemCode - Item Code for legacy compatibility fallback
+ * @param {string|null} excludeDocNo - Exclude this seeding transaction docNo (edit mode)
+ * @returns {{ quantityIssue: number, usedQuantity: number, remainingQuantity: number, status: string }}
+ */
+export function calculateRemainingIssueBalance(noIssue, issueItemId, itemCode = null, excludeDocNo = null) {
+  return calcRemainingIssueBalance(noIssue, issueItemId, itemCode, excludeDocNo);
+}
+
+/**
+ * Gets all eligible Polybag Issue Items for Pindah Semai.
+ * Returns item-level objects with derived remaining balance.
+ * Eligibility: doc status != INACTIVE, item is POLYBAG/POLIBAG, remaining > 0.
+ * Documents whose entire quantity has been consumed (remainingQty <= 0) are excluded.
+ * @returns {Array<Object>} Item-level eligible issue objects
+ */
+export function getEligiblePolybagIssueDocuments() {
+  const allDocs = getAllIssueDocuments();
+  const eligibleItems = [];
+
+  allDocs.forEach(doc => {
+    if (doc.status === 'INACTIVE') return;
+
+    const items = doc.items || [];
+    items.forEach(item => {
+      const name = String(item.itemName || '').toUpperCase();
+      const isPolybag = name.includes('POLYBAG') || name.includes('POLIBAG');
+      if (!isPolybag) return;
+
+      const quantityIssue = Number(item.quantityIssue) || 0;
+      const usedQuantity = Number(item.usedQuantity) || 0;
+      const remainingQuantity = Number(item.remainingQuantity) || 0;
+
+      // JIKA SEMUA SUDAH TERPAKAI (remaining <= 0), DOKUMEN/ITEM TIDAK DAPAT DIGUNAKAN KEMBALI
+      if (remainingQuantity <= 0) return;
+
+      eligibleItems.push({
+        issueDocId: doc.id,
+        issueDocNo: doc.noIssue,
+        issueItemId: item.id,
+        itemCode: item.itemCode,
+        itemName: item.itemName,
+        uom: item.uom || 'LBR',
+        tanggal: doc.tanggal,
+        kodeAlokasi: doc.kodeAlokasi,
+        namaAlokasi: doc.namaAlokasi,
+        quantityIssue,
+        usedQuantity,
+        remainingQuantity
+      });
+    });
+  });
+
+  return eligibleItems;
+}
+
+
 

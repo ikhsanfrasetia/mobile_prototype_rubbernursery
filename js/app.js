@@ -26,6 +26,7 @@ import { renderReceiptPlaceholder } from './modules/receipt/receipt-placeholder.
 import { renderSeedingLanding } from './modules/seeding/seeding-landing.js';
 import { renderSeedingScan } from './modules/seeding/seeding-scan.js';
 import { renderSeedingForm } from './modules/seeding/seeding-form.js';
+import { renderSeedingIssueSelector } from './modules/seeding/seeding-issue-selector.js';
 import { renderDederanScan } from './modules/seeding/dederan-scan.js';
 import { renderDederanForm } from './modules/seeding/dederan-form.js';
 import { renderDederanInspectionForm } from './modules/seeding/dederan-inspection-form.js';
@@ -112,6 +113,7 @@ registerRoute('/reception/placeholder', renderReceiptPlaceholder);
 registerRoute('/seeding', renderSeedingLanding);
 registerRoute('/seeding/scan', renderSeedingScan);
 registerRoute('/seeding/form', renderSeedingForm);
+registerRoute('/seeding/issue-select', renderSeedingIssueSelector);
 registerRoute('/seeding/dederan/scan', renderDederanScan);
 registerRoute('/seeding/dederan/form', renderDederanForm);
 registerRoute('/seeding/dederan/inspection', renderDederanInspectionForm);

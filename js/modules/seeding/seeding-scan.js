@@ -87,7 +87,7 @@ export function renderSeedingScan() {
   const manualBedList = expectedBedenganCode
     ? bedenganList.filter(b => b.code?.toUpperCase() === expectedBedenganCode.toUpperCase() || b.name?.toUpperCase() === expectedBedenganCode.toUpperCase() || b.id?.toUpperCase() === expectedBedenganCode.toUpperCase())
     : bedenganList;
-  const displayManualList = manualBedList.length > 0 ? manualBedList : bedenganList;
+  const displayManualList = expectedBedenganCode ? manualBedList : bedenganList;
 
   app.innerHTML = `
     <div class="page seeding-scan-page" style="display: flex; flex-direction: column; height: 100%; background: #0F172A; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; position: relative; overflow: hidden;">

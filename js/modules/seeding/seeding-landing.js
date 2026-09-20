@@ -95,8 +95,11 @@ export function renderSeedingLanding() {
     renderSeedingLanding();
   });
 
-  attachDederanEvents(app);
-  attachPindahSemaiEvents(app);
+  if (activeTab === 'DEDERAN') {
+    attachDederanEvents(app);
+  } else {
+    attachPindahSemaiEvents(app);
+  }
 }
 
 /**
@@ -330,7 +333,7 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
                       </div>
                     </div>
                     <div style="text-align: right; flex-shrink: 0;">
-                      <span style="font-size: 0.65rem; color: #64748B; display: block;">Belum Pindah</span>
+                      <span style="font-size: 0.65rem; color: #64748B; display: block;">Belum Pindah Semai</span>
                       <span style="font-size: 0.85rem; font-weight: 800; color: #116834;">${(src.remainingQty || 0).toLocaleString('id-ID')} Butir</span>
                     </div>
                   </div>
@@ -402,7 +405,7 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
                     </button>
                   ` : `
                     <div style="text-align: center; font-size: 0.72rem; font-weight: 600; color: #64748B; background: #F1F5F9; border-radius: 6px; padding: 8px 12px;">
-                      Selesai Dipindah Semai (Kuota Habis)
+                      Seluruh Bibit Telah Selesai Pindah Semai
                     </div>
                   `}
                 </div>
@@ -460,29 +463,21 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
   }) : `
           <div style="display: flex; flex-direction: column; gap: 10px;">
             ${seedingTxs.map((stx, idx) => `
-              <div class="card-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
+              <div class="card-summary-wrapper card-pindah-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); position: relative; display: flex; flex-direction: column; gap: 10px;">
                 
-                <!-- HEADER BARIS 1: NO DOKUMEN & BADGE -->
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-                  <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <span style="font-weight: 800; font-size: 0.92rem; color: #0F172A; letter-spacing: -0.01em;">${esc(stx.docNo || `2026/SOW/0${idx + 1}`)}</span>
-                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9;">
-                        Pindah Semai
-                      </span>
-                    </div>
-                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.3;">
-                      Sumber Dederan: <strong style="color: #334155;">${esc(stx.sourceDocNo || '-')}</strong> • Klon: <strong style="color: #116834;">${esc(stx.klon || 'GT 1')}</strong>
-                    </div>
-                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.3;">
-                      Bedengan Semai: <strong style="color: #0F172A;">${esc(stx.bedengan || '-')}</strong> • Tgl: ${esc(stx.date || '-')}
-                    </div>
+                <!-- HEADER BARIS 1: NO DOKUMEN & 3-DOTS -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(stx.docNo || `2026/SOW/0${idx + 1}`)}</span>
+                    <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9;">
+                      Pindah Semai
+                    </span>
                   </div>
 
                   <!-- 3-DOTS ACTION TRIGGER -->
-                  <div style="position: relative; flex-shrink: 0; margin-left: 8px;">
-                    <button type="button" class="btn-tx-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
-                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <div style="position: relative; flex-shrink: 0;">
+                    <button type="button" class="btn-pindah-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569; padding: 0; transition: background 0.15s ease;">
+                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
                         <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
                         <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
                         <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
@@ -490,26 +485,83 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
                     </button>
 
                     <!-- POPUP MENU -->
-                    <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
-                      <button type="button" class="menu-action-delete-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <div class="pindah-action-menu" style="display: none; position: absolute; right: 0; top: 36px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.18), 0 8px 10px -6px rgba(0,0,0,0.08); z-index: 1000; min-width: 140px; overflow: hidden;">
+                      <button type="button" class="menu-action-edit-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #1E293B; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F1F5F9; transition: background 0.15s ease;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="#2563EB" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                        <span>Edit</span>
+                      </button>
+                      <button type="button" class="menu-action-delete-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: background 0.15s ease;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="#DC2626" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
                         <span>Hapus</span>
                       </button>
                     </div>
                   </div>
                 </div>
 
+                <!-- HARMONIZED STRUCTURED METADATA (2-COLUMN GRID) -->
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+                  
+                  <!-- GRID 2x2: Dederan, Klon, Bedengan, Batch -->
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 0.74rem;">
+                    <div style="min-width: 0;">
+                      <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Sumber Dederan</span>
+                      <strong style="color: #1E293B; font-size: 0.78rem; word-break: break-word;">${esc(stx.sourceDocNo || '-')}</strong>
+                    </div>
+                    <div style="min-width: 0;">
+                      <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Klon</span>
+                      <strong style="color: #116834; font-size: 0.78rem; word-break: break-word;">${esc(stx.klon || stx.klonAwal || stx.rows?.[0]?.klon || 'GT 1')}</strong>
+                    </div>
+                    <div style="min-width: 0;">
+                      <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Bedengan Semai</span>
+                      <strong style="color: #0F172A; font-size: 0.78rem; word-break: break-word;">${esc(stx.bedengan || '-')}</strong>
+                    </div>
+                    <div style="min-width: 0;">
+                      <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Kode Batch</span>
+                      <strong style="color: #0284C7; font-size: 0.78rem; word-break: break-word;">${esc(stx.batchCode || stx.batchNo || stx.rows?.[0]?.batchCode || stx.rows?.[0]?.batchNo || '-')}</strong>
+                    </div>
+                  </div>
+
+                  <!-- TGL TRANSAKSI & ISSUE SECTION -->
+                  <div style="border-top: 1px solid #E2E8F0; padding-top: 7px; display: flex; flex-direction: column; gap: 6px; font-size: 0.74rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                      <span style="font-size: 0.68rem; color: #64748B;">Tanggal Transaksi:</span>
+                      <strong style="color: #334155; font-size: 0.76rem;">${esc(stx.date || '-')}</strong>
+                    </div>
+
+                    ${stx.issueDocNo ? `
+                    <div>
+                      <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.68rem; color: #64748B;">Dokumen Issue:</span>
+                        <strong style="color: #0F766E; font-size: 0.76rem; font-family: monospace;">${esc(stx.issueDocNo)}</strong>
+                      </div>
+                      ${stx.itemCode ? `
+                        <div style="font-size: 0.70rem; color: #334155; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 5px; padding: 4px 8px; margin-top: 4px; line-height: 1.35; font-weight: 600;">
+                          ${esc(stx.itemName || stx.itemCode)}
+                        </div>
+                      ` : ''}
+                    </div>
+                    ` : ''}
+                  </div>
+
+                </div>
+
                 <!-- METRICS CONTAINER -->
-                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
                   <div>
-                    <span style="font-size: 0.68rem; color: #64748B;">Bibit Disemai</span>
-                    <div style="font-size: 0.84rem; font-weight: 800; color: #116834; margin-top: 1px;">
+                    <span style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Bibit Disemai</span>
+                    <div style="font-size: 0.88rem; font-weight: 800; color: #116834; margin-top: 2px;">
                       ${(stx.totalDisemai || 0).toLocaleString('id-ID')} Pkk
                     </div>
                   </div>
                   <div style="text-align: right;">
-                    <span style="font-size: 0.68rem; color: #64748B;">Polybag Terisi</span>
-                    <div style="font-size: 0.84rem; font-weight: 700; color: #0F172A; margin-top: 1px;">
+                    <span style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Polybag Terisi</span>
+                    <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 2px;">
                       ${(stx.totalPolybag || 0).toLocaleString('id-ID')} Ply
                     </div>
                   </div>
@@ -560,15 +612,6 @@ function attachDederanEvents(app) {
     });
   });
 
-  // Close menus on outside click
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.btn-tx-action-trigger') && !e.target.closest('.tx-action-menu')) {
-      app.querySelectorAll('.tx-action-menu').forEach(m => {
-        m.style.display = 'none';
-      });
-    }
-  });
-
   // Delete Dederan Transaction
   app.querySelectorAll('.menu-action-delete-deder').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -586,6 +629,15 @@ function attachDederanEvents(app) {
         toast(res.error || 'Gagal menghapus transaksi', 'error');
       }
     });
+  });
+
+  // Close menus on click outside within app
+  app.addEventListener('click', (e) => {
+    if (!e.target.closest('.btn-tx-action-trigger') && !e.target.closest('.tx-action-menu')) {
+      app.querySelectorAll('.tx-action-menu').forEach(m => {
+        m.style.display = 'none';
+      });
+    }
   });
 }
 
@@ -616,6 +668,28 @@ function attachPindahSemaiEvents(app) {
     });
   });
 
+  // 3-Dots Action Trigger Popovers for Pindah Semai Cards
+  app.querySelectorAll('.btn-pindah-action-trigger').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wrapper = e.currentTarget.closest('.card-pindah-summary-wrapper');
+      const menu = wrapper?.querySelector('.pindah-action-menu');
+      app.querySelectorAll('.pindah-action-menu').forEach(m => {
+        if (m !== menu) m.style.display = 'none';
+      });
+      if (menu) {
+        menu.style.display = (menu.style.display === 'none' || !menu.style.display) ? 'block' : 'none';
+      }
+    });
+  });
+
+  // Close menus on outside click
+  document.addEventListener('click', () => {
+    app.querySelectorAll('.pindah-action-menu').forEach(m => {
+      m.style.display = 'none';
+    });
+  });
+
   // Proses Pindah Semai
   app.querySelectorAll('.btn-execute-pindah-semai').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -627,9 +701,42 @@ function attachPindahSemaiEvents(app) {
     });
   });
 
+  // Edit Pindah Semai Transaction
+  app.querySelectorAll('.menu-action-edit-pindah').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(e.currentTarget.dataset.index, 10);
+      const txs = storage.get('seeding_transactions', []);
+      const stx = txs[idx];
+      if (!stx) {
+        toast('Data transaksi tidak ditemukan', 'error');
+        return;
+      }
+
+      // Set edit mode session keys
+      storage.set('editing_seeding_index', idx);
+      storage.set('seeding_source_index', stx.sourceIndex || stx.sourceDederTxId || stx.sourceDocNo || stx.dederanTxDocNo);
+      storage.set('scanned_bedengan_id', stx.bedenganId || null);
+      storage.set('scanned_bedengan_code', stx.bedenganCode || null);
+      storage.set('scanned_bedengan_name', stx.bedengan || null);
+
+      if (stx.issueDocNo) {
+        storage.set('selected_issue_doc_no', stx.issueDocNo);
+        storage.set('selected_issue_item_id', stx.issueItemId || null);
+        storage.set('selected_issue_item_code', stx.itemCode || null);
+        storage.set('selected_issue_item_name', stx.itemName || null);
+        storage.set('selected_issue_uom', stx.uom || 'LBR');
+      }
+
+      navigate('/seeding/form');
+    });
+  });
+
   // Delete Pindah Semai Transaction
   app.querySelectorAll('.menu-action-delete-pindah').forEach(btn => {
     btn.addEventListener('click', (e) => {
+      e.preventDefault();
       e.stopPropagation();
       const idx = parseInt(e.currentTarget.dataset.index, 10);
       const docNo = e.currentTarget.dataset.doc;
