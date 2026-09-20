@@ -187,20 +187,12 @@ export function renderMaterialMaster() {
       <!-- SUMMARY METRICS -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px;">
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-          <div style="font-size: 0.7rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Master Material</div>
-          <div style="font-size: 1.3rem; font-weight: 800; color: #0F172A; margin-top: 4px;">${stats.totalMasterMaterials} <span style="font-size: 0.75rem; font-weight: 500; color: #64748B;">Item</span></div>
-        </div>
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
           <div style="font-size: 0.7rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Dokumen Issue</div>
           <div style="font-size: 1.3rem; font-weight: 800; color: #0369A1; margin-top: 4px;">${stats.totalIssueDocuments} <span style="font-size: 0.75rem; font-weight: 500; color: #64748B;">Doc</span></div>
         </div>
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
           <div style="font-size: 0.7rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Status Master</div>
           <div style="font-size: 1.3rem; font-weight: 800; color: #059669; margin-top: 4px;">${materials.length} <span style="font-size: 0.75rem; font-weight: 500; color: #64748B;">Active</span></div>
-        </div>
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-          <div style="font-size: 0.7rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Normalisasi UOM</div>
-          <div style="font-size: 1.3rem; font-weight: 800; color: #D97706; margin-top: 4px;">${normLog.length} <span style="font-size: 0.75rem; font-weight: 500; color: #64748B;">Rule</span></div>
         </div>
       </div>
 
