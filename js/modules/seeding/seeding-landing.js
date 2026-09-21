@@ -423,8 +423,8 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
       <!-- SECTION 1B: INFORMATIONAL QUEUE - MENUNGGU PERSETUJUAN ASISTEN BIBITAN -->
       ${pendingApprovalSources.length > 0 ? `
         <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px;">
-            <div style="font-size: 0.86rem; font-weight: 700; color: #1E293B;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 8px;">
+            <div style="font-size: 0.86rem; font-weight: 700; color: #1E293B; line-height: 1.3;">
               Menunggu Persetujuan Asisten
             </div>
             <span style="font-size: 0.68rem; font-weight: 600; background: #E2E8F0; color: #475569; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; flex-shrink: 0;">
@@ -439,19 +439,29 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
           <div style="display: flex; flex-direction: column; gap: 8px;">
             ${pendingApprovalSources.map(psrc => `
               <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px;">
-                  <div style="font-size: 0.80rem; font-weight: 700; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">
-                    ${esc(psrc.bedenganCode)} <span style="font-weight: 400; color: #64748B; font-size: 0.72rem;">• ${esc(psrc.dederanTxDocNo)}</span>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px;">
+                  <div style="min-width: 0; flex: 1;">
+                    <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; line-height: 1.2;">
+                      ${esc(psrc.bedenganCode)}
+                    </div>
+                    <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px; word-break: break-all;">
+                      ${esc(psrc.dederanTxDocNo)}
+                    </div>
                   </div>
-                  <span style="font-size: 0.64rem; font-weight: 600; color: #64748B; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;">
+                  <span style="font-size: 0.62rem; font-weight: 600; color: #475569; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;">
                     ${esc(psrc.selectionStatusLabel || 'Menunggu Persetujuan')}
                   </span>
                 </div>
                 
-                <div style="display: flex; align-items: center; gap: 14px; font-size: 0.72rem; color: #64748B;">
-                  <div style="white-space: nowrap;">Hasil Layak: <strong style="color: #0F172A;">${(psrc.totalBerhasil || 0).toLocaleString('id-ID')} Butir</strong></div>
-                  <span style="color: #CBD5E1;">|</span>
-                  <div style="white-space: nowrap;">Afkir: <strong style="color: #64748B;">${(psrc.totalTidakBerhasil || 0).toLocaleString('id-ID')} Butir</strong></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 6px 10px; background: #F8FAFC; border-radius: 6px; font-size: 0.72rem;">
+                  <div>
+                    <span style="color: #64748B; display: block; font-size: 0.64rem; margin-bottom: 1px;">Hasil Layak</span>
+                    <strong style="color: #0F172A; font-size: 0.78rem;">${(psrc.totalBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
+                  </div>
+                  <div>
+                    <span style="color: #64748B; display: block; font-size: 0.64rem; margin-bottom: 1px;">Afkir</span>
+                    <strong style="color: #64748B; font-size: 0.78rem;">${(psrc.totalTidakBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
+                  </div>
                 </div>
               </div>
             `).join('')}
