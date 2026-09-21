@@ -3228,23 +3228,23 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
             Jlh Polybag Terisi Bibit <span style="color: #DC2626;">*</span>
           </label>
-          <input id="modal-sel1-polybag-active" type="number" min="0" max="${initialRemainingPolybag}" value="${initialRemainingPolybag}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
+          <input id="modal-sel1-polybag-active" type="number" min="0" max="${initialRemainingPolybag}" value="0" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
         </div>
 
-        <!-- 2. Jlh Bibit Diseleksi -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
-          </label>
-          <input id="modal-sel1-bibit-selected" type="number" min="1" max="${initialRemainingBibit}" value="${initialRemainingBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0284C7; background: #FFFFFF;">
-        </div>
-
-        <!-- 3. Jlh Bibit Dipertahankan -->
+        <!-- 2. Jlh Bibit Dipertahankan -->
         <div>
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
             Jlh Bibit Dipertahankan <span style="color: #DC2626;">*</span>
           </label>
-          <input id="modal-sel1-bibit-retained" type="number" min="0" max="${initialRemainingBibit}" value="${initialRemainingBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #FFFFFF;">
+          <input id="modal-sel1-bibit-retained" type="number" min="0" max="${initialRemainingBibit}" value="0" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #FFFFFF;">
+        </div>
+
+        <!-- 3. Jlh Bibit Diseleksi -->
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
+          </label>
+          <input id="modal-sel1-bibit-selected" type="number" min="0" max="${initialRemainingBibit}" value="0" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0284C7; background: #FFFFFF;">
         </div>
       </div>
 
@@ -3261,17 +3261,17 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
             </div>
             <div style="padding: 8px 10px;">
               <div style="font-size: 0.68rem; color: #64748B;">Ttl Bibit Diseleksi</div>
-              <div id="modal-sel1-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #0284C7; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
+              <div id="modal-sel1-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #0284C7; margin-top: 1px;">0 Pkk</div>
             </div>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
             <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
               <div style="font-size: 0.68rem; color: #64748B;">Polybag Aktif</div>
-              <div id="modal-sel1-sum-active-poly" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Ply</div>
+              <div id="modal-sel1-sum-active-poly" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">0 Ply</div>
             </div>
             <div style="padding: 8px 10px;">
               <div style="font-size: 0.68rem; color: #64748B;">Dipertahankan</div>
-              <div id="modal-sel1-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
+              <div id="modal-sel1-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">0 Pkk</div>
             </div>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr;">
@@ -3281,7 +3281,7 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
             </div>
             <div style="padding: 8px 10px;">
               <div style="font-size: 0.68rem; color: #64748B;">Belum Diperiksa</div>
-              <div id="modal-sel1-sum-uninspected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">0 Pkk</div>
+              <div id="modal-sel1-sum-uninspected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
             </div>
           </div>
         </div>
@@ -3359,8 +3359,8 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
 
     if (isNaN(activePoly) || activePoly < 0) {
       errorMsg = 'Jumlah polybag terisi bibit tidak valid.';
-    } else if (isNaN(selectedBibit) || selectedBibit <= 0) {
-      errorMsg = 'Jumlah bibit diseleksi harus lebih besar dari 0.';
+    } else if (isNaN(selectedBibit) || selectedBibit < 0) {
+      errorMsg = 'Jumlah bibit diseleksi tidak valid.';
     } else if (isNaN(retainedBibit) || retainedBibit < 0) {
       errorMsg = 'Jumlah bibit dipertahankan tidak valid.';
     } else if (activePoly > remPoly) {
@@ -3369,34 +3369,32 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
       errorMsg = `Jumlah bibit diseleksi (${selectedBibit.toLocaleString('id-ID')}) melebihi sisa scope bibit (${remBibit.toLocaleString('id-ID')}).`;
     } else if (retainedBibit > selectedBibit) {
       errorMsg = `Jumlah bibit dipertahankan (${retainedBibit.toLocaleString('id-ID')}) tidak boleh melebihi jumlah bibit diseleksi (${selectedBibit.toLocaleString('id-ID')}).`;
-    } else if (retainedBibit > (activePoly * 2)) {
+    } else if (retainedBibit > (activePoly * 2) && activePoly > 0) {
       errorMsg = `Jumlah bibit dipertahankan (${retainedBibit.toLocaleString('id-ID')}) tidak boleh melebihi 2x polybag terisi bibit (${(activePoly * 2).toLocaleString('id-ID')}).`;
-    } else if (activePoly === 0 && retainedBibit === 0 && remPoly > 0) {
-      errorMsg = 'Peringatan: Seluruh populasi sesi ini akan dinyatakan afkir/kosong.';
     }
+
+    const isCriticalError = activePoly > remPoly || selectedBibit > remBibit || selectedBibit <= 0 || retainedBibit > selectedBibit || (activePoly > 0 && retainedBibit > (activePoly * 2));
 
     if (errorMsg) {
       if (warningEl) {
         warningEl.textContent = errorMsg;
         warningEl.style.display = 'block';
       }
-      const isCriticalError = activePoly > remPoly || selectedBibit > remBibit || selectedBibit <= 0 || retainedBibit > selectedBibit || retainedBibit > (activePoly * 2);
-      if (saveBtn) {
-        saveBtn.disabled = isCriticalError;
-        saveBtn.style.opacity = isCriticalError ? '0.5' : '1';
-        saveBtn.style.cursor = isCriticalError ? 'not-allowed' : 'pointer';
-      }
     } else {
       if (warningEl) {
         warningEl.style.display = 'none';
       }
-      if (saveBtn) {
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-        saveBtn.style.cursor = 'pointer';
-      }
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = isCriticalError;
+      saveBtn.style.opacity = isCriticalError ? '0.5' : '1';
+      saveBtn.style.cursor = isCriticalError ? 'not-allowed' : 'pointer';
     }
   }
+
+  // Initial calculation trigger (ensures save button disabled until user inputs values)
+  updateCalculations();
 
   selBed?.addEventListener('change', () => {
     const opt = selBed.options[selBed.selectedIndex];
@@ -3410,15 +3408,15 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
 
     if (inputActivePoly) {
       inputActivePoly.max = remPoly;
-      inputActivePoly.value = remPoly;
-    }
-    if (inputSelectedBibit) {
-      inputSelectedBibit.max = remBibit;
-      inputSelectedBibit.value = remBibit;
+      inputActivePoly.value = 0;
     }
     if (inputRetainedBibit) {
       inputRetainedBibit.max = remBibit;
-      inputRetainedBibit.value = remBibit;
+      inputRetainedBibit.value = 0;
+    }
+    if (inputSelectedBibit) {
+      inputSelectedBibit.max = remBibit;
+      inputSelectedBibit.value = 0;
     }
     updateCalculations();
   });
@@ -3578,23 +3576,23 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
             Jlh Polybag Terisi Bibit <span style="color: #DC2626;">*</span>
           </label>
-          <input id="modal-sel2-polybag-active" type="number" min="0" max="${initialRemainingPolybag}" value="${initialRemainingPolybag}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
+          <input id="modal-sel2-polybag-active" type="number" min="0" max="${initialRemainingPolybag}" value="0" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
         </div>
 
-        <!-- 2. Jlh Bibit Diseleksi -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
-          </label>
-          <input id="modal-sel2-bibit-selected" type="number" min="1" max="${initialRemainingBibit}" value="${initialRemainingBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0284C7; background: #FFFFFF;">
-        </div>
-
-        <!-- 3. Jlh Bibit Dipertahankan -->
+        <!-- 2. Jlh Bibit Dipertahankan -->
         <div>
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
             Jlh Bibit Dipertahankan <span style="color: #DC2626;">*</span>
           </label>
-          <input id="modal-sel2-bibit-retained" type="number" min="0" max="${initialRemainingBibit}" value="${initialRemainingPolybag}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #FFFFFF;">
+          <input id="modal-sel2-bibit-retained" type="number" min="0" max="${initialRemainingBibit}" value="0" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #FFFFFF;">
+        </div>
+
+        <!-- 3. Jlh Bibit Diseleksi -->
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
+          </label>
+          <input id="modal-sel2-bibit-selected" type="number" min="0" max="${initialRemainingBibit}" value="0" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0284C7; background: #FFFFFF;">
         </div>
       </div>
 
@@ -3611,17 +3609,17 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
             </div>
             <div style="padding: 8px 10px;">
               <div style="font-size: 0.68rem; color: #64748B;">Ttl Bibit Diseleksi</div>
-              <div id="modal-sel2-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #0284C7; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
+              <div id="modal-sel2-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #0284C7; margin-top: 1px;">0 Pkk</div>
             </div>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
             <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
               <div style="font-size: 0.68rem; color: #64748B;">Polybag Aktif</div>
-              <div id="modal-sel2-sum-active-poly" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Ply</div>
+              <div id="modal-sel2-sum-active-poly" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">0 Ply</div>
             </div>
             <div style="padding: 8px 10px;">
               <div style="font-size: 0.68rem; color: #64748B;">Dipertahankan</div>
-              <div id="modal-sel2-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Pkk</div>
+              <div id="modal-sel2-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">0 Pkk</div>
             </div>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr;">
@@ -3631,7 +3629,7 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
             </div>
             <div style="padding: 8px 10px;">
               <div style="font-size: 0.68rem; color: #64748B;">Belum Diperiksa</div>
-              <div id="modal-sel2-sum-uninspected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">0 Pkk</div>
+              <div id="modal-sel2-sum-uninspected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
             </div>
           </div>
         </div>
@@ -3709,8 +3707,8 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
 
     if (isNaN(activePoly) || activePoly < 0) {
       errorMsg = 'Jumlah polybag terisi bibit tidak valid.';
-    } else if (isNaN(selectedBibit) || selectedBibit <= 0) {
-      errorMsg = 'Jumlah bibit diseleksi harus lebih besar dari 0.';
+    } else if (isNaN(selectedBibit) || selectedBibit < 0) {
+      errorMsg = 'Jumlah bibit diseleksi tidak valid.';
     } else if (isNaN(retainedBibit) || retainedBibit < 0) {
       errorMsg = 'Jumlah bibit dipertahankan tidak valid.';
     } else if (activePoly > remPoly) {
@@ -3719,32 +3717,30 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
       errorMsg = `Jumlah bibit diseleksi (${selectedBibit.toLocaleString('id-ID')}) melebihi sisa scope bibit (${remBibit.toLocaleString('id-ID')}).`;
     } else if (retainedBibit > selectedBibit) {
       errorMsg = `Jumlah bibit dipertahankan (${retainedBibit.toLocaleString('id-ID')}) tidak boleh melebihi jumlah bibit diseleksi (${selectedBibit.toLocaleString('id-ID')}).`;
-    } else if (activePoly === 0 && retainedBibit === 0 && remPoly > 0) {
-      errorMsg = 'Peringatan: Seluruh populasi sesi ini akan dinyatakan afkir/kosong.';
     }
+
+    const isCriticalError = activePoly > remPoly || selectedBibit > remBibit || selectedBibit <= 0 || retainedBibit > selectedBibit;
 
     if (errorMsg) {
       if (warningEl) {
         warningEl.textContent = errorMsg;
         warningEl.style.display = 'block';
       }
-      const isCriticalError = activePoly > remPoly || selectedBibit > remBibit || selectedBibit <= 0 || retainedBibit > selectedBibit;
-      if (saveBtn) {
-        saveBtn.disabled = isCriticalError;
-        saveBtn.style.opacity = isCriticalError ? '0.5' : '1';
-        saveBtn.style.cursor = isCriticalError ? 'not-allowed' : 'pointer';
-      }
     } else {
       if (warningEl) {
         warningEl.style.display = 'none';
       }
-      if (saveBtn) {
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-        saveBtn.style.cursor = 'pointer';
-      }
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = isCriticalError;
+      saveBtn.style.opacity = isCriticalError ? '0.5' : '1';
+      saveBtn.style.cursor = isCriticalError ? 'not-allowed' : 'pointer';
     }
   }
+
+  // Initial calculation trigger (ensures save button disabled until user inputs values)
+  updateCalculations();
 
   selBed?.addEventListener('change', () => {
     const opt = selBed.options[selBed.selectedIndex];
@@ -3758,15 +3754,15 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
 
     if (inputActivePoly) {
       inputActivePoly.max = remPoly;
-      inputActivePoly.value = remPoly;
-    }
-    if (inputSelectedBibit) {
-      inputSelectedBibit.max = remBibit;
-      inputSelectedBibit.value = remBibit;
+      inputActivePoly.value = 0;
     }
     if (inputRetainedBibit) {
       inputRetainedBibit.max = remBibit;
-      inputRetainedBibit.value = remPoly;
+      inputRetainedBibit.value = 0;
+    }
+    if (inputSelectedBibit) {
+      inputSelectedBibit.max = remBibit;
+      inputSelectedBibit.value = 0;
     }
     updateCalculations();
   });
@@ -3920,23 +3916,23 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
             Jlh Polybag Terisi Bibit <span style="color: #DC2626;">*</span>
           </label>
-          <input id="modal-sel3-actual-poly" type="number" min="0" max="${initialScopePoly}" value="${initialScopePoly}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
+          <input id="modal-sel3-actual-poly" type="number" min="0" max="${initialScopePoly}" value="0" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
         </div>
 
-        <!-- 2. Jlh Bibit Diseleksi -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
-          </label>
-          <input id="modal-sel3-actual-selected-bibit" type="number" min="1" max="${initialScopeBibit}" value="${initialScopeBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0284C7; background: #FFFFFF;">
-        </div>
-
-        <!-- 3. Jlh Bibit Dipertahankan -->
+        <!-- 2. Jlh Bibit Dipertahankan -->
         <div>
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
             Jlh Bibit Dipertahankan <span style="color: #DC2626;">*</span>
           </label>
-          <input id="modal-sel3-actual-bibit" type="number" min="0" max="${initialScopeBibit}" value="${initialScopePoly}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #FFFFFF;">
+          <input id="modal-sel3-actual-bibit" type="number" min="0" max="${initialScopeBibit}" value="0" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #FFFFFF;">
+        </div>
+
+        <!-- 3. Jlh Bibit Diseleksi -->
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
+          </label>
+          <input id="modal-sel3-actual-selected-bibit" type="number" min="0" max="${initialScopeBibit}" value="0" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0284C7; background: #FFFFFF;">
         </div>
       </div>
 
@@ -3953,17 +3949,17 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
             </div>
             <div style="padding: 8px 10px;">
               <div style="font-size: 0.68rem; color: #64748B;">Ttl Bibit Diseleksi</div>
-              <div id="modal-sel3-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #0284C7; margin-top: 1px;">${initialScopeBibit.toLocaleString('id-ID')} Pkk</div>
+              <div id="modal-sel3-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #0284C7; margin-top: 1px;">0 Pkk</div>
             </div>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
             <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
               <div style="font-size: 0.68rem; color: #64748B;">Polybag Aktif</div>
-              <div id="modal-sel3-sum-active-poly" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialScopePoly.toLocaleString('id-ID')} Ply</div>
+              <div id="modal-sel3-sum-active-poly" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">0 Ply</div>
             </div>
             <div style="padding: 8px 10px;">
               <div style="font-size: 0.68rem; color: #64748B;">Dipertahankan</div>
-              <div id="modal-sel3-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialScopePoly.toLocaleString('id-ID')} Pkk</div>
+              <div id="modal-sel3-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">0 Pkk</div>
             </div>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr;">
@@ -3973,7 +3969,7 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
             </div>
             <div style="padding: 8px 10px;">
               <div style="font-size: 0.68rem; color: #64748B;">Belum Diperiksa</div>
-              <div id="modal-sel3-sum-uninspected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">0 Pkk</div>
+              <div id="modal-sel3-sum-uninspected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">${initialScopeBibit.toLocaleString('id-ID')} Pkk</div>
             </div>
           </div>
         </div>
@@ -4050,8 +4046,8 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
     let errorMsg = null;
     if (isNaN(activePoly) || activePoly < 0) {
       errorMsg = 'Jumlah polybag terisi bibit tidak boleh negatif.';
-    } else if (isNaN(selectedBibit) || selectedBibit <= 0) {
-      errorMsg = 'Jumlah bibit diseleksi harus lebih besar dari 0.';
+    } else if (isNaN(selectedBibit) || selectedBibit < 0) {
+      errorMsg = 'Jumlah bibit diseleksi tidak valid.';
     } else if (isNaN(retainedBibit) || retainedBibit < 0) {
       errorMsg = 'Jumlah bibit dipertahankan tidak boleh negatif.';
     } else if (activePoly > remPoly) {
@@ -4060,34 +4056,32 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
       errorMsg = `Jumlah bibit diseleksi (${selectedBibit.toLocaleString('id-ID')}) melebihi sisa scope bibit (${remBibit.toLocaleString('id-ID')}).`;
     } else if (retainedBibit > selectedBibit) {
       errorMsg = `Jumlah bibit dipertahankan (${retainedBibit.toLocaleString('id-ID')}) melebihi bibit diseleksi (${selectedBibit.toLocaleString('id-ID')}).`;
-    } else if (retainedBibit > activePoly) {
+    } else if (retainedBibit > activePoly && activePoly > 0) {
       errorMsg = `Jumlah bibit dipertahankan (${retainedBibit.toLocaleString('id-ID')}) tidak boleh melebihi polybag aktif (${activePoly.toLocaleString('id-ID')}) (Aturan 1 Polybag = 1 Bibit).`;
-    } else if (activePoly === 0 && retainedBibit === 0 && remPoly > 0) {
-      errorMsg = 'Peringatan: Seluruh populasi sesi ini akan dinyatakan afkir/kosong.';
     }
+
+    const isCriticalError = activePoly > remPoly || selectedBibit > remBibit || selectedBibit <= 0 || retainedBibit > selectedBibit || (activePoly > 0 && retainedBibit > activePoly);
 
     if (errorMsg) {
       if (warningEl) {
         warningEl.textContent = errorMsg;
         warningEl.style.display = 'block';
       }
-      const isCriticalError = activePoly > remPoly || selectedBibit > remBibit || selectedBibit <= 0 || retainedBibit > selectedBibit || retainedBibit > activePoly;
-      if (saveBtn) {
-        saveBtn.disabled = isCriticalError;
-        saveBtn.style.opacity = isCriticalError ? '0.5' : '1';
-        saveBtn.style.cursor = isCriticalError ? 'not-allowed' : 'pointer';
-      }
     } else {
       if (warningEl) {
         warningEl.style.display = 'none';
       }
-      if (saveBtn) {
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-        saveBtn.style.cursor = 'pointer';
-      }
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = isCriticalError;
+      saveBtn.style.opacity = isCriticalError ? '0.5' : '1';
+      saveBtn.style.cursor = isCriticalError ? 'not-allowed' : 'pointer';
     }
   }
+
+  // Initial calculation trigger (ensures save button disabled until user inputs values)
+  updateCalculations();
 
   selBed?.addEventListener('change', () => {
     const opt = selBed.options[selBed.selectedIndex];
@@ -4101,15 +4095,15 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
 
     if (inputActivePoly) {
       inputActivePoly.max = remPoly;
-      inputActivePoly.value = remPoly;
-    }
-    if (inputSelectedBibit) {
-      inputSelectedBibit.max = remBibit;
-      inputSelectedBibit.value = remBibit;
+      inputActivePoly.value = 0;
     }
     if (inputRetainedBibit) {
       inputRetainedBibit.max = remBibit;
-      inputRetainedBibit.value = remPoly;
+      inputRetainedBibit.value = 0;
+    }
+    if (inputSelectedBibit) {
+      inputSelectedBibit.max = remBibit;
+      inputSelectedBibit.value = 0;
     }
     updateCalculations();
   });
