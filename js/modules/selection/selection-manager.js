@@ -3827,21 +3827,23 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
   const maxBibitScope = matchedBed ? matchedBed.remainingBibit : parseInt(parentDoc.sourceBibitQty || maxPolybagScope, 10);
 
   // 2. Quantity parsing (New actual model vs legacy)
+  const actualBibitRetained = parseInt(
+    payload.actualBibitRetainedQty !== undefined 
+      ? payload.actualBibitRetainedQty 
+      : (payload.jumlahLayak !== undefined 
+          ? payload.jumlahLayak 
+          : (payload.bibitDipertahankan !== undefined ? payload.bibitDipertahankan : 0)),
+    10
+  );
+
   const actualPolyActive = parseInt(
     payload.actualPolybagActiveQty !== undefined 
       ? payload.actualPolybagActiveQty 
       : (payload.polybagAktif !== undefined 
           ? payload.polybagAktif 
-          : (payload.polybagScope !== undefined 
+          : (payload.polybagScope !== undefined && payload.actualBibitRetainedQty === undefined && payload.jumlahLayak === undefined && payload.bibitDipertahankan === undefined
               ? payload.polybagScope 
-              : (payload.initialPolybagCount !== undefined ? payload.initialPolybagCount : payload.jumlahDiperiksa || 0))),
-    10
-  );
-
-  const actualBibitRetained = parseInt(
-    payload.actualBibitRetainedQty !== undefined 
-      ? payload.actualBibitRetainedQty 
-      : (payload.jumlahLayak !== undefined ? payload.jumlahLayak : (payload.bibitDipertahankan !== undefined ? payload.bibitDipertahankan : actualPolyActive)),
+              : actualBibitRetained)),
     10
   );
 
