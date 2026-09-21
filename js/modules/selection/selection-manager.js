@@ -3270,14 +3270,23 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = []) 
       ? parseInt(payload.polybagScope, 10)
       : (matchedBed ? matchedBed.remainingPolybag : parseInt(parentDoc.sourcePolybagQty || actualPolyActive, 10));
 
-    if (actualPolyActive > maxPolybagScope) {
-      errors.push(`Jumlah polybag terisi bibit (${actualPolyActive}) melebihi sisa scope polybag (${maxPolybagScope}).`);
+    if (polyScope > maxPolybagScope) {
+      errors.push(`Jumlah polybag diperiksa (${polyScope}) melebihi sisa scope polybag (${maxPolybagScope}).`);
     }
-    if (actualBibitRetained > maxBibitScope) {
-      errors.push(`Jumlah bibit dipertahankan (${actualBibitRetained}) melebihi sisa scope bibit (${maxBibitScope}).`);
+    if (actualPolyActive > polyScope) {
+      errors.push(`Jumlah polybag terisi bibit (${actualPolyActive}) melebihi total polybag yang diperiksa (${polyScope}).`);
     }
 
-    const bibitAwal = matchedBed ? matchedBed.remainingBibit : parseInt(parentDoc.sourceBibitQty || polyScope, 10);
+    const bibitAwal = payload.bibitAwal !== undefined && !isNaN(parseInt(payload.bibitAwal, 10))
+      ? parseInt(payload.bibitAwal, 10)
+      : (matchedBed && matchedBed.remainingPolybag > 0
+          ? (polyScope === matchedBed.remainingPolybag ? matchedBed.remainingBibit : Math.round(polyScope * (matchedBed.remainingBibit / matchedBed.remainingPolybag)))
+          : (parentDoc.sourcePolybagQty > 0 ? Math.round(polyScope * (parentDoc.sourceBibitQty / parentDoc.sourcePolybagQty)) : polyScope));
+
+    if (actualBibitRetained > bibitAwal) {
+      errors.push(`Jumlah bibit dipertahankan (${actualBibitRetained}) melebihi bibit awal pada scope sesi ini (${bibitAwal}).`);
+    }
+
     const inactivePolybagQty = Math.max(0, polyScope - actualPolyActive);
     const selectedBibitScopeQty = Math.max(0, bibitAwal - actualBibitRetained);
 
