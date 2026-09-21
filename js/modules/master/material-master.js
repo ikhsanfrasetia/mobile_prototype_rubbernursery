@@ -24,6 +24,7 @@ import {
   getIssueUsedQuantity,
   getIssueRemainingQuantity,
   getIssueStatus,
+  getIssueUsageTransactions,
   getMaterialSummaryStats,
   getUomNormalizationLog,
   initMaterialMasterStorage
@@ -468,6 +469,7 @@ export function renderMaterialMaster() {
     const remQty = getIssueRemainingQuantity(doc.id);
     const status = getIssueStatus(doc.id);
     const statusInfo = formatStatusBadge(status);
+    const usedTxs = getIssueUsageTransactions(doc.id);
 
     const modalBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1E293B;">
@@ -529,7 +531,7 @@ export function renderMaterialMaster() {
         </div>
 
         <!-- SECTION 4: QUANTITY & SALDO ISSUE -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px;">
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;">
           <div style="font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">QUANTITY & SALDO ISSUE</div>
           
           <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center;">
@@ -557,6 +559,34 @@ export function renderMaterialMaster() {
               <div style="font-size: 0.7rem; font-weight: 700; color: #047857;">${esc(item.uom)}</div>
             </div>
           </div>
+        </div>
+
+        <!-- SECTION 5: DOKUMEN TRANSAKSI PENGGUNA -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px;">
+          <div style="font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+            DOKUMEN PENGGUNA ISSUE
+          </div>
+          
+          ${usedTxs.length === 0 ? `
+            <div style="font-size: 0.78rem; color: #94A3B8; font-style: italic; background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 6px; padding: 10px; text-align: center;">
+              Belum ada transaksi yang menggunakan No Issue ini
+            </div>
+          ` : `
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              ${usedTxs.map(tx => `
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px;">
+                  <div>
+                    <span style="color: #64748B; display: block; font-size: 0.65rem; font-weight: 600; text-transform: uppercase;">No Dokumen</span>
+                    <strong style="font-family: monospace; font-size: 0.82rem; color: #0F766E;">${esc(tx.docNo)}</strong>
+                  </div>
+                  <div style="text-align: right;">
+                    <span style="color: #64748B; display: block; font-size: 0.65rem; font-weight: 600; text-transform: uppercase;">Tanggal</span>
+                    <span style="font-size: 0.78rem; font-weight: 600; color: #334155;">${esc(tx.tanggal)}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
         </div>
 
       </div>

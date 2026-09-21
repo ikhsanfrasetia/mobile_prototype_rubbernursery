@@ -12,6 +12,7 @@
  */
 
 import { storage } from '../core/storage.js';
+import { formatDate } from '../core/utils.js';
 import {
   INITIAL_MASTER_MATERIALS,
   INITIAL_ISSUE_DOCUMENTS,
@@ -293,5 +294,35 @@ export function getMaterialSummaryStats() {
     totalAvailableIssues,
     sourceRecordsCount: RAW_MATERIAL_ISSUE_RECORDS.length
   };
+}
+
+/**
+ * Mengambil daftar dokumen transaksi yang menggunakan Issue Document tertentu.
+ * Hanya mengembalikan ringkasan dokumen: [{ docNo, tanggal }].
+ * @param {string} noIssueOrId - Nomor Issue atau ID Dokumen Issue
+ * @returns {Array<{ docNo: string, tanggal: string }>}
+ */
+export function getIssueUsageTransactions(noIssueOrId) {
+  if (!noIssueOrId) return [];
+  const doc = getIssueByNoIssue(noIssueOrId);
+  if (!doc) return [];
+
+  const seedingTxs = storage.get('seeding_transactions', []);
+  const matchingTxs = [];
+  const items = doc.items || [];
+
+  seedingTxs.forEach(tx => {
+    const isMatch = items.some(item => isTransactionMatchingIssueItem(tx, doc, item, items.length));
+    if (isMatch) {
+      const docNo = tx.docNo || tx.nomorDokumen || tx.id || '-';
+      const rawDate = tx.date || tx.tanggal || '-';
+      const tanggal = (rawDate && rawDate !== '-') ? formatDate(rawDate) : '-';
+      if (!matchingTxs.some(t => t.docNo === docNo)) {
+        matchingTxs.push({ docNo, tanggal });
+      }
+    }
+  });
+
+  return matchingTxs;
 }
 

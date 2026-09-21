@@ -4,7 +4,7 @@
  * Setiap perubahan file langsung terlihat setelah refresh (tanpa clear cache,
  * tanpa unregister, tanpa hard refresh). Sifat PWA tetap dipertahankan.
  */
-const CACHE_NAME = 'sigma-nursery-v161';
+const CACHE_NAME = 'sigma-nursery-v163';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -29,6 +29,8 @@ const CORE_ASSETS = [
   './js/db/seed.js',
   './js/db/repositories.js',
   './js/data/master-data.js',
+  './js/data/material-master.js',
+  './js/data/material-issue-data.js',
   './js/data/cfna-master.js',
   './js/data/worker-master.js',
   './js/data/klon-master.js',
@@ -50,6 +52,7 @@ const CORE_ASSETS = [
   './js/modules/attendance/attendance-workers.js',
   './js/modules/attendance/attendance-summary.js',
   './js/modules/maintenance/nursery-activity.js',
+  './js/modules/master/material-master.js',
   './js/modules/profile/profile.js',
   './js/modules/receipt/receipt-landing.js',
   './js/modules/receipt/receipt-benih.js',
