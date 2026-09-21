@@ -3317,7 +3317,7 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
     const retainedBibit = parseInt(inputRetainedBibit?.value || 0, 10);
 
     const inactivePoly = Math.max(0, remPoly - activePoly);
-    const selectedBibit = Math.max(0, remBibit - retainedBibit);
+    const selectedBibit = remBibit;
 
     if (sumInactivePoly) sumInactivePoly.textContent = `${inactivePoly.toLocaleString('id-ID')} Ply`;
     if (sumSelectedBibit) sumSelectedBibit.textContent = `${selectedBibit.toLocaleString('id-ID')} Pkk`;
@@ -3629,7 +3629,7 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
     const retainedBibit = parseInt(inputRetainedBibit?.value || 0, 10);
 
     const inactivePoly = Math.max(0, remPoly - activePoly);
-    const selectedBibit = Math.max(0, remBibit - retainedBibit);
+    const selectedBibit = remBibit;
 
     if (sumInactivePoly) sumInactivePoly.textContent = `${inactivePoly.toLocaleString('id-ID')} Ply`;
     if (sumSelectedBibit) sumSelectedBibit.textContent = `${selectedBibit.toLocaleString('id-ID')} Pkk`;
@@ -3921,7 +3921,7 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
     const retainedBibit = parseInt(inputRetainedBibit?.value || 0, 10);
 
     const inactivePoly = Math.max(0, remPoly - activePoly);
-    const selectedBibit = Math.max(0, remBibit - retainedBibit);
+    const selectedBibit = remBibit;
 
     if (sumInactivePoly) sumInactivePoly.textContent = inactivePoly.toLocaleString('id-ID');
     if (sumSelectedBibit) sumSelectedBibit.textContent = selectedBibit.toLocaleString('id-ID');
