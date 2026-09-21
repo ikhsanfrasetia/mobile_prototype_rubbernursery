@@ -478,6 +478,71 @@ assert(
   `Inspected: ${legacyInspected}/2000, Sisa: ${legacyRemaining}, Fully Inspected: ${legacyIsFullyInspected}`
 );
 
+// ============================================================
+// TEST A: Dokumen COMPLETED -> Tidak ada tombol "Tinjau & Kirim ke Asisten"
+// ============================================================
+const noTinjauKirimInHtml = !landingContent.includes('Tinjau & Kirim ke Asisten') &&
+                           !landingContent.includes('Tinjau & Kirim') &&
+                           !landingContent.includes('btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px');
+
+assert(
+  'TEST A',
+  'Workflow Guard: Dokumen COMPLETED tidak menampilkan tombol "Tinjau & Kirim ke Asisten"',
+  noTinjauKirimInHtml,
+  `No Tinjau & Kirim Button Found: ${noTinjauKirimInHtml}`
+);
+
+// ============================================================
+// TEST B: Dokumen COMPLETED tetapi belum verified
+// ============================================================
+// On updatedDoc1 (from TEST 01), SUM polybag === 2500 -> isCompleted === true
+assert(
+  'TEST B',
+  'COMPLETED != VERIFIED: Dokumen isCompleted tetap bernilai true namun tidak otomatis terverifikasi (status !== DISETUJUI, isFinal !== true)',
+  updatedDoc1.isCompleted === true &&
+  updatedDoc1.status === 'COMPLETED' &&
+  updatedDoc1.status !== 'DISETUJUI' &&
+  !updatedDoc1.isFinal &&
+  !updatedDoc1.verifiedAt,
+  `isCompleted: ${updatedDoc1.isCompleted}, status: ${updatedDoc1.status}, isFinal: ${Boolean(updatedDoc1.isFinal)}, verifiedAt: ${updatedDoc1.verifiedAt || 'none'}`
+);
+
+// ============================================================
+// TEST C: Legacy Transaction tanpa actualBibitSelectedQty
+// ============================================================
+globalThis.localStorage.clear();
+const docSel3LegacyBibit = {
+  id: 'DOC-SEL3-LEG-BIBIT',
+  docNo: 'SEL3/TEST/2026/LEG-B',
+  sourceType: 'SELEKSI_II',
+  sourceDocNo: 'SEL2/TEST/2026/LEG-B',
+  selectionStage: SELECTION_STAGES.SELEKSI_3,
+  stage: 'SELEKSI_III',
+  sourcePolybagQty: 1000,
+  sourceBibitQty: 2000,
+  rows: [{ bedenganId: 'BED-LEG-B', bedenganCode: 'BED-LEG-B', polybag: 1000, disemai: 2000 }]
+};
+storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, [docSel3LegacyBibit]);
+
+// Insert legacy transaction with bibitAwal: 2000, but NO actualBibitSelectedQty / selectedBibitScopeQty / jumlahDiperiksa
+storage.set(SELECTION_STORAGE_KEY, [{
+  id: 'TX-LEG-NO-SELECTED',
+  parentSelectionDocumentId: 'DOC-SEL3-LEG-BIBIT',
+  selectionStage: SELECTION_STAGES.SELEKSI_3,
+  bedenganCode: 'BED-LEG-B',
+  actualPolybagInspectedQty: 1000,
+  bibitAwal: 2000 // Should NOT be treated as actualBibitSelectedQty!
+}]);
+
+const metricsLegacyC = getSeleksi3Metrics(getPreGraftingSelectionDocumentById(docSel3LegacyBibit.id));
+assert(
+  'TEST C',
+  'Bibit Fallback: Legacy transaction tanpa actualBibitSelectedQty TIDAK menjadikan bibitAwal sebagai Bibit Diseleksi',
+  metricsLegacyC.totalBibitDiseleksi === 0 &&
+  metricsLegacyC.totalBibitDipertahankan === 2000,
+  `totalBibitDiseleksi: ${metricsLegacyC.totalBibitDiseleksi} (expected 0), totalBibitDipertahankan: ${metricsLegacyC.totalBibitDipertahankan} (expected 2000)`
+);
+
 console.log('\n============================================================');
 console.log('TEST SUMMARY');
 console.log('============================================================');

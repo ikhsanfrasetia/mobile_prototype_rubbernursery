@@ -884,7 +884,7 @@ function renderMantriSelectionLanding(app, user) {
 
     // Perhitungan Akurat Sisa Populasi dari Dokumen Induk & Child Transactions
     const totalInspectedPolybag = executions.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-    const totalInspectedBibit = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 0);
+    const totalInspectedBibit = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
     const remainingPolybag = Math.max(0, sourcePolybag - totalInspectedPolybag);
     const remainingBibit = Math.max(0, sourceBibit - totalInspectedBibit);
     const progressPercent = sourcePolybag > 0 ? Math.min(100, Math.max(0, Math.round((totalInspectedPolybag / sourcePolybag) * 100))) : 0;
@@ -923,7 +923,7 @@ function renderMantriSelectionLanding(app, user) {
       badgeColor = '#1D4ED8';
       badgeBorder = '#BFDBFE';
     } else if (isCompleted) {
-      badgeText = 'Siap Review';
+      badgeText = 'COMPLETED';
       badgeBg = '#F0FDF4';
       badgeColor = '#15803D';
       badgeBorder = '#BBF7D0';
@@ -1065,16 +1065,6 @@ function renderMantriSelectionLanding(app, user) {
 
                         <!-- TOMBOL WORKFLOW PADA DOKUMEN INDUK -->
                         <div style="display: flex; flex-direction: column; gap: 8px;">
-                          
-                          ${isCompleted && !isSubmitted && !isApproved ? `
-                            <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                                <polyline points="9 11 12 14 22 4"></polyline>
-                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-                              </svg>
-                              Tinjau & Kirim ke Asisten Bibitan
-                            </button>
-                          ` : ''}
 
                           ${isSubmitted ? `
                             <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 34px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.76rem; cursor: pointer;">
@@ -1273,7 +1263,7 @@ function renderMantriSelectionLanding(app, user) {
           const totalAfkir = parseInt(doc.totalAfkir || 0, 10);
 
           const totalInspectedPolybag = executions.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-          const totalInspectedBibit = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 0);
+          const totalInspectedBibit = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
           const remainingPolybag = Math.max(0, sourcePolybag - totalInspectedPolybag);
           const remainingBibit = Math.max(0, sourceBibit - totalInspectedBibit);
           const isCompleted = Boolean(doc.isCompleted);
@@ -1308,7 +1298,7 @@ function renderMantriSelectionLanding(app, user) {
             badgeColor = '#1D4ED8';
             badgeBorder = '#BFDBFE';
           } else if (isCompleted) {
-            badgeText = 'Siap Review';
+            badgeText = 'COMPLETED';
             badgeBg = '#F0FDF4';
             badgeColor = '#15803D';
             badgeBorder = '#BBF7D0';
@@ -1450,15 +1440,6 @@ function renderMantriSelectionLanding(app, user) {
 
                         <!-- TOMBOL WORKFLOW PADA DOKUMEN INDUK -->
                         <div style="display: flex; flex-direction: column; gap: 8px;">
-                          ${isCompleted && !isSubmitted && !isApproved ? `
-                            <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                                <polyline points="9 11 12 14 22 4"></polyline>
-                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-                              </svg>
-                              Tinjau & Kirim ke Asisten Bibitan
-                            </button>
-                          ` : ''}
 
                           ${isSubmitted ? `
                             <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 34px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.76rem; cursor: pointer;">
@@ -1684,7 +1665,7 @@ function renderMantriSelectionLanding(app, user) {
             badgeColor = '#1D4ED8';
             badgeBorder = '#BFDBFE';
           } else if (isCompleted) {
-            badgeText = 'Siap Review';
+            badgeText = 'COMPLETED';
             badgeBg = '#F0FDF4';
             badgeColor = '#15803D';
             badgeBorder = '#BBF7D0';
@@ -1826,31 +1807,11 @@ function renderMantriSelectionLanding(app, user) {
 
                         <!-- TOMBOL WORKFLOW PADA DOKUMEN INDUK -->
                         <div style="display: flex; flex-direction: column; gap: 8px;">
-                          ${isCompleted && !isSubmitted && !isApproved ? `
-                            <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-                              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none">
-                                <polyline points="9 11 12 14 22 4"></polyline>
-                                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-                              </svg>
-                              Tinjau & Kirim ke Asisten Bibitan
-                            </button>
-                          ` : ''}
-
                           ${isSubmitted ? `
                             <button type="button" class="btn-open-review-modal" data-id="${esc(doc.id)}" style="width: 100%; height: 34px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.76rem; cursor: pointer;">
                               Lihat Rincian Verifikasi Data
                             </button>
                           ` : ''}
-
-                          ${isApproved ? `
-                            <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.72rem; color: #166534;">
-                              ✅ <strong>Data Final:</strong> Disetujui oleh ${esc(doc.verifiedByName || 'Asisten Bibitan')} pada ${doc.verifiedAt ? formatDate(doc.verifiedAt) : '-'}.
-                            </div>
-                          ` : ''}
-
-                        </div>
-
-                      </div><!-- END parent-detail-content -->
 
                           ${isApproved ? `
                             <div style="padding: 6px 10px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; font-size: 0.72rem; color: #166534;">
@@ -3136,7 +3097,7 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
   const initialRemainingPolybag = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
 
   const existingBibitSelected = executions.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
     0
   );
   const initialRetained = Math.max(0, sourceBibit - existingBibitSelected);
@@ -3446,7 +3407,7 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
   const initialRemainingPolybag = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
 
   const existingBibitSelected = executions.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
     0
   );
   const initialRetained = Math.max(0, sourceBibit - existingBibitSelected);
@@ -3755,7 +3716,7 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
   const initialScopePoly = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
 
   const existingBibitSelected = executions.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
     0
   );
   const initialRetained = Math.max(0, sourceBibit - existingBibitSelected);

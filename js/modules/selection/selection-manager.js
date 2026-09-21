@@ -1972,7 +1972,7 @@ export function getSeleksi3Metrics(doc, customExecutions = null) {
   const sourceBibit = parseInt(doc.sourceBibitQty !== undefined ? doc.sourceBibitQty : totalPopulasi, 10);
 
   const totalPolybagDiperiksa = executions.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-  const totalBibitDiseleksi = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 0);
+  const totalBibitDiseleksi = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
   const totalBibitDiperiksa = totalBibitDiseleksi;
   const totalBibitReject = totalBibitDiseleksi;
   const totalBibitLayak = Math.max(0, sourceBibit - totalBibitDiseleksi);
@@ -2566,7 +2566,7 @@ export function getBedenganScopeStatusForSeleksi1(parentDoc, txsOverride = null)
     });
 
     const inspectedPolybag = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-    const inspectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 0);
+    const inspectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
     const maintainedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan || tx.jumlahLayak || 0), 10), 0);
     const rejectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.bibitReject !== undefined ? tx.bibitReject : (tx.jumlahAfkir || 0), 10), 0);
     const remainingPolybag = Math.max(0, bed.initialPolybag - inspectedPolybag);
@@ -2634,9 +2634,7 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = []) 
       ? payload.actualBibitSelectedQty
       : (payload.selectedBibitScopeQty !== undefined
           ? payload.selectedBibitScopeQty
-          : (payload.jumlahDiperiksa !== undefined
-              ? payload.jumlahDiperiksa
-              : (payload.bibitAwal !== undefined ? payload.bibitAwal : 0))),
+          : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : 0)),
     10
   );
 
@@ -2653,7 +2651,7 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = []) 
 
   // Hitung otomatis Bibit Dipertahankan secara kumulatif
   const existingBibitSelectedSum = existingTxs.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
     0
   );
   const totalBibitDiseleksiAfter = existingBibitSelectedSum + (isNaN(actualBibitSelected) ? 0 : actualBibitSelected);
@@ -2843,7 +2841,7 @@ export function createSeleksi1ExecutionTransaction(payload, currentUser) {
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -2940,7 +2938,7 @@ export function deleteSeleksi1ExecutionTransaction(txIdOrDocNo, currentUser = nu
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -3056,7 +3054,7 @@ export function getBedenganScopeStatusForSeleksi2(parentDoc, txsOverride = null)
     });
 
     const inspectedPolybag = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-    const inspectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 0);
+    const inspectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
     const maintainedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan || tx.jumlahLayak || 0), 10), 0);
     const rejectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.bibitReject !== undefined ? tx.bibitReject : (tx.jumlahAfkir || 0), 10), 0);
     const remainingPolybag = Math.max(0, bed.initialPolybag - inspectedPolybag);
@@ -3129,9 +3127,7 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = []) 
       ? payload.actualBibitSelectedQty
       : (payload.selectedBibitScopeQty !== undefined
           ? payload.selectedBibitScopeQty
-          : (payload.jumlahDiperiksa !== undefined
-              ? payload.jumlahDiperiksa
-              : (payload.bibitAwal !== undefined ? payload.bibitAwal : 0))),
+          : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : 0)),
     10
   );
 
@@ -3148,7 +3144,7 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = []) 
 
   // Hitung otomatis Bibit Dipertahankan secara kumulatif
   const existingBibitSelectedSum = existingTxs.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
     0
   );
   const totalBibitDiseleksiAfter = existingBibitSelectedSum + (isNaN(actualBibitSelected) ? 0 : actualBibitSelected);
@@ -3343,7 +3339,7 @@ export function createSeleksi2ExecutionTransaction(payload, currentUser) {
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -3438,7 +3434,7 @@ export function deleteSeleksi2ExecutionTransaction(transactionId, currentUser = 
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -3552,7 +3548,7 @@ export function getBedenganScopeStatusForSeleksi3(parentDoc, txsOverride = null)
     });
 
     const inspectedPolybag = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-    const inspectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 0);
+    const inspectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
     const maintainedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan || tx.jumlahLayak || 0), 10), 0);
     const rejectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.bibitReject !== undefined ? tx.bibitReject : (tx.jumlahAfkir || 0), 10), 0);
     const remainingPolybag = Math.max(0, bed.initialPolybag - inspectedPolybag);
@@ -3629,9 +3625,7 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
       ? payload.actualBibitSelectedQty
       : (payload.selectedBibitScopeQty !== undefined
           ? payload.selectedBibitScopeQty
-          : (payload.jumlahDiperiksa !== undefined
-              ? payload.jumlahDiperiksa
-              : (payload.bibitAwal !== undefined ? payload.bibitAwal : 0))),
+          : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : 0)),
     10
   );
 
@@ -3648,7 +3642,7 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
 
   // Hitung otomatis Bibit Dipertahankan secara kumulatif
   const existingBibitSelectedSum = existingTxs.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
     0
   );
   const totalBibitDiseleksiAfter = existingBibitSelectedSum + (isNaN(actualBibitSelected) ? 0 : actualBibitSelected);
@@ -3843,7 +3837,7 @@ export function createSeleksi3ExecutionTransaction(payload, currentUser) {
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -3983,7 +3977,7 @@ export function updateSeleksi3ExecutionTransaction(txIdOrDocNo, payload, current
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -4081,7 +4075,7 @@ export function deleteSeleksi3ExecutionTransaction(txIdOrDocNo, currentUser = nu
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || tx.bibitAwal || 0)), 10), 
+      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
