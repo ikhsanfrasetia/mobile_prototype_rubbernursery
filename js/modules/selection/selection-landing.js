@@ -3163,144 +3163,145 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
   const initialRemainingBibit = initialBed.remainingBibit !== undefined ? initialBed.remainingBibit : (initialRemainingPolybag * 2);
 
   const bodyContent = `
-    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
+    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 12px;">
       
-      <!-- HEADER INFO & DOKUMEN ASAL -->
-      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 0.72rem;">
-          <div>Dok. Seleksi I: <strong style="color: #0F172A;">${esc(doc.docNo)}</strong></div>
-          <div>Dok. Asal (Penyemaian): <strong style="color: #0F172A;">${esc(doc.sourceDocNo)}</strong></div>
-          <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || '-')}</strong></div>
-          <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
+      <!-- INFORMASI DOKUMEN -->
+      <div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+          Informasi Dokumen
+        </div>
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+          <div style="font-size: 0.68rem; color: #64748B;">Dok. Seleksi</div>
+          <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-bottom: 6px;">${esc(doc.docNo)}</div>
+          
+          <div style="font-size: 0.68rem; color: #64748B;">Dok. Asal</div>
+          <div style="font-size: 0.85rem; font-weight: 700; color: #0F172A;">${esc(doc.sourceDocNo)}</div>
+          <div style="font-size: 0.74rem; color: #475569; margin-top: 2px;">${esc(doc.batchCode || '-')} • ${esc(doc.clone || doc.klon || '-')}</div>
         </div>
       </div>
 
-      <!-- FORM FIELDS -->
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;">
-        
-        <!-- PILIH BEDENGAN -->
+      <!-- BEDENGAN PEMERIKSAAN -->
+      <div>
+        <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+          Bedengan Pemeriksaan <span style="color: #DC2626;">*</span>
+        </label>
+        <select id="modal-sel1-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.82rem; background: #FFFFFF; color: #0F172A; font-weight: 600;">
+          ${bedScopeList.map(bed => `
+            <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" data-remaining-bibit="${bed.remainingBibit || (bed.remainingPolybag * 2)}" data-initial-bibit="${bed.initialBibit || (bed.initialPolybag * 2)}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
+              ${esc(bed.bedenganCode)} (Sisa Polybag: ${bed.remainingPolybag.toLocaleString('id-ID')} / ${bed.initialPolybag.toLocaleString('id-ID')})
+            </option>
+          `).join('')}
+        </select>
+      </div>
+
+      <!-- REFERENCE -->
+      <div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+          Reference
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
+            <div id="modal-sel1-ref-polybag" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
+              ${initialRemainingPolybag.toLocaleString('id-ID')} Ply
+            </div>
+            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Sisa Polybag</div>
+          </div>
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
+            <div id="modal-sel1-ref-bibit" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
+              ${initialRemainingBibit.toLocaleString('id-ID')} Pkk
+            </div>
+            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Sisa Bibit</div>
+          </div>
+        </div>
+        <input type="hidden" id="modal-sel1-current-remaining-poly" value="${initialRemainingPolybag}">
+        <input type="hidden" id="modal-sel1-current-remaining-bibit" value="${initialRemainingBibit}">
+      </div>
+
+      <!-- INPUT PEMERIKSAAN MANTRI -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="font-size: 0.74rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em;">
+          INPUT PEMERIKSAAN MANTRI
+        </div>
+
+        <!-- 1. Jlh Polybag Terisi Bibit -->
         <div>
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Bedengan Pemeriksaan <span style="color: #DC2626;">*</span>
+            Jlh Polybag Terisi Bibit <span style="color: #DC2626;">*</span>
           </label>
-          <select id="modal-sel1-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.80rem; background: #FFFFFF;">
-            ${bedScopeList.map(bed => `
-              <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" data-remaining-bibit="${bed.remainingBibit || (bed.remainingPolybag * 2)}" data-initial-bibit="${bed.initialBibit || (bed.initialPolybag * 2)}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
-                ${esc(bed.bedenganCode)} (Sisa Polybag: ${bed.remainingPolybag.toLocaleString('id-ID')} / ${bed.initialPolybag.toLocaleString('id-ID')})
-              </option>
-            `).join('')}
-          </select>
+          <input id="modal-sel1-polybag-active" type="number" min="0" max="${initialRemainingPolybag}" value="${initialRemainingPolybag}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
         </div>
 
-        <!-- REFERENCE DARI DOKUMEN SEBELUMNYA (READ-ONLY) -->
-        <div style="background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px;">
-          <div style="font-size: 0.70rem; font-weight: 700; color: #475569; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.03em;">
-            Reference dari Dokumen Sebelumnya (Read-Only)
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;">
-              <div style="font-size: 0.65rem; color: #64748B;">Sisa Polybag Tersedia</div>
-              <div id="modal-sel1-ref-polybag" style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
-                ${initialRemainingPolybag.toLocaleString('id-ID')} Ply
-              </div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;">
-              <div style="font-size: 0.65rem; color: #64748B;">Sisa Bibit Tersedia</div>
-              <div id="modal-sel1-ref-bibit" style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
-                ${initialRemainingBibit.toLocaleString('id-ID')} Pkk
-              </div>
-            </div>
-          </div>
-          <input type="hidden" id="modal-sel1-current-remaining-poly" value="${initialRemainingPolybag}">
-          <input type="hidden" id="modal-sel1-current-remaining-bibit" value="${initialRemainingBibit}">
+        <!-- 2. Jlh Bibit Diseleksi -->
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
+          </label>
+          <input id="modal-sel1-bibit-selected" type="number" min="1" max="${initialRemainingBibit}" value="${initialRemainingBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0284C7; background: #FFFFFF;">
         </div>
 
-        <!-- INPUT MANTRI (3 INPUT TRANSAKSI) -->
-        <div style="background: #FFFFFF; border: 1.5px solid #116834; border-radius: 8px; padding: 10px 12px;">
-          <div style="font-size: 0.74rem; font-weight: 800; color: #116834; margin-bottom: 8px; text-transform: uppercase;">
-            Input Pemeriksaan Mantri:
+        <!-- 3. Jlh Bibit Dipertahankan -->
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Jlh Bibit Dipertahankan <span style="color: #DC2626;">*</span>
+          </label>
+          <input id="modal-sel1-bibit-retained" type="number" min="0" max="${initialRemainingBibit}" value="${initialRemainingBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #FFFFFF;">
+        </div>
+      </div>
+
+      <!-- RINGKASAN -->
+      <div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+          RINGKASAN
+        </div>
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
+            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
+              <div style="font-size: 0.68rem; color: #64748B;">Ttl Polybag Tidak Aktif</div>
+              <div id="modal-sel1-sum-inactive-poly" style="font-size: 0.88rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Ply</div>
+            </div>
+            <div style="padding: 8px 10px;">
+              <div style="font-size: 0.68rem; color: #64748B;">Ttl Bibit Diseleksi</div>
+              <div id="modal-sel1-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #0284C7; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
+            </div>
           </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-            <!-- 1. Jlh Polybag Terisi Bibit -->
-            <div>
-              <label style="display: block; font-size: 0.73rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-                1. Jlh Polybag Terisi Bibit <span style="color: #DC2626;">*</span>
-              </label>
-              <input id="modal-sel1-polybag-active" type="number" min="0" max="${initialRemainingPolybag}" value="${initialRemainingPolybag}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-weight: 700; font-size: 0.88rem; box-sizing: border-box; color: #0F172A;">
-              <div style="font-size: 0.60rem; color: #64748B; margin-top: 2px;">Polybag aktif</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
+            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
+              <div style="font-size: 0.68rem; color: #64748B;">Polybag Aktif</div>
+              <div id="modal-sel1-sum-active-poly" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Ply</div>
             </div>
-
-            <!-- 2. Jlh Bibit Diseleksi -->
-            <div>
-              <label style="display: block; font-size: 0.73rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-                2. Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
-              </label>
-              <input id="modal-sel1-bibit-selected" type="number" min="1" max="${initialRemainingBibit}" value="${initialRemainingBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-weight: 700; font-size: 0.88rem; box-sizing: border-box; color: #0284C7;">
-              <div style="font-size: 0.60rem; color: #64748B; margin-top: 2px;">Bibit diperiksa</div>
+            <div style="padding: 8px 10px;">
+              <div style="font-size: 0.68rem; color: #64748B;">Dipertahankan</div>
+              <div id="modal-sel1-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
             </div>
-
-            <!-- 3. Jlh Bibit Dipertahankan -->
-            <div>
-              <label style="display: block; font-size: 0.73rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-                3. Jlh Bibit Dipertahankan <span style="color: #DC2626;">*</span>
-              </label>
-              <input id="modal-sel1-bibit-retained" type="number" min="0" max="${initialRemainingBibit}" value="${initialRemainingBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-weight: 700; font-size: 0.88rem; box-sizing: border-box; color: #15803D;">
-              <div style="font-size: 0.60rem; color: #64748B; margin-top: 2px;">Bibit dipertahankan</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr;">
+            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
+              <div style="font-size: 0.68rem; color: #64748B;">Bibit Reject</div>
+              <div id="modal-sel1-sum-reject-bibit" style="font-size: 0.88rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Pkk</div>
+            </div>
+            <div style="padding: 8px 10px;">
+              <div style="font-size: 0.68rem; color: #64748B;">Belum Diperiksa</div>
+              <div id="modal-sel1-sum-uninspected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">0 Pkk</div>
             </div>
           </div>
         </div>
+        <div id="modal-sel1-quota-warning" style="display: none; margin-top: 8px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
+      </div>
 
-        <!-- RINGKASAN OTOMATIS (METRIK AUTO) -->
-        <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px; font-size: 0.74rem;">
-          <div style="font-size: 0.70rem; font-weight: 700; color: #475569; margin-bottom: 6px; text-transform: uppercase;">
-            Ringkasan Hasil Pemeriksaan (Auto):
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;">
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">1. Ttl Polybag Tidak Aktif:</span>
-              <div id="modal-sel1-sum-inactive-poly" style="font-size: 0.85rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Ply</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">2. Ttl Bibit Diseleksi:</span>
-              <div id="modal-sel1-sum-selected-bibit" style="font-size: 0.85rem; font-weight: 700; color: #0284C7; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">3. Jlh Polybag Aktif:</span>
-              <div id="modal-sel1-sum-active-poly" style="font-size: 0.85rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Ply</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">4. Jlh Bibit Dipertahankan:</span>
-              <div id="modal-sel1-sum-retained-bibit" style="font-size: 0.85rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">Bibit Reject:</span>
-              <div id="modal-sel1-sum-reject-bibit" style="font-size: 0.85rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Pkk</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">Ttl Bibit Belum Diperiksa:</span>
-              <div id="modal-sel1-sum-uninspected-bibit" style="font-size: 0.85rem; font-weight: 700; color: #64748B; margin-top: 1px;">0 Pkk</div>
-            </div>
-          </div>
-          <div id="modal-sel1-quota-warning" style="display: none; margin-top: 8px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
+      <!-- TANGGAL & CATATAN -->
+      <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
+        <div>
+          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal</label>
+          <input id="modal-sel1-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
         </div>
-
-        <!-- TANGGAL TRANSAKSI (READ-ONLY) & CATATAN -->
-        <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
-          <div>
-            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal Transaksi</label>
-            <input id="modal-sel1-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
-          </div>
-          <div>
-            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan (Opsional)</label>
-            <input id="modal-sel1-notes" type="text" placeholder="Catatan mantri..." style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
-          </div>
+        <div>
+          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan</label>
+          <input id="modal-sel1-notes" type="text" placeholder="Catatan mantri..." style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
         </div>
-
       </div>
 
       <!-- BUTTONS -->
-      <div style="display: flex; gap: 8px;">
+      <div style="display: flex; gap: 8px; margin-top: 4px;">
         <button id="btn-modal-cancel-sel1" type="button" style="flex: 1; height: 38px; background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer;">
           Batal
         </button>
@@ -3512,146 +3513,145 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
   const initialRemainingBibit = initialBed.remainingBibit !== undefined ? initialBed.remainingBibit : (doc.sourceBibitQty || initialRemainingPolybag);
 
   const bodyContent = `
-    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
+    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 12px;">
       
-      <!-- HEADER INFO & DOKUMEN SUMBER -->
-      <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 0.72rem;">
-          <div>Dok. Seleksi II: <strong style="color: #0F172A;">${esc(doc.docNo)}</strong></div>
-          <div>Sumber Seleksi I: <strong style="color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo)}</strong></div>
-          <div>Program: <strong style="color: #0F172A;">${esc(doc.programCode || doc.programName || '-')}</strong></div>
-          <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || '-')}</strong></div>
-          <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
-          <div>Tahap: <strong style="color: #0F172A;">Seleksi II (Pra-Okulasi)</strong></div>
+      <!-- INFORMASI DOKUMEN -->
+      <div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+          Informasi Dokumen
+        </div>
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+          <div style="font-size: 0.68rem; color: #64748B;">Dok. Seleksi</div>
+          <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-bottom: 6px;">${esc(doc.docNo)}</div>
+          
+          <div style="font-size: 0.68rem; color: #64748B;">Dok. Asal</div>
+          <div style="font-size: 0.85rem; font-weight: 700; color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</div>
+          <div style="font-size: 0.74rem; color: #475569; margin-top: 2px;">${esc(doc.batchCode || '-')} • ${esc(doc.clone || doc.klon || '-')}</div>
         </div>
       </div>
 
-      <!-- FORM FIELDS -->
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;">
-        
-        <!-- PILIH BEDENGAN -->
+      <!-- BEDENGAN PEMERIKSAAN -->
+      <div>
+        <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+          Bedengan Pemeriksaan <span style="color: #DC2626;">*</span>
+        </label>
+        <select id="modal-sel2-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.82rem; background: #FFFFFF; color: #0F172A; font-weight: 600;">
+          ${bedScopeList.map(bed => `
+            <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" data-remaining-bibit="${bed.remainingBibit}" data-initial-bibit="${bed.initialBibit}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
+              ${esc(bed.bedenganCode)} (Sisa Polybag: ${bed.remainingPolybag.toLocaleString('id-ID')} / ${bed.initialPolybag.toLocaleString('id-ID')})
+            </option>
+          `).join('')}
+        </select>
+      </div>
+
+      <!-- REFERENCE -->
+      <div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+          Reference
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
+            <div id="modal-sel2-ref-polybag" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
+              ${initialRemainingPolybag.toLocaleString('id-ID')} Ply
+            </div>
+            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Sisa Polybag</div>
+          </div>
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
+            <div id="modal-sel2-ref-bibit" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
+              ${initialRemainingBibit.toLocaleString('id-ID')} Pkk
+            </div>
+            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Sisa Bibit</div>
+          </div>
+        </div>
+        <input type="hidden" id="modal-sel2-current-remaining-poly" value="${initialRemainingPolybag}">
+        <input type="hidden" id="modal-sel2-current-remaining-bibit" value="${initialRemainingBibit}">
+      </div>
+
+      <!-- INPUT PEMERIKSAAN MANTRI -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="font-size: 0.74rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em;">
+          INPUT PEMERIKSAAN MANTRI
+        </div>
+
+        <!-- 1. Jlh Polybag Terisi Bibit -->
         <div>
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Bedengan Pemeriksaan <span style="color: #DC2626;">*</span>
+            Jlh Polybag Terisi Bibit <span style="color: #DC2626;">*</span>
           </label>
-          <select id="modal-sel2-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.80rem; background: #FFFFFF;">
-            ${bedScopeList.map(bed => `
-              <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" data-remaining-bibit="${bed.remainingBibit}" data-initial-bibit="${bed.initialBibit}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
-                ${esc(bed.bedenganCode)} (Sisa Polybag: ${bed.remainingPolybag.toLocaleString('id-ID')} / ${bed.initialPolybag.toLocaleString('id-ID')})
-              </option>
-            `).join('')}
-          </select>
+          <input id="modal-sel2-polybag-active" type="number" min="0" max="${initialRemainingPolybag}" value="${initialRemainingPolybag}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
         </div>
 
-        <!-- REFERENCE DARI DOKUMEN SEBELUMNYA (READ-ONLY) -->
-        <div style="background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px;">
-          <div style="font-size: 0.70rem; font-weight: 700; color: #475569; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.03em;">
-            Reference dari Seleksi I Final (Read-Only)
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;">
-              <div style="font-size: 0.65rem; color: #64748B;">Sisa Polybag Tersedia</div>
-              <div id="modal-sel2-ref-polybag" style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
-                ${initialRemainingPolybag.toLocaleString('id-ID')} Ply
-              </div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;">
-              <div style="font-size: 0.65rem; color: #64748B;">Sisa Bibit Tersedia</div>
-              <div id="modal-sel2-ref-bibit" style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
-                ${initialRemainingBibit.toLocaleString('id-ID')} Pkk
-              </div>
-            </div>
-          </div>
-          <input type="hidden" id="modal-sel2-current-remaining-poly" value="${initialRemainingPolybag}">
-          <input type="hidden" id="modal-sel2-current-remaining-bibit" value="${initialRemainingBibit}">
+        <!-- 2. Jlh Bibit Diseleksi -->
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
+          </label>
+          <input id="modal-sel2-bibit-selected" type="number" min="1" max="${initialRemainingBibit}" value="${initialRemainingBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0284C7; background: #FFFFFF;">
         </div>
 
-        <!-- INPUT MANTRI (3 INPUT TRANSAKSI) -->
-        <div style="background: #FFFFFF; border: 1.5px solid #116834; border-radius: 8px; padding: 10px 12px;">
-          <div style="font-size: 0.74rem; font-weight: 800; color: #116834; margin-bottom: 8px; text-transform: uppercase;">
-            Input Pemeriksaan Mantri:
+        <!-- 3. Jlh Bibit Dipertahankan -->
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Jlh Bibit Dipertahankan <span style="color: #DC2626;">*</span>
+          </label>
+          <input id="modal-sel2-bibit-retained" type="number" min="0" max="${initialRemainingBibit}" value="${initialRemainingPolybag}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #FFFFFF;">
+        </div>
+      </div>
+
+      <!-- RINGKASAN -->
+      <div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+          RINGKASAN
+        </div>
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
+            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
+              <div style="font-size: 0.68rem; color: #64748B;">Ttl Polybag Tidak Aktif</div>
+              <div id="modal-sel2-sum-inactive-poly" style="font-size: 0.88rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Ply</div>
+            </div>
+            <div style="padding: 8px 10px;">
+              <div style="font-size: 0.68rem; color: #64748B;">Ttl Bibit Diseleksi</div>
+              <div id="modal-sel2-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #0284C7; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
+            </div>
           </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-            <!-- 1. Jlh Polybag Terisi Bibit -->
-            <div>
-              <label style="display: block; font-size: 0.73rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-                1. Jlh Polybag Terisi Bibit <span style="color: #DC2626;">*</span>
-              </label>
-              <input id="modal-sel2-polybag-active" type="number" min="0" max="${initialRemainingPolybag}" value="${initialRemainingPolybag}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-weight: 700; font-size: 0.88rem; box-sizing: border-box; color: #0F172A;">
-              <div style="font-size: 0.60rem; color: #64748B; margin-top: 2px;">Polybag aktif</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
+            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
+              <div style="font-size: 0.68rem; color: #64748B;">Polybag Aktif</div>
+              <div id="modal-sel2-sum-active-poly" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Ply</div>
             </div>
-
-            <!-- 2. Jlh Bibit Diseleksi -->
-            <div>
-              <label style="display: block; font-size: 0.73rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-                2. Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
-              </label>
-              <input id="modal-sel2-bibit-selected" type="number" min="1" max="${initialRemainingBibit}" value="${initialRemainingBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-weight: 700; font-size: 0.88rem; box-sizing: border-box; color: #0284C7;">
-              <div style="font-size: 0.60rem; color: #64748B; margin-top: 2px;">Bibit diperiksa</div>
+            <div style="padding: 8px 10px;">
+              <div style="font-size: 0.68rem; color: #64748B;">Dipertahankan</div>
+              <div id="modal-sel2-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Pkk</div>
             </div>
-
-            <!-- 3. Jlh Bibit Dipertahankan -->
-            <div>
-              <label style="display: block; font-size: 0.73rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-                3. Jlh Bibit Dipertahankan <span style="color: #DC2626;">*</span>
-              </label>
-              <input id="modal-sel2-bibit-retained" type="number" min="0" max="${initialRemainingBibit}" value="${initialRemainingPolybag}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-weight: 700; font-size: 0.88rem; box-sizing: border-box; color: #15803D;">
-              <div style="font-size: 0.60rem; color: #64748B; margin-top: 2px;">Bibit dipertahankan</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr;">
+            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
+              <div style="font-size: 0.68rem; color: #64748B;">Bibit Reject</div>
+              <div id="modal-sel2-sum-reject-bibit" style="font-size: 0.88rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Pkk</div>
+            </div>
+            <div style="padding: 8px 10px;">
+              <div style="font-size: 0.68rem; color: #64748B;">Belum Diperiksa</div>
+              <div id="modal-sel2-sum-uninspected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">0 Pkk</div>
             </div>
           </div>
         </div>
+        <div id="modal-sel2-quota-warning" style="display: none; margin-top: 8px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
+      </div>
 
-        <!-- RINGKASAN OTOMATIS (METRIK AUTO) -->
-        <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px; font-size: 0.74rem;">
-          <div style="font-size: 0.70rem; font-weight: 700; color: #475569; margin-bottom: 6px; text-transform: uppercase;">
-            Ringkasan Hasil Pemeriksaan (Auto):
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;">
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">1. Ttl Polybag Tidak Aktif:</span>
-              <div id="modal-sel2-sum-inactive-poly" style="font-size: 0.85rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Ply</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">2. Ttl Bibit Diseleksi:</span>
-              <div id="modal-sel2-sum-selected-bibit" style="font-size: 0.85rem; font-weight: 700; color: #0284C7; margin-top: 1px;">${initialRemainingBibit.toLocaleString('id-ID')} Pkk</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">3. Jlh Polybag Aktif:</span>
-              <div id="modal-sel2-sum-active-poly" style="font-size: 0.85rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Ply</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">4. Jlh Bibit Dipertahankan:</span>
-              <div id="modal-sel2-sum-retained-bibit" style="font-size: 0.85rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Pkk</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">Bibit Reject:</span>
-              <div id="modal-sel2-sum-reject-bibit" style="font-size: 0.85rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Pkk</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px;">
-              <span style="color: #64748B;">Ttl Bibit Belum Diperiksa:</span>
-              <div id="modal-sel2-sum-uninspected-bibit" style="font-size: 0.85rem; font-weight: 700; color: #64748B; margin-top: 1px;">0 Pkk</div>
-            </div>
-          </div>
-          <div id="modal-sel2-quota-warning" style="display: none; margin-top: 8px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
+      <!-- TANGGAL & CATATAN -->
+      <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
+        <div>
+          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal</label>
+          <input id="modal-sel2-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
         </div>
-
-        <!-- TANGGAL TRANSAKSI (READ-ONLY) & CATATAN -->
-        <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
-          <div>
-            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal Transaksi</label>
-            <input id="modal-sel2-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
-          </div>
-          <div>
-            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan (Opsional)</label>
-            <input id="modal-sel2-notes" type="text" placeholder="Catatan Seleksi II..." style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
-          </div>
+        <div>
+          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan</label>
+          <input id="modal-sel2-notes" type="text" placeholder="Catatan Seleksi II..." style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
         </div>
-
       </div>
 
       <!-- BUTTONS -->
-      <div style="display: flex; gap: 8px;">
+      <div style="display: flex; gap: 8px; margin-top: 4px;">
         <button id="btn-modal-cancel-sel2" type="button" style="flex: 1; height: 38px; background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer;">
           Batal
         </button>
@@ -3855,124 +3855,145 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
   const initialScopeBibit = initialBed.remainingBibit !== undefined ? initialBed.remainingBibit : (doc.sourceBibitQty || 0);
 
   const bodyContent = `
-    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
+    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 12px;">
       
-      <!-- HEADER INFO -->
-      <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 0.72rem;">
-          <div>Dok. Seleksi III: <strong style="color: #0F172A;">${esc(doc.docNo)}</strong></div>
-          <div>Sumber Seleksi II: <strong style="color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo)}</strong></div>
-          <div>Program: <strong style="color: #0F172A;">${esc(doc.programCode || doc.programName || '-')}</strong></div>
-          <div>Batch: <strong style="color: #0F172A;">${esc(doc.batchCode || '-')}</strong></div>
-          <div>Klon: <strong style="color: #0F172A;">${esc(doc.clone || doc.klon || '-')}</strong></div>
-          <div>Tahap: <strong style="color: #0F172A;">Seleksi III (Pra-Okulasi)</strong></div>
+      <!-- INFORMASI DOKUMEN -->
+      <div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+          Informasi Dokumen
+        </div>
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+          <div style="font-size: 0.68rem; color: #64748B;">Dok. Seleksi</div>
+          <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-bottom: 6px;">${esc(doc.docNo)}</div>
+          
+          <div style="font-size: 0.68rem; color: #64748B;">Dok. Asal</div>
+          <div style="font-size: 0.85rem; font-weight: 700; color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</div>
+          <div style="font-size: 0.74rem; color: #475569; margin-top: 2px;">${esc(doc.batchCode || '-')} • ${esc(doc.clone || doc.klon || '-')}</div>
         </div>
       </div>
 
-      <!-- FORM FIELDS -->
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;">
-        
-        <!-- PILIH BEDENGAN -->
+      <!-- BEDENGAN PEMERIKSAAN -->
+      <div>
+        <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+          Bedengan Pemeriksaan <span style="color: #DC2626;">*</span>
+        </label>
+        <select id="modal-sel3-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.82rem; background: #FFFFFF; color: #0F172A; font-weight: 600;">
+          ${bedScopeList.map(bed => `
+            <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" data-remaining-bibit="${bed.remainingBibit}" data-initial-bibit="${bed.initialBibit}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
+              ${esc(bed.bedenganCode)} (Sisa Polybag: ${bed.remainingPolybag.toLocaleString('id-ID')} / ${bed.initialPolybag.toLocaleString('id-ID')})
+            </option>
+          `).join('')}
+        </select>
+      </div>
+
+      <!-- REFERENCE -->
+      <div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+          Reference
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
+            <div id="modal-sel3-ref-poly" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
+              ${initialScopePoly.toLocaleString('id-ID')} Ply
+            </div>
+            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Sisa Polybag</div>
+          </div>
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
+            <div id="modal-sel3-ref-bibit" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
+              ${initialScopeBibit.toLocaleString('id-ID')} Pkk
+            </div>
+            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Sisa Bibit</div>
+          </div>
+        </div>
+        <input type="hidden" id="modal-sel3-current-remaining-poly" value="${initialScopePoly}">
+        <input type="hidden" id="modal-sel3-current-remaining-bibit" value="${initialScopeBibit}">
+      </div>
+
+      <!-- INPUT PEMERIKSAAN MANTRI -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="font-size: 0.74rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em;">
+          INPUT PEMERIKSAAN MANTRI
+        </div>
+
+        <!-- 1. Jlh Polybag Terisi Bibit -->
         <div>
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Bedengan Pemeriksaan <span style="color: #DC2626;">*</span>
+            Jlh Polybag Terisi Bibit <span style="color: #DC2626;">*</span>
           </label>
-          <select id="modal-sel3-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.80rem; background: #FFFFFF;">
-            ${bedScopeList.map(bed => `
-              <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" data-remaining-bibit="${bed.remainingBibit}" data-initial-bibit="${bed.initialBibit}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
-                ${esc(bed.bedenganCode)} (Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} Ply / ${bed.remainingBibit.toLocaleString('id-ID')} Pkk)
-              </option>
-            `).join('')}
-          </select>
+          <input id="modal-sel3-actual-poly" type="number" min="0" max="${initialScopePoly}" value="${initialScopePoly}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
         </div>
 
-        <!-- REFERENCE (READ-ONLY) DOKUMEN SEBELUMNYA / SISA SCOPE -->
-        <div style="background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px;">
-          <div style="font-size: 0.70rem; font-weight: 800; color: #475569; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
-            Referensi Dokumen Sebelumnya (Seleksi II / Sisa Scope):
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;">
-              <div style="font-size: 0.68rem; color: #64748B;">Sisa Polybag Tersedia</div>
-              <div id="modal-sel3-ref-poly" style="font-size: 0.92rem; font-weight: 800; color: #0F172A;">${initialScopePoly.toLocaleString('id-ID')} Ply</div>
-            </div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px;">
-              <div style="font-size: 0.68rem; color: #64748B;">Sisa Bibit Tersedia</div>
-              <div id="modal-sel3-ref-bibit" style="font-size: 0.92rem; font-weight: 800; color: #0F172A;">${initialScopeBibit.toLocaleString('id-ID')} Pkk</div>
-            </div>
-          </div>
-          <input type="hidden" id="modal-sel3-current-remaining-poly" value="${initialScopePoly}">
-          <input type="hidden" id="modal-sel3-current-remaining-bibit" value="${initialScopeBibit}">
+        <!-- 2. Jlh Bibit Diseleksi -->
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
+          </label>
+          <input id="modal-sel3-actual-selected-bibit" type="number" min="1" max="${initialScopeBibit}" value="${initialScopeBibit}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0284C7; background: #FFFFFF;">
         </div>
 
-        <!-- INPUT MANTRI (3 INPUT TRANSAKSI) -->
-        <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px;">
-          <div style="font-size: 0.74rem; font-weight: 800; color: #0F172A; margin-bottom: 8px; text-transform: uppercase;">
-            Input Pemeriksaan Aktual Mantri:
+        <!-- 3. Jlh Bibit Dipertahankan -->
+        <div>
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+            Jlh Bibit Dipertahankan <span style="color: #DC2626;">*</span>
+          </label>
+          <input id="modal-sel3-actual-bibit" type="number" min="0" max="${initialScopeBibit}" value="${initialScopePoly}" placeholder="0" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #FFFFFF;">
+        </div>
+      </div>
+
+      <!-- RINGKASAN -->
+      <div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+          RINGKASAN
+        </div>
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
+            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
+              <div style="font-size: 0.68rem; color: #64748B;">Ttl Polybag Tidak Aktif</div>
+              <div id="modal-sel3-sum-inactive-poly" style="font-size: 0.88rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Ply</div>
+            </div>
+            <div style="padding: 8px 10px;">
+              <div style="font-size: 0.68rem; color: #64748B;">Ttl Bibit Diseleksi</div>
+              <div id="modal-sel3-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #0284C7; margin-top: 1px;">${initialScopeBibit.toLocaleString('id-ID')} Pkk</div>
+            </div>
           </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-            <!-- 1. Jlh Polybag Terisi Bibit -->
-            <div>
-              <label style="display: block; font-size: 0.73rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-                1. Jlh Polybag Terisi Bibit <span style="color: #DC2626;">*</span>
-              </label>
-              <input id="modal-sel3-actual-poly" type="number" min="0" max="${initialScopePoly}" value="${initialScopePoly}" style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-weight: 700; font-size: 0.88rem; box-sizing: border-box; color: #0F172A;">
-              <div style="font-size: 0.60rem; color: #64748B; margin-top: 2px;">Polybag aktif</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
+            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
+              <div style="font-size: 0.68rem; color: #64748B;">Polybag Aktif</div>
+              <div id="modal-sel3-sum-active-poly" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialScopePoly.toLocaleString('id-ID')} Ply</div>
             </div>
-
-            <!-- 2. Jlh Bibit Diseleksi -->
-            <div>
-              <label style="display: block; font-size: 0.73rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-                2. Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
-              </label>
-              <input id="modal-sel3-actual-selected-bibit" type="number" min="1" max="${initialScopeBibit}" value="${initialScopeBibit}" style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-weight: 700; font-size: 0.88rem; box-sizing: border-box; color: #0284C7;">
-              <div style="font-size: 0.60rem; color: #64748B; margin-top: 2px;">Bibit diperiksa</div>
+            <div style="padding: 8px 10px;">
+              <div style="font-size: 0.68rem; color: #64748B;">Dipertahankan</div>
+              <div id="modal-sel3-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialScopePoly.toLocaleString('id-ID')} Pkk</div>
             </div>
-
-            <!-- 3. Jlh Bibit Dipertahankan -->
-            <div>
-              <label style="display: block; font-size: 0.73rem; font-weight: 700; color: #15803D; margin-bottom: 4px;">
-                3. Jlh Bibit Dipertahankan <span style="color: #DC2626;">*</span>
-              </label>
-              <input id="modal-sel3-actual-bibit" type="number" min="0" max="${initialScopeBibit}" value="${initialScopePoly}" style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-weight: 700; font-size: 0.88rem; box-sizing: border-box; color: #15803D;">
-              <div style="font-size: 0.60rem; color: #64748B; margin-top: 2px;">Bibit siap okulasi</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr;">
+            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
+              <div style="font-size: 0.68rem; color: #64748B;">Bibit Reject</div>
+              <div id="modal-sel3-sum-reject-bibit" style="font-size: 0.88rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Pkk</div>
+            </div>
+            <div style="padding: 8px 10px;">
+              <div style="font-size: 0.68rem; color: #64748B;">Belum Diperiksa</div>
+              <div id="modal-sel3-sum-uninspected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">0 Pkk</div>
             </div>
           </div>
         </div>
+        <div id="modal-sel3-quota-warning" style="display: none; margin-top: 8px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
+      </div>
 
-        <!-- RINGKASAN DERIVED (AUTO) -->
-        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px;">
-          <div style="font-size: 0.70rem; font-weight: 800; color: #475569; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
-            Ringkasan Hasil Seleksi III (Otomatis):
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 0.74rem;">
-            <div>1. Ttl Polybag Tidak Aktif: <strong id="modal-sel3-sum-inactive-poly" style="color: #DC2626;">0 Ply</strong></div>
-            <div>2. Ttl Bibit Diseleksi: <strong id="modal-sel3-sum-selected-bibit" style="color: #0284C7;">${initialScopeBibit.toLocaleString('id-ID')} Pkk</strong></div>
-            <div>3. Jlh Polybag Aktif: <strong id="modal-sel3-sum-active-poly" style="color: #15803D;">${initialScopePoly.toLocaleString('id-ID')} Ply</strong></div>
-            <div>4. Jlh Bibit Dipertahankan: <strong id="modal-sel3-sum-retained-bibit" style="color: #15803D;">${initialScopePoly.toLocaleString('id-ID')} Pkk</strong></div>
-            <div>Bibit Reject: <strong id="modal-sel3-sum-reject-bibit" style="color: #DC2626;">0 Pkk</strong></div>
-            <div>Ttl Bibit Belum Diperiksa: <strong id="modal-sel3-sum-uninspected-bibit" style="color: #64748B;">0 Pkk</strong></div>
-          </div>
-          <div id="modal-sel3-quota-warning" style="display: none; margin-top: 8px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
+      <!-- TANGGAL & CATATAN -->
+      <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
+        <div>
+          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal</label>
+          <input id="modal-sel3-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
         </div>
-
-        <!-- TANGGAL TRANSAKSI (READ-ONLY) & CATATAN -->
-        <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
-          <div>
-            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal Transaksi</label>
-            <input id="modal-sel3-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
-          </div>
-          <div>
-            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan (Opsional)</label>
-            <input id="modal-sel3-notes" type="text" placeholder="Catatan seleksi..." style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
-          </div>
+        <div>
+          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan</label>
+          <input id="modal-sel3-notes" type="text" placeholder="Catatan seleksi..." style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
         </div>
-
       </div>
 
       <!-- BUTTONS -->
-      <div style="display: flex; gap: 8px;">
+      <div style="display: flex; gap: 8px; margin-top: 4px;">
         <button id="btn-modal-cancel-sel3" type="button" style="flex: 1; height: 38px; background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer;">
           Batal
         </button>
