@@ -422,49 +422,36 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
 
       <!-- SECTION 1B: INFORMATIONAL QUEUE - MENUNGGU PERSETUJUAN ASISTEN BIBITAN -->
       ${pendingApprovalSources.length > 0 ? `
-        <div style="background: #FFFDF5; border: 1px solid #FEF08A; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(180,83,9,0.03);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <div style="font-size: 0.88rem; font-weight: 700; color: #854D0E; display: flex; align-items: center; gap: 6px;">
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="#D97706" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-              <span>Menunggu Persetujuan Asisten Bibitan</span>
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px;">
+            <div style="font-size: 0.86rem; font-weight: 700; color: #1E293B;">
+              Menunggu Persetujuan Asisten
             </div>
-            <span style="font-size: 0.68rem; font-weight: 700; background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 9999px; border: 1px solid #FDE68A;">
+            <span style="font-size: 0.68rem; font-weight: 600; background: #E2E8F0; color: #475569; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; flex-shrink: 0;">
               ${pendingApprovalSources.length} Bedengan
             </span>
           </div>
 
-          <div style="font-size: 0.74rem; color: #713F12; margin-bottom: 12px; line-height: 1.45;">
-            Bedengan berikut telah selesai diperiksa tetapi hasil Seleksi Pra-Semai belum disetujui oleh Asisten Bibitan sehingga belum dapat dipindah semai.
+          <div style="font-size: 0.73rem; color: #64748B; margin-bottom: 12px; line-height: 1.45;">
+            Bedengan selesai diperiksa, menunggu persetujuan Asisten Bibitan sebelum dapat dipindah semai.
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 8px;">
             ${pendingApprovalSources.map(psrc => `
-              <div style="background: #FFFFFF; border: 1px solid #FEF08A; border-radius: 10px; padding: 12px 14px; font-size: 0.74rem; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                  <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-weight: 800; font-size: 0.84rem; color: #0F172A;">${esc(psrc.bedenganCode)}</span>
-                    <span style="color: #CBD5E1;">•</span>
-                    <span style="font-size: 0.76rem; font-weight: 600; color: #475569;">${esc(psrc.dederanTxDocNo)}</span>
+              <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px;">
+                  <div style="font-size: 0.80rem; font-weight: 700; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">
+                    ${esc(psrc.bedenganCode)} <span style="font-weight: 400; color: #64748B; font-size: 0.72rem;">• ${esc(psrc.dederanTxDocNo)}</span>
                   </div>
-                  <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; font-weight: 700; color: #B45309; background: #FEF3C7; border: 1px solid #FDE68A; padding: 2px 7px; border-radius: 9999px;">
-                    <span style="width: 5px; height: 5px; border-radius: 50%; background: #D97706;"></span>
+                  <span style="font-size: 0.64rem; font-weight: 600; color: #64748B; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;">
                     ${esc(psrc.selectionStatusLabel || 'Menunggu Persetujuan')}
                   </span>
                 </div>
                 
-                <div style="display: flex; align-items: center; gap: 12px; padding-top: 8px; border-top: 1px dashed #F1F5F9; font-size: 0.72rem;">
-                  <div style="display: flex; align-items: center; gap: 4px;">
-                    <span style="color: #64748B;">Hasil Layak:</span>
-                    <strong style="color: #15803D; font-weight: 700;">${(psrc.totalBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
-                  </div>
-                  <span style="color: #E2E8F0;">|</span>
-                  <div style="display: flex; align-items: center; gap: 4px;">
-                    <span style="color: #64748B;">Afkir:</span>
-                    <strong style="color: #DC2626; font-weight: 700;">${(psrc.totalTidakBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
-                  </div>
+                <div style="display: flex; align-items: center; gap: 14px; font-size: 0.72rem; color: #64748B;">
+                  <div style="white-space: nowrap;">Hasil Layak: <strong style="color: #0F172A;">${(psrc.totalBerhasil || 0).toLocaleString('id-ID')} Butir</strong></div>
+                  <span style="color: #CBD5E1;">|</span>
+                  <div style="white-space: nowrap;">Afkir: <strong style="color: #64748B;">${(psrc.totalTidakBerhasil || 0).toLocaleString('id-ID')} Butir</strong></div>
                 </div>
               </div>
             `).join('')}
