@@ -3838,25 +3838,18 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
     10
   );
 
-  const rawLayak = payload.actualBibitRetainedQty !== undefined 
-    ? payload.actualBibitRetainedQty 
-    : (payload.jumlahLayak !== undefined ? payload.jumlahLayak : (payload.bibitDipertahankan !== undefined ? payload.bibitDipertahankan : actualPolyActive));
-  
-  const rawAfkir = payload.selectedBibitScopeQty !== undefined 
-    ? payload.selectedBibitScopeQty 
-    : (payload.jumlahAfkir !== undefined ? payload.jumlahAfkir : (payload.bibitReject !== undefined ? payload.bibitReject : 0));
-
-  const actualBibitRetained = parseInt(rawLayak, 10);
-  const bibitReject = parseInt(rawAfkir, 10);
+  const actualBibitRetained = parseInt(
+    payload.actualBibitRetainedQty !== undefined 
+      ? payload.actualBibitRetainedQty 
+      : (payload.jumlahLayak !== undefined ? payload.jumlahLayak : (payload.bibitDipertahankan !== undefined ? payload.bibitDipertahankan : actualPolyActive)),
+    10
+  );
 
   if (isNaN(actualPolyActive) || actualPolyActive < 0) {
     errors.push('Jumlah polybag terisi bibit tidak boleh negatif.');
   }
   if (isNaN(actualBibitRetained) || actualBibitRetained < 0) {
     errors.push('Jumlah bibit dipertahankan/layak tidak boleh negatif.');
-  }
-  if (isNaN(bibitReject) || bibitReject < 0) {
-    errors.push('Jumlah bibit reject/afkir tidak boleh negatif.');
   }
 
   const polyScope = payload.polybagScope !== undefined && !isNaN(parseInt(payload.polybagScope, 10))
@@ -3866,19 +3859,26 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
   if (actualPolyActive > maxPolybagScope) {
     errors.push(`Jumlah polybag diperiksa/aktif (${actualPolyActive}) melebihi sisa scope polybag (${maxPolybagScope}).`);
   }
-  if (actualBibitRetained > maxBibitScope) {
-    errors.push(`Jumlah bibit dipertahankan (${actualBibitRetained}) melebihi sisa scope bibit (${maxBibitScope}).`);
+  if (polyScope > maxPolybagScope) {
+    errors.push(`Jumlah scope polybag diperiksa (${polyScope}) melebihi sisa scope polybag (${maxPolybagScope}).`);
+  }
+  if (actualPolyActive > polyScope) {
+    errors.push(`Jumlah polybag terisi bibit (${actualPolyActive}) melebihi total polybag yang diperiksa (${polyScope}).`);
   }
 
-  const bibitAwal = parseInt(
-    payload.bibitAwal !== undefined 
-      ? payload.bibitAwal 
-      : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : (actualBibitRetained + bibitReject || polyScope)),
-    10
-  );
+  const bibitAwal = payload.bibitAwal !== undefined && !isNaN(parseInt(payload.bibitAwal, 10))
+    ? parseInt(payload.bibitAwal, 10)
+    : (payload.jumlahDiperiksa !== undefined && !isNaN(parseInt(payload.jumlahDiperiksa, 10))
+        ? parseInt(payload.jumlahDiperiksa, 10)
+        : (matchedBed && matchedBed.remainingPolybag > 0
+            ? (polyScope === matchedBed.remainingPolybag ? matchedBed.remainingBibit : Math.round(polyScope * (matchedBed.remainingBibit / matchedBed.remainingPolybag)))
+            : (parentDoc.sourcePolybagQty > 0 ? Math.round(polyScope * (parentDoc.sourceBibitQty / parentDoc.sourcePolybagQty)) : polyScope)));
 
   if (bibitAwal > maxBibitScope) {
     errors.push(`Jumlah bibit awal pada scope (${bibitAwal}) melebihi sisa bibit yang tersedia (${maxBibitScope}).`);
+  }
+  if (actualBibitRetained > bibitAwal) {
+    errors.push(`Jumlah bibit dipertahankan (${actualBibitRetained}) melebihi bibit awal pada scope sesi ini (${bibitAwal}).`);
   }
 
   const inactivePolybagQty = Math.max(0, polyScope - actualPolyActive);
