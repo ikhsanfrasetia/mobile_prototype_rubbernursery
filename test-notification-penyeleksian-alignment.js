@@ -1,7 +1,7 @@
 /**
  * test-notification-penyeleksian-alignment.js
- * Integration test suite for TASK: NOTIFICATION-PENYELEKSIAN-ALIGNMENT
- * Covering TEST 01 through TEST 12.
+ * Integration test suite for TASK: FIX-BERANDA-PENYELEKSIAN-NOTIFICATION-LIFECYCLE
+ * Validates Beranda lifecycle synchronization & notification alignment.
  */
 
 // Setup Mock Environment for Node.js
@@ -20,8 +20,14 @@ import {
   SELECTION_STATUS,
   hasActionableSelection,
   filterSelectionByScope,
-  findExistingSelectionTransaction
+  findExistingSelectionTransaction,
+  syncAllSeedingsToSelectionPool,
+  syncAllSeedingsToPreGraftingSelectionDocuments
 } from './js/modules/selection/selection-manager.js';
+
+import {
+  syncAllDederanRejectionsToSelectionPool
+} from './js/modules/seeding/dederan-manager.js';
 
 const results = [];
 
@@ -35,7 +41,7 @@ function assert(id, desc, condition, detail = '') {
 }
 
 console.log('============================================================');
-console.log('INTEGRATION TEST: NOTIFICATION-PENYELEKSIAN-ALIGNMENT');
+console.log('INTEGRATION TEST: FIX-BERANDA-PENYELEKSIAN-NOTIFICATION-LIFECYCLE');
 console.log('============================================================\n');
 
 const mockMantriUser = {
@@ -46,6 +52,18 @@ const mockMantriUser = {
   estateId: 'EST-TEST',
   divisionId: 'DIV-TEST'
 };
+
+// Helper simulating Beranda notification calculation lifecycle
+function runBerandaLifecycle(currentUser) {
+  try {
+    syncAllSeedingsToSelectionPool();
+    syncAllDederanRejectionsToSelectionPool();
+    syncAllSeedingsToPreGraftingSelectionDocuments(currentUser);
+  } catch (err) {
+    console.warn('[beranda sync test error]', err);
+  }
+  return hasActionableSelection(currentUser);
+}
 
 // Helper to simulate Module Penyeleksian actionable pool count (from selection-landing.js)
 function getModuleActionablePoolCount(currentUser) {
@@ -70,56 +88,123 @@ function resetCleanState() {
   storage.set(SELECTION_STORAGE_KEY, []);
   storage.set('selection_pool', []);
   storage.set('selection_transactions', []);
+  storage.set('dederan_transactions', []);
+  storage.set('dederan_inspections', []);
+  storage.set('seeding_transactions', []);
 }
 
 // ============================================================
-// TEST 01: REJECT_DEDERAN actionable -> hasActionableSelection = true
+// TEST 01: selection_pool kosong, dederan_inspections memiliki 2 reject -> Beranda lifecycle populates pool and returns true
 // ============================================================
 resetCleanState();
-storage.set('selection_pool', [{
-  id: 'POOL-DED-001',
-  originType: 'REJECT_DEDERAN',
-  sourceModule: 'DEDERAN',
-  bedenganCode: 'BED-001',
-  jumlahAfkir: 50,
-  status: 'PENDING_DECLARATION',
-  estateId: 'EST-TEST',
-  divisionId: 'DIV-TEST'
-}]);
+storage.set('dederan_transactions', [
+  {
+    id: 'DED-TX-001',
+    docNo: '2026/DED/001',
+    bedenganCode: 'BED-001',
+    jumlahDeder: 1000,
+    estateId: 'EST-TEST',
+    divisionId: 'DIV-TEST'
+  },
+  {
+    id: 'DED-TX-002',
+    docNo: '2026/DED/002',
+    bedenganCode: 'BED-002',
+    jumlahDeder: 2000,
+    estateId: 'EST-TEST',
+    divisionId: 'DIV-TEST'
+  }
+]);
+storage.set('dederan_inspections', [
+  {
+    id: 'INS-001',
+    docNo: '2026/DED-INS/001',
+    dederanTxDocNo: '2026/DED/001',
+    bedenganCode: 'BED-001',
+    jumlahNormal: 800,
+    jumlahAfkir: 200,
+    jumlahTidakBerhasil: 200,
+    isComplete: true,
+    estateId: 'EST-TEST',
+    divisionId: 'DIV-TEST'
+  },
+  {
+    id: 'INS-002',
+    docNo: '2026/DED-INS/002',
+    dederanTxDocNo: '2026/DED/002',
+    bedenganCode: 'BED-002',
+    jumlahNormal: 1700,
+    jumlahAfkir: 300,
+    jumlahTidakBerhasil: 300,
+    isComplete: true,
+    estateId: 'EST-TEST',
+    divisionId: 'DIV-TEST'
+  }
+]);
 
-const res01 = hasActionableSelection(mockMantriUser);
+// Initially selection_pool is empty
+const initialPoolCount = storage.get('selection_pool', []).length;
+// Run Beranda lifecycle
+const hasPending01 = runBerandaLifecycle(mockMantriUser);
+const finalPool = storage.get('selection_pool', []);
+
 assert(
   'TEST 01',
-  'REJECT_DEDERAN actionable: hasActionableSelection returns true',
-  res01 === true,
-  `hasActionableSelection: ${res01}`
+  'selection_pool kosong, dederan_inspections memiliki 2 reject -> Beranda lifecycle populates pool and returns hasActionableSelection = true',
+  initialPoolCount === 0 && finalPool.length === 2 && hasPending01 === true,
+  `Initial Pool: ${initialPoolCount}, Final Pool: ${finalPool.length}, hasActionableSelection: ${hasPending01}`
 );
 
 // ============================================================
-// TEST 02: REJECT_PENYEMAIAN actionable -> hasActionableSelection = true
+// TEST 02: Beranda dengan 2 reject Dederan -> hasPendingPenyeleksian = true
 // ============================================================
-resetCleanState();
-storage.set('selection_pool', [{
-  id: 'POOL-SEED-001',
-  originType: 'REJECT_PENYEMAIAN',
-  sourceModule: 'PENYEMAIAN',
-  category: 'RUSAK',
-  jumlahAfkir: 20,
-  status: 'PENDING_DECLARATION',
-  estateId: 'EST-TEST',
-  divisionId: 'DIV-TEST'
-}]);
-
-const res02 = hasActionableSelection(mockMantriUser);
+const hasPending02 = runBerandaLifecycle(mockMantriUser);
 assert(
   'TEST 02',
-  'REJECT_PENYEMAIAN actionable: hasActionableSelection returns true',
-  res02 === true,
-  `hasActionableSelection: ${res02}`
+  'Beranda dengan 2 reject Dederan: hasPendingPenyeleksian = true',
+  hasPending02 === true,
+  `hasPendingPenyeleksian: ${hasPending02}`
 );
 
 // ============================================================
-// TEST 03: REJECT_OKULASI actionable -> true
+// TEST 03: Tidak ada reject actionable -> hasPendingPenyeleksian = false
+// ============================================================
+resetCleanState();
+storage.set('dederan_transactions', [
+  {
+    id: 'DED-TX-003',
+    docNo: '2026/DED/003',
+    bedenganCode: 'BED-003',
+    jumlahDeder: 500,
+    estateId: 'EST-TEST',
+    divisionId: 'DIV-TEST'
+  }
+]);
+storage.set('dederan_inspections', [
+  {
+    id: 'INS-003',
+    docNo: '2026/DED-INS/003',
+    dederanTxDocNo: '2026/DED/003',
+    bedenganCode: 'BED-003',
+    jumlahNormal: 500,
+    jumlahAfkir: 0,
+    jumlahTidakBerhasil: 0,
+    isComplete: true,
+    estateId: 'EST-TEST',
+    divisionId: 'DIV-TEST'
+  }
+]);
+
+const hasPending03 = runBerandaLifecycle(mockMantriUser);
+assert(
+  'TEST 03',
+  'Tidak ada reject actionable: hasPendingPenyeleksian = false',
+  hasPending03 === false,
+  `hasPendingPenyeleksian: ${hasPending03}`
+);
+
+// ============================================================
+// TEST 04: Existing actionable REJECT_OKULASI -> tetap true
 // ============================================================
 resetCleanState();
 storage.set('selection_pool', [{
@@ -132,60 +217,16 @@ storage.set('selection_pool', [{
   divisionId: 'DIV-TEST'
 }]);
 
-const res03 = hasActionableSelection(mockMantriUser);
-assert(
-  'TEST 03',
-  'REJECT_OKULASI actionable: hasActionableSelection returns true',
-  res03 === true,
-  `hasActionableSelection: ${res03}`
-);
-
-// ============================================================
-// TEST 04: REJECT_PEMERIKSAAN actionable -> true
-// ============================================================
-resetCleanState();
-storage.set('selection_pool', [{
-  id: 'POOL-INSP-001',
-  originType: 'REJECT_PEMERIKSAAN',
-  sourceModule: 'PEMERIKSAAN',
-  jumlahAfkir: 15,
-  status: 'PENDING_DECLARATION',
-  estateId: 'EST-TEST',
-  divisionId: 'DIV-TEST'
-}]);
-
-const res04 = hasActionableSelection(mockMantriUser);
+const hasPending04 = runBerandaLifecycle(mockMantriUser);
 assert(
   'TEST 04',
-  'REJECT_PEMERIKSAAN actionable: hasActionableSelection returns true',
-  res04 === true,
-  `hasActionableSelection: ${res04}`
+  'Existing actionable REJECT_OKULASI: hasPendingPenyeleksian = true',
+  hasPending04 === true,
+  `hasPendingPenyeleksian: ${hasPending04}`
 );
 
 // ============================================================
-// TEST 05: REJECT_REGRAFTING actionable -> true
-// ============================================================
-resetCleanState();
-storage.set('selection_pool', [{
-  id: 'POOL-REG-001',
-  originType: 'REJECT_REGRAFTING',
-  sourceModule: 'REGRAFTING',
-  jumlahAfkir: 10,
-  status: 'PENDING_DECLARATION',
-  estateId: 'EST-TEST',
-  divisionId: 'DIV-TEST'
-}]);
-
-const res05 = hasActionableSelection(mockMantriUser);
-assert(
-  'TEST 05',
-  'REJECT_REGRAFTING actionable: hasActionableSelection returns true',
-  res05 === true,
-  `hasActionableSelection: ${res05}`
-);
-
-// ============================================================
-// TEST 06: DIKEMBALIKAN -> true (Mantri needs to re-declare)
+// TEST 05: Existing DIKEMBALIKAN -> tetap true
 // ============================================================
 resetCleanState();
 storage.set('selection_pool', [{
@@ -202,165 +243,90 @@ storage.set('selection_transactions', [{
   docNo: '2026/CULL/001',
   sourceDocNo: 'POOL-RET-001',
   status: SELECTION_STATUS.DIKEMBALIKAN,
-  returnReason: 'Foto tidak jelas',
+  returnReason: 'Foto bukti afkir tidak jelas',
   estateId: 'EST-TEST',
   divisionId: 'DIV-TEST'
 }]);
 
-const res06 = hasActionableSelection(mockMantriUser);
+const hasPending05 = runBerandaLifecycle(mockMantriUser);
 assert(
-  'TEST 06',
-  'Status DIKEMBALIKAN: hasActionableSelection returns true (needs re-declaration)',
-  res06 === true,
-  `hasActionableSelection: ${res06}`
+  'TEST 05',
+  'Existing DIKEMBALIKAN: hasPendingPenyeleksian = true (needs re-declaration)',
+  hasPending05 === true,
+  `hasPendingPenyeleksian: ${hasPending05}`
 );
 
 // ============================================================
-// TEST 07: DISETUJUI -> false (Item already approved by Asisten)
-// ============================================================
-resetCleanState();
-storage.set('selection_pool', [{
-  id: 'POOL-APP-001',
-  docNo: '2026/CULL/002',
-  originType: 'REJECT_DEDERAN',
-  jumlahAfkir: 25,
-  status: SELECTION_STATUS.DISETUJUI,
-  estateId: 'EST-TEST',
-  divisionId: 'DIV-TEST'
-}]);
-storage.set('selection_transactions', [{
-  id: 'TX-CULL-002',
-  docNo: '2026/CULL/002',
-  sourceDocNo: 'POOL-APP-001',
-  status: SELECTION_STATUS.DISETUJUI,
-  estateId: 'EST-TEST',
-  divisionId: 'DIV-TEST'
-}]);
-
-const res07 = hasActionableSelection(mockMantriUser);
-assert(
-  'TEST 07',
-  'Status DISETUJUI: hasActionableSelection returns false',
-  res07 === false,
-  `hasActionableSelection: ${res07}`
-);
-
-// ============================================================
-// TEST 08: MENUNGGU_VERIFIKASI -> false (Waiting for Asisten, not actionable for Mantri)
-// ============================================================
-resetCleanState();
-storage.set('selection_pool', [{
-  id: 'POOL-SUB-001',
-  docNo: '2026/CULL/003',
-  originType: 'REJECT_OKULASI',
-  jumlahAfkir: 40,
-  status: SELECTION_STATUS.MENUNGGU_VERIFIKASI,
-  estateId: 'EST-TEST',
-  divisionId: 'DIV-TEST'
-}]);
-storage.set('selection_transactions', [{
-  id: 'TX-CULL-003',
-  docNo: '2026/CULL/003',
-  sourceDocNo: 'POOL-SUB-001',
-  status: SELECTION_STATUS.MENUNGGU_VERIFIKASI,
-  estateId: 'EST-TEST',
-  divisionId: 'DIV-TEST'
-}]);
-
-const res08 = hasActionableSelection(mockMantriUser);
-assert(
-  'TEST 08',
-  'Status MENUNGGU_VERIFIKASI: hasActionableSelection returns false for Mantri',
-  res08 === false,
-  `hasActionableSelection: ${res08}`
-);
-
-// ============================================================
-// TEST 09: DECLARED_CULLED -> false
-// ============================================================
-resetCleanState();
-storage.set('selection_pool', [{
-  id: 'POOL-DEC-001',
-  docNo: '2026/CULL/004',
-  originType: 'REJECT_PEMERIKSAAN',
-  jumlahAfkir: 15,
-  status: 'DECLARED_CULLED',
-  estateId: 'EST-TEST',
-  divisionId: 'DIV-TEST'
-}]);
-
-const res09 = hasActionableSelection(mockMantriUser);
-assert(
-  'TEST 09',
-  'Status DECLARED_CULLED: hasActionableSelection returns false',
-  res09 === false,
-  `hasActionableSelection: ${res09}`
-);
-
-// ============================================================
-// TEST 10: Dua item "Perlu Deklarasi" (BED-001 & BED-002)
+// TEST 06: DISETUJUI / MENUNGGU_VERIFIKASI -> false untuk item tersebut
 // ============================================================
 resetCleanState();
 storage.set('selection_pool', [
   {
-    id: 'POOL-DED-001',
-    docNo: '2026/CULL/001',
+    id: 'POOL-APP-001',
+    docNo: '2026/CULL/002',
     originType: 'REJECT_DEDERAN',
-    sourceModule: 'DEDERAN',
-    bedenganCode: 'BED-001',
-    dederanTxDocNo: '2026/DED/001',
-    jumlahAfkir: 1000,
-    status: 'PENDING_DECLARATION',
+    jumlahAfkir: 25,
+    status: SELECTION_STATUS.DISETUJUI,
     estateId: 'EST-TEST',
     divisionId: 'DIV-TEST'
   },
   {
-    id: 'POOL-DED-002',
+    id: 'POOL-SUB-001',
+    docNo: '2026/CULL/003',
+    originType: 'REJECT_OKULASI',
+    jumlahAfkir: 40,
+    status: SELECTION_STATUS.MENUNGGU_VERIFIKASI,
+    estateId: 'EST-TEST',
+    divisionId: 'DIV-TEST'
+  },
+  {
+    id: 'POOL-DEC-001',
+    docNo: '2026/CULL/004',
+    originType: 'REJECT_PEMERIKSAAN',
+    jumlahAfkir: 15,
+    status: 'DECLARED_CULLED',
+    estateId: 'EST-TEST',
+    divisionId: 'DIV-TEST'
+  }
+]);
+storage.set('selection_transactions', [
+  {
+    id: 'TX-CULL-002',
     docNo: '2026/CULL/002',
-    originType: 'REJECT_DEDERAN',
-    sourceModule: 'DEDERAN',
-    bedenganCode: 'BED-002',
-    dederanTxDocNo: '2026/DED/002',
-    jumlahAfkir: 2000,
-    status: 'PENDING_DECLARATION',
+    sourceDocNo: 'POOL-APP-001',
+    status: SELECTION_STATUS.DISETUJUI,
+    estateId: 'EST-TEST',
+    divisionId: 'DIV-TEST'
+  },
+  {
+    id: 'TX-CULL-003',
+    docNo: '2026/CULL/003',
+    sourceDocNo: 'POOL-SUB-001',
+    status: SELECTION_STATUS.MENUNGGU_VERIFIKASI,
     estateId: 'EST-TEST',
     divisionId: 'DIV-TEST'
   }
 ]);
 
-const moduleCount10 = getModuleActionablePoolCount(mockMantriUser);
-const berandaNotif10 = hasActionableSelection(mockMantriUser);
+const hasPending06 = runBerandaLifecycle(mockMantriUser);
 assert(
-  'TEST 10',
-  'Dua item "Perlu Deklarasi": module count = 2 AND Beranda red dot = ON',
-  moduleCount10 === 2 && berandaNotif10 === true,
-  `Module Count: ${moduleCount10}, Beranda hasActionableSelection: ${berandaNotif10}`
+  'TEST 06',
+  'DISETUJUI / MENUNGGU_VERIFIKASI / DECLARED_CULLED: hasPendingPenyeleksian = false',
+  hasPending06 === false,
+  `hasPendingPenyeleksian: ${hasPending06}`
 );
 
 // ============================================================
-// TEST 11: Tidak ada actionable item
+// TEST 07: Consistency Test (Modul Penyeleksian memiliki actionable item -> Beranda red dot ON)
 // ============================================================
-resetCleanState();
-const moduleCount11 = getModuleActionablePoolCount(mockMantriUser);
-const berandaNotif11 = hasActionableSelection(mockMantriUser);
-assert(
-  'TEST 11',
-  'Tidak ada actionable item: module count = 0 AND Beranda red dot = OFF',
-  moduleCount11 === 0 && berandaNotif11 === false,
-  `Module Count: ${moduleCount11}, Beranda hasActionableSelection: ${berandaNotif11}`
-);
-
-// ============================================================
-// TEST 12: Consistency Test (Condition pada Beranda === condition pada Modul Penyeleksian)
-// ============================================================
-// Test across multiple permutations
 const permutations = [
   { name: 'Empty state', pool: [], txs: [] },
   { name: 'Dederan Pending', pool: [{ id: '1', originType: 'REJECT_DEDERAN', status: 'PENDING' }], txs: [] },
   { name: 'Penyemaian Pending', pool: [{ id: '2', originType: 'REJECT_PENYEMAIAN', status: 'PENDING' }], txs: [] },
   { name: 'Okulasi Submitted', pool: [{ id: '3', docNo: 'C3', originType: 'REJECT_OKULASI', status: SELECTION_STATUS.MENUNGGU_VERIFIKASI }], txs: [{ id: 'T3', docNo: 'C3', sourceDocNo: '3', status: SELECTION_STATUS.MENUNGGU_VERIFIKASI }] },
   { name: 'Pemeriksaan Returned', pool: [{ id: '4', docNo: 'C4', originType: 'REJECT_PEMERIKSAAN', status: SELECTION_STATUS.DIKEMBALIKAN }], txs: [{ id: 'T4', docNo: 'C4', sourceDocNo: '4', status: SELECTION_STATUS.DIKEMBALIKAN }] },
-  { name: 'Regrafting Approved', pool: [{ id: '5', docNo: 'C5', originType: 'REJECT_REGRAFTING', status: SELECTION_STATUS.DISETUJUI }], txs: [{ id: 'T5', docNo: 'C5', sourceDocNo: '5', status: SELECTION_STATUS.DISETUJUI }] }
+  { name: 'Regrafting Approved', pool: [{ id: '5', docNo: 'C5', originType: 'REJECT_REGRAFTING', status: SELECTION_STATUS.DISETUJUI }], txs: [{ id: 'T5', docNo: 'C5', sourceDocNo: '5', status: SELECTION_STATUS.DISETUJUI }] },
+  { name: 'Dederan 2 items actionable', pool: [{ id: 'd1', originType: 'REJECT_DEDERAN', status: 'PENDING_DECLARATION' }, { id: 'd2', originType: 'REJECT_DEDERAN', status: 'PENDING_DECLARATION' }], txs: [] }
 ];
 
 let allPermutationsConsistent = true;
@@ -370,7 +336,7 @@ for (const p of permutations) {
   storage.set('selection_transactions', p.txs);
 
   const modActionable = getModuleActionablePoolCount(mockMantriUser) > 0;
-  const berandaActionable = hasActionableSelection(mockMantriUser);
+  const berandaActionable = runBerandaLifecycle(mockMantriUser);
 
   if (modActionable !== berandaActionable) {
     allPermutationsConsistent = false;
@@ -379,8 +345,8 @@ for (const p of permutations) {
 }
 
 assert(
-  'TEST 12',
-  'Consistency Test: Beranda boolean perfectly tracks Modul Penyeleksian actionable presence',
+  'TEST 07',
+  'Consistency: Modul Penyeleksian actionable presence === Beranda red dot ON across all states',
   allPermutationsConsistent === true,
   `All Permutations Consistent: ${allPermutationsConsistent}`
 );

@@ -23,7 +23,8 @@ import {
   syncDederanIndukDocuments,
   getDederanIndukDocuments,
   getDederanTransactions,
-  getBedenganInspectionSummary
+  getBedenganInspectionSummary,
+  syncAllDederanRejectionsToSelectionPool
 } from '../seeding/dederan-manager.js';
 import { getEligiblePindahSemaiSources } from '../seeding/dederan-pindah-semai-adapter.js';
 
@@ -688,12 +689,13 @@ export function renderBeranda() {
     }
   }
 
-  // Sinkronisasi bibit ditolak (Rusak, Mati, Lainnya) & Dokumen Seleksi Pra-Okulasi dari transaksi penyemaian
+  // Sinkronisasi bibit ditolak (Rusak, Mati, Lainnya), Dederan Rejections & Dokumen Seleksi Pra-Okulasi dari transaksi penyemaian
   try {
     syncAllSeedingsToSelectionPool();
+    syncAllDederanRejectionsToSelectionPool();
     syncAllSeedingsToPreGraftingSelectionDocuments(userCtx);
   } catch (err) {
-    console.warn('[beranda] Gagal sinkronisasi data seeding:', err);
+    console.warn('[beranda] Gagal sinkronisasi data seeding/dederan:', err);
   }
 
   // Hitung apakah terdapat tindakan penyeleksian (Dokumen Seleksi Pra-Okulasi ATAU Selection Pool)
