@@ -696,10 +696,8 @@ export function renderBeranda() {
     console.warn('[beranda] Gagal sinkronisasi data seeding:', err);
   }
 
-  // Hitung apakah terdapat tindakan penyeleksian (Dederan Rejection PENDING_DECLARATION ATAU Pra/Pasca Okulasi)
-  const selectionPool = storage.get('selection_pool', []);
-  const hasPendingDederanRejection = selectionPool.some(s => s.originType === 'REJECT_DEDERAN' && s.status === 'PENDING_DECLARATION');
-  const hasPendingPenyeleksian = hasPendingDederanRejection || hasActionableSelection(userCtx);
+  // Hitung apakah terdapat tindakan penyeleksian (Dokumen Seleksi Pra-Okulasi ATAU Selection Pool)
+  const hasPendingPenyeleksian = hasActionableSelection(userCtx);
 
   // Hitung pending pengeluaran bibit untuk Mantri Bibitan menggunakan helper standar getActionableDispatchCount
   const allRequests = storage.get('requests_transactions', []);

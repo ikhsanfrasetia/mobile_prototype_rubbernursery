@@ -221,19 +221,26 @@ export function hasActionableSelection(currentUser) {
       }
     }
 
-    // B. Post-grafting Afkir Pool (Hanya REJECT_OKULASI, REJECT_PEMERIKSAAN, REJECT_REGRAFTING)
-    const isPostGraftingReject = (item) => (
-      item && (
-        item.originType === 'REJECT_OKULASI' ||
-        item.originType === 'REJECT_PEMERIKSAAN' ||
-        item.originType === 'REJECT_REGRAFTING'
-      )
-    );
+    // B. Selection / Afkir Pool (Pra-Semai / Dederan, Penyemaian, Okulasi, Pemeriksaan, Regrafting)
     const rawPool = storage.get('selection_pool', []);
-    const scopedPool = filterSelectionByScope(rawPool, currentUser).filter(isPostGraftingReject);
+    const scopedPool = filterSelectionByScope(rawPool, currentUser);
     for (const item of scopedPool) {
-      if (item.status !== 'DECLARED_CULLED' && !findExistingSelectionTransaction(item)) {
-        return true;
+      const existing = findExistingSelectionTransaction(item);
+      if (!existing) {
+        if (
+          item.status !== 'DECLARED_CULLED' &&
+          item.status !== SELECTION_STATUS.DISETUJUI &&
+          item.status !== SELECTION_STATUS.MENUNGGU_VERIFIKASI
+        ) {
+          return true;
+        }
+      } else {
+        if (
+          existing.status === SELECTION_STATUS.DIKEMBALIKAN ||
+          item.status === SELECTION_STATUS.DIKEMBALIKAN
+        ) {
+          return true;
+        }
       }
     }
   }
