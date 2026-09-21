@@ -1201,11 +1201,10 @@ function renderMantriSelectionLanding(app, user) {
                                 </div>
 
                                 <!-- METRICS HASIL BIBIT -->
-                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
                                   <div>Bibit Awal: <strong style="color: #0F172A;">${bibitAwal.toLocaleString('id-ID')}</strong></div>
                                   <div>Layak: <strong style="color: #15803D;">${bibitLayak.toLocaleString('id-ID')}</strong></div>
                                   <div>Reject: <strong style="color: #DC2626;">${bibitAfkir.toLocaleString('id-ID')}</strong></div>
-                                  <div>Balance: <strong style="color: #15803D;">${isBalanced ? 'BALANCE ✅' : 'MISMATCH ❌'}</strong></div>
                                 </div>
 
                                 <!-- PENCATAT & CATATAN -->
@@ -1597,11 +1596,10 @@ function renderMantriSelectionLanding(app, user) {
                                 </div>
 
                                 <!-- METRICS HASIL BIBIT -->
-                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
                                   <div>Bibit Awal: <strong style="color: #0F172A;">${bibitAwal.toLocaleString('id-ID')}</strong></div>
                                   <div>Layak: <strong style="color: #15803D;">${bibitLayak.toLocaleString('id-ID')}</strong></div>
                                   <div>Reject: <strong style="color: #DC2626;">${bibitAfkir.toLocaleString('id-ID')}</strong></div>
-                                  <div>Balance: <strong style="color: #15803D;">${isBalanced ? 'BALANCE ✅' : 'MISMATCH ❌'}</strong></div>
                                 </div>
 
                                 <!-- PENCATAT & CATATAN -->
@@ -1982,11 +1980,10 @@ function renderMantriSelectionLanding(app, user) {
                                 </div>
 
                                 <!-- METRICS HASIL BIBIT SELEKSI III -->
-                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
                                   <div>Bibit Awal: <strong style="color: #0F172A;">${bibitAwal.toLocaleString('id-ID')}</strong></div>
                                   <div>Layak: <strong style="color: #15803D;">${bibitLayak.toLocaleString('id-ID')}</strong></div>
                                   <div>Reject: <strong style="color: #DC2626;">${bibitAfkir.toLocaleString('id-ID')}</strong></div>
-                                  <div>Balance: <strong style="color: #15803D;">${isBalanced ? 'BALANCE ✅' : 'MISMATCH ❌'}</strong></div>
                                 </div>
 
                                 <!-- PENCATAT & CATATAN -->
