@@ -142,7 +142,7 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
     }
 
     return `
-            <div class="card-dederan-induk" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+            <div class="card-dederan-induk" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px; min-width: 0;">
               
               <!-- HEADER: DOC NO & STATUS BADGE -->
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
@@ -150,7 +150,7 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
                   <strong style="font-size: 1.02rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em; word-break: break-word;">${induk.docNo}</strong>
                 </div>
                 <div style="flex-shrink: 0;">
-                  <span style="font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;">
+                  <span style="font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;">
                     ${badgeText}
                   </span>
                 </div>
@@ -187,11 +187,11 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
               <!-- ACTION BUTTON -->
               <div>
                 ${sisa > 0 ? `
-                  <button type="button" class="btn-tambah-deder" data-doc="${induk.docNo}" style="width: 100%; height: 40px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(17,104,52,0.25); transition: background 0.15s ease;">
+                  <button type="button" class="btn-tambah-deder" data-doc="${induk.docNo}" style="width: 100%; height: 40px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2); transition: all 0.15s ease;">
                     Rekam Data Dederan
                   </button>
                 ` : `
-                  <div style="width: 100%; height: 38px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; border-radius: 6px; font-weight: 700; font-size: 0.78rem; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+                  <div style="width: 100%; height: 38px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; border-radius: 8px; font-weight: 700; font-size: 0.78rem; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
                     Seluruh Benih Telah Selesai Dideder
                   </div>
                 `}
@@ -306,10 +306,15 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
       
       <!-- SECTION 1: ELIGIBLE SOURCES FOR PINDAH SEMAI (APPROVED BY ASISTEN) -->
       <div>
-        <div style="margin-bottom: 12px;">
-          <h2 style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -0.01em;">
-            Bedengan Siap Pindah Semai (${eligibleSources.length})
-          </h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h2 style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -0.01em;">
+              Bedengan Siap Pindah Semai
+            </h2>
+            <span style="font-size: 0.68rem; font-weight: 700; background: #E2E8F0; color: #475569; padding: 2px 7px; border-radius: 9999px;">
+              ${eligibleSources.length}
+            </span>
+          </div>
         </div>
 
         ${eligibleSources.length === 0 ? renderEmptyStateCard({
@@ -320,7 +325,7 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
             ${eligibleSources.map(src => {
     const isCompleted = src.remainingQty === 0;
     return `
-                <div class="card-pindah-semai-wrapper" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; min-width: 0;">
+                <div class="card-pindah-semai-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; min-width: 0;">
                   
                   <!-- SUMMARY HEADER (ALWAYS VISIBLE) -->
                   <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
@@ -334,7 +339,7 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
                     </div>
                     <div style="text-align: right; flex-shrink: 0;">
                       <span style="font-size: 0.65rem; color: #64748B; display: block;">Belum Pindah Semai</span>
-                      <span style="font-size: 0.85rem; font-weight: 800; color: #116834;">${(src.remainingQty || 0).toLocaleString('id-ID')} Butir</span>
+                      <span style="font-size: 0.88rem; font-weight: 800; color: #116834;">${(src.remainingQty || 0).toLocaleString('id-ID')} Butir</span>
                     </div>
                   </div>
 
@@ -400,11 +405,11 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
 
                   <!-- PRIMARY ACTION (ALWAYS VISIBLE) -->
                   ${!isCompleted ? `
-                    <button type="button" class="btn-execute-pindah-semai" data-source-id="${src.sourceIndex}" style="width: 100%; min-height: 40px; height: 40px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(17,104,52,0.25); text-align: center; transition: background 0.15s ease;">
+                    <button type="button" class="btn-execute-pindah-semai" data-source-id="${src.sourceIndex}" style="width: 100%; min-height: 40px; height: 40px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2); text-align: center; transition: all 0.15s ease;">
                       Proses Pindah Semai (Polybag)
                     </button>
                   ` : `
-                    <div style="text-align: center; font-size: 0.72rem; font-weight: 600; color: #64748B; background: #F1F5F9; border-radius: 6px; padding: 8px 12px;">
+                    <div style="text-align: center; font-size: 0.72rem; font-weight: 600; color: #64748B; background: #F1F5F9; border-radius: 8px; padding: 8px 12px;">
                       Seluruh Bibit Telah Selesai Pindah Semai
                     </div>
                   `}
@@ -417,31 +422,49 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
 
       <!-- SECTION 1B: INFORMATIONAL QUEUE - MENUNGGU PERSETUJUAN ASISTEN BIBITAN -->
       ${pendingApprovalSources.length > 0 ? `
-        <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 14px;">
+        <div style="background: #FFFDF5; border: 1px solid #FEF08A; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(180,83,9,0.03);">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <div style="font-size: 0.85rem; font-weight: 800; color: #92400E; display: flex; align-items: center; gap: 6px;">
+            <div style="font-size: 0.88rem; font-weight: 700; color: #854D0E; display: flex; align-items: center; gap: 6px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="#D97706" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
               <span>Menunggu Persetujuan Asisten Bibitan</span>
             </div>
-            <span style="font-size: 0.65rem; font-weight: 700; background: #FEF3C7; color: #B45309; padding: 2px 7px; border-radius: 4px; border: 1px solid #FCD34D;">
+            <span style="font-size: 0.68rem; font-weight: 700; background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 9999px; border: 1px solid #FDE68A;">
               ${pendingApprovalSources.length} Bedengan
             </span>
           </div>
 
-          <div style="font-size: 0.72rem; color: #78350F; margin-bottom: 12px; line-height: 1.4;">
+          <div style="font-size: 0.74rem; color: #713F12; margin-bottom: 12px; line-height: 1.45;">
             Bedengan berikut telah selesai diperiksa tetapi hasil Seleksi Pra-Semai belum disetujui oleh Asisten Bibitan sehingga belum dapat dipindah semai.
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 8px;">
             ${pendingApprovalSources.map(psrc => `
-              <div style="background: #FFFFFF; border: 1px solid #FDE68A; border-radius: 8px; padding: 10px 12px; font-size: 0.74rem; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px;">
-                  <strong style="color: #0F172A; font-size: 0.82rem;">${esc(psrc.bedenganCode)} • ${esc(psrc.dederanTxDocNo)}</strong>
-                  <span style="font-size: 0.65rem; font-weight: 700; color: #B45309; background: #FEF3C7; padding: 2px 6px; border-radius: 4px;">
+              <div style="background: #FFFFFF; border: 1px solid #FEF08A; border-radius: 10px; padding: 12px 14px; font-size: 0.74rem; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: 800; font-size: 0.84rem; color: #0F172A;">${esc(psrc.bedenganCode)}</span>
+                    <span style="color: #CBD5E1;">•</span>
+                    <span style="font-size: 0.76rem; font-weight: 600; color: #475569;">${esc(psrc.dederanTxDocNo)}</span>
+                  </div>
+                  <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; font-weight: 700; color: #B45309; background: #FEF3C7; border: 1px solid #FDE68A; padding: 2px 7px; border-radius: 9999px;">
+                    <span style="width: 5px; height: 5px; border-radius: 50%; background: #D97706;"></span>
                     ${esc(psrc.selectionStatusLabel || 'Menunggu Persetujuan')}
                   </span>
                 </div>
-                <div style="color: #64748B; font-size: 0.70rem;">
-                  Hasil Berhasil: <strong>${(psrc.totalBerhasil || 0).toLocaleString('id-ID')}</strong> Butir • Afkir: <strong>${(psrc.totalTidakBerhasil || 0).toLocaleString('id-ID')}</strong> Butir
+                
+                <div style="display: flex; align-items: center; gap: 12px; padding-top: 8px; border-top: 1px dashed #F1F5F9; font-size: 0.72rem;">
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <span style="color: #64748B;">Hasil Layak:</span>
+                    <strong style="color: #15803D; font-weight: 700;">${(psrc.totalBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
+                  </div>
+                  <span style="color: #E2E8F0;">|</span>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <span style="color: #64748B;">Afkir:</span>
+                    <strong style="color: #DC2626; font-weight: 700;">${(psrc.totalTidakBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
+                  </div>
                 </div>
               </div>
             `).join('')}
@@ -451,10 +474,15 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
 
       <!-- SECTION 2: RINGKASAN DATA TRANSAKSI -->
       <div>
-        <div style="margin-bottom: 12px;">
-          <h2 style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -0.01em;">
-            Ringkasan Data Transaksi (${seedingTxs.length})
-          </h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h2 style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -0.01em;">
+              Ringkasan Data Transaksi
+            </h2>
+            <span style="font-size: 0.68rem; font-weight: 700; background: #E2E8F0; color: #475569; padding: 2px 7px; border-radius: 9999px;">
+              ${seedingTxs.length}
+            </span>
+          </div>
         </div>
 
         ${seedingTxs.length === 0 ? renderEmptyStateCard({
