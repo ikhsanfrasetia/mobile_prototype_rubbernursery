@@ -33,6 +33,97 @@ import { setWorkspaceViewMode } from '../../core/workspace-view.js';
 const STORAGE_KEY = 'sigma_feedback_notes';
 const API_URL = '/api/notes';
 
+/**
+ * Master Canonical Page & Route Mapping Registry untuk Review & Pin Marker
+ */
+export const CANONICAL_PAGE_MAP = Object.freeze({
+  '/login': 'Login',
+  '/splash': 'Splash',
+  '/sync': 'Sinkronisasi',
+  '/home': 'Beranda',
+  '/attendance': 'Presensi',
+  '/attendance/supervisor': 'Presensi Supervisor',
+  '/attendance/supervisor/result': 'Hasil Presensi Supervisor',
+  '/attendance/workers': 'Presensi Pekerja',
+  '/attendance/summary': 'Ringkasan Presensi',
+  '/reception': 'Penerimaan',
+  '/reception/kebun-sepupu': 'Penerimaan Bibit Kebun Sepupu',
+  '/reception/benih': 'Penerimaan Benih',
+  '/reception/benih/sir': 'Penerimaan Benih (SIR)',
+  '/reception/benih/camera': 'Penerimaan Benih (Kamera)',
+  '/reception/summary': 'Ringkasan Penerimaan',
+  '/reception/placeholder': 'Penerimaan (Placeholder)',
+  '/seeding': 'Penyemaian & Dederan',
+  '/seeding/scan': 'Scan Penyemaian',
+  '/seeding/form': 'Pindah Semai (Form)',
+  '/seeding/issue-select': 'Pilih Dokumen Issue',
+  '/seeding/dederan/scan': 'Scan Bedengan Dederan',
+  '/seeding/dederan/form': 'Transaksi Dederan',
+  '/seeding/dederan/inspection': 'Pemeriksaan Dederan',
+  '/budding': 'Okulasi',
+  '/budding/grafting': 'Okulasi & Grafting',
+  '/budding/grafting/scan': 'Scan Okulasi',
+  '/budding/grafting/form': 'Form Okulasi',
+  '/budding/regrafting': 'Okulasi Ulang (Regrafting)',
+  '/inspection': 'Pemeriksaan',
+  '/inspection/scan': 'Scan Pemeriksaan',
+  '/inspection/form': 'Form Pemeriksaan',
+  '/inspection/dederan/form': 'Form Pemeriksaan Dederan',
+  '/selection': 'Penyeleksian Bibitan',
+  '/selection/culling': 'Pemusnahan Bibit (Culling)',
+  '/history': 'Histori Transaksi',
+  '/transactions': 'Manajer Transaksi',
+  '/material': 'Material & Bahan',
+  '/nursery-activity': 'Rekam Pemeliharaan',
+  '/nursery-activity/form': 'Form Rekam Pemeliharaan',
+  '/request': 'Permintaan Bibit',
+  '/request/kebun-sepupu': 'Permintaan Kebun Sepupu',
+  '/request/kebun-sepupu/form': 'Form Permintaan Kebun Sepupu',
+  '/request/kebun-sendiri': 'Permintaan Kebun Sendiri',
+  '/request/kebun-sendiri/form': 'Form Permintaan Kebun Sendiri',
+  '/request/mata-entres': 'Permintaan Mata Entres',
+  '/request/mata-entres/form': 'Form Permintaan Mata Entres',
+  '/dispatch': 'Pengeluaran Bibit',
+  '/dispatch/report': 'Laporan Pengeluaran Bibit',
+  '/entres': 'Kebun Entres',
+  '/entres/menunas': 'Menunas Entres',
+  '/entres/menunas/form': 'Form Menunas Entres',
+  '/entres/topping': 'Topping Entres',
+  '/entres/topping/form': 'Form Topping Entres',
+  '/master/bedengan': 'Master Bedengan',
+  '/master/batch': 'Master Batch',
+  '/destruction': 'Pemusnahan Bibit',
+  '/consolidation': 'Konsolidasi Data',
+  '/verification': 'Verifikasi Data',
+  '/profile': 'Profil Pengguna'
+});
+
+/**
+ * Mengambil nama judul kanonikal halaman berdasarkan route URL
+ * @param {string} route 
+ * @returns {string}
+ */
+export function getPageTitle(route) {
+  if (!route) return 'Aplikasi';
+  const clean = String(route).split('?')[0].trim();
+  if (CANONICAL_PAGE_MAP[clean]) {
+    return CANONICAL_PAGE_MAP[clean];
+  }
+  // Check prefix match for nested subpages
+  for (const [key, title] of Object.entries(CANONICAL_PAGE_MAP)) {
+    if (clean.startsWith(key) && key !== '/' && key !== '/home') {
+      return title;
+    }
+  }
+  // Friendly format from path: e.g. /custom-page -> "Custom Page"
+  const parts = clean.split('/').filter(Boolean);
+  if (parts.length > 0) {
+    return parts.map(p => p.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')).join(' - ');
+  }
+  return 'Aplikasi';
+}
+
+
 const PROCESS_STEPS = [
   {
     step: 1,
@@ -1178,13 +1269,22 @@ export function renderReviewPanel() {
         </select>
         <select class="filter-select" id="review-filter-page">
           <option value="ALL" ${filterPage === 'ALL' ? 'selected' : ''}>Semua Halaman</option>
-          <option value="/login" ${filterPage === '/login' ? 'selected' : ''}>Halaman: Login</option>
-          <option value="/splash" ${filterPage === '/splash' ? 'selected' : ''}>Halaman: Splash</option>
-          <option value="/sync" ${filterPage === '/sync' ? 'selected' : ''}>Halaman: Sinkronisasi</option>
-          <option value="/home" ${filterPage === '/home' ? 'selected' : ''}>Halaman: Beranda</option>
-          <option value="/attendance" ${filterPage === '/attendance' ? 'selected' : ''}>Halaman: Absensi</option>
-          <option value="/reception" ${filterPage === '/reception' ? 'selected' : ''}>Halaman: Penerimaan Benih</option>
-          <option value="/seeding" ${filterPage === '/seeding' ? 'selected' : ''}>Halaman: Penanaman</option>
+          ${(() => {
+            const pageFilterOptions = new Map();
+            notes.forEach(n => {
+              if (n.page) {
+                pageFilterOptions.set(n.page, n.pageTitle || getPageTitle(n.page));
+              }
+            });
+            Object.entries(CANONICAL_PAGE_MAP).forEach(([r, title]) => {
+              if (!pageFilterOptions.has(r)) {
+                pageFilterOptions.set(r, title);
+              }
+            });
+            return Array.from(pageFilterOptions.entries()).map(([r, title]) => `
+              <option value="${esc(r)}" ${filterPage === r ? 'selected' : ''}>Halaman: ${esc(title)}</option>
+            `).join('');
+          })()}
         </select>
       </div>
 
@@ -1736,16 +1836,47 @@ export function renderReviewPanel() {
 }
 
 /** Modal Tambah Catatan */
-function openAddFeedbackModal(markerCoords = null) {
-  const currentRoute = (getCurrent().route || '/login').split('?')[0];
+export function openAddFeedbackModal(markerCoords = null) {
+  const currentRouteRaw = getCurrent().route || '/login';
+  const currentRoute = currentRouteRaw.split('?')[0];
   const user = session.get() || {};
   const defaultAuthor = user.name && user.name !== 'Mantri Tanaman' && user.name !== 'Mantri Bibitan' ? user.name : 'Pengunjung / User';
   const defaultRole = user.role ? (ROLE_LABELS[user.role] || user.role) : 'Customer / User Field';
 
+  const isMarkerMode = markerCoords !== null && typeof markerCoords === 'object';
   const defaultCoords = markerCoords || { x: 50.0, y: 40.0 };
+  const activePageTitle = getPageTitle(currentRoute);
+
+  let pageFieldHtml = '';
+  if (isMarkerMode) {
+    // SCENARIO 1: Pin Marker Mode — locked to current page to prevent spatial/page inconsistency
+    pageFieldHtml = `
+      <div class="feedback-form-row">
+        <label class="feedback-form-label">Halaman Terkait <span style="font-size:0.75rem; color:#64748b;">(Terkunci sesuai posisi Pin Marker)</span></label>
+        <input class="feedback-form-input" id="input-fb-page-display" type="text" value="${esc(activePageTitle)} (${esc(currentRoute)})" readonly style="background:#f1f5f9; color:#334155; font-weight:600; cursor:not-allowed;" />
+        <input type="hidden" id="input-fb-page" value="${esc(currentRoute)}" />
+      </div>
+    `;
+  } else {
+    // SCENARIO 2: Generic Add Note without Pin Marker — dropdown with current page pre-selected
+    const knownOptions = Object.entries(CANONICAL_PAGE_MAP);
+    const hasCurrentInMap = Boolean(CANONICAL_PAGE_MAP[currentRoute]);
+
+    pageFieldHtml = `
+      <div class="feedback-form-row">
+        <label class="feedback-form-label">Halaman Terkait</label>
+        <select class="feedback-form-select" id="input-fb-page">
+          ${!hasCurrentInMap ? `<option value="${esc(currentRoute)}" selected>${esc(activePageTitle)} (${esc(currentRoute)})</option>` : ''}
+          ${knownOptions.map(([r, title]) => `
+            <option value="${esc(r)}" ${r === currentRoute ? 'selected' : ''}>${esc(title)} (${esc(r)})</option>
+          `).join('')}
+        </select>
+      </div>
+    `;
+  }
 
   openModal({
-    title: 'Tambah Catatan Perbaikan',
+    title: isMarkerMode ? 'Tambah Catatan Pin Marker' : 'Tambah Catatan Perbaikan',
     body: `
       <div class="feedback-form-row">
         <label class="feedback-form-label">Nama Pembuat <span style="color:#ef4444;">*</span></label>
@@ -1759,28 +1890,19 @@ function openAddFeedbackModal(markerCoords = null) {
         <label class="feedback-form-label">Peran / Kategori</label>
         <input class="feedback-form-input" id="input-fb-role" type="text" placeholder="Contoh: Customer, Asisten, QA" value="${esc(defaultRole)}" />
       </div>
-      <div class="feedback-form-row">
-        <label class="feedback-form-label">Halaman Terkait</label>
-        <select class="feedback-form-select" id="input-fb-page">
-          <option value="/login" ${currentRoute === '/login' ? 'selected' : ''}>Login</option>
-          <option value="/splash" ${currentRoute === '/splash' ? 'selected' : ''}>Splash</option>
-          <option value="/sync" ${currentRoute === '/sync' ? 'selected' : ''}>Sinkronisasi</option>
-          <option value="/home" ${currentRoute === '/home' ? 'selected' : ''}>Beranda</option>
-          <option value="/attendance" ${currentRoute.startsWith('/attendance') ? 'selected' : ''}>Absensi</option>
-          <option value="/reception" ${currentRoute.startsWith('/reception') ? 'selected' : ''}>Penerimaan Benih</option>
-          <option value="/seeding" ${currentRoute.startsWith('/seeding') ? 'selected' : ''}>Penanaman</option>
-        </select>
-      </div>
+      ${pageFieldHtml}
       <div class="feedback-form-row">
         <label class="feedback-form-label">Deskripsi Catatan / Perbaikan <span style="color:#ef4444;">*</span></label>
         <textarea class="feedback-form-textarea" id="input-fb-desc" placeholder="Tuliskan catatan perbaikan atau feedback secara detail..."></textarea>
       </div>
-      <div class="feedback-form-row">
-        <label class="feedback-form-label">Koordinat Pin Marker</label>
-        <div class="feedback-marker-coords">
-          Posisi relatif: X: <strong>${defaultCoords.x}%</strong>, Y: <strong>${defaultCoords.y}%</strong>
+      ${isMarkerMode ? `
+        <div class="feedback-form-row">
+          <label class="feedback-form-label">Koordinat Pin Marker</label>
+          <div class="feedback-marker-coords">
+            Posisi relatif: X: <strong>${defaultCoords.x}%</strong>, Y: <strong>${defaultCoords.y}%</strong>
+          </div>
         </div>
-      </div>
+      ` : ''}
     `,
     footer: `
       <button class="btn btn-ghost" data-fb-cancel>Batal</button>
@@ -1795,7 +1917,7 @@ function openAddFeedbackModal(markerCoords = null) {
     const author = root.querySelector('#input-fb-author')?.value.trim() || 'Reviewer';
     const email = root.querySelector('#input-fb-email')?.value.trim() || '';
     const role = root.querySelector('#input-fb-role')?.value.trim() || 'Customer';
-    const page = root.querySelector('#input-fb-page')?.value || currentRoute;
+    const page = isMarkerMode ? currentRoute : (root.querySelector('#input-fb-page')?.value || currentRoute);
     const desc = root.querySelector('#input-fb-desc')?.value.trim();
 
     if (!desc) {
@@ -1810,16 +1932,7 @@ function openAddFeedbackModal(markerCoords = null) {
       saveBtn.textContent = 'Menyimpan...';
     }
 
-    const pageTitleMap = {
-      '/login': 'Login',
-      '/splash': 'Splash',
-      '/sync': 'Sinkronisasi',
-      '/home': 'Beranda',
-      '/attendance': 'Absensi',
-      '/reception': 'Penerimaan Benih',
-      '/seeding': 'Penanaman'
-    };
-    const pageTitle = pageTitleMap[page] || 'Aplikasi';
+    const pageTitle = getPageTitle(page);
 
     const payload = {
       author,
@@ -1829,7 +1942,7 @@ function openAddFeedbackModal(markerCoords = null) {
       pageTitle,
       description: desc,
       status: 'Baru',
-      marker: defaultCoords
+      marker: isMarkerMode ? defaultCoords : null
     };
 
     try {
@@ -1870,24 +1983,27 @@ function openAddFeedbackModal(markerCoords = null) {
       number: notes.length + 1,
       createdAt: dateStr,
       author,
-      email,
       creatorRole: role,
+      email,
       page,
       pageTitle,
       description: desc,
       status: 'Baru',
-      marker: defaultCoords
+      marker: isMarkerMode ? defaultCoords : null,
+      hidden: false
     };
 
     notes.unshift(fallbackNote);
     saveNotesLocally();
     closeModal();
     isReviewMode = false;
-    toast('Catatan tersimpan (mode offline).', 'success');
+
+    toast('Catatan tersimpan (Offline Storage)', 'info');
     renderReviewPanel();
     updateMarkers();
   });
 }
+
 
 /** Modal Detail Feedback */
 function openFeedbackDetailModal(note) {
