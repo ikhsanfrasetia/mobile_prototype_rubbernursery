@@ -1,6 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { getActiveKlons } from '../../data/klon-master.js';
+import { getRestrictedPihakIIIKlons } from './receipt-benih.js';
 
 export function renderReceiptSir() {
   const app = document.getElementById('app');
@@ -119,15 +120,23 @@ export function renderReceiptSir() {
   const listKlonContainer = app.querySelector('#list-klon');
   const inputSearchKlon = app.querySelector('#input-search-klon');
 
-  // Master Data Klon Terpusat (57 Klon Aktif Resmi dari data/budwood-plot-klon.csv)
-  const activeKlons = getActiveKlons();
-  const klonData = activeKlons.map((k) => ({ 
-    id: k.id, 
-    title: k.canonicalName, 
-    code: k.code,
-    canonicalName: k.canonicalName,
-    sub: 'Klon-' + (k.canonicalName.replace(/[^0-9]/g, '') || k.code)
-  }));
+  const originTypeRaw = storage.get('transaction_originType', 'PIHAK_KE_III');
+  const isPihakIII = originTypeRaw === 'PIHAK_KE_III';
+
+  // Master Data Klon Terpusat (57 Klon Aktif Resmi untuk Non-Pihak Ke-III, 4 Klon Terbatas untuk Pihak Ke-III)
+  let klonData = [];
+  if (isPihakIII) {
+    klonData = getRestrictedPihakIIIKlons();
+  } else {
+    const activeKlons = getActiveKlons();
+    klonData = activeKlons.map((k) => ({ 
+      id: k.id, 
+      title: k.canonicalName, 
+      code: k.code,
+      canonicalName: k.canonicalName,
+      sub: 'Klon-' + (k.canonicalName.replace(/[^0-9]/g, '') || k.code)
+    }));
+  }
 
   function renderList() {
     sirListContainer.innerHTML = sirData.map(item => {

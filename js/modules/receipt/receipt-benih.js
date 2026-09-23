@@ -2,9 +2,48 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, generateUniqueDocNo } from '../../core/utils.js';
+import { toast } from '../../components/toast.js';
 import { getActiveKlons } from '../../data/klon-master.js';
 import { getOpenPrograms, getActivePrograms, getProgramById } from '../../data/program-master.js';
 import { getActiveBatches, getBatchById, getBatchByCode } from '../../data/batch-master.js';
+
+export function getRestrictedPihakIIIKlons() {
+  const active = getActiveKlons();
+  const gt1Master = active.find(k => k.code === 'GT1' || k.canonicalName === 'GT 1');
+  const rric100Master = active.find(k => k.code === 'RRIC100' || k.canonicalName === 'RRIC 100');
+  const pb330Master = active.find(k => k.code === 'PB330' || k.canonicalName === 'PB 330');
+
+  return [
+    {
+      id: gt1Master ? gt1Master.id : 'KLON-GT-1',
+      title: 'GT1',
+      canonicalName: 'GT1',
+      code: 'GT1',
+      sub: 'Klon-1'
+    },
+    {
+      id: rric100Master ? rric100Master.id : 'KLON-RRIC-100',
+      title: 'RRIC 100',
+      canonicalName: 'RRIC 100',
+      code: 'RRIC100',
+      sub: 'Klon-100'
+    },
+    {
+      id: pb330Master ? pb330Master.id : 'KLON-PB-330',
+      title: 'PB 330',
+      canonicalName: 'PB 330',
+      code: 'PB330',
+      sub: 'Klon-330'
+    },
+    {
+      id: 'KLON-MIX',
+      title: 'Mix',
+      canonicalName: 'Mix',
+      code: 'MIX',
+      sub: 'Klon-Campuran'
+    }
+  ];
+}
 
 export function renderReceiptBenih() {
   const app = document.getElementById('app');
@@ -652,16 +691,18 @@ export function renderReceiptBenih() {
 
   // TABLE LOGIC
   function renderTableRows() {
-    const activeKlons = getActiveKlons();
+    const isPihakIII = originTypeRaw === 'PIHAK_KE_III';
+    const activeKlons = isPihakIII ? getRestrictedPihakIIIKlons() : getActiveKlons();
     containerReceiptRows.innerHTML = state.tableRows.map((row, index) => {
-      const isSelectedInActive = activeKlons.some(k => k.canonicalName === row.klon || k.code === row.klon || k.id === row.klon);
+      const isSelectedInActive = activeKlons.some(k => k.canonicalName === row.klon || k.code === row.klon || k.id === row.klon || k.title === row.klon);
       const legacyOption = (row.klon && !isSelectedInActive)
         ? `<option value="${row.klon}" selected>${row.klon}</option>`
         : '';
 
       const optionsHtml = activeKlons.map(k => {
-        const isSelected = row.klon === k.canonicalName || row.klon === k.code || row.klon === k.id;
-        return `<option value="${k.canonicalName}" ${isSelected ? 'selected' : ''}>${k.canonicalName}</option>`;
+        const val = k.canonicalName || k.title;
+        const isSelected = row.klon === val || row.klon === k.code || row.klon === k.id || row.klon === k.title;
+        return `<option value="${val}" ${isSelected ? 'selected' : ''}>${k.title || val}</option>`;
       }).join('');
 
       return `
@@ -1023,6 +1064,20 @@ export function renderReceiptBenih() {
     const finalBlockId = batchObj?.blockId || null;
     const finalBlockCode = batchObj?.blockCode || null;
 
+    const determinedKlon = (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA')
+      ? (state.tableRows[0]?.klon || 'GT1')
+      : (selectedKlon ? (selectedKlon.title || selectedKlon.canonicalName || 'GT1') : 'GT1');
+
+    // Validation for Pihak Ke-III allowed clones on new transactions
+    if (originTypeRaw === 'PIHAK_KE_III' && editingIdx === null) {
+      const allowedNames = ['GT1', 'GT 1', 'RRIC 100', 'PB 330', 'Mix', 'MIX'];
+      if (!determinedKlon || !allowedNames.includes(String(determinedKlon).trim())) {
+        toast('Untuk Penerimaan Pihak Ke-III, pilihan klon hanya diperbolehkan GT1, RRIC 100, PB 330, atau Mix.', 'error');
+        closeModals();
+        return;
+      }
+    }
+
     const newTx = {
       id: docNo,
       docNo: docNo,
@@ -1039,9 +1094,7 @@ export function renderReceiptBenih() {
       batchNo: finalBatchCode,
       blockId: finalBlockId,
       blockCode: finalBlockCode,
-      klon: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA')
-        ? (state.tableRows[0]?.klon || 'GT 1')
-        : (selectedKlon ? (selectedKlon.title || selectedKlon.canonicalName || 'GT 1') : 'GT 1'),
+      klon: determinedKlon,
       tanggal: formattedDate,
       tipeAsal: originTypeDisplay,
       sumber: state.sourceName || '-',
