@@ -1599,7 +1599,7 @@ function renderEmptyState(tab) {
   return renderEmptyStateCard({
     title,
     description: desc,
-    customStyle: 'text-align: center; padding: 40px 16px; background: #FFFFFF; border-radius: 10px; border: 1px dashed #CBD5E1; margin-top: 8px;'
+    customStyle: 'margin-top: 8px;'
   });
 }
 

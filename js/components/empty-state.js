@@ -42,7 +42,7 @@ export function renderEmptyStateCard({
 } = {}) {
   const idAttr = id ? ` id="${id}"` : '';
   const defaultStyle = `background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 32px 20px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.02);`;
-  const styleAttr = customStyle || defaultStyle;
+  const styleAttr = customStyle ? `${defaultStyle} ${customStyle}`.trim() : defaultStyle;
 
   return `
     <div${idAttr} style="${styleAttr}">

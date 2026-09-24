@@ -293,7 +293,7 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
     return renderEmptyStateCard({
       title: 'Belum Ada Transaksi Dederan',
       description: 'Lakukan transaksi Dederan di modul <strong>Penyemaian</strong> terlebih dahulu.',
-      customStyle: 'background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 32px 16px; text-align: center; margin-top: 16px; margin-bottom: 20px;'
+      customStyle: 'margin-top: 16px; margin-bottom: 20px;'
     });
   }
 
@@ -467,7 +467,7 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
       id: 'insp-empty-state',
       title: 'Belum Ada Data Okulasi',
       description: items.length === 0 ? 'Lakukan proses <strong>Okulasi (Grafting)</strong> terlebih dahulu agar data batch otomatis masuk ke tahap Pemeriksaan.' : 'Tidak ditemukan dokumen okulasi untuk diperiksa',
-      customStyle: `display: ${items.length === 0 ? 'block' : 'none'}; background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 32px 16px; text-align: center; margin-top: 16px; margin-bottom: 20px;`
+      customStyle: `display: ${items.length === 0 ? 'block' : 'none'}; margin-top: 16px; margin-bottom: 20px;`
     })}
 
     ${items.length > 0 ? `

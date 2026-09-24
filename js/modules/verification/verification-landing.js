@@ -171,8 +171,7 @@ function renderPendingTable(records) {
   if (!records || records.length === 0) {
     return renderEmptyStateCard({
       title: 'Tidak Ada Data Menunggu Verifikasi',
-      description: 'Seluruh data transaksi dalam scope Anda sudah terverifikasi dan memenuhi syarat konsistensi.',
-      customStyle: 'background: #FFFFFF; border-radius: 12px; padding: 48px 20px; text-align: center; border: 1px solid #E2E8F0;'
+      description: 'Seluruh data transaksi dalam scope Anda sudah terverifikasi dan memenuhi syarat konsistensi.'
     });
   }
 
@@ -231,8 +230,7 @@ function renderHistoryTable(records) {
   if (!records || records.length === 0) {
     return renderEmptyStateCard({
       title: 'Belum Ada Riwayat Verifikasi',
-      description: 'Catatan audit verifikasi dan keputusan pengembalian akan tercatat di sini.',
-      customStyle: 'background: #FFFFFF; border-radius: 12px; padding: 48px 20px; text-align: center; border: 1px solid #E2E8F0;'
+      description: 'Catatan audit verifikasi dan keputusan pengembalian akan tercatat di sini.'
     });
   }
 
