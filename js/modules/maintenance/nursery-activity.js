@@ -20,6 +20,8 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { todayISO } from '../../core/utils.js';
+import { attendanceRepository } from '../../db/repositories.js';
 import { getCfnaByCode, getCfnaByName, getCfnaActivityMappings, getActiveCfnaMaster, getAllCfnaMaster, MAPPING_STATUS, CFNA_STATUS } from '../../data/cfna-master.js';
 import {
   getWorkersForUserContext,
@@ -528,10 +530,12 @@ export function renderNurseryActivityLanding() {
                     ${rec.allocationCode ? `${rec.allocationCode} - ${rec.allocationName || '-'}` : 'Tidak ada alokasi CFNA'}
                   </span>
                 </div>
+                ${rec.lokasiBlok && rec.lokasiBlok.blok ? `
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Lokasi Blok</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${rec.lokasiBlok?.blok || '-'} (${rec.lokasiBlok?.luas || '-'} HA)</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${rec.lokasiBlok.blok} (${rec.lokasiBlok.luas || '-'} HA)</span>
                 </div>
+                ` : ''}
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Pekerja</span>
                   <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${rec.pekerja?.length || 0} Orang</span>
@@ -733,13 +737,13 @@ export function renderNurseryActivityLanding() {
 // ==========================================
 // 2. FORM PAGE (#/nursery-activity/form)
 // ==========================================
-export function renderNurseryActivityForm() {
+export async function renderNurseryActivityForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
   const userCtx = getCurrentUserContext();
-  const activeWorkers = getWorkersForUserContext(userCtx, { activeOnly: true });
-  const availableBlocks = getBlocksForNurseryActivity(userCtx);
+  const activeWorkers = await attendanceRepository.getPresentWorkers(userCtx, todayISO());
+  const hasPresentWorkers = activeWorkers.length > 0;
   const openPrograms = getOpenPrograms({ estateId: userCtx?.estateId });
 
   const availableAktivitas = getActiveCfnaMaster();
@@ -747,14 +751,10 @@ export function renderNurseryActivityForm() {
   const initialProgram = openPrograms[0] || null;
   let selectedProgramId = initialProgram ? initialProgram.id : null;
   let selectedProgramCode = initialProgram ? initialProgram.code : null;
-  let selectedBlokIndex = 0;
-  let isInputManual = false;
   const workerSelectionState = {};
   activeWorkers.forEach((w) => {
     workerSelectionState[w.id] = false;
   });
-
-  const currentBlok = availableBlocks[selectedBlokIndex] || availableBlocks[0] || null;
 
   app.innerHTML = `
     <div class="page nursery-activity-page" style="position: relative; display: flex; flex-direction: column; height: 100%; background: #F8FAF9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden;">
@@ -779,18 +779,18 @@ export function renderNurseryActivityForm() {
         
         <!-- CARD 1: AKTIVITAS PEMBIBITAN (CFNA) -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-          <label for="select-aktivitas" style="display: block; font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 5px;">
+          <label for="select-aktivitas" style="display: block; font-size: 0.78rem; font-weight: 700; color: ${hasPresentWorkers ? '#374151' : '#94A3B8'}; margin-bottom: 5px;">
             Aktivitas Pembibitan
           </label>
           <div style="position: relative;">
-            <select id="select-aktivitas" style="width: 100%; height: 42px; padding: 0 32px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #1F2937; appearance: none; outline: none; cursor: pointer;">
+            <select id="select-aktivitas" ${hasPresentWorkers ? '' : 'disabled aria-disabled="true"'} style="width: 100%; height: 42px; padding: 0 32px 0 12px; background: ${hasPresentWorkers ? '#FFFFFF' : '#F1F5F9'}; border: 1px solid ${hasPresentWorkers ? '#CBD5E1' : '#E2E8F0'}; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: ${hasPresentWorkers ? '#1F2937' : '#94A3B8'}; appearance: none; outline: none; cursor: ${hasPresentWorkers ? 'pointer' : 'not-allowed'}; opacity: ${hasPresentWorkers ? '1' : '0.75'};">
               ${availableAktivitas.map((c) => `
                 <option value="${c.code}" ${c.code === selectedAktivitasCode ? 'selected' : ''}>
                   ${c.code} - ${c.name}
                 </option>
               `).join('')}
             </select>
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="${hasPresentWorkers ? '#64748B' : '#94A3B8'}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </div>
@@ -798,48 +798,48 @@ export function renderNurseryActivityForm() {
 
         <!-- CARD 2: NAMA PROGRAM PEMBIBITAN -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-          <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 5px;">
+          <label style="display: block; font-size: 0.78rem; font-weight: 700; color: ${hasPresentWorkers ? '#374151' : '#94A3B8'}; margin-bottom: 5px;">
             Nama Program Pembibitan
           </label>
-          <div id="btn-open-program-sheet" role="button" tabindex="0" style="display: flex; justify-content: space-between; align-items: center; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 12px; height: 42px; background: #FFFFFF; cursor: pointer; transition: border-color 0.15s ease;">
-            <span id="label-selected-program" style="font-size: 0.88rem; font-weight: 700; color: #111827;">${selectedProgramCode || 'Belum ada Program Terbuka'}</span>
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <div id="btn-open-program-sheet" role="button" tabindex="${hasPresentWorkers ? '0' : '-1'}" aria-disabled="${!hasPresentWorkers}" style="display: flex; justify-content: space-between; align-items: center; border: 1px solid ${hasPresentWorkers ? '#CBD5E1' : '#E2E8F0'}; border-radius: 6px; padding: 0 12px; height: 42px; background: ${hasPresentWorkers ? '#FFFFFF' : '#F1F5F9'}; cursor: ${hasPresentWorkers ? 'pointer' : 'not-allowed'}; opacity: ${hasPresentWorkers ? '1' : '0.75'}; transition: border-color 0.15s ease;">
+            <span id="label-selected-program" style="font-size: 0.88rem; font-weight: 700; color: ${hasPresentWorkers ? '#111827' : '#94A3B8'};">${selectedProgramCode || 'Belum ada Program Terbuka'}</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="${hasPresentWorkers ? '#64748B' : '#94A3B8'}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </div>
         </div>
 
-        <!-- CARD 3: LOKASI BLOK (DROPDOWNLIST) -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-          <label for="select-blok" style="display: block; font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 5px;">
-            Lokasi Blok
-          </label>
-          <div style="position: relative;">
-            <select id="select-blok" style="width: 100%; height: 42px; padding: 0 32px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: #1F2937; appearance: none; outline: none; cursor: pointer;">
-              ${availableBlocks.length > 0 ? availableBlocks.map((b, i) => `
-                <option value="${b.id}" ${i === selectedBlokIndex ? 'selected' : ''}>
-                  ${b.blockName} (${b.cloneName} - ${((b.maturedArea || 0) + (b.immatureArea || 0)).toFixed(2)} HA)
-                </option>
-              `).join('') : `
-                <option value="">Tidak ada blok aktif</option>
-              `}
-            </select>
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </div>
-        </div>
-
-        <!-- CARD 4: PEKERJA (LIST PEKERJA DENGAN TOGGLE DI SISI KANAN) -->
+        <!-- CARD 3: PEKERJA HADIR PRESENSI -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
           <div style="font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 10px;">
-            Pekerja Aktif (${activeWorkers.length})
+            Pekerja Hadir Presensi (${activeWorkers.length})
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 8px;">
             ${activeWorkers.length === 0 ? `
-              <div style="font-size: 0.82rem; color: #64748B; padding: 12px; text-align: center; background: #F1F5F9; border-radius: 6px;">
-                Tidak ada pekerja aktif pada unit kerja ini
+              <div style="text-align: center; padding: 18px 14px; background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 8px;">
+                <div style="width: 42px; height: 42px; border-radius: 50%; background: #FEF3C7; color: #D97706; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;">
+                  <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                </div>
+                <strong style="display: block; font-size: 0.88rem; color: #1E293B; margin-bottom: 4px;">
+                  Belum Ada Pekerja yang Melakukan Presensi Hari Ini
+                </strong>
+                <p style="font-size: 0.78rem; color: #64748B; margin: 0 0 14px 0; line-height: 1.45;">
+                  Pekerja harus melakukan presensi terlebih dahulu pada modul Presensi sebelum dapat dialokasikan pada aktivitas pemeliharaan pembibitan.
+                </p>
+                <button id="btn-goto-attendance" type="button" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 16px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="8.5" cy="7.5" r="4"></circle>
+                    <line x1="20" y1="8" x2="20" y2="14"></line>
+                    <line x1="23" y1="11" x2="17" y2="11"></line>
+                  </svg>
+                  Buka Modul Presensi
+                </button>
               </div>
             ` : activeWorkers.map((worker) => {
               const isChecked = !!workerSelectionState[worker.id];
@@ -864,7 +864,7 @@ export function renderNurseryActivityForm() {
 
         <!-- TOMBOL SIMPAN -->
         <div style="margin-top: 4px;">
-          <button id="btn-simpan-hasil" type="button" style="width: 100%; height: 46px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.90rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+          <button id="btn-simpan-hasil" type="button" ${hasPresentWorkers ? '' : 'disabled aria-disabled="true"'} style="width: 100%; height: 46px; background: ${hasPresentWorkers ? '#116834' : '#94A3B8'}; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.90rem; font-weight: 700; cursor: ${hasPresentWorkers ? 'pointer' : 'not-allowed'}; display: flex; align-items: center; justify-content: center; box-shadow: ${hasPresentWorkers ? '0 2px 4px rgba(17,104,52,0.2)' : 'none'}; opacity: ${hasPresentWorkers ? '1' : '0.75'};">
             Simpan
           </button>
         </div>
@@ -909,34 +909,29 @@ export function renderNurseryActivityForm() {
     navigate('/nursery-activity');
   });
 
-  // Event Listener: Dropdown Lokasi Blok Change
-  const selectBlok = app.querySelector('#select-blok');
-  const displayLuasBlok = app.querySelector('#display-luas-blok');
-  selectBlok?.addEventListener('change', (e) => {
-    const chosenVal = e.target.value;
-    const blk = getBlockById(chosenVal) || availableBlocks[0] || null;
-    if (displayLuasBlok && blk) {
-      const totalLuas = ((blk.maturedArea || 0) + (blk.immatureArea || 0)).toFixed(2);
-      displayLuasBlok.textContent = `${totalLuas} HA`;
-    }
+  // Event Listener: Buka Modul Presensi (saat empty state)
+  app.querySelector('#btn-goto-attendance')?.addEventListener('click', () => {
+    navigate('/attendance');
   });
 
   // Event Listener: Toggle Pekerja
-  app.querySelectorAll('.worker-btn-toggle').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const workerId = btn.dataset.workerId;
-      const currentVal = !workerSelectionState[workerId];
-      workerSelectionState[workerId] = currentVal;
+  if (hasPresentWorkers) {
+    app.querySelectorAll('.worker-btn-toggle').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const workerId = btn.dataset.workerId;
+        const currentVal = !workerSelectionState[workerId];
+        workerSelectionState[workerId] = currentVal;
 
-      btn.setAttribute('aria-pressed', currentVal ? 'true' : 'false');
-      btn.style.background = currentVal ? '#116834' : '#CBD5E1';
-      const slider = btn.querySelector('span');
-      if (slider) {
-        slider.style.transform = currentVal ? 'translateX(20px)' : 'translateX(0)';
-      }
+        btn.setAttribute('aria-pressed', currentVal ? 'true' : 'false');
+        btn.style.background = currentVal ? '#116834' : '#CBD5E1';
+        const slider = btn.querySelector('span');
+        if (slider) {
+          slider.style.transform = currentVal ? 'translateX(20px)' : 'translateX(0)';
+        }
+      });
     });
-  });
+  }
 
   // Bottom Sheet Program Pembibitan
   const btnOpenProgram = app.querySelector('#btn-open-program-sheet');
@@ -946,6 +941,7 @@ export function renderNurseryActivityForm() {
   const labelSelectedProgram = app.querySelector('#label-selected-program');
 
   const openProgramSheet = () => {
+    if (!hasPresentWorkers) return;
     if (modalProgramOverlay) modalProgramOverlay.style.display = 'block';
     if (sheetProgram) sheetProgram.style.display = 'flex';
   };
@@ -955,7 +951,9 @@ export function renderNurseryActivityForm() {
     if (sheetProgram) sheetProgram.style.display = 'none';
   };
 
-  btnOpenProgram?.addEventListener('click', openProgramSheet);
+  if (hasPresentWorkers) {
+    btnOpenProgram?.addEventListener('click', openProgramSheet);
+  }
   btnCloseSheetProgram?.addEventListener('click', closeProgramSheet);
   modalProgramOverlay?.addEventListener('click', closeProgramSheet);
 
@@ -982,8 +980,13 @@ export function renderNurseryActivityForm() {
 
   // Event Listener: Tombol Simpan
   app.querySelector('#btn-simpan-hasil')?.addEventListener('click', () => {
+    // Safety Guard: Block submit jika belum ada pekerja yang presensi
+    if (!hasPresentWorkers || activeWorkers.length === 0) {
+      toast('Belum ada pekerja yang melakukan presensi hari ini.', 'error');
+      return;
+    }
+
     const selectAktivitasEl = app.querySelector('#select-aktivitas');
-    const selectBlokEl = app.querySelector('#select-blok');
     const chosenCode = selectAktivitasEl?.value?.trim() || availableAktivitas[0]?.code;
     const cfnaRecord = getCfnaByCode(chosenCode);
 
@@ -1004,31 +1007,13 @@ export function renderNurseryActivityForm() {
     const finalProgId = chosenProg ? chosenProg.id : selectedProgramId;
     const finalProgCode = chosenProg ? chosenProg.code : selectedProgramCode;
 
-    const chosenBlockId = selectBlokEl?.value;
-    const blockMasterRecord = getBlockById(chosenBlockId) || (availableBlocks.length > 0 ? availableBlocks[0] : null);
+    const selectedWorkersList = activeWorkers.filter(w => workerSelectionState[w.id]);
 
-    if (!blockMasterRecord) {
-      toast('Blok yang dipilih tidak valid dalam master data.', 'error');
+    // Validasi Submit: Minimal 1 pekerja harus dipilih
+    if (selectedWorkersList.length === 0) {
+      toast('Pilih minimal 1 pekerja pelaksana aktivitas.', 'error');
       return;
     }
-
-    const totalLuas = Math.round(((blockMasterRecord.maturedArea || 0) + (blockMasterRecord.immatureArea || 0)) * 100) / 100;
-    const selectedBlok = {
-      blockId: blockMasterRecord.id,
-      blockCode: blockMasterRecord.blockCode,
-      blockName: blockMasterRecord.blockName,
-      divisionCode: blockMasterRecord.divisionCode,
-      divisionName: blockMasterRecord.divisionName,
-      estateCode: blockMasterRecord.estateCode,
-      estateName: blockMasterRecord.estateName,
-      cloneName: blockMasterRecord.cloneName,
-      maturedArea: blockMasterRecord.maturedArea,
-      immatureArea: blockMasterRecord.immatureArea,
-      luas: totalLuas,
-      luasHa: totalLuas,
-      blok: blockMasterRecord.blockName
-    };
-    const selectedWorkersList = activeWorkers.filter(w => workerSelectionState[w.id]);
 
     // Validasi & Ambil Canonical Worker Data
     const canonicalWorkers = [];
@@ -1070,7 +1055,7 @@ export function renderNurseryActivityForm() {
       program: finalProgCode || 'Nursery Program 2026',
       estateId: userCtx?.estateId || null,
       divisionId: userCtx?.divisionId || null,
-      lokasiBlok: selectedBlok,
+      lokasiBlok: null,
       pekerja: canonicalWorkers,
       allocationCode,
       allocationName,
