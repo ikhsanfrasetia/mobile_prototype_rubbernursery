@@ -28,7 +28,7 @@ function createMockElement(id = '') {
     innerHTML: '',
     value: '',
     style: {},
-    classList: { add() {}, remove() {}, contains() { return false; } },
+    classList: { add() { }, remove() { }, contains() { return false; } },
     addEventListener(evt, handler) {
       if (!listeners.has(id)) listeners.set(id, {});
       listeners.get(id)[evt] = handler;
@@ -59,8 +59,8 @@ const mockDocument = {
   querySelectorAll(sel) {
     return [];
   },
-  addEventListener(evt, fn) {},
-  removeEventListener(evt, fn) {}
+  addEventListener(evt, fn) { },
+  removeEventListener(evt, fn) { }
 };
 global.document = mockDocument;
 global.window = {};
@@ -182,7 +182,7 @@ runTest('TEST 07: Icon container circular background and sizing is consistent', 
 // TEST 08: No business logic regression
 runTest('TEST 08: Business logic and data rendering remains intact when data is present', () => {
   storageMap.clear();
-  
+
   // Seed Seleksi III final doc for Okulasi
   const s3Docs = [{
     id: 's3-001',
