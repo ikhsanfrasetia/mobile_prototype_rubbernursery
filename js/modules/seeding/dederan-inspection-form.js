@@ -238,7 +238,7 @@ export function renderDederanInspectionForm() {
           <section style="padding: 12px 0; background: #FFFFFF;">
             <h2 style="font-size: 0.84rem; font-weight: 700; color: #111111; margin: 0 0 4px 0;">Tambah Foto</h2>
             <p style="font-size: 0.72rem; color: #6B7280; margin: 0 0 10px 0; line-height: 1.35;">
-              Wajib ambil foto langsung di lokasi pemeriksaan dederan (disertai timestamp waktu & lokasi otomatis).
+              Wajib ambil foto langsung di lokasi pemeriksaan dederan.
             </p>
             
             <div id="photo-container" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;"></div>

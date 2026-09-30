@@ -1,17 +1,17 @@
 /**
- * modules/entres/topping-scan.js — Fitur Scan QR Code Plot Entres untuk Topping.
- * Mengadopsi pola persis seperti fitur scan QR Bedengan & Plot Menunas.
- * - Terbuka otomatis saat masuk ke #/entres/topping
- * - Dilengkapi kamera real-time, laser reticle, simulasi QR cepat
- * - Gagal scan 1x (auto 6s / manual uji) memunculkan tombol merah "Pilih Plot Manual"
- * - Bottom sheet pilihan manual untuk memilih Kode Plot, Nama Klon, dan Jlh Pokok
- * - Navigasi langsung ke #/entres/topping/form
+ * modules/entres/topping-scan.js — Fitur Scan QR Code Plot Entres untuk Topping (Panen Mata Entres).
+ * 
+ * Flow:
+ * 1. Operator memindai QR Code patok fisik plot di kebun entres
+ * 2. Sistem me-resolve identitas Plot & Klon langsung dari Master Plot
+ * 3. Navigasi langsung ke Form Topping dengan identitas Plot & Klon ter-populate otomatis
  */
 
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { getAllBudwoodPlots, resolvePlot } from '../../data/budwood-plot-master.js';
+import { normalizeKlonName } from '../../data/klon-master.js';
 
 export function renderToppingScan() {
   const app = document.getElementById('app');
@@ -41,8 +41,8 @@ export function renderToppingScan() {
           </svg>
         </button>
         <div style="text-align: center; flex: 1; padding: 0 8px;">
-          <h1 style="font-size: 1rem; font-weight: 700; margin: 0; color: #FFFFFF; letter-spacing: -0.01em;">Identifikasi QR Plot Entres</h1>
-          <div style="font-size: 0.68rem; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Kegiatan Topping Entres</div>
+          <h1 style="font-size: 1rem; font-weight: 700; margin: 0; color: #FFFFFF; letter-spacing: -0.01em;">Identifikasi QR Plot Topping</h1>
+          <div style="font-size: 0.68rem; color: #94A3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Kegiatan Panen Mata Entres (Topping)</div>
         </div>
         <button id="btn-toggle-flash" type="button" aria-label="Flashlight" style="padding: 8px; margin-right: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #FBBF24;">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -52,23 +52,23 @@ export function renderToppingScan() {
       </header>
 
       <!-- VIEWFINDER CAMERA AREA -->
-      <main style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 16px 16px 20px; position: relative; z-index: 5;">
+      <main style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 16px 16px 20px; position: relative; z-index: 5; overflow-y: auto;">
         
-        <!-- INFO DOKUMEN / TARGET PLOT -->
+        <!-- INFO TARGET KEGIATAN -->
         <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 8px 14px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; backdrop-filter: blur(4px);">
           <div>
             <div style="font-size: 0.66rem; color: #94A3B8;">Target Kegiatan:</div>
-            <div style="font-size: 0.78rem; font-weight: 700; color: #F8FAFC;">Topping Kebun Entres (${plots.length} Plot)</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #F8FAFC;">Panen Topping (${plots.length} Plot)</div>
           </div>
           <span style="font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: rgba(34, 197, 94, 0.2); color: #4ADE80; border: 1px solid rgba(34, 197, 94, 0.3);">Scan Plot</span>
         </div>
 
         <!-- CAMERA FRAME / RETICLE -->
         <div style="position: relative; width: 220px; height: 220px; margin: auto 0; display: flex; align-items: center; justify-content: center;">
-          <!-- Real Video Feed (Stream) -->
+          <!-- Real Video Feed -->
           <video id="scan-video-feed" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover; border-radius: 16px; display: none;"></video>
           
-          <!-- Mock Camera Background with animated pulses -->
+          <!-- Mock Camera Background -->
           <div id="scan-mock-bg" style="position: absolute; inset: 0; background: radial-gradient(circle, rgba(17,104,52,0.25) 0%, rgba(15,23,42,0.85) 100%); border-radius: 16px;"></div>
 
           <!-- Targeting Frame Corners -->
@@ -92,97 +92,85 @@ export function renderToppingScan() {
         </div>
 
         <p style="font-size: 0.76rem; color: #CBD5E1; text-align: center; margin: 0 0 8px; max-width: 270px; line-height: 1.4;">
-          Arahkan kamera ke <strong>QR Code</strong> pada patok/tiang Plot Entres.
+          Arahkan kamera ke <strong>QR Code</strong> pada patok/tiang Plot Entres yang akan ditopping.
         </p>
 
         <!-- STATUS SCAN AKTIF -->
         <div id="scan-status-pill" style="display: inline-flex; align-items: center; gap: 6px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 20px; padding: 4px 12px; margin-bottom: 12px;">
           <span style="width: 7px; height: 7px; border-radius: 50%; background: #22C55E; box-shadow: 0 0 6px #22C55E; animation: pulse 1.5s infinite;"></span>
-          <span style="font-size: 0.72rem; color: #86EFAC; font-weight: 600;">Memindai QR Code...</span>
+          <span style="font-size: 0.70rem; color: #86EFAC; font-weight: 600;">Memindai QR Code Plot...</span>
         </div>
 
-        <!-- TOMBOL PILIH MANUAL (MUNCUL JIKA GAGAL SCAN 1x) -->
-        <div id="box-scan-failed" style="display: none; width: 100%; max-width: 320px; text-align: center; margin-bottom: 12px;">
-          <button id="btn-pilih-manual" type="button" style="width: 100%; height: 44px; background: #DC2626; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.84rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 12px rgba(220,38,38,0.35);">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
-            Pilih Plot Manual (QR Bermasalah)
-          </button>
-          <div style="font-size: 0.68rem; color: #FCA5A5; margin-top: 6px;">
-            Scan QR gagal 1x. Anda diperbolehkan memilih plot secara manual.
+        <!-- SIMULASI SCAN CEPAT (DEMO TOOLBOX) -->
+        <div style="width: 100%; max-width: 320px; background: rgba(30, 41, 59, 0.85); border: 1px dashed rgba(34, 197, 94, 0.4); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; box-sizing: border-box;">
+          <div style="font-size: 0.68rem; font-weight: 700; color: #4ADE80; margin-bottom: 6px; text-transform: uppercase;">
+            ⚡ Simulasi Scan QR Plot Fisik:
           </div>
-        </div>
-
-        <!-- SIMULATOR CONTROL (UNTUK UJI REVIEW & SELEKSI CEPAT) -->
-        <div style="width: 100%; max-width: 320px; background: rgba(30, 41, 59, 0.9); border: 1px dashed rgba(255,255,255,0.2); border-radius: 8px; padding: 10px; box-sizing: border-box;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-size: 0.70rem; color: #94A3B8; font-weight: 600;">⚡ Quick Simulator (Master Plot):</span>
-            <button id="btn-mock-fail-scan" type="button" style="background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.4); color: #F87171; border-radius: 4px; padding: 2px 6px; font-size: 0.65rem; font-weight: 700; cursor: pointer;">
-              Simulasi Gagal (1x)
-            </button>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-            ${plots.slice(0, 4).map(p => `
-              <button class="btn-mock-qr-scan" data-plot="${p.plotName}" type="button" style="background: #1E293B; border: 1px solid #334155; color: #E2E8F0; padding: 6px; border-radius: 6px; font-size: 0.70rem; cursor: pointer; text-align: left;">
-                <span style="display: block; font-weight: 700; color: #4ADE80;">Scan ${p.kodePlot}</span>
-                <span style="font-size: 0.62rem; color: #94A3B8;">${p.namaKlon} • ${p.jlhPokok} Pkk</span>
+          <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;">
+            ${plots.slice(0, 5).map(p => `
+              <button type="button" class="btn-mock-qr-scan" data-plot="${p.plotName}" style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); color: #86EFAC; font-size: 0.70rem; font-weight: 600; padding: 4px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap;">
+                🏷️ ${p.kodePlot}
               </button>
             `).join('')}
           </div>
         </div>
 
+        <!-- TOMBOL PILIH MANUAL -->
+        <button id="btn-manual-select-topping" type="button" style="width: 100%; max-width: 320px; height: 42px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 8px; color: #FFFFFF; font-size: 0.82rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          Pilih Plot Manual
+        </button>
+
       </main>
 
-      <!-- BOTTOM SHEET: PILIH PLOT SECARA MANUAL -->
-      <div id="overlay-manual-sheet" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 50; backdrop-filter: blur(2px);"></div>
-      <div id="sheet-manual-plot" style="display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #FFFFFF; color: #1E293B; border-top-left-radius: 16px; border-top-right-radius: 16px; z-index: 60; max-height: 80vh; flex-direction: column; box-shadow: 0 -4px 20px rgba(0,0,0,0.25); animation: slideUp 0.25s ease-out;">
+      <!-- MODAL BOTTOM SHEET: PILIH PLOT MANUAL -->
+      <div id="overlay-manual-plot-sheet" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 50; backdrop-filter: blur(2px);"></div>
+      
+      <div id="sheet-manual-plot" style="display: none; position: fixed; left: 0; right: 0; bottom: 0; background: #FFFFFF; color: #111827; border-radius: 18px 18px 0 0; padding: 18px 16px 24px; z-index: 51; flex-direction: column; max-height: 75vh; box-shadow: 0 -8px 24px rgba(0,0,0,0.3); box-sizing: border-box;">
+        <div style="width: 36px; height: 4px; background: #E2E8F0; border-radius: 2px; margin: 0 auto 12px;"></div>
         
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #E2E8F0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
           <div>
-            <div style="font-size: 0.95rem; font-weight: 700; color: #111827;">Pilih Plot Entres (Manual)</div>
-            <div style="font-size: 0.72rem; color: #64748B;">Total 97 plot kebun entres resmi</div>
+            <h2 style="font-size: 0.95rem; font-weight: 800; color: #111827; margin: 0 0 2px;">Pilih Plot Kebun Entres</h2>
+            <p style="font-size: 0.70rem; color: #64748B; margin: 0;">Pilih plot untuk kegiatan Topping (Panen Mata Entres).</p>
           </div>
-          <button id="btn-close-manual-sheet" type="button" style="background: none; border: none; padding: 6px; cursor: pointer; color: #64748B;">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+          <button id="btn-close-manual-sheet" type="button" style="background: #F1F5F9; border: none; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569;">✕</button>
         </div>
 
-        <!-- SEARCH PLOT -->
-        <div style="padding: 10px 16px; border-bottom: 1px solid #F1F5F9; background: #F8FAFC;">
-          <input id="inp-search-plot" type="text" placeholder="🔍 Cari nama plot atau klon..." style="width: 100%; height: 38px; padding: 0 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.82rem; color: #1E293B; box-sizing: border-box; outline: none;" />
-        </div>
-
-        <div id="plot-list-container" style="flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;">
-          ${plots.map(p => `
-            <div class="card-pick-manual-plot" data-plot="${p.plotName}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.15s ease;">
-              <div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span style="font-weight: 700; font-size: 0.85rem; color: #0F172A;">${p.kodePlot}</span>
-                  <span style="background: #E8F5E9; color: #116834; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">${p.namaKlon}</span>
+        <div style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 4px; padding-bottom: 10px;">
+          ${plots.map((p, idx) => `
+            <div class="card-pick-manual-plot" data-index="${idx}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                  <div style="font-weight: 800; font-size: 0.86rem; color: #111827;">${p.kodePlot}</div>
+                  <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 2px;">
+                    Klon: ${p.namaKlon}
+                  </div>
+                  <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">
+                    Populasi: ${parseInt(p.jlhPokok || 0).toLocaleString('id-ID')} Pokok • Tanam: ${p.tahunTanam || '-'}
+                  </div>
                 </div>
-                <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
-                  ${p.lokasi} • Thn Tanam: ${p.tahunTanam || 2019}
-                </div>
-              </div>
-              <div style="text-align: right;">
-                <div style="font-size: 0.82rem; font-weight: 700; color: #116834;">${p.jlhPokok} Pkk</div>
-                <span style="font-size: 0.65rem; color: #2563EB; font-weight: 600;">Pilih Plot →</span>
+                <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #DCFCE7; color: #15803D;">
+                  Pilih →
+                </span>
               </div>
             </div>
           `).join('')}
         </div>
-
       </div>
 
     </div>
+
+    <!-- STYLE ANIMASI SCANNER -->
+    <style>
+      @keyframes scanLineAnim {
+        0% { top: 10px; opacity: 0.8; }
+        50% { top: 190px; opacity: 1; }
+        100% { top: 10px; opacity: 0.8; }
+      }
+    </style>
   `;
 
-  // Start Simulated Camera Video (Try WebCam, Fallback to Animated Canvas)
+  // Start real camera feed if available
   const video = app.querySelector('#scan-video-feed');
   let mediaStream = null;
 
@@ -196,7 +184,7 @@ export function renderToppingScan() {
         if (mockBg) mockBg.style.display = 'none';
       })
       .catch(() => {
-        // Fallback silently to mock visual camera
+        // Fallback gracefully
       });
   }
 
@@ -206,70 +194,8 @@ export function renderToppingScan() {
     }
   };
 
-  // Failure Logic (Gagal Scan 1x)
-  let scanFailed = false;
-  const boxFailed = app.querySelector('#box-scan-failed');
-  const scanStatusPill = app.querySelector('#scan-status-pill');
-  const laserLine = app.querySelector('#laser-line');
-
-  const triggerScanFailure = () => {
-    if (scanFailed) return;
-    scanFailed = true;
-
-    // Laser berubah ke merah
-    if (laserLine) {
-      laserLine.style.background = 'linear-gradient(90deg, transparent, #EF4444, #F87171, #EF4444, transparent)';
-      laserLine.style.boxShadow = '0 0 12px #EF4444';
-    }
-
-    // Status pill
-    if (scanStatusPill) {
-      scanStatusPill.style.background = 'rgba(239, 68, 68, 0.15)';
-      scanStatusPill.style.borderColor = 'rgba(239, 68, 68, 0.35)';
-      scanStatusPill.innerHTML = `
-        <span style="width: 7px; height: 7px; border-radius: 50%; background: #EF4444;"></span>
-        <span style="font-size: 0.72rem; color: #FCA5A5; font-weight: 600;">Gagal Scan (1x Percobaan)</span>
-      `;
-    }
-
-    // Tampilkan kotak opsi manual
-    if (boxFailed) {
-      boxFailed.style.display = 'block';
-    }
-
-    toast('Gagal memindai QR Plot (1x). Opsi pilih manual telah dibuka.', 'error');
-  };
-
-  // Trigger uji gagal scan manual
-  app.querySelector('#btn-mock-fail-scan')?.addEventListener('click', triggerScanFailure);
-
-  // Auto trigger gagal scan setelah 6 detik jika belum berhasil scan
-  const failTimer = setTimeout(() => {
-    triggerScanFailure();
-  }, 6000);
-
-  // Process Selection & Proceed to Form
-  const proceedWithPlot = (plotData, verifiedMethod = 'QR_SCAN') => {
-    clearTimeout(failTimer);
-    stopCamera();
-
-    // Simpan ke storage untuk digunakan di topping-form.js
-    storage.set('selected_topping_plot', plotData);
-    storage.set('selected_entres_plot', plotData);
-    storage.set('plot_verified_method', verifiedMethod);
-    storage.set('plot_verified_at', new Date().toLocaleTimeString('id-ID'));
-    storage.remove('editing_topping_index');
-
-    // Feedback visual
-    toast(`Identifikasi: ${plotData.kodePlot} (${plotData.namaKlon})`, 'info');
-
-    // Navigasi langsung ke Form Transaksi Topping
-    navigate('/entres/topping/form');
-  };
-
   // Back Button
   app.querySelector('#btn-scan-back')?.addEventListener('click', () => {
-    clearTimeout(failTimer);
     stopCamera();
     navigate('/entres');
   });
@@ -282,81 +208,64 @@ export function renderToppingScan() {
     toast(flashOn ? 'Lampu Flash Aktif' : 'Lampu Flash Dimatikan', 'info');
   });
 
+  const proceedToForm = (plotData, verifiedMethod = 'QR_SCAN') => {
+    stopCamera();
+
+    const payload = {
+      id: plotData.id,
+      kodePlot: plotData.kodePlot || `Plot ${plotData.plotName}`,
+      plotName: plotData.plotName,
+      namaKlon: plotData.namaKlon || plotData.cloneName,
+      jlhPokok: plotData.jlhPokok || plotData.numberOfPlants || 425,
+      budwoodCode: plotData.budwoodCode || '2021/BWG/001',
+      sourceMenunasDocNo: null,
+      verifiedMethod: `${verifiedMethod}_VERIFIED`
+    };
+
+    storage.set('selected_topping_plot', payload);
+    storage.set('selected_entres_plot', payload);
+    storage.remove('selected_topping_menunas_source');
+    storage.remove('editing_topping_index');
+
+    toast(`Plot Terverifikasi: ${payload.kodePlot} (${payload.namaKlon})`, 'success');
+    navigate('/entres/topping/form');
+  };
+
   // Mock Barcode Quick Scan Buttons
   app.querySelectorAll('.btn-mock-qr-scan').forEach(btn => {
     btn.addEventListener('click', () => {
       const pName = btn.dataset.plot;
       const found = plots.find(p => p.plotName === pName || p.kodePlot === pName) || plots[0];
-      proceedWithPlot(found, 'QR_SCAN');
+      proceedToForm(found, 'QR_SCAN');
     });
   });
 
-  // Manual Sheet Logic
-  const overlay = app.querySelector('#overlay-manual-sheet');
-  const sheet = app.querySelector('#sheet-manual-plot');
-  const listContainer = app.querySelector('#plot-list-container');
-  const searchInput = app.querySelector('#inp-search-plot');
+  // Manual Select Modal Sheet
+  const overlayManual = app.querySelector('#overlay-manual-plot-sheet');
+  const sheetManual = app.querySelector('#sheet-manual-plot');
 
-  const openSheet = () => {
-    overlay.style.display = 'block';
-    sheet.style.display = 'flex';
+  const openManualSheet = () => {
+    if (overlayManual) overlayManual.style.display = 'block';
+    if (sheetManual) sheetManual.style.display = 'flex';
   };
 
-  const closeSheet = () => {
-    overlay.style.display = 'none';
-    sheet.style.display = 'none';
+  const closeManualSheet = () => {
+    if (overlayManual) overlayManual.style.display = 'none';
+    if (sheetManual) sheetManual.style.display = 'none';
   };
 
-  app.querySelector('#btn-pilih-manual')?.addEventListener('click', openSheet);
-  overlay?.addEventListener('click', closeSheet);
-  app.querySelector('#btn-close-manual-sheet')?.addEventListener('click', closeSheet);
+  app.querySelector('#btn-manual-select-topping')?.addEventListener('click', openManualSheet);
+  overlayManual?.addEventListener('click', closeManualSheet);
+  app.querySelector('#btn-close-manual-sheet')?.addEventListener('click', closeManualSheet);
 
-  const bindCardClicks = () => {
-    app.querySelectorAll('.card-pick-manual-plot').forEach(card => {
-      card.addEventListener('click', () => {
-        const pName = card.dataset.plot;
-        const found = plots.find(p => p.plotName === pName || p.kodePlot === pName) || plots[0];
-        closeSheet();
-        proceedWithPlot(found, 'MANUAL');
-      });
-    });
-  };
-  bindCardClicks();
-
-  // Search plot filter
-  searchInput?.addEventListener('input', (e) => {
-    const q = e.target.value.toLowerCase().trim();
-    const filtered = plots.filter(p => 
-      p.kodePlot.toLowerCase().includes(q) || 
-      p.plotName.toLowerCase().includes(q) || 
-      p.namaKlon.toLowerCase().includes(q) ||
-      p.id.toLowerCase().includes(q)
-    );
-
-    if (listContainer) {
-      if (filtered.length === 0) {
-        listContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: #94A3B8; font-size: 0.82rem;">Plot "${q}" tidak ditemukan.</div>`;
-      } else {
-        listContainer.innerHTML = filtered.map(p => `
-          <div class="card-pick-manual-plot" data-plot="${p.plotName}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.15s ease;">
-            <div>
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-weight: 700; font-size: 0.85rem; color: #0F172A;">${p.kodePlot}</span>
-                <span style="background: #E8F5E9; color: #116834; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">${p.namaKlon}</span>
-              </div>
-              <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
-                ${p.lokasi} • Thn Tanam: ${p.tahunTanam || 2019}
-              </div>
-            </div>
-            <div style="text-align: right;">
-              <div style="font-size: 0.82rem; font-weight: 700; color: #116834;">${p.jlhPokok} Pkk</div>
-              <span style="font-size: 0.65rem; color: #2563EB; font-weight: 600;">Pilih Plot →</span>
-            </div>
-          </div>
-        `).join('');
-        bindCardClicks();
+  app.querySelectorAll('.card-pick-manual-plot').forEach(card => {
+    card.addEventListener('click', (e) => {
+      const idx = parseInt(e.currentTarget.dataset.index, 10);
+      const chosen = plots[idx];
+      if (chosen) {
+        closeManualSheet();
+        proceedToForm(chosen, 'MANUAL_SELECT');
       }
-    }
+    });
   });
 }
-

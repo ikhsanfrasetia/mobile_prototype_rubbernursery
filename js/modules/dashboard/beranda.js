@@ -27,6 +27,7 @@ import {
   syncAllDederanRejectionsToSelectionPool
 } from '../seeding/dederan-manager.js';
 import { getEligiblePindahSemaiSources } from '../seeding/dederan-pindah-semai-adapter.js';
+import { getMantriTodayTransactions } from '../verification/mantri-confirmation-service.js';
 
 /* SVG Icons sesuai desain acuan - proporsional & tajam */
 const ICONS = {
@@ -709,9 +710,12 @@ export function renderBeranda() {
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const hasPendingPenerimaan = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
 
-  // Hitung pending verifikasi & konsolidasi untuk Mantri
-  const hasPendingVerifikasi = getPendingVerificationCount(userCtx) > 0;
+  // Hitung pending konsolidasi untuk Mantri
   const hasPendingKonsolidasi = getActionableConsolidationCount(userCtx) > 0;
+
+  // Hitung transaksi Mantri hari ini untuk tombol Konfirmasi untuk Verifikasi
+  const mantriTodayTxs = getMantriTodayTransactions(userCtx);
+  const hasTodayMantriTxs = mantriTodayTxs.length > 0;
 
   const menuCards = MENU_ITEMS.map((item) => {
     let badgeHtml = '';
@@ -764,10 +768,12 @@ export function renderBeranda() {
           ${hasPendingKonsolidasi ? `<span class="notif-dot" style="display: inline-block; width: 8px; height: 8px; background-color: #D32F2F; border-radius: 50%; margin-left: 6px;"></span>` : ''}
           <span class="action-arrow">›</span>
         </button>
-        <button class="beranda-action-btn" id="btn-verifikasi" type="button" style="position: relative;">
-          <span class="action-text">Konfirmasi untuk Verifikasi</span>
-          ${hasPendingVerifikasi ? `<span class="notif-dot" style="display: inline-block; width: 8px; height: 8px; background-color: #D32F2F; border-radius: 50%; margin-left: 6px;"></span>` : ''}
-          <span class="action-arrow">›</span>
+        <button class="beranda-action-btn ${hasTodayMantriTxs ? 'beranda-btn-active-green' : ''}" id="btn-verifikasi" type="button" style="position: relative; ${hasTodayMantriTxs ? 'background: #116834; border-color: #0D5229; cursor: pointer;' : 'opacity: 0.65; cursor: not-allowed;'}">
+          <div style="display: flex; align-items: center;">
+            <span class="action-text" style="${hasTodayMantriTxs ? 'color: #FFFFFF; font-weight: 700;' : ''}">Konfirmasi untuk Verifikasi</span>
+            ${hasTodayMantriTxs ? `<span class="badge-count" style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; background-color: #FFFFFF; color: #116834; font-size: 0.72rem; font-weight: 800; border-radius: 999px; margin-left: 8px;">${mantriTodayTxs.length}</span>` : ''}
+          </div>
+          <span class="action-arrow" style="${hasTodayMantriTxs ? 'color: #FFFFFF;' : ''}">›</span>
         </button>
       </footer>
     </div>
@@ -795,6 +801,10 @@ export function renderBeranda() {
   });
 
   app.querySelector('#btn-verifikasi').addEventListener('click', () => {
-    toast('Belum ada transaksi menunggu verifikasi', 'info');
+    if (hasTodayMantriTxs) {
+      navigate('/mantri-confirmation');
+    } else {
+      toast('Belum ada transaksi hari ini untuk diverifikasi', 'info');
+    }
   });
 }

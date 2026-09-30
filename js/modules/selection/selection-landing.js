@@ -345,14 +345,12 @@ function renderAsistenSelectionReview(app, currentUser) {
                             <div style="color: #64748B; font-size: 0.62rem; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                               ${isSeleksi3
         ? `${tx.polybagScope || tx.initialPolybagCount || 0} Ply (${tx.bibitAwal || 0} Pkk) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
-        : (isSeleksi2
-          ? `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2→1, ${tx.polybag1Bibit || 0}x1→1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`
-          : `${tx.polybagScope} Ply (${tx.polybag2Bibit || 0}x2, ${tx.polybag1Bibit || 0}x1, ${tx.polybag0Bibit || 0}x0) • ${esc(tx.tanggalSeleksi || tx.tanggal)}`)}
+        : `${tx.polybagScope || tx.actualPolybagInspectedQty || 0} Ply • ${esc(tx.tanggalSeleksi || tx.tanggal)}`}
                             </div>
                           </div>
                           <div style="text-align: right; flex-shrink: 0;">
-                            <div style="font-weight: 700; color: #15803D; font-size: 0.70rem;">+${(tx.bibitDipertahankan || tx.jumlahLayak || 0).toLocaleString('id-ID')} Pkk</div>
-                            <div style="font-size: 0.62rem; font-weight: 600; color: #DC2626;">-${(tx.bibitReject || tx.jumlahAfkir || 0).toLocaleString('id-ID')} Reject</div>
+                            <div style="font-weight: 700; color: #15803D; font-size: 0.70rem;">+${(tx.bibitDipertahankan !== undefined ? tx.bibitDipertahankan : (tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.jumlahLayak || 0))).toLocaleString('id-ID')} Pkk</div>
+                            <div style="font-size: 0.62rem; font-weight: 600; color: #DC2626;">-${(tx.bibitReject !== undefined ? tx.bibitReject : (tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0))).toLocaleString('id-ID')} Reject</div>
                           </div>
                         </div>
                       `).join('')}
@@ -1141,11 +1139,18 @@ function renderMantriSelectionLanding(app, user) {
             const p2 = tx.polybag2Bibit || 0;
             const p1 = tx.polybag1Bibit || 0;
             const p0 = tx.polybag0Bibit || 0;
-            const polyChecked = tx.polybagScope || tx.initialPolybagCount || (p2 + p1 + p0);
-            const bibitLayak = tx.bibitDipertahankan || tx.jumlahLayak || ((p2 * 2) + p1);
-            const bibitAfkir = tx.bibitReject || tx.jumlahAfkir || (p1 + (p0 * 2));
-            const bibitAwal = polyChecked * 2;
-            const isBalanced = (p2 + p1 + p0 === polyChecked) && (bibitLayak + bibitAfkir === bibitAwal);
+            const polyChecked = tx.actualPolybagInspectedQty !== undefined
+              ? tx.actualPolybagInspectedQty
+              : (tx.polybagScope || tx.initialPolybagCount || (p2 + p1 + p0));
+            const bibitLayak = tx.actualBibitRetainedQty !== undefined
+              ? tx.actualBibitRetainedQty
+              : (tx.bibitDipertahankan !== undefined ? tx.bibitDipertahankan : (tx.jumlahLayak || ((p2 * 2) + p1)));
+            const bibitAfkir = tx.actualBibitSelectedQty !== undefined
+              ? tx.actualBibitSelectedQty
+              : (tx.bibitReject !== undefined ? tx.bibitReject : (tx.jumlahAfkir || (p1 + (p0 * 2))));
+            const bibitDiperiksa = tx.sourceBibitQty !== undefined
+              ? tx.sourceBibitQty
+              : (tx.bibitAwal !== undefined ? tx.bibitAwal : (tx.jumlahDiperiksa !== undefined ? tx.jumlahDiperiksa : (polyChecked * 2)));
             const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
 
             return `
@@ -1188,27 +1193,20 @@ function renderMantriSelectionLanding(app, user) {
                                   <div>Status: <strong style="color: #15803D;">Selesai</strong></div>
                                 </div>
 
-                                <!-- BREAKDOWN P2, P1, P0 -->
-                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;">
+                                <!-- METRICS HASIL BIBIT SELEKSI I (CONTRACT BARU) -->
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 6px; margin-bottom: 8px;">
                                   <div>
-                                    <div style="font-size: 0.60rem; font-weight: 700; color: #15803D;">2 Bibit / Ply (P2)</div>
-                                    <div style="font-size: 0.82rem; font-weight: 800; color: #15803D; margin-top: 1px;">${p2.toLocaleString('id-ID')}</div>
+                                    <div style="font-size: 0.60rem; font-weight: 700; color: #475569;">Bibit Diperiksa</div>
+                                    <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; margin-top: 1px;">${bibitDiperiksa.toLocaleString('id-ID')}</div>
                                   </div>
                                   <div style="border-left: 1px solid #E2E8F0;">
-                                    <div style="font-size: 0.60rem; font-weight: 700; color: #D97706;">1 Bibit / Ply (P1)</div>
-                                    <div style="font-size: 0.82rem; font-weight: 800; color: #D97706; margin-top: 1px;">${p1.toLocaleString('id-ID')}</div>
+                                    <div style="font-size: 0.60rem; font-weight: 700; color: #DC2626;">Bibit Diseleksi</div>
+                                    <div style="font-size: 0.82rem; font-weight: 800; color: #DC2626; margin-top: 1px;">${bibitAfkir.toLocaleString('id-ID')}</div>
                                   </div>
                                   <div style="border-left: 1px solid #E2E8F0;">
-                                    <div style="font-size: 0.60rem; font-weight: 700; color: #DC2626;">0 Bibit / Ply (P0)</div>
-                                    <div style="font-size: 0.82rem; font-weight: 800; color: #DC2626; margin-top: 1px;">${p0.toLocaleString('id-ID')}</div>
+                                    <div style="font-size: 0.60rem; font-weight: 700; color: #15803D;">Bibit Dipertahankan</div>
+                                    <div style="font-size: 0.82rem; font-weight: 800; color: #15803D; margin-top: 1px;">${bibitLayak.toLocaleString('id-ID')}</div>
                                   </div>
-                                </div>
-
-                                <!-- METRICS HASIL BIBIT -->
-                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; font-size: 0.70rem; margin-bottom: 8px; text-align: center; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 4px;">
-                                  <div>Bibit Awal: <strong style="color: #0F172A;">${bibitAwal.toLocaleString('id-ID')}</strong></div>
-                                  <div>Layak: <strong style="color: #15803D;">${bibitLayak.toLocaleString('id-ID')}</strong></div>
-                                  <div>Reject: <strong style="color: #DC2626;">${bibitAfkir.toLocaleString('id-ID')}</strong></div>
                                 </div>
 
                                 <!-- PENCATAT & CATATAN -->
@@ -2336,7 +2334,7 @@ export function openSelectionConfirmationModal({ item, displayDocNo, user, onCon
       <!-- PILIHAN KLASIFIKASI DEKLARASI -->
       <div style="margin-bottom: 14px;">
         <label style="display: block; font-size: 0.76rem; font-weight: 700; color: #0F172A; margin-bottom: 6px;">
-          Klasifikasi Deklarasi Bibit <span style="color: #DC2626;">*</span>
+          Klasifikasi Seleksi Bibit <span style="color: #DC2626;">*</span>
         </label>
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;" id="declaration-category-group">
           <label style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; border: 1.5px solid #CBD5E1; border-radius: 6px; cursor: pointer; background: #FFFFFF; text-align: center; user-select: none; transition: all 0.15s ease;" class="cat-radio-label">
@@ -2840,9 +2838,9 @@ export function openPreGraftingReviewModal({ doc, user, onSubmitted }) {
     <div style="display: flex; gap: 8px; width: 100%;">
       <button type="button" class="btn btn-ghost" id="btn-close-review-modal" style="flex: 1; height: 38px; font-size: 0.80rem;">Tutup</button>
       ${!isSubmitted && !isApproved ? `
-        <button type="button" class="btn btn-primary" id="btn-submit-to-asisten" style="flex: 2; height: 38px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.80rem; border: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+        <button type="button" class="btn btn-primary" id="btn-go-to-confirmation-hub" style="flex: 2; height: 38px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.80rem; border: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
           <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
-          Kirim ke Asisten Bibitan
+          Konfirmasi di Central Hub
         </button>
       ` : ''}
     </div>
@@ -2859,15 +2857,9 @@ export function openPreGraftingReviewModal({ doc, user, onSubmitted }) {
 
   modalRoot.querySelector('#btn-close-review-modal')?.addEventListener('click', closeModal);
 
-  modalRoot.querySelector('#btn-submit-to-asisten')?.addEventListener('click', () => {
-    try {
-      submitPreGraftingSelectionDocumentToAsisten(doc.id, user);
-      closeModal();
-      toast(`Dokumen ${stageLabel} (${doc.docNo}) berhasil diajukan ke Asisten Bibitan untuk verifikasi.`, 'success');
-      if (onSubmitted) onSubmitted();
-    } catch (err) {
-      toast(err.message || 'Gagal mengajukan dokumen ke Asisten', 'error');
-    }
+  modalRoot.querySelector('#btn-go-to-confirmation-hub')?.addEventListener('click', () => {
+    closeModal();
+    navigate('/mantri-confirmation');
   });
 }
 
@@ -3096,8 +3088,8 @@ export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
 
   const initialRemainingPolybag = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
 
-  const existingBibitSelected = executions.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+  const existingBibitSelected = executions.reduce((sum, tx) =>
+    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10),
     0
   );
   const initialRetained = Math.max(0, sourceBibit - existingBibitSelected);
@@ -3406,8 +3398,8 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
 
   const initialRemainingPolybag = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
 
-  const existingBibitSelected = executions.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+  const existingBibitSelected = executions.reduce((sum, tx) =>
+    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10),
     0
   );
   const initialRetained = Math.max(0, sourceBibit - existingBibitSelected);
@@ -3715,8 +3707,8 @@ export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
 
   const initialScopePoly = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
 
-  const existingBibitSelected = executions.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+  const existingBibitSelected = executions.reduce((sum, tx) =>
+    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10),
     0
   );
   const initialRetained = Math.max(0, sourceBibit - existingBibitSelected);

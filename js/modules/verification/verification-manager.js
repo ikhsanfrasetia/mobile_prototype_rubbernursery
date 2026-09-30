@@ -267,32 +267,46 @@ function generateVerificationNo() {
 }
 
 /**
- * Helper mencari source transaction record
+ * Helper mencari source transaction record dan storage key-nya
  */
 function findSourceRecord(referenceType, referenceId) {
-  let storeKey = '';
-  switch (referenceType) {
-    case REFERENCE_TYPES.REQUEST:
-      storeKey = 'requests_transactions';
-      break;
-    case REFERENCE_TYPES.DISPATCH:
-      storeKey = 'dispatch_transactions';
-      break;
-    case REFERENCE_TYPES.RECEIPT:
-      storeKey = 'receipt_ksp_transactions';
-      break;
-    case REFERENCE_TYPES.SELECTION:
-      storeKey = 'selection_transactions';
-      break;
-    case REFERENCE_TYPES.DESTRUCTION:
-      storeKey = 'destruction_transactions';
-      break;
-    default:
-      return null;
-  }
+  const typeMap = {
+    [REFERENCE_TYPES.REQUEST]: 'requests_transactions',
+    REQUEST: 'requests_transactions',
+    [REFERENCE_TYPES.DISPATCH]: 'dispatch_transactions',
+    DISPATCH: 'dispatch_transactions',
+    PENGELUARAN: 'dispatch_transactions',
+    [REFERENCE_TYPES.RECEIPT]: 'receipt_ksp_transactions',
+    RECEIPT: 'receipt_ksp_transactions',
+    PENERIMAAN: 'receipt_ksp_transactions',
+    [REFERENCE_TYPES.SELECTION]: 'selection_transactions',
+    SELECTION: 'selection_transactions',
+    PENYELEKSIAN: 'selection_transactions',
+    SELEKSI_PRA_OKULASI: 'pre_grafting_selection_documents',
+    [REFERENCE_TYPES.DESTRUCTION]: 'destruction_transactions',
+    DESTRUCTION: 'destruction_transactions',
+    PRESENSI: 'attendance_transactions',
+    ATTENDANCE: 'attendance_transactions',
+    PENYEMAIAN: 'seeding_transactions',
+    SEEDING: 'seeding_transactions',
+    DEDERAN: 'dederan_transactions',
+    MENUNAS: 'entres_menunas_transactions',
+    TOPPING: 'entres_topping_transactions',
+    OKULASI: 'budding_transactions',
+    BUDDING: 'budding_transactions',
+    PEMERIKSAAN: 'inspection_transactions',
+    INSPECTION: 'inspection_transactions',
+    PEMERIKSAAN_DEDERAN: 'dederan_inspections',
+    PEMELIHARAAN: 'nursery_activity_transactions',
+    MATERIAL: 'material_usage_transactions',
+    SIMULASI_GUDANG: 'warehouse_issue_simulations'
+  };
 
+  const storeKey = typeMap[referenceType] || 'requests_transactions';
   const items = storage.get(storeKey, []);
-  return items.find(item => String(item.id || item.requestId || item.dispatchId || item.receiptId || item.selectionId || item.destructionId) === String(referenceId)) || null;
+  const record = items.find(item => String(item.id || item.requestId || item.dispatchId || item.receiptId || item.selectionId || item.destructionId || item.docNo) === String(referenceId)) || null;
+
+  return record ? { ...record, _storeKey: storeKey } : null;
 }
 
 /**
@@ -330,7 +344,7 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
     throw new Error(`Dokumen ini sudah diverifikasi sebelumnya dengan No: ${existingVerif.verificationNo}.`);
   }
 
-  // 4. CONSISTENCY GATE: Check for ERROR
+  // 4. CONSISTENCY GATE: Check for ERROR (if dataset contains record)
   const dataset = getConsolidatedData(currentUser);
   const evalResult = evaluateRecordConsistency(referenceType, sourceRecord, dataset);
   if (!evalResult.canApprove || evalResult.errors.length > 0) {
@@ -364,10 +378,25 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
     updatedAt: nowIso
   };
 
-  // 6. Simpan ke verification_transactions (ZERO STOCK MUTATION)
+  // 6. Simpan ke verification_transactions
   const currentVerifs = storage.get(VERIFICATION_STORAGE_KEY, []);
   currentVerifs.push(auditRecord);
   storage.set(VERIFICATION_STORAGE_KEY, currentVerifs);
+
+  // 7. Update status pada raw source record jika ada storeKey
+  if (sourceRecord._storeKey) {
+    const records = storage.get(sourceRecord._storeKey, []);
+    const idx = records.findIndex(r => String(r.id || r.docNo || '') === String(referenceId));
+    if (idx !== -1) {
+      records[idx].status = 'DISETUJUI';
+      records[idx].isFinal = true;
+      records[idx].verificationStatus = VERIFICATION_STATUS.TERVERIFIKASI;
+      records[idx].verifiedAt = nowIso;
+      records[idx].verifiedByUserId = currentUser.userId || currentUser.id;
+      records[idx].verifiedByName = currentUser.name || 'Asisten Bibitan';
+      storage.set(sourceRecord._storeKey, records);
+    }
+  }
 
   return auditRecord;
 }

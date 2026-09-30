@@ -7,6 +7,8 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { getMataEntresBalances, validateToppingDeletion } from '../../core/entres-inventory-service.js';
+import { toast } from '../../components/toast.js';
 
 function formatDateDDMMYYYY(val) {
   if (!val) return '-';
@@ -24,6 +26,7 @@ export function renderEntresLanding() {
   // 1. Ambil data transaksi dari storage
   const menunasTxs = storage.get('entres_menunas_transactions', []);
   const toppingTxs = storage.get('entres_topping_transactions', []);
+  const entresBalances = getMataEntresBalances();
 
   // Gabungkan transaksi dengan originalIndex masing-masing untuk fitur Edit & Hapus
   const allTxs = [
@@ -96,6 +99,59 @@ export function renderEntresLanding() {
 
         </div>
 
+        <!-- RINGKASAN SALDO MATA ENTRES PER KLON (DERIVED LEDGER) -->
+        <div style="margin-top: 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="width: 28px; height: 28px; border-radius: 6px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; color: #116834;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 7h-7L10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"></path>
+                </svg>
+              </div>
+              <div>
+                <h2 style="font-size: 0.95rem; font-weight: 700; color: #111827; margin: 0;">Stok Mata Entres per Klon</h2>
+                <div style="font-size: 0.72rem; color: #6B7280; margin-top: 1px;">Saldo real-time (Topping − Okulasi − Regrafting)</div>
+              </div>
+            </div>
+            <span style="font-size: 0.7rem; font-weight: 700; background: #F3F4F6; color: #4B5563; padding: 3px 8px; border-radius: 4px;">
+              ${entresBalances.length} Klon
+            </span>
+          </div>
+
+          ${entresBalances.length === 0 ? `
+            <div style="text-align: center; padding: 14px 8px; color: #9CA3AF; font-size: 0.8rem; font-style: italic; background: #F9FAFB; border-radius: 8px; border: 1px dashed #E5E7EB;">
+              Belum ada hasil panen Topping untuk membentuk stok mata entres.
+            </div>
+          ` : `
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              ${entresBalances.map(b => `
+                <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
+                  <div style="min-width: 0; flex: 1;">
+                    <div style="font-weight: 700; font-size: 0.9rem; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                      ${b.klonName}
+                    </div>
+                    <div style="font-size: 0.74rem; color: #6B7280; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px;">
+                      <span>Panen: <b style="color: #1F2937;">${b.totalPanenTopping.toLocaleString('id-ID')}</b></span>
+                      <span>•</span>
+                      <span>Grafting: <b style="color: #1F2937;">${b.totalPakaiGrafting.toLocaleString('id-ID')}</b></span>
+                      <span>•</span>
+                      <span>Regrafting: <b style="color: #1F2937;">${b.totalPakaiRegrafting.toLocaleString('id-ID')}</b></span>
+                    </div>
+                  </div>
+                  <div style="text-align: right; margin-left: 12px; flex-shrink: 0;">
+                    <div style="font-size: 1rem; font-weight: 800; color: ${b.saldoMataEntres > 0 ? '#116834' : '#DC2626'};">
+                      ${b.saldoMataEntres.toLocaleString('id-ID')}
+                    </div>
+                    <div style="font-size: 0.68rem; font-weight: 700; color: ${b.saldoMataEntres > 0 ? '#059669' : '#9CA3AF'}; text-transform: uppercase; margin-top: 1px;">
+                      ${b.saldoMataEntres > 0 ? 'Tersedia' : 'Habis'}
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+
         <!-- RINGKASAN DATA TRANSAKSI PERSIS MODUL PENYEMAIAN -->
         <div style="padding: 24px 0 16px 0;">
           <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 16px 0;">
@@ -150,46 +206,34 @@ export function renderEntresLanding() {
               <!-- ACCORDION CONTENT DETAIL -->
               <div class="card-details-content" style="display: none; flex-direction: column;">
                 ${tx.activityType === 'Menunas' ? `
+                  ${tx.jumlahPohonDitunas ? `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
+                      <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Pohon Ditunas</span>
+                      <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${parseInt(tx.jumlahPohonDitunas || 0).toLocaleString('id-ID')} Pohon</span>
+                    </div>
+                  ` : ''}
+                  ${tx.jumlahPerisai ? `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
+                      <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Perisai (Legacy)</span>
+                      <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${parseInt(tx.jumlahPerisai || 0).toLocaleString('id-ID')} Perisai</span>
+                    </div>
+                  ` : ''}
                   <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Perisai</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${parseInt(tx.jumlahPerisai || 0).toLocaleString('id-ID')} Perisai</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Cabang</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${parseInt(tx.jumlahCabang || 0).toLocaleString('id-ID')} Cabang</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Panjang Kayu</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${parseFloat(tx.jumlahPanjangMeter || 0).toLocaleString('id-ID')} Meter</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Rata-rata Perisai / Cabang</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${(tx.jumlahPerisai && tx.jumlahCabang ? (tx.jumlahPerisai / tx.jumlahCabang).toFixed(2) : '-')}</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Rata-rata Perisai / Meter</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${(tx.jumlahPerisai && tx.jumlahPanjangMeter ? (tx.jumlahPerisai / tx.jumlahPanjangMeter).toFixed(2) : '-')}</span>
+                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Populasi Master Plot</span>
+                    <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${parseInt(tx.jlhPokok || 0).toLocaleString('id-ID')} Pkk</span>
                   </div>
                 ` : `
                   <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jlh Kayu Okulasi</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${parseInt(tx.jumlahKayu || 0).toLocaleString('id-ID')} Kayu</span>
+                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Stik Hijau</span>
+                    <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${parseInt(tx.jumlahKayu || 0).toLocaleString('id-ID')} Stik</span>
                   </div>
                   <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Total Panjang Kayu</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${parseFloat(tx.totalPanjangMeter || 0).toLocaleString('id-ID')} Meter</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Perisai</span>
+                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Hasil Panen Mata Entres</span>
                     <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${parseInt(tx.jumlahPerisai || 0).toLocaleString('id-ID')} Perisai</span>
                   </div>
                   <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Rata-rata Perisai / Kayu</span>
+                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Rata-rata Perisai / Stik</span>
                     <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${(tx.jumlahPerisai && tx.jumlahKayu ? (tx.jumlahPerisai / tx.jumlahKayu).toFixed(2) : '-')}</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Rata-rata Perisai / Meter</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${(tx.jumlahPerisai && tx.totalPanjangMeter ? (tx.jumlahPerisai / tx.totalPanjangMeter).toFixed(2) : '-')}</span>
                   </div>
                 `}
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
@@ -322,8 +366,18 @@ export function renderEntresLanding() {
         storage.set('entres_menunas_transactions', txs);
       } else {
         const txs = storage.get('entres_topping_transactions', []);
+        const targetTx = txs[pendingDeleteOrigIdx];
+        if (targetTx) {
+          const deleteCheck = validateToppingDeletion(targetTx.docNo);
+          if (!deleteCheck.valid) {
+            toast.error(deleteCheck.message);
+            closeDeleteDialog();
+            return;
+          }
+        }
         txs.splice(pendingDeleteOrigIdx, 1);
         storage.set('entres_topping_transactions', txs);
+        toast.success(`Transaksi Topping berhasil dihapus.`);
       }
     }
     closeDeleteDialog();

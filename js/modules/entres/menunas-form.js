@@ -3,13 +3,14 @@
  * Menampilkan identitas plot dari hasil scan QR/pilihan manual:
  * - Kode Plot
  * - Nama Klon
- * - Jlh Pokok per Plot
+ * - Jlh Pokok per Plot (Populasi Master Plot - Read-only)
  * 
  * Field Input Transaksi:
  * 1. Tanggal Menunas (otomatis current date)
- * 2. Input Jumlah Perisai* (Number)
- * 3. Input Jumlah Cabang* (Number)
- * 4. Input Jumlah Panjang dlm Meter* (Number)
+ * 2. Input Jumlah Pohon Ditunas* (Number - Realisasi aktivitas)
+ * 
+ * Field Preservation:
+ * Seluruh schema legacy (jumlahPerisai, jumlahCabang, jumlahPanjangMeter, dll) tetap dipertahankan.
  */
 
 import { navigate } from '../../core/router.js';
@@ -80,9 +81,7 @@ export function renderMenunasForm() {
   const editData = (editingIdx !== null && txs[editingIdx]) ? txs[editingIdx] : null;
 
   const initialTgl = editData ? editData.tanggal : todayISO();
-  const initialPerisai = editData ? editData.jumlahPerisai : '';
-  const initialCabang = editData ? editData.jumlahCabang : '';
-  const initialPanjang = editData ? editData.jumlahPanjangMeter : '';
+  const initialPohonDitunas = editData ? (editData.jumlahPohonDitunas || '') : '';
 
   app.innerHTML = `
     <div class="page menunas-form-page" style="display: flex; flex-direction: column; height: 100%; background: #F8FAF9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
@@ -97,7 +96,7 @@ export function renderMenunasForm() {
             </svg>
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">
-            Transaksi Menunas
+            ${editData ? 'Edit Transaksi Menunas' : 'Transaksi Menunas'}
           </h1>
         </div>
       </header>
@@ -110,7 +109,7 @@ export function renderMenunasForm() {
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <div>
               <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px;">
-                Identitas Plot Entres
+                Identitas Plot Entres (QR Verified)
               </span>
               <div style="font-size: 1.15rem; font-weight: 800; color: #111827; line-height: 1.2;">
                 ${selectedPlot.kodePlot}
@@ -121,7 +120,7 @@ export function renderMenunasForm() {
             </button>
           </div>
 
-          <!-- GRID IDENTITAS: NAMA KLON & JLH POKOK PER PLOT (SIMETRIS 50:50) -->
+          <!-- GRID IDENTITAS: NAMA KLON & JLH POKOK POPULASI MASTER (50:50) -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px;">
             <div style="padding-right: 12px;">
               <div style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Nama Klon:</div>
@@ -130,7 +129,7 @@ export function renderMenunasForm() {
               </div>
             </div>
             <div style="border-left: 1px solid #E2E8F0; padding-left: 12px;">
-              <div style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Jlh Pokok per Plot:</div>
+              <div style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Populasi Master Plot:</div>
               <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 3px;">
                 ${parseInt(selectedPlot.jlhPokok || 0).toLocaleString('id-ID')} Pkk
               </div>
@@ -141,7 +140,7 @@ export function renderMenunasForm() {
         <!-- 2. FORMULIR INPUT TRANSAKSI MENUNAS -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
           <h2 style="font-size: 0.88rem; font-weight: 700; color: #111827; margin: 0 0 14px 0; padding-bottom: 8px; border-bottom: 1px solid #F1F5F9;">
-            Data Realisasi Menunas
+            Rincian Kegiatan Menunas
           </h2>
 
           <div style="display: flex; flex-direction: column; gap: 14px;">
@@ -156,63 +155,23 @@ export function renderMenunasForm() {
               </div>
             </div>
 
-            <!-- 2. INPUT JUMLAH PERISAI* (NUMBER) -->
+            <!-- 2. INPUT JUMLAH POHON DITUNAS* (NUMBER) -->
             <div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <label for="inp-perisai" style="font-size: 0.76rem; font-weight: 700; color: #374151;">
-                  Jumlah Perisai <span style="color: #DC2626;">*</span>
+                <label for="inp-pohon-ditunas" style="font-size: 0.76rem; font-weight: 700; color: #111827;">
+                  Jumlah Pohon Ditunas <span style="color: #DC2626;">*</span>
                 </label>
-                <span style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Mata Tunas / Perisai</span>
+                <span style="font-size: 0.68rem; color: #116834; font-weight: 700;">Realisasi Aktual</span>
               </div>
               <div style="position: relative;">
-                <input id="inp-perisai" type="number" min="1" value="${initialPerisai}" placeholder="Contoh: 500" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.90rem; font-weight: 700; color: #111827; box-sizing: border-box; transition: border-color 0.15s ease;" />
-                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #64748B;">Perisai</span>
+                <input id="inp-pohon-ditunas" type="number" min="1" value="${initialPohonDitunas}" placeholder="Contoh: 120" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #116834; border-radius: 8px; font-size: 0.92rem; font-weight: 800; color: #116834; box-sizing: border-box; transition: border-color 0.15s ease;" />
+                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #116834;">Pohon</span>
+              </div>
+              <div style="font-size: 0.68rem; color: #64748B; margin-top: 4px;">
+                Masukkan jumlah pohon aktual yang dikerjakan pada kegiatan menunas hari ini.
               </div>
             </div>
 
-            <!-- 3. INPUT JUMLAH CABANG* (NUMBER) -->
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <label for="inp-cabang" style="font-size: 0.76rem; font-weight: 700; color: #374151;">
-                  Jumlah Cabang <span style="color: #DC2626;">*</span>
-                </label>
-                <span style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Cabang / Batang</span>
-              </div>
-              <div style="position: relative;">
-                <input id="inp-cabang" type="number" min="1" value="${initialCabang}" placeholder="Contoh: 250" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.90rem; font-weight: 700; color: #111827; box-sizing: border-box; transition: border-color 0.15s ease;" />
-                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #64748B;">Cabang</span>
-              </div>
-            </div>
-
-            <!-- 4. INPUT JUMLAH PANJANG DLM METER* (NUMBER) -->
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <label for="inp-panjang" style="font-size: 0.76rem; font-weight: 700; color: #374151;">
-                  Jumlah Panjang Meter <span style="color: #DC2626;">*</span>
-                </label>
-                <span style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Satuan: Meter (m)</span>
-              </div>
-              <div style="position: relative;">
-                <input id="inp-panjang" type="number" min="0.1" step="0.1" value="${initialPanjang}" placeholder="Contoh: 150" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.90rem; font-weight: 700; color: #111827; box-sizing: border-box; transition: border-color 0.15s ease;" />
-                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #64748B;">Meter</span>
-              </div>
-            </div>
-
-          </div>
-
-          <!-- RANGKUMAN ESTIMASI HASIL MENUNAS -->
-          <div id="box-summary" style="margin-top: 14px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px 12px;">
-            <div style="font-size: 0.72rem; font-weight: 700; color: #166534; margin-bottom: 4px;">
-              Estimasi Rata-rata Entres:
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #15803D;">
-              <span>Rata-rata Perisai / Cabang:</span>
-              <strong id="disp-avg-cabang">- Perisai/Cabang</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #15803D; margin-top: 2px;">
-              <span>Rata-rata Perisai / Meter:</span>
-              <strong id="disp-avg-meter">- Perisai/Meter</strong>
-            </div>
           </div>
 
         </div>
@@ -249,37 +208,10 @@ export function renderMenunasForm() {
     </div>
   `;
 
-  // Dynamic Calculation Update
-  const inpPerisai = app.querySelector('#inp-perisai');
-  const inpCabang = app.querySelector('#inp-cabang');
-  const inpPanjang = app.querySelector('#inp-panjang');
-  const dispAvgCabang = app.querySelector('#disp-avg-cabang');
-  const dispAvgMeter = app.querySelector('#disp-avg-meter');
-
-  const updateCalculations = () => {
-    const p = parseFloat(inpPerisai?.value || 0);
-    const c = parseFloat(inpCabang?.value || 0);
-    const m = parseFloat(inpPanjang?.value || 0);
-
-    if (p > 0 && c > 0) {
-      dispAvgCabang.textContent = `${(p / c).toFixed(1)} Perisai/Cabang`;
-    } else {
-      dispAvgCabang.textContent = '- Perisai/Cabang';
-    }
-
-    if (p > 0 && m > 0) {
-      dispAvgMeter.textContent = `${(p / m).toFixed(1)} Perisai/Meter`;
-    } else {
-      dispAvgMeter.textContent = '- Perisai/Meter';
-    }
-  };
-
-  inpPerisai?.addEventListener('input', updateCalculations);
-  inpCabang?.addEventListener('input', updateCalculations);
-  inpPanjang?.addEventListener('input', updateCalculations);
-
-  // Jalankan kalkulasi awal jika form memuat data edit
-  updateCalculations();
+  // Change Plot Button Action
+  app.querySelector('#btn-change-plot')?.addEventListener('click', () => {
+    navigate('/entres/menunas');
+  });
 
   // Back & Cancel Actions
   app.querySelector('#btn-back')?.addEventListener('click', () => {
@@ -319,31 +251,25 @@ export function renderMenunasForm() {
   // Save Menunas Transaction
   app.querySelector('#btn-simpan-menunas')?.addEventListener('click', () => {
     const tgl = app.querySelector('#inp-tanggal')?.dataset.iso || initialTgl || todayISO();
-    const perisaiVal = (inpPerisai?.value || '').trim();
-    const cabangVal = (inpCabang?.value || '').trim();
-    const panjangVal = (inpPanjang?.value || '').trim();
+    const pohonDitunasVal = (app.querySelector('#inp-pohon-ditunas')?.value || '').trim();
 
     const errors = [];
     if (!tgl) errors.push('Tanggal Menunas wajib diisi.');
-    if (!perisaiVal || parseInt(perisaiVal) <= 0) errors.push('Jumlah Perisai wajib diisi angka > 0.');
-    if (!cabangVal || parseInt(cabangVal) <= 0) errors.push('Jumlah Cabang wajib diisi angka > 0.');
-    if (!panjangVal || parseFloat(panjangVal) <= 0) errors.push('Jumlah Panjang dlm Meter wajib diisi angka > 0.');
+    if (!pohonDitunasVal || parseInt(pohonDitunasVal, 10) <= 0) {
+      errors.push('Jumlah Pohon Ditunas wajib diisi angka > 0.');
+    }
 
     if (errors.length > 0) {
       showValidationErrors(errors);
       return;
     }
 
-    const perisai = parseInt(perisaiVal);
-    const cabang = parseInt(cabangVal);
-    const panjang = parseFloat(panjangVal);
+    const jumlahPohonDitunas = parseInt(pohonDitunasVal, 10);
 
     if (editingIdx !== null && txs[editingIdx]) {
       txs[editingIdx] = {
         ...txs[editingIdx],
-        jumlahPerisai: perisai,
-        jumlahCabang: cabang,
-        jumlahPanjangMeter: panjang,
+        jumlahPohonDitunas,
         updatedAt: new Date().toISOString()
       };
       storage.set('entres_menunas_transactions', txs);
@@ -361,12 +287,14 @@ export function renderMenunasForm() {
       type: 'MENUNAS',
       kodePlot: selectedPlot.kodePlot,
       namaKlon: selectedPlot.namaKlon,
-      jlhPokok: parseInt(selectedPlot.jlhPokok || 0),
+      jlhPokok: parseInt(selectedPlot.jlhPokok || 0, 10), // Populasi Master Plot
       budwoodCode: selectedPlot.budwoodCode || '2021/BWG/001',
       tanggal: tgl,
-      jumlahPerisai: perisai,
-      jumlahCabang: cabang,
-      jumlahPanjangMeter: panjang,
+      jumlahPohonDitunas, // Realisasi pohon ditunas
+      // Preserve legacy fields for compatibility
+      jumlahPerisai: 0,
+      jumlahCabang: 0,
+      jumlahPanjangMeter: 0,
       verifiedMethod: selectedPlot.verifiedMethod || 'QR_SCAN',
       mantri: user.name || 'Mantri Entres',
       status: 'SUBMITTED',
@@ -376,7 +304,8 @@ export function renderMenunasForm() {
     txs.push(newTx);
     storage.set('entres_menunas_transactions', txs);
 
-    toast(`Transaksi Menunas ${docNo} (${perisai} Perisai) berhasil disimpan!`, 'success');
+    toast(`Transaksi Menunas ${docNo} (${jumlahPohonDitunas} Pohon) berhasil disimpan!`, 'success');
     navigate('/entres');
   });
 }
+

@@ -819,6 +819,14 @@ export function renderSeedingForm() {
 
     const newTx = {
       date: today,
+      tanggal: today,
+      userId: user?.id || user?.userId || userCtx?.id || 'TBS-MNT-001',
+      actorId: user?.id || user?.userId || userCtx?.id || 'TBS-MNT-001',
+      actorCode: user?.code || userCtx?.code || 'MNT001',
+      actorName: user?.name || userCtx?.name || 'Wagiman',
+      mantri: user?.name || userCtx?.name || 'Wagiman',
+      createdByName: user?.name || userCtx?.name || 'Wagiman',
+      createdBy: user?.id || user?.userId || userCtx?.id || 'TBS-MNT-001',
       docNo: seedingDocNo,
       sourceDocNo: sourceDocNo,
       sourceIndex: sourceIdx,

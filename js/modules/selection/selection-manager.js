@@ -113,7 +113,9 @@ export function canPerformAsistenSelectionAction(item, currentUser) {
   const s = (item.status || '').toUpperCase();
   return (
     s === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
+    s === 'MENUNGGU_VERIFIKASI' ||
     s === SELECTION_STATUS.DIAJUKAN ||
+    s === 'DIAJUKAN' ||
     s === 'PENDING_DECLARATION'
   );
 }

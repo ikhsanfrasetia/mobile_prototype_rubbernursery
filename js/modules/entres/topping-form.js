@@ -1,15 +1,19 @@
 /**
- * modules/entres/topping-form.js — Halaman Transaksi Topping Entres.
- * Menampilkan identitas plot dari hasil scan QR/pilihan manual:
- * - Kode Plot
- * - Nama Klon
- * - Jlh Pokok per Plot
+ * modules/entres/topping-form.js — Halaman Transaksi Topping Entres (Panen Mata Entres).
+ * 
+ * Field Bisnis:
+ * - Identitas Plot & Klon (Auto-populated langsung dari Scan QR Master Plot):
+ *   * Kode Plot
+ *   * Nama Klon
+ *   * Jlh Pokok per Plot (Populasi Master Plot)
  * 
  * Field Input Transaksi:
  * - Tanggal Topping (default current date dd/mm/yyyy)
- * 1. Jlh Kayu Okulasi (Number)
- * 2. Total Panjang dlm Meter (Number)
- * 3. Jlh Perisai (Number)
+ * 1. Jumlah Stik Hijau* (Number - storage: jumlahKayu)
+ * 2. Jumlah Perisai* (Number - HASIL PANEN MATA ENTRES / SUMBER STOK)
+ * 
+ * Field Preservation:
+ * totalPanjangMeter, sourceMenunasDocNo (optional), verifiedMethod, mantri, dll tetap dipreserve.
  */
 
 import { navigate } from '../../core/router.js';
@@ -18,6 +22,7 @@ import { session } from '../../core/session.js';
 import { toast } from '../../components/toast.js';
 import { todayISO, formatDate } from '../../core/utils.js';
 import { resolvePlot, getAllBudwoodPlots } from '../../data/budwood-plot-master.js';
+import { validateToppingUpdate } from '../../core/entres-inventory-service.js';
 
 function formatDateDDMMYYYY(val) {
   if (!val) return '-';
@@ -34,6 +39,7 @@ export function renderToppingForm() {
 
   const user = session.get() || { name: 'Mantri Entres', id: 'MTR-01' };
   const rawPlot = storage.get('selected_topping_plot', null) || storage.get('selected_entres_plot', null);
+
   let selectedPlot = null;
 
   if (rawPlot) {
@@ -41,23 +47,25 @@ export function renderToppingForm() {
     if (resolved) {
       selectedPlot = {
         id: resolved.id,
-        kodePlot: `Plot ${resolved.plotName}`,
+        kodePlot: rawPlot.kodePlot || `Plot ${resolved.plotName}`,
         plotName: resolved.plotName,
-        namaKlon: resolved.cloneName,
-        jlhPokok: resolved.numberOfPlants,
+        namaKlon: rawPlot.namaKlon || resolved.cloneName,
+        jlhPokok: rawPlot.jlhPokok || resolved.numberOfPlants,
         lokasi: `Kebun Entres - Plot ${resolved.plotName}`,
         tahunTanam: resolved.yearOfPlanting,
-        budwoodCode: resolved.budwoodCode,
-        verifiedMethod: rawPlot.verifiedMethod || 'MANUAL'
+        budwoodCode: rawPlot.budwoodCode || resolved.budwoodCode,
+        sourceMenunasDocNo: rawPlot.sourceMenunasDocNo || null,
+        verifiedMethod: rawPlot.verifiedMethod || 'QR_SCAN_VERIFIED'
       };
     } else {
       selectedPlot = {
         kodePlot: rawPlot.kodePlot || 'Plot IA',
-        namaKlon: rawPlot.namaKlon || 'IRCA331',
+        namaKlon: rawPlot.namaKlon || 'IRCA 331',
         jlhPokok: rawPlot.jlhPokok || 425,
         lokasi: rawPlot.lokasi || 'Kebun Entres - Plot IA',
         budwoodCode: rawPlot.budwoodCode || '2021/BWG/001',
-        verifiedMethod: rawPlot.verifiedMethod || 'MANUAL'
+        sourceMenunasDocNo: rawPlot.sourceMenunasDocNo || null,
+        verifiedMethod: rawPlot.verifiedMethod || 'QR_SCAN_VERIFIED'
       };
     }
   } else {
@@ -71,6 +79,7 @@ export function renderToppingForm() {
       lokasi: `Kebun Entres - Plot ${defaultPlot.plotName}`,
       tahunTanam: defaultPlot.yearOfPlanting,
       budwoodCode: defaultPlot.budwoodCode,
+      sourceMenunasDocNo: null,
       verifiedMethod: 'MANUAL_SELECT'
     };
   }
@@ -81,7 +90,6 @@ export function renderToppingForm() {
 
   const initialTgl = editData ? editData.tanggal : todayISO();
   const initialKayu = editData ? editData.jumlahKayu : '';
-  const initialPanjang = editData ? editData.totalPanjangMeter : '';
   const initialPerisai = editData ? editData.jumlahPerisai : '';
 
   app.innerHTML = `
@@ -97,7 +105,7 @@ export function renderToppingForm() {
             </svg>
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">
-            Transaksi Topping
+            ${editData ? 'Edit Transaksi Topping' : 'Transaksi Topping'}
           </h1>
         </div>
       </header>
@@ -105,12 +113,12 @@ export function renderToppingForm() {
       <!-- CONTENT BODY -->
       <main style="flex: 1; overflow-y: auto; padding: 16px;">
         
-        <!-- 1. KARTU IDENTITAS PLOT ENTRES (DARI SCAN QR / PILIHAN MANUAL) -->
+        <!-- 1. KARTU IDENTITAS PLOT ENTRES (TERVERIFIKASI QR) -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <div>
               <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px;">
-                Identitas Plot Entres
+                Identitas Plot Entres (QR Verified)
               </span>
               <div style="font-size: 1.15rem; font-weight: 800; color: #111827; line-height: 1.2;">
                 ${selectedPlot.kodePlot}
@@ -121,7 +129,7 @@ export function renderToppingForm() {
             </button>
           </div>
 
-          <!-- GRID IDENTITAS: NAMA KLON & JLH POKOK PER PLOT (SIMETRIS 50:50) -->
+          <!-- GRID IDENTITAS: NAMA KLON & JLH POKOK POPULASI MASTER (50:50) -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px;">
             <div style="padding-right: 12px;">
               <div style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Nama Klon:</div>
@@ -130,7 +138,7 @@ export function renderToppingForm() {
               </div>
             </div>
             <div style="border-left: 1px solid #E2E8F0; padding-left: 12px;">
-              <div style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Jlh Pokok per Plot:</div>
+              <div style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Populasi Master Plot:</div>
               <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 3px;">
                 ${parseInt(selectedPlot.jlhPokok || 0).toLocaleString('id-ID')} Pkk
               </div>
@@ -141,12 +149,12 @@ export function renderToppingForm() {
         <!-- 2. FORMULIR INPUT TRANSAKSI TOPPING -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
           <h2 style="font-size: 0.88rem; font-weight: 700; color: #111827; margin: 0 0 14px 0; padding-bottom: 8px; border-bottom: 1px solid #F1F5F9;">
-            Rincian Topping
+            Rincian Hasil Panen Topping
           </h2>
 
           <div style="display: flex; flex-direction: column; gap: 14px;">
             
-            <!-- TANGGAL TOPPING (DEFAULT CURRENT DATE DD/MM/YYYY) -->
+            <!-- TANGGAL TOPPING (AUTO CURRENT DATE) -->
             <div>
               <label for="inp-tanggal" style="display: block; font-size: 0.76rem; font-weight: 700; color: #374151; margin-bottom: 5px;">
                 Tanggal Topping
@@ -156,45 +164,34 @@ export function renderToppingForm() {
               </div>
             </div>
 
-            <!-- 1. INPUT JLH KAYU OKULASI* (NUMBER) -->
+            <!-- 1. INPUT JUMLAH STIK HIJAU* (NUMBER) -->
             <div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                 <label for="inp-kayu" style="font-size: 0.76rem; font-weight: 700; color: #374151;">
-                  Jlh Kayu Okulasi <span style="color: #DC2626;">*</span>
+                  Jumlah Stik Hijau <span style="color: #DC2626;">*</span>
                 </label>
-                <span style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Batang / Kayu</span>
+                <span style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Batang / Stik</span>
               </div>
               <div style="position: relative;">
-                <input id="inp-kayu" type="number" min="1" value="${initialKayu}" placeholder="Contoh: 120" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.90rem; font-weight: 700; color: #111827; box-sizing: border-box; transition: border-color 0.15s ease;" />
-                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #64748B;">Kayu</span>
+                <input id="inp-kayu" type="number" min="1" value="${initialKayu}" placeholder="Contoh: 120" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.90rem; font-weight: 700; color: #111827; box-sizing: border-box;" />
+                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #64748B;">Stik</span>
               </div>
             </div>
 
-            <!-- 2. INPUT TOTAL PANJANG DLM METER* (NUMBER) -->
+            <!-- 2. INPUT JUMLAH PERISAI* (NUMBER) -> SUMBER STOK MATA ENTRES -->
             <div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <label for="inp-panjang" style="font-size: 0.76rem; font-weight: 700; color: #374151;">
-                  Total Panjang dlm Meter <span style="color: #DC2626;">*</span>
+                <label for="inp-perisai" style="font-size: 0.76rem; font-weight: 700; color: #111827;">
+                  Jumlah Perisai (Panen Mata Entres) <span style="color: #DC2626;">*</span>
                 </label>
-                <span style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Satuan: Meter (m)</span>
+                <span style="font-size: 0.68rem; color: #116834; font-weight: 700;">Mata Tunas / Perisai</span>
               </div>
               <div style="position: relative;">
-                <input id="inp-panjang" type="number" min="0.1" step="0.1" value="${initialPanjang}" placeholder="Contoh: 75" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.90rem; font-weight: 700; color: #111827; box-sizing: border-box; transition: border-color 0.15s ease;" />
-                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #64748B;">Meter</span>
+                <input id="inp-perisai" type="number" min="1" value="${initialPerisai}" placeholder="Contoh: 300" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #116834; border-radius: 8px; font-size: 0.92rem; font-weight: 800; color: #116834; box-sizing: border-box;" />
+                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #116834;">Perisai</span>
               </div>
-            </div>
-
-            <!-- 3. INPUT JLH PERISAI* (NUMBER) -->
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <label for="inp-perisai" style="font-size: 0.76rem; font-weight: 700; color: #374151;">
-                  Jlh Perisai <span style="color: #DC2626;">*</span>
-                </label>
-                <span style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Mata Tunas / Perisai</span>
-              </div>
-              <div style="position: relative;">
-                <input id="inp-perisai" type="number" min="1" value="${initialPerisai}" placeholder="Contoh: 300" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.90rem; font-weight: 700; color: #111827; box-sizing: border-box; transition: border-color 0.15s ease;" />
-                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #64748B;">Perisai</span>
+              <div style="font-size: 0.68rem; color: #64748B; margin-top: 3px;">
+                Jumlah perisai ini akan otomatis membentuk saldo stok Mata Entres klon <strong>${selectedPlot.namaKlon}</strong>.
               </div>
             </div>
 
@@ -206,12 +203,8 @@ export function renderToppingForm() {
               Estimasi Rata-rata Entres:
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #15803D;">
-              <span>Rata-rata / Kayu:</span>
-              <span id="disp-avg-kayu" style="font-weight: 700;">- Perisai/Kayu</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #15803D; margin-top: 2px;">
-              <span>Rata-rata / Meter:</span>
-              <span id="disp-avg-meter" style="font-weight: 700;">- Perisai/Meter</span>
+              <span>Rata-rata / Stik:</span>
+              <span id="disp-avg-kayu" style="font-weight: 700;">- Perisai/Stik</span>
             </div>
           </div>
 
@@ -229,20 +222,20 @@ export function renderToppingForm() {
 
       </main>
 
-      <!-- MODAL VALIDASI ERROR (JIKA FORM BELUM LENGKAP) -->
+      <!-- MODAL VALIDASI ERROR -->
       <div id="modal-validation-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; backdrop-filter: blur(2px);"></div>
       <div id="modal-validation-dialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 88%; max-width: 320px; background: #FFFFFF; border-radius: 12px; padding: 20px 18px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 100; text-align: center; box-sizing: border-box;">
         <div style="width: 44px; height: 44px; border-radius: 50%; background: #FEE2E2; color: #DC2626; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;">
           <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12"></line>
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
         </div>
-        <h3 style="font-size: 0.98rem; font-weight: 800; color: #111111; margin: 0 0 6px 0;">Data Belum Lengkap</h3>
+        <h3 style="font-size: 0.98rem; font-weight: 800; color: #111111; margin: 0 0 6px 0;">Data Belum Lengkap / Tidak Valid</h3>
         <div id="val-error-list" style="font-size: 0.78rem; color: #64748B; margin: 0 0 16px 0; text-align: left; line-height: 1.5; background: #F8FAFC; padding: 8px 12px; border-radius: 6px;"></div>
         <button id="btn-close-validation" type="button" style="width: 100%; height: 40px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-size: 0.84rem; font-weight: 700; cursor: pointer;">
-          Lengkapi Data
+          Periksa Kembali
         </button>
       </div>
 
@@ -251,35 +244,29 @@ export function renderToppingForm() {
 
   // Live calculation & preview
   const inpKayu = app.querySelector('#inp-kayu');
-  const inpPanjang = app.querySelector('#inp-panjang');
   const inpPerisai = app.querySelector('#inp-perisai');
   const dispAvgKayu = app.querySelector('#disp-avg-kayu');
-  const dispAvgMeter = app.querySelector('#disp-avg-meter');
 
   const updateCalculations = () => {
     const k = parseFloat(inpKayu?.value || 0);
-    const m = parseFloat(inpPanjang?.value || 0);
     const p = parseFloat(inpPerisai?.value || 0);
 
     if (p > 0 && k > 0) {
-      dispAvgKayu.textContent = `${(p / k).toFixed(1)} Perisai/Kayu`;
+      dispAvgKayu.textContent = `${(p / k).toFixed(1)} Perisai/Stik`;
     } else {
-      dispAvgKayu.textContent = '- Perisai/Kayu';
-    }
-
-    if (p > 0 && m > 0) {
-      dispAvgMeter.textContent = `${(p / m).toFixed(1)} Perisai/Meter`;
-    } else {
-      dispAvgMeter.textContent = '- Perisai/Meter';
+      dispAvgKayu.textContent = '- Perisai/Stik';
     }
   };
 
   inpKayu?.addEventListener('input', updateCalculations);
-  inpPanjang?.addEventListener('input', updateCalculations);
   inpPerisai?.addEventListener('input', updateCalculations);
 
-  // Jalankan kalkulasi awal jika form memuat data edit
   updateCalculations();
+
+  // Change Plot Button
+  app.querySelector('#btn-change-plot')?.addEventListener('click', () => {
+    navigate('/entres/topping');
+  });
 
   // Back & Cancel Actions
   app.querySelector('#btn-back')?.addEventListener('click', () => {
@@ -290,10 +277,6 @@ export function renderToppingForm() {
   app.querySelector('#btn-cancel')?.addEventListener('click', () => {
     storage.remove('editing_topping_index');
     navigate('/entres');
-  });
-
-  app.querySelector('#btn-change-plot')?.addEventListener('click', () => {
-    navigate('/entres/topping');
   });
 
   // Validation Modal Handlers
@@ -323,36 +306,40 @@ export function renderToppingForm() {
   app.querySelector('#btn-simpan-topping')?.addEventListener('click', () => {
     const tgl = app.querySelector('#inp-tanggal')?.dataset.iso || initialTgl || todayISO();
     const kayuVal = (inpKayu?.value || '').trim();
-    const panjangVal = (inpPanjang?.value || '').trim();
     const perisaiVal = (inpPerisai?.value || '').trim();
 
     const errors = [];
     if (!tgl) errors.push('Tanggal Topping wajib diisi.');
-    if (!kayuVal || parseInt(kayuVal) <= 0) errors.push('Jlh Kayu Okulasi wajib diisi angka > 0.');
-    if (!panjangVal || parseFloat(panjangVal) <= 0) errors.push('Total Panjang dlm Meter wajib diisi angka > 0.');
-    if (!perisaiVal || parseInt(perisaiVal) <= 0) errors.push('Jlh Perisai wajib diisi angka > 0.');
+    if (!kayuVal || parseInt(kayuVal, 10) <= 0) errors.push('Jumlah Stik Hijau wajib diisi angka > 0.');
+    if (!perisaiVal || parseInt(perisaiVal, 10) <= 0) errors.push('Jumlah Perisai (Panen Mata Entres) wajib diisi angka > 0.');
 
     if (errors.length > 0) {
       showValidationErrors(errors);
       return;
     }
 
-    const kayu = parseInt(kayuVal);
-    const panjang = parseFloat(panjangVal);
-    const perisai = parseInt(perisaiVal);
+    const kayu = parseInt(kayuVal, 10);
+    const perisai = parseInt(perisaiVal, 10);
 
+    // EDIT GUARD: Validasi apakah perubahan kuantitas panen menyebabkan defisit di Okulasi
     if (editingIdx !== null && txs[editingIdx]) {
+      const existingDocNo = txs[editingIdx].docNo;
+      const updateCheck = validateToppingUpdate(existingDocNo, perisai);
+      if (!updateCheck.canUpdate) {
+        showValidationErrors([updateCheck.message]);
+        return;
+      }
+
       txs[editingIdx] = {
         ...txs[editingIdx],
         jumlahKayu: kayu,
-        totalPanjangMeter: panjang,
         jumlahPerisai: perisai,
         updatedAt: new Date().toISOString()
       };
       storage.set('entres_topping_transactions', txs);
       storage.remove('editing_topping_index');
 
-      toast(`Transaksi Topping ${txs[editingIdx].docNo} berhasil diperbarui!`, 'success');
+      toast(`Transaksi Topping ${existingDocNo} berhasil diperbarui! (${perisai} Perisai)`, 'success');
       navigate('/entres');
       return;
     }
@@ -362,15 +349,16 @@ export function renderToppingForm() {
     const newTx = {
       docNo,
       type: 'TOPPING',
+      sourceMenunasDocNo: null, // Decoupled from Menunas
       kodePlot: selectedPlot.kodePlot,
       namaKlon: selectedPlot.namaKlon,
-      jlhPokok: parseInt(selectedPlot.jlhPokok || 0),
+      jlhPokok: parseInt(selectedPlot.jlhPokok || 0, 10), // Populasi Master Plot
       budwoodCode: selectedPlot.budwoodCode || '2021/BWG/001',
       tanggal: tgl,
-      jumlahKayu: kayu,
-      totalPanjangMeter: panjang,
-      jumlahPerisai: perisai,
-      verifiedMethod: selectedPlot.verifiedMethod || 'QR_SCAN',
+      jumlahKayu: kayu, // Jumlah Stik Hijau
+      totalPanjangMeter: 0, // Preserved in schema
+      jumlahPerisai: perisai, // SUMBER STOK MATA ENTRES (PERISAI)
+      verifiedMethod: selectedPlot.verifiedMethod || 'QR_SCAN_VERIFIED',
       mantri: user.name || 'Mantri Entres',
       status: 'SUBMITTED',
       createdAt: new Date().toISOString()
@@ -379,7 +367,7 @@ export function renderToppingForm() {
     txs.push(newTx);
     storage.set('entres_topping_transactions', txs);
 
-    toast(`Transaksi Topping ${docNo} (${kayu} Kayu, ${perisai} Perisai) berhasil disimpan!`, 'success');
+    toast(`Transaksi Topping ${docNo} (${kayu} Stik, ${perisai} Perisai Mata Entres) berhasil disimpan!`, 'success');
     navigate('/entres');
   });
 }

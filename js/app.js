@@ -62,6 +62,7 @@ import { renderMaterialMaster } from './modules/master/material-master.js';
 import { renderDestructionLanding } from './modules/destruction/destruction-landing.js';
 import { renderConsolidationLanding } from './modules/consolidation/consolidation-landing.js';
 import { renderVerificationLanding } from './modules/verification/verification-landing.js';
+import { renderMantriConfirmationLanding } from './modules/verification/mantri-confirmation-landing.js';
 import { renderAnalysisPlaceholder } from './modules/placeholder/analysis-placeholder.js';
 import { renderProfile } from './modules/profile/profile.js';
 import { seedDatabase } from './db/seed.js';
@@ -154,6 +155,7 @@ registerRoute('/destruction', renderDestructionLanding);
 registerRoute('/selection/culling', renderDestructionLanding);
 registerRoute('/consolidation', renderConsolidationLanding);
 registerRoute('/verification', renderVerificationLanding);
+registerRoute('/mantri-confirmation', renderMantriConfirmationLanding);
 registerRoute('/profile', renderProfile);
 
 /* Fallback Not Found */

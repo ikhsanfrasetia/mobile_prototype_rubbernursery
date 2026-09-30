@@ -6,6 +6,11 @@ import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core
 import { getWorkersForUserContext, getWorkerById, isWorkerInScope } from '../../data/worker-master.js';
 import { getActiveKlons, getKlonsForUsage, KLON_USAGE, normalizeKlonName, resolveKlon } from '../../data/klon-master.js';
 import { formatBedenganCode } from './budding-grafting.js';
+import {
+  getAvailableKlonsForOkulasi,
+  getKlonMataEntresBalance,
+  validateOkulasiPerisaiUsage
+} from '../../core/entres-inventory-service.js';
 
 const MASTER_WORKERS = [
   { id: 'W001', name: 'Ahmad Rifai', code: '104521' },
@@ -221,9 +226,16 @@ export function renderBuddingForm() {
           <!-- FORM INPUT REALISASI OKULASI -->
           <section style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB;">
             
-            <!-- PILIH KLON ENTRES DENGAN FITUR CARI / SEARCH -->
+            <!-- PILIH KLON ENTRES DENGAN FITUR CARI / SEARCH & SALDO TERSEDIA -->
             <div style="margin-bottom: 14px;">
-              <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #374151; margin-bottom: 6px;">Pilih Klon Entres Okulasi <span style="color:#D32F2F;">*</span></label>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="font-size: 0.74rem; font-weight: 700; color: #374151;">Pilih Klon Entres Okulasi <span style="color:#D32F2F;">*</span></label>
+                ${selectedKlon ? `
+                  <span style="font-size: 0.68rem; font-weight: 700; color: #116834; background: #E8F5E9; padding: 2px 7px; border-radius: 4px; border: 1px solid #C8E6C9;">
+                    Saldo: ${getKlonMataEntresBalance(selectedKlon, { excludeBuddingDocNo: editingTx?.docNo }).toLocaleString('id-ID')} Perisai
+                  </span>
+                ` : ''}
+              </div>
               <div id="btn-open-klon-modal" style="width: 100%; height: 40px; border: 1px solid #D1D5DB; border-radius: 6px; padding: 0 12px; background: #FFFFFF; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-sizing: border-box; transition: border-color 0.15s ease;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <span style="font-size: 0.82rem; font-weight: ${selectedKlon ? '700' : '500'}; color: ${selectedKlon ? '#111111' : '#9CA3AF'};" id="text-selected-klon">${selectedKlon || '-- Pilih Klon Entres --'}</span>
@@ -482,28 +494,39 @@ export function renderBuddingForm() {
 
     function renderKlonList(query) {
       const container = app.querySelector('#list-klon-items');
-      const activeEntresKlons = getKlonsForUsage(KLON_USAGE.ENTRES);
+      const availableKlons = getAvailableKlonsForOkulasi({
+        isRegrafting,
+        includeKlon: selectedKlon,
+        editingDocNo: editingTx?.docNo
+      });
       const q = (query || '').trim().toLowerCase();
-      const filtered = activeEntresKlons.filter(k => 
-        k.canonicalName.toLowerCase().includes(q) ||
-        k.code.toLowerCase().includes(q) ||
-        k.aliases.some(a => a.toLowerCase().includes(q))
+      const filtered = availableKlons.filter(k => 
+        k.klonName.toLowerCase().includes(q)
       );
       
       if (filtered.length === 0) {
-        container.innerHTML = `<div style="padding: 16px; text-align: center; color: #9CA3AF; font-size: 0.78rem;">Klon "${query}" tidak ditemukan</div>`;
+        container.innerHTML = `
+          <div style="padding: 20px 16px; text-align: center; color: #64748B; font-size: 0.78rem;">
+            <div style="font-weight: 700; color: #111827; margin-bottom: 4px;">Tidak Ada Klon Bersaldo</div>
+            <div>${query ? `Klon "${query}" tidak ditemukan.` : 'Hanya klon yang memiliki saldo panen Topping > 0 yang dapat dipilih untuk Okulasi.'}</div>
+          </div>
+        `;
         return;
       }
 
       container.innerHTML = filtered.map(k => {
-        const isSel = k.canonicalName === selectedKlon || k.code === selectedKlon;
+        const isSel = k.klonName === selectedKlon;
         return `
-          <button type="button" class="btn-select-klon-item" data-klon="${k.canonicalName}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${isSel ? '#E8F5E9' : '#FFFFFF'}; border: 1px solid ${isSel ? '#116834' : '#E5E7EB'}; border-radius: 6px; cursor: pointer; text-align: left;">
+          <button type="button" class="btn-select-klon-item" data-klon="${k.klonName}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${isSel ? '#E8F5E9' : '#FFFFFF'}; border: 1px solid ${isSel ? '#116834' : '#E5E7EB'}; border-radius: 6px; cursor: pointer; text-align: left;">
             <div>
-              <span style="font-size: 0.82rem; font-weight: ${isSel ? '700' : '500'}; color: ${isSel ? '#116834' : '#111827'};">${k.canonicalName}</span>
-              <span style="font-size: 0.72rem; color: #9CA3AF; margin-left: 6px;">(${k.code})</span>
+              <span style="font-size: 0.82rem; font-weight: ${isSel ? '700' : '500'}; color: ${isSel ? '#116834' : '#111827'};">${k.klonName}</span>
             </div>
-            ${isSel ? '<span style="color: #116834; font-weight: 700;">✓</span>' : ''}
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 0.68rem; font-weight: 700; color: #116834; background: #DCFCE7; padding: 2px 7px; border-radius: 4px; border: 1px solid #BBF7D0;">
+                Saldo: ${k.saldoMataEntres.toLocaleString('id-ID')} Perisai
+              </span>
+              ${isSel ? '<span style="color: #116834; font-weight: 700;">✓</span>' : ''}
+            </div>
           </button>
         `;
       }).join('');
@@ -779,7 +802,15 @@ export function renderBuddingForm() {
       const validationErrors = [];
 
       // Validasi Klon
-      if (!selectedKlon) validationErrors.push('Klon Entres belum dipilih.');
+      if (!selectedKlon) {
+        validationErrors.push('Klon Entres belum dipilih.');
+      } else {
+        // Validasi Saldo Stok Mata Entres
+        const perisaiCheck = validateOkulasiPerisaiUsage(selectedKlon, mataEntres, editingTx?.docNo, isRegrafting);
+        if (!perisaiCheck.valid) {
+          validationErrors.push(perisaiCheck.message);
+        }
+      }
 
       // Validasi Pekerja
       if (selectedWorkers.length === 0) {

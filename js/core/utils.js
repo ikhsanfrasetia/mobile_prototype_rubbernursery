@@ -17,6 +17,11 @@ export function todayISO() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+export function todayDDMMYYYY() {
+  const d = new Date();
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
 export function nowISO() {
   return new Date().toISOString();
 }
