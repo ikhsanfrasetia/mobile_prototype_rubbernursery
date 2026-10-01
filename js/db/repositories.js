@@ -197,6 +197,144 @@ export const attendanceRepository = {
     }
 
     return eligibleWorkers;
+  },
+
+  /**
+   * Mengambil daftar pekerja yang memiliki Presensi Final (DATANG + PULANG) pada tanggal tertentu
+   * milik Mantri yang login (berdasarkan userContext).
+   */
+  async getFinalPresentWorkers(userContext = null, targetDate = null) {
+    const today = targetDate ? String(targetDate).trim().slice(0, 10) : todayISO();
+    const ctx = userContext ? resolveUserContext(userContext) : null;
+    const currentUserId = ctx ? String(ctx.id || ctx.userId || '').trim() : '';
+
+    let storageList = [];
+    try {
+      storageList = storage.get('attendance_transactions', []) || [];
+    } catch (e) {
+      storageList = [];
+    }
+
+    const workerAttendanceMap = new Map();
+
+    storageList.forEach((rec) => {
+      if (!rec || typeof rec !== 'object') return;
+      const isWorker = String(rec.type || '').toUpperCase() === 'WORKER';
+      if (!isWorker) return;
+
+      const recDate = String(rec.date || rec.tanggal || '').trim().slice(0, 10);
+      if (recDate !== today) return;
+
+      const recCreatorId = String(rec.createdByUserId || rec.userId || '').trim();
+      if (currentUserId && recCreatorId !== currentUserId) return;
+
+      const wId = String(rec.workerId || '').trim();
+      if (!wId) return;
+
+      if (!workerAttendanceMap.has(wId)) {
+        workerAttendanceMap.set(wId, { datang: false, pulang: false });
+      }
+
+      const attType = String(rec.attendanceType || '').toUpperCase();
+      if (attType === 'DATANG') workerAttendanceMap.get(wId).datang = true;
+      if (attType === 'PULANG') workerAttendanceMap.get(wId).pulang = true;
+    });
+
+    const finalWorkerIds = new Set();
+    workerAttendanceMap.forEach((status, wId) => {
+      if (status.datang && status.pulang) {
+        finalWorkerIds.add(wId);
+      }
+    });
+
+    const eligibleWorkers = [];
+    for (const wId of finalWorkerIds) {
+      const canonical = getWorkerById(wId);
+      if (!canonical) continue;
+      if (!isWorkerActive(canonical.id)) continue;
+      // Perhatikan: Pemeliharaan (C18) tidak secara spesifik membolehkan beda divisi, jadi filter in-scope tetap dipakai sesuai master data, atau mengikuti baseline.
+      if (ctx && ctx.estateId && !isWorkerInScope(canonical.id, ctx.estateId, ctx.divisionId)) {
+        continue;
+      }
+      eligibleWorkers.push({
+        ...canonical,
+        position: canonical.position || 'Pekerja Bibitan'
+      });
+    }
+
+    return eligibleWorkers;
+  },
+
+  /**
+   * Mengambil daftar pekerja yang telah melakukan Presensi Datang pada tanggal tertentu
+   * milik Mantri yang login, mengabaikan filter Divisi untuk kebutuhan Grafting/Regrafting.
+   */
+  async getWorkersWithDatangAttendance(userContext = null, targetDate = null) {
+    const today = targetDate ? String(targetDate).trim().slice(0, 10) : todayISO();
+    const ctx = userContext ? resolveUserContext(userContext) : null;
+    const currentUserId = ctx ? String(ctx.id || ctx.userId || '').trim() : '';
+
+    let storageList = [];
+    try {
+      storageList = storage.get('attendance_transactions', []) || [];
+    } catch (e) {
+      storageList = [];
+    }
+
+    const datangWorkerIds = new Set();
+
+    storageList.forEach((rec) => {
+      if (!rec || typeof rec !== 'object') return;
+      const isWorker = String(rec.type || '').toUpperCase() === 'WORKER';
+      if (!isWorker) return;
+
+      const recDate = String(rec.date || rec.tanggal || '').trim().slice(0, 10);
+      if (recDate !== today) return;
+
+      const recCreatorId = String(rec.createdByUserId || rec.userId || '').trim();
+      if (currentUserId && recCreatorId !== currentUserId) return;
+
+      const attType = String(rec.attendanceType || '').toUpperCase();
+      if (attType !== 'DATANG') return;
+
+      const wId = String(rec.workerId || '').trim();
+      if (wId) {
+        datangWorkerIds.add(wId);
+      }
+    });
+
+    const eligibleWorkers = [];
+    for (const wId of datangWorkerIds) {
+      const canonical = getWorkerById(wId);
+      if (!canonical) continue;
+      if (!isWorkerActive(canonical.id)) continue;
+      // Grafting/Regrafting mengizinkan pekerja beda divisi, selama mereka ada di Presensi Datang Mantri tersebut.
+      // Filter estate tetap berlaku.
+      if (ctx && ctx.estateId && canonical.estateId && canonical.estateId !== ctx.estateId) {
+        continue;
+      }
+      eligibleWorkers.push({
+        ...canonical,
+        position: canonical.position || 'Pekerja Bibitan'
+      });
+    }
+
+    return eligibleWorkers;
+  },
+
+  /**
+   * Memeriksa apakah seorang pekerja memiliki Presensi Pulang hari ini.
+   */
+  hasPulangAttendance(workerId, targetDate = null) {
+    if (!workerId) return false;
+    const today = targetDate ? String(targetDate).trim().slice(0, 10) : todayISO();
+    let storageList = storage.get('attendance_transactions', []) || [];
+    return storageList.some(rec => 
+      rec && 
+      String(rec.workerId || '') === String(workerId) && 
+      String(rec.date || rec.tanggal || '').slice(0, 10) === today && 
+      String(rec.attendanceType || '').toUpperCase() === 'PULANG'
+    );
   }
 };
 

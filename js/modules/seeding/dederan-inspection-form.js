@@ -211,7 +211,7 @@ export function renderDederanInspectionForm() {
               </div>
             </div>
             <div style="font-size: 0.68rem; margin-top: 4px; color: #64748B; line-height: 1.3;">
-              * Jumlah tidak berhasil akan masuk ke tab <strong>Pasca Semai</strong> dengan status <em>PENDING_DECLARATION</em>.
+              * Jumlah bibit yang tidak berhasil akan diproses pada Pasca Semai dan menunggu verifikasi persetujuan Asisten Bibitan.
             </div>
           </div>
 

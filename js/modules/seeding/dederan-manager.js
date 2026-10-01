@@ -15,6 +15,7 @@
 
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo, formatDate, generateUniqueDocNo, todayISO } from '../../core/utils.js';
+import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 
 export const DEDERAN_STORAGE_KEYS = Object.freeze({
   INDUK: 'dederan_induk_documents',
@@ -454,8 +455,8 @@ export function createDederanInspection(payload) {
   // Check cumulative status for this bedengan
   const newSummary = getBedenganInspectionSummary(dederTx);
 
-  // Consolidate rejection / inspection result to selection_pool as PENDING_DECLARATION
-  if (newSummary.isComplete || newSummary.totalTidakBerhasil > 0) {
+  // Consolidate rejection / inspection result to selection_pool as PENDING_DECLARATION only if reject > 0
+  if (newSummary.totalTidakBerhasil > 0) {
     integrateDederanRejectionToSelectionPool(newInspection, newSummary.totalTidakBerhasil);
   }
 
@@ -474,13 +475,26 @@ export const saveDederanInspection = createDederanInspection;
  */
 export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTidakBerhasilQty) {
   const qty = parseInt(totalTidakBerhasilQty !== undefined ? totalTidakBerhasilQty : inspectionTx.jumlahTidakBerhasil, 10);
-  if (isNaN(qty) || qty < 0) return;
+  if (isNaN(qty) || qty < 0) return null;
 
   let selectionPool = storage.get('selection_pool', []);
 
   const dederanTxDocNo = inspectionTx.dederanTxDocNo || inspectionTx.docNo;
   const poolId = `SEL-POOL-DED-${dederanTxDocNo}`;
   const existingIdx = selectionPool.findIndex(s => s.id === poolId || (s.dederanDocNo === dederanTxDocNo && s.originType === 'REJECT_DEDERAN'));
+
+  // PATH B Guard: If qty === 0, do not create or maintain pending candidate
+  if (qty === 0) {
+    if (existingIdx >= 0) {
+      const existingItem = selectionPool[existingIdx];
+      // Only clean up draft pending candidate, do NOT delete if already converted to official transaction
+      if (!existingItem.selectionTransactionId && existingItem.status === 'PENDING_DECLARATION') {
+        selectionPool.splice(existingIdx, 1);
+        storage.set('selection_pool', selectionPool);
+      }
+    }
+    return null;
+  }
 
   // Calculate max sequence for CULL doc number
   let maxSeq = 0;
@@ -625,8 +639,11 @@ export function syncAllDederanRejectionsToSelectionPool() {
   const dederTxs = getDederanTransactions();
   dederTxs.forEach(dtx => {
     const summary = getBedenganInspectionSummary(dtx);
-    if (summary.isComplete || summary.totalTidakBerhasil > 0) {
+    if (summary.totalTidakBerhasil > 0) {
       integrateDederanRejectionToSelectionPool(dtx, summary.totalTidakBerhasil);
+    } else {
+      // Ensure zero-reject bedengan does not leave stale pending selection pool
+      integrateDederanRejectionToSelectionPool(dtx, 0);
     }
   });
 }
@@ -650,6 +667,11 @@ export function deleteDederanInspection(idOrDocNo) {
   const idx = inspections.findIndex(i => i.id === idOrDocNo || i.docNo === idOrDocNo);
   if (idx < 0) {
     return { success: false, error: 'Data pemeriksaan tidak ditemukan.' };
+  }
+
+  const existing = inspections[idx];
+  if (isTransactionLockedForMantri(existing)) {
+    return { success: false, error: 'Data pemeriksaan tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.' };
   }
 
   const deleted = inspections.splice(idx, 1)[0];
@@ -686,6 +708,10 @@ export function updateDederanInspection(idOrDocNo, payload) {
   }
 
   const existing = inspections[idx];
+  if (isTransactionLockedForMantri(existing)) {
+    throw new Error('Data pemeriksaan tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+  }
+
   const dederTx = getDederanTransactionById(existing.dederanTxDocNo);
   if (!dederTx) throw new Error('Transaksi Dederan induk tidak ditemukan.');
 

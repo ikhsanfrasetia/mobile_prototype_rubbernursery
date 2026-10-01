@@ -4,6 +4,7 @@ import { session } from '../../core/session.js';
 import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
 import { formatStandardDocNo, formatDate } from '../../core/utils.js';
 import { guardDependency } from '../../core/dependency-guard.js';
+import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { filterReceiptKspRequests, getActionableReceiptCount } from './receipt-kebun-sepupu-landing.js';
 import { getActionableMataEntresReceiptCount } from '../request/request-mata-entres-landing.js';
 
@@ -131,6 +132,7 @@ export function renderReceiptLanding() {
               <h2 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Ringkasan Penerimaan (${txs.length})</h2>
               ${txs.map((tx, idx) => {
                 const hasSeeding = seedingTxs.some(s => s.sourceIndex == idx || s.receiptDocNo == tx.docNo || (tx.docNo && s.sourceDocNo == tx.docNo));
+                const isLocked = hasSeeding || isTransactionLockedForMantri(tx);
                 const docNo = tx.docNo || tx.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
 
                 return `
@@ -158,7 +160,7 @@ export function renderReceiptLanding() {
                         <button class="btn-popover-lihat" data-index="${idx}" type="button" style="padding: 10px 16px; border: none; background: transparent; text-align: left; font-size: 0.9rem; color: #111111; cursor: pointer; border-bottom: 1px solid #F0F0F0;">
                           Lihat Data
                         </button>
-                        ${hasSeeding ? `
+                        ${isLocked ? `
                           <button class="btn-popover-locked" data-index="${idx}" data-doc="${docNo}" type="button" style="padding: 10px 16px; border: none; background: #FAFAFA; text-align: left; font-size: 0.85rem; color: #9CA3AF; cursor: not-allowed; border-bottom: 1px solid #F0F0F0;">
                             Edit (Terkunci)
                           </button>
@@ -283,6 +285,11 @@ export function renderReceiptLanding() {
         const txs = storage.get('receipt_transactions', []);
         const tx = txs[idx];
         
+        if (isTransactionLockedForMantri(tx)) {
+          alert('Transaksi ini sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui, sehingga tidak dapat diedit.');
+          return;
+        }
+
         if (tx && tx.rawState) {
           storage.set('transaction_originType', tx.rawState.originTypeRaw);
           storage.set('benih_jenis', tx.rawState.jenisPenerimaan);
@@ -318,6 +325,13 @@ export function renderReceiptLanding() {
       btn.addEventListener('click', (e) => {
         const idx = e.currentTarget.dataset.index;
         const txs = storage.get('receipt_transactions', []);
+        const tx = txs[idx];
+
+        if (isTransactionLockedForMantri(tx)) {
+          alert('Transaksi ini sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui, sehingga tidak dapat dihapus.');
+          return;
+        }
+
         txs.splice(idx, 1);
         storage.set('receipt_transactions', txs);
         renderReceiptLanding();

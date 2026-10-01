@@ -370,6 +370,26 @@ export async function renderAttendanceWorkers() {
     }
 
     try {
+      // Guard Duplikasi Lintas Mantri (PRS-AUD-004)
+      if (attType === 'DATANG') {
+        const globalAtts = storage.get('attendance_transactions', []);
+        const currentUserId = user.id || 'MNT001';
+        for (const w of checkedInList) {
+          const canonical = getWorkerById(w.id);
+          const workerId = canonical ? canonical.id : w.id;
+          const conflict = globalAtts.find(a => 
+            a && a.workerId === workerId && 
+            a.attendanceType === 'DATANG' && 
+            String(a.date || a.tanggal || '').substring(0, 10) === today && 
+            a.createdByUserId !== currentUserId
+          );
+          if (conflict) {
+            const workerName = canonical ? canonical.name : w.name;
+            throw new Error(`Pekerja ${workerName} sudah melakukan Presensi Datang hari ini melalui Mantri lain.`);
+          }
+        }
+      }
+
       const recordsToSave = [];
       const photosToSave = [];
 

@@ -8,6 +8,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { getMataEntresBalances, validateToppingDeletion } from '../../core/entres-inventory-service.js';
+import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
 
 function formatDateDDMMYYYY(val) {
@@ -28,6 +29,10 @@ export function renderEntresLanding() {
   const toppingTxs = storage.get('entres_topping_transactions', []);
   const entresBalances = getMataEntresBalances();
 
+  // Hitung total agregat stok dan klon tersedia
+  const totalMataEntres = entresBalances.reduce((acc, b) => acc + (b.saldoMataEntres || 0), 0);
+  const availableKlonsCount = entresBalances.filter(b => (b.saldoMataEntres || 0) > 0).length;
+
   // Gabungkan transaksi dengan originalIndex masing-masing untuk fitur Edit & Hapus
   const allTxs = [
     ...menunasTxs.map((t, originalIndex) => ({ ...t, activityType: 'Menunas', originalIndex })),
@@ -35,20 +40,20 @@ export function renderEntresLanding() {
   ].reverse();
 
   app.innerHTML = `
-    <div class="page entres-landing-page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <div class="page entres-landing-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
-      <!-- HEADER -->
-      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
-        <div style="display: flex; align-items: center;">
-          <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <!-- HEADER (Fixed 56px) -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button id="btn-back" type="button" aria-label="Kembali ke Beranda" style="padding: 6px; margin-left: -6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.3" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <line x1="19" y1="12" x2="5" y2="12"></line>
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <h1 style="font-size: 1.12rem; font-weight: 700; color: #111111; margin: 0 0 0 8px; letter-spacing: -0.01em;">Kebun Entres</h1>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #0F172A; margin: 0; line-height: 1.2;">Kebun Entres</h1>
         </div>
-        <button id="btn-refresh" type="button" aria-label="Segarkan" style="background: none; border: none; cursor: pointer; padding: 6px; margin-right: -4px; display: flex; align-items: center; justify-content: center; color: #116834;">
+        <button id="btn-refresh" type="button" aria-label="Segarkan" style="background: none; border: none; cursor: pointer; padding: 6px; margin-right: -6px; display: flex; align-items: center; justify-content: center; color: #116834;">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"></polyline>
             <polyline points="1 20 1 14 7 14"></polyline>
@@ -57,13 +62,55 @@ export function renderEntresLanding() {
         </button>
       </header>
 
-      <!-- CONTENT -->
-      <main style="flex: 1; padding: 16px; overflow-y: auto;">
+      <!-- CONTENT (Scrollable) -->
+      <main style="flex: 1; min-height: 0; padding: 14px 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
         
-        <!-- MENU KARTU KEBUN ENTRES PERSIS OKULASI (96px x 115px) -->
+        <!-- 1. CARD STOK MATA ENTRES (PALING ATAS) -->
+        <div id="card-stok-mata-entres" style="background: #F0FDF4; border: 1px solid #DCFCE7; border-radius: 12px; padding: 16px 16px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease;">
+          <div style="font-size: 0.95rem; font-weight: 800; color: #15803D;">
+            Stok Mata Entres
+          </div>
+          <div style="font-size: 0.74rem; color: #64748B; margin-top: 1px;">
+            Stok tersedia berdasarkan klon
+          </div>
+
+          <div style="display: flex; align-items: center; justify-content: space-between; margin: 14px 0 12px; padding: 0 4px;">
+            <div>
+              <div style="font-size: 1.6rem; font-weight: 900; color: #0F172A; line-height: 1.1;">
+                ${availableKlonsCount}
+              </div>
+              <div style="font-size: 0.74rem; color: #64748B; margin-top: 3px;">
+                Klon tersedia
+              </div>
+            </div>
+
+            <div style="width: 1px; height: 36px; background: #DCFCE7;"></div>
+
+            <div style="text-align: right;">
+              <div style="font-size: 1.6rem; font-weight: 900; color: #0F172A; line-height: 1.1;">
+                ${totalMataEntres.toLocaleString('id-ID')}
+              </div>
+              <div style="font-size: 0.74rem; color: #64748B; margin-top: 3px;">
+                Mata entres
+              </div>
+            </div>
+          </div>
+
+          <!-- FOOTER ACTION BANNER -->
+          <div style="background: rgba(220, 252, 231, 0.6); border-radius: 8px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 0.72rem; color: #166534; line-height: 1.35;">
+              Lihat detail stok per klon, mutasi, dan riwayat penggunaan.
+            </span>
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="#166534" stroke-width="2.3" fill="none" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 2. MENU TRANSAKSI: MENUNAS & TOPPING (Ukuran Standar Beranda 96px x 115px) -->
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
           
-          <!-- 1. MENUNAS -->
+          <!-- MENUNAS -->
           <button id="card-menunas" type="button" class="beranda-menu-card" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; width: 96px; height: 115px; padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); cursor: pointer; text-align: center; box-sizing: border-box; transition: transform 0.15s ease, box-shadow 0.15s ease; position: relative;">
             <div style="width: 44px; height: 44px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center;">
               <svg viewBox="0 0 48 48" width="40" height="40" fill="none" stroke="#116834" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -79,7 +126,7 @@ export function renderEntresLanding() {
             </span>
           </button>
 
-          <!-- 2. TOPPING -->
+          <!-- TOPPING -->
           <button id="card-topping" type="button" class="beranda-menu-card" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; width: 96px; height: 115px; padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); cursor: pointer; text-align: center; box-sizing: border-box; transition: transform 0.15s ease, box-shadow 0.15s ease; position: relative;">
             <div style="width: 44px; height: 44px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center;">
               <svg viewBox="0 0 48 48" width="40" height="40" fill="none" stroke="#116834" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -99,66 +146,15 @@ export function renderEntresLanding() {
 
         </div>
 
-        <!-- RINGKASAN SALDO MATA ENTRES PER KLON (DERIVED LEDGER) -->
-        <div style="margin-top: 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <div style="width: 28px; height: 28px; border-radius: 6px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; color: #116834;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 7h-7L10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"></path>
-                </svg>
-              </div>
-              <div>
-                <h2 style="font-size: 0.95rem; font-weight: 700; color: #111827; margin: 0;">Stok Mata Entres per Klon</h2>
-                <div style="font-size: 0.72rem; color: #6B7280; margin-top: 1px;">Saldo real-time (Topping − Okulasi − Regrafting)</div>
-              </div>
-            </div>
-            <span style="font-size: 0.7rem; font-weight: 700; background: #F3F4F6; color: #4B5563; padding: 3px 8px; border-radius: 4px;">
-              ${entresBalances.length} Klon
-            </span>
-          </div>
-
-          ${entresBalances.length === 0 ? `
-            <div style="text-align: center; padding: 14px 8px; color: #9CA3AF; font-size: 0.8rem; font-style: italic; background: #F9FAFB; border-radius: 8px; border: 1px dashed #E5E7EB;">
-              Belum ada hasil panen Topping untuk membentuk stok mata entres.
-            </div>
-          ` : `
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-              ${entresBalances.map(b => `
-                <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
-                  <div style="min-width: 0; flex: 1;">
-                    <div style="font-weight: 700; font-size: 0.9rem; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                      ${b.klonName}
-                    </div>
-                    <div style="font-size: 0.74rem; color: #6B7280; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px;">
-                      <span>Panen: <b style="color: #1F2937;">${b.totalPanenTopping.toLocaleString('id-ID')}</b></span>
-                      <span>•</span>
-                      <span>Grafting: <b style="color: #1F2937;">${b.totalPakaiGrafting.toLocaleString('id-ID')}</b></span>
-                      <span>•</span>
-                      <span>Regrafting: <b style="color: #1F2937;">${b.totalPakaiRegrafting.toLocaleString('id-ID')}</b></span>
-                    </div>
-                  </div>
-                  <div style="text-align: right; margin-left: 12px; flex-shrink: 0;">
-                    <div style="font-size: 1rem; font-weight: 800; color: ${b.saldoMataEntres > 0 ? '#116834' : '#DC2626'};">
-                      ${b.saldoMataEntres.toLocaleString('id-ID')}
-                    </div>
-                    <div style="font-size: 0.68rem; font-weight: 700; color: ${b.saldoMataEntres > 0 ? '#059669' : '#9CA3AF'}; text-transform: uppercase; margin-top: 1px;">
-                      ${b.saldoMataEntres > 0 ? 'Tersedia' : 'Habis'}
-                    </div>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          `}
-        </div>
-
         <!-- RINGKASAN DATA TRANSAKSI PERSIS MODUL PENYEMAIAN -->
         <div style="padding: 24px 0 16px 0;">
           <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 16px 0;">
             Ringkasan Data Transaksi (${allTxs.length})
           </h2>
 
-          ${allTxs.length > 0 ? allTxs.map((tx, idx) => `
+          ${allTxs.length > 0 ? allTxs.map((tx, idx) => {
+            const isEntresLocked = isTransactionLockedForMantri(tx);
+            return `
             <div style="border: 1px solid #D9D9D9; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #FFFFFF; position: relative;">
               
               <!-- HEADER BARIS 1: NO DOKUMEN & BADGE -->
@@ -175,21 +171,27 @@ export function renderEntresLanding() {
                   <span style="background: #E8F5E9; color: #116834; font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; white-space: nowrap; border: 1px solid #116834;">
                     ${tx.activityType}
                   </span>
-                  <button class="btn-card-menu-entres" data-index="${idx}" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #111;">
-                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="1"></circle>
-                      <circle cx="12" cy="5" r="1"></circle>
-                      <circle cx="12" cy="19" r="1"></circle>
-                    </svg>
-                  </button>
-                  <div class="card-popover-entres" id="popover-entres-${idx}" style="display: none; position: absolute; top: 28px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
-                    <button class="btn-popover-entres-edit" data-type="${tx.activityType}" data-orig-index="${tx.originalIndex}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; border-bottom: 1px solid #EFEFEF; font-size: 0.88rem; font-weight: 600; color: #111111; cursor: pointer;">
-                      Edit
+                  ${!isEntresLocked ? `
+                    <button class="btn-card-menu-entres" data-index="${idx}" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #111;">
+                      <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="12" cy="5" r="1"></circle>
+                        <circle cx="12" cy="19" r="1"></circle>
+                      </svg>
                     </button>
-                    <button class="btn-popover-entres-hapus" data-type="${tx.activityType}" data-orig-index="${tx.originalIndex}" data-doc="${tx.docNo || 'Dokumen'}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 600; color: #D32F2F; cursor: pointer;">
-                      Hapus
-                    </button>
-                  </div>
+                    <div class="card-popover-entres" id="popover-entres-${idx}" style="display: none; position: absolute; top: 28px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
+                      <button class="btn-popover-entres-edit" data-type="${tx.activityType}" data-orig-index="${tx.originalIndex}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; border-bottom: 1px solid #EFEFEF; font-size: 0.88rem; font-weight: 600; color: #111111; cursor: pointer;">
+                        Edit
+                      </button>
+                      <button class="btn-popover-entres-hapus" data-type="${tx.activityType}" data-orig-index="${tx.originalIndex}" data-doc="${tx.docNo || 'Dokumen'}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 600; color: #D32F2F; cursor: pointer;">
+                        Hapus
+                      </button>
+                    </div>
+                  ` : `
+                    <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 7px; border-radius: 4px;">
+                      ${tx.status === 'DISETUJUI' || tx.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi'}
+                    </span>
+                  `}
                 </div>
               </div>
 
@@ -208,8 +210,8 @@ export function renderEntresLanding() {
                 ${tx.activityType === 'Menunas' ? `
                   ${tx.jumlahPohonDitunas ? `
                     <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                      <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Pohon Ditunas</span>
-                      <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${parseInt(tx.jumlahPohonDitunas || 0).toLocaleString('id-ID')} Pohon</span>
+                      <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Pokok Ditunas</span>
+                      <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${parseInt(tx.jumlahPohonDitunas || 0).toLocaleString('id-ID')} Pkk</span>
                     </div>
                   ` : ''}
                   ${tx.jumlahPerisai ? `
@@ -219,20 +221,20 @@ export function renderEntresLanding() {
                     </div>
                   ` : ''}
                   <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Populasi Master Plot</span>
+                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Populasi Jumlah Pokok</span>
                     <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${parseInt(tx.jlhPokok || 0).toLocaleString('id-ID')} Pkk</span>
                   </div>
                 ` : `
                   <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Stik Hijau</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${parseInt(tx.jumlahKayu || 0).toLocaleString('id-ID')} Stik</span>
+                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Jumlah Kayu</span>
+                    <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${parseInt(tx.jumlahKayu || 0).toLocaleString('id-ID')} Btg</span>
                   </div>
                   <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                     <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Hasil Panen Mata Entres</span>
                     <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${parseInt(tx.jumlahPerisai || 0).toLocaleString('id-ID')} Perisai</span>
                   </div>
                   <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Rata-rata Perisai / Stik</span>
+                    <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Rata-rata Perisai / Btg</span>
                     <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${(tx.jumlahPerisai && tx.jumlahKayu ? (tx.jumlahPerisai / tx.jumlahKayu).toFixed(2) : '-')}</span>
                   </div>
                 `}
@@ -260,10 +262,11 @@ export function renderEntresLanding() {
               </div>
 
             </div>
-          `).join('') : renderEmptyStateCard({
-            title: 'Belum ada Dokumen Kebun Entres hari ini',
-            description: 'Pilih menu Menunas atau Topping untuk memulai rekam data'
-          })}
+            `;
+          }).join('') : renderEmptyStateCard({
+    title: 'Belum ada Dokumen Kebun Entres hari ini',
+    description: 'Pilih menu Menunas atau Topping untuk memulai rekam data'
+  })}
 
         </div>
 
@@ -303,6 +306,22 @@ export function renderEntresLanding() {
   app.querySelector('#btn-refresh')?.addEventListener('click', () => {
     renderEntresLanding();
   });
+
+  // Card Stok Mata Entres Interaction & Navigation
+  const cardStok = app.querySelector('#card-stok-mata-entres');
+  if (cardStok) {
+    cardStok.addEventListener('mouseenter', () => {
+      cardStok.style.transform = 'translateY(-2px)';
+      cardStok.style.boxShadow = '0 4px 10px rgba(21, 128, 61, 0.12)';
+    });
+    cardStok.addEventListener('mouseleave', () => {
+      cardStok.style.transform = 'translateY(0)';
+      cardStok.style.boxShadow = '0 1px 3px rgba(0,0,0,0.02)';
+    });
+    cardStok.addEventListener('click', () => {
+      navigate('/entres/stock');
+    });
+  }
 
   // Card Menunas Interaction & Navigation
   const cardMenunas = app.querySelector('#card-menunas');
@@ -362,11 +381,23 @@ export function renderEntresLanding() {
     if (pendingDeleteOrigIdx !== null && !isNaN(pendingDeleteOrigIdx)) {
       if (pendingDeleteType === 'Menunas') {
         const txs = storage.get('entres_menunas_transactions', []);
+        const targetTx = txs[pendingDeleteOrigIdx];
+        if (isTransactionLockedForMantri(targetTx)) {
+          toast.error('Transaksi Menunas tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+          closeDeleteDialog();
+          return;
+        }
         txs.splice(pendingDeleteOrigIdx, 1);
         storage.set('entres_menunas_transactions', txs);
+        toast.success(`Transaksi Menunas berhasil dihapus.`);
       } else {
         const txs = storage.get('entres_topping_transactions', []);
         const targetTx = txs[pendingDeleteOrigIdx];
+        if (isTransactionLockedForMantri(targetTx)) {
+          toast.error('Transaksi Topping tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+          closeDeleteDialog();
+          return;
+        }
         if (targetTx) {
           const deleteCheck = validateToppingDeletion(targetTx.docNo);
           if (!deleteCheck.valid) {
@@ -420,6 +451,10 @@ export function renderEntresLanding() {
         if (type === 'Menunas') {
           const txs = storage.get('entres_menunas_transactions', []);
           const editTx = txs[origIdx];
+          if (isTransactionLockedForMantri(editTx)) {
+            toast.error('Transaksi Menunas tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+            return;
+          }
           if (editTx) {
             storage.set('editing_menunas_index', origIdx);
             storage.set('selected_menunas_plot', {
@@ -435,6 +470,10 @@ export function renderEntresLanding() {
         } else {
           const txs = storage.get('entres_topping_transactions', []);
           const editTx = txs[origIdx];
+          if (isTransactionLockedForMantri(editTx)) {
+            toast.error('Transaksi Topping tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+            return;
+          }
           if (editTx) {
             storage.set('editing_topping_index', origIdx);
             storage.set('selected_topping_plot', {
@@ -462,6 +501,16 @@ export function renderEntresLanding() {
         pendingDeleteOrigIdx = parseInt(e.currentTarget.dataset.origIndex, 10);
         const docNo = e.currentTarget.dataset.doc;
 
+        const txs = pendingDeleteType === 'Menunas'
+          ? storage.get('entres_menunas_transactions', [])
+          : storage.get('entres_topping_transactions', []);
+        const targetTx = txs[pendingDeleteOrigIdx];
+
+        if (isTransactionLockedForMantri(targetTx)) {
+          toast.error(`Transaksi ${pendingDeleteType} tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.`);
+          return;
+        }
+
         if (deleteMsg) {
           deleteMsg.textContent = `Apakah Anda yakin ingin menghapus data transaksi ${pendingDeleteType} "${docNo}"? Data yang telah dihapus tidak dapat dipulihkan kembali.`;
         }
@@ -479,7 +528,7 @@ export function renderEntresLanding() {
       const content = card.querySelector('.card-details-content');
       const text = btn.querySelector('.expand-text');
       const icon = btn.querySelector('.expand-icon');
-      
+
       if (content) {
         if (content.style.display === 'none' || !content.style.display) {
           content.style.display = 'flex';

@@ -42,6 +42,8 @@ import { renderSelectionLanding } from './modules/selection/selection-landing.js
 import { renderNurseryHistory } from './modules/history/nursery-history.js';
 import { renderTransactionManager } from './modules/transactions/transaction-manager.js';
 import { renderEntresLanding } from './modules/entres/entres-landing.js';
+import { renderEntresStockLanding } from './modules/entres/entres-stock-landing.js';
+import { renderEntresStockDetail } from './modules/entres/entres-stock-detail.js';
 import { renderMenunasScan } from './modules/entres/menunas-scan.js';
 import { renderMenunasForm } from './modules/entres/menunas-form.js';
 import { renderToppingScan } from './modules/entres/topping-scan.js';
@@ -63,6 +65,7 @@ import { renderDestructionLanding } from './modules/destruction/destruction-land
 import { renderConsolidationLanding } from './modules/consolidation/consolidation-landing.js';
 import { renderVerificationLanding } from './modules/verification/verification-landing.js';
 import { renderMantriConfirmationLanding } from './modules/verification/mantri-confirmation-landing.js';
+import { renderReportsLanding } from './modules/reports/reports-landing.js';
 import { renderAnalysisPlaceholder } from './modules/placeholder/analysis-placeholder.js';
 import { renderProfile } from './modules/profile/profile.js';
 import { seedDatabase } from './db/seed.js';
@@ -145,6 +148,8 @@ registerRoute('/request/mata-entres/form', renderRequestMataEntresForm);
 registerRoute('/dispatch', renderDispatchLanding);
 registerRoute('/dispatch/report', renderDispatchReport);
 registerRoute('/entres', renderEntresLanding);
+registerRoute('/entres/stock', renderEntresStockLanding);
+registerRoute('/entres/stock/detail', renderEntresStockDetail);
 registerRoute('/entres/menunas', renderMenunasScan);
 registerRoute('/entres/menunas/form', renderMenunasForm);
 registerRoute('/entres/topping', renderToppingScan);
@@ -156,6 +161,7 @@ registerRoute('/selection/culling', renderDestructionLanding);
 registerRoute('/consolidation', renderConsolidationLanding);
 registerRoute('/verification', renderVerificationLanding);
 registerRoute('/mantri-confirmation', renderMantriConfirmationLanding);
+registerRoute('/reports', renderReportsLanding);
 registerRoute('/profile', renderProfile);
 
 /* Fallback Not Found */

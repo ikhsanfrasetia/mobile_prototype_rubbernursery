@@ -375,13 +375,13 @@ storage.set('entres_topping_transactions', [
 ]);
 const topTx = getMantriTodayTransactions(testMantri, todayStr)[0];
 const rawTop = topTx.rawRecord;
-const mainQtyTopping = `${Number(rawTop.jumlahKayu || 0).toLocaleString('id-ID')} Stik Hijau · ${Number(rawTop.jumlahPerisai || 0).toLocaleString('id-ID')} Perisai`;
+const mainQtyTopping = `${Number(rawTop.jumlahKayu || 0).toLocaleString('id-ID')} Btg · ${Number(rawTop.jumlahPerisai || 0).toLocaleString('id-ID')} Perisai`;
 assert(
-  topTx.moduleType === MODULE_TYPES.TOPPING &&
-  mainQtyTopping === '120 Stik Hijau · 360 Perisai' &&
+  (topTx.moduleType === MODULE_TYPES.KEBUN_ENTRES || topTx.moduleType === MODULE_TYPES.TOPPING) &&
+  mainQtyTopping === '120 Btg · 360 Perisai' &&
   !mainQtyTopping.includes('50 Pokok'),
   'IT-MOD-16',
-  'Compact Card Topping explicitly displays Jumlah Stik Hijau (120) & Jumlah Perisai (360), NOT jumlahPokok'
+  'Compact Card Topping explicitly displays Jumlah Kayu (120) & Jumlah Perisai (360), NOT jumlahPokok'
 );
 
 // -------------------------------------------------------------

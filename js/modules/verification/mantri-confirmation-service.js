@@ -14,6 +14,7 @@ import { todayISO, todayDDMMYYYY } from '../../core/utils.js';
 import { getCurrentUserContext, resolveUserContext, ROLES } from '../../core/user-context.js';
 import { VERIFICATION_STORAGE_KEY, VERIFICATION_STATUS } from './verification-manager.js';
 import { submitPreGraftingSelectionDocumentToAsisten } from '../selection/selection-manager.js';
+import { getWorkersForUserContext } from '../../data/worker-master.js';
 
 export const MANTRI_TRANSACTION_STATUS = Object.freeze({
   READY_TO_CONFIRM: 'READY_TO_CONFIRM',
@@ -26,9 +27,11 @@ export const MANTRI_TRANSACTION_STATUS = Object.freeze({
 
 export const MODULE_TYPES = Object.freeze({
   PRESENSI: 'PRESENSI',
+  TIDAK_HADIR: 'TIDAK_HADIR',
   PENERIMAAN: 'PENERIMAAN',
   PENYEMAIAN: 'PENYEMAIAN',
   DEDERAN: 'DEDERAN',
+  KEBUN_ENTRES: 'KEBUN_ENTRES',
   MENUNAS: 'MENUNAS',
   TOPPING: 'TOPPING',
   OKULASI: 'OKULASI',
@@ -44,9 +47,11 @@ export const MODULE_TYPES = Object.freeze({
 
 export const MODULE_LABELS = Object.freeze({
   [MODULE_TYPES.PRESENSI]: 'Presensi',
+  [MODULE_TYPES.TIDAK_HADIR]: 'Tidak Hadir',
   [MODULE_TYPES.PENERIMAAN]: 'Penerimaan',
   [MODULE_TYPES.PENYEMAIAN]: 'Penyemaian',
   [MODULE_TYPES.DEDERAN]: 'Dederan (Germinasi)',
+  [MODULE_TYPES.KEBUN_ENTRES]: 'Kebun Entres',
   [MODULE_TYPES.MENUNAS]: 'Menunas',
   [MODULE_TYPES.TOPPING]: 'Topping',
   [MODULE_TYPES.OKULASI]: 'Okulasi',
@@ -59,6 +64,17 @@ export const MODULE_LABELS = Object.freeze({
   [MODULE_TYPES.MATERIAL]: 'Material & Bahan',
   [MODULE_TYPES.SIMULASI_GUDANG]: 'Simulasi Issue Gudang'
 });
+
+/**
+ * Helper: Safe number formatting yang aman terhadap null, undefined, numeric string, '-' (hyphen)
+ */
+export function formatSafeNumber(val, defaultFallback = '-') {
+  if (val === undefined || val === null || val === '') return defaultFallback;
+  if (val === '-') return '-';
+  const n = Number(val);
+  if (Number.isNaN(n)) return String(val);
+  return n.toLocaleString('id-ID');
+}
 
 /**
  * Helper: Normalisasi date bisnis ke format kanonikal DD/MM/YYYY
@@ -213,6 +229,63 @@ function matchActor(item, userCtx) {
 }
 
 /**
+ * Canonical Predicate: Memeriksa apakah suatu transaksi berstatus LOCKED untuk Mantri.
+ * Mengevaluasi seluruh status field (status, verificationStatus, submissionStatus) secara independen.
+ * 
+ * @param {object} item - Record transaksi sumber
+ * @returns {boolean} true jika transaksi terkunci (sedang diverifikasi atau sudah disetujui/final)
+ */
+export function isTransactionLockedForMantri(item) {
+  if (!item) return false;
+  if (item.isFinal === true) return true;
+
+  const statuses = [
+    item.status,
+    item.verificationStatus,
+    item.submissionStatus
+  ]
+    .filter(Boolean)
+    .map(v => String(v).toUpperCase().trim());
+
+  if (statuses.length === 0) return false;
+
+  const lockedStates = new Set([
+    'MENUNGGU_VERIFIKASI',
+    'SUBMITTED_TO_ASB',
+    'PENDING_ASB',
+    'DIAJUKAN',
+    'DIAJUKAN_PEMERIKSAAN',
+    'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN',
+    'TERVERIFIKASI',
+    'DISETUJUI',
+    'VERIFIED',
+    'APPROVED'
+  ]);
+
+  const isReturned = statuses.some(s => s === 'DIKEMBALIKAN' || s === 'REVISION');
+
+  if (isReturned) {
+    const hasResubmittedOrApproved = statuses.some(s =>
+      s === 'MENUNGGU_VERIFIKASI' ||
+      s === 'SUBMITTED_TO_ASB' ||
+      s === 'PENDING_ASB' ||
+      s === 'DIAJUKAN' ||
+      s === 'DIAJUKAN_PEMERIKSAAN' ||
+      s === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
+      s === 'TERVERIFIKASI' ||
+      s === 'DISETUJUI' ||
+      s === 'VERIFIED' ||
+      s === 'APPROVED'
+    );
+    if (!hasResubmittedOrApproved) {
+      return false; // Valid returned state is EDITABLE
+    }
+  }
+
+  return statuses.some(s => lockedStates.has(s));
+}
+
+/**
  * Helper: Tentukan status siklus hidup konfirmasi untuk record tertentu
  */
 function resolveTransactionStatus(item, moduleType, verifMap) {
@@ -304,40 +377,60 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
 
   const normalizedList = [];
 
-  // 1. Presensi: attendance_transactions & attendance_records
-  const attendances = [
-    ...storage.get('attendance_transactions', []),
-    ...storage.get('attendance_records', [])
-  ];
-  const seenAttendanceIds = new Set();
-  attendances.forEach(item => {
-    const id = item.id || item.docNo;
-    if (!id || seenAttendanceIds.has(id)) return;
-    seenAttendanceIds.add(id);
+  // 1. Tidak Hadir (Exception Workflow)
+  // Normal presensi sengaja tidak dimasukkan ke Central Hub sesuai PRS-AUD-001
+  const allWorkers = getWorkersForUserContext(user, { activeOnly: false });
+  const absentWorkers = allWorkers.filter(w => w.status !== 'ACTIVE' || w.active === false || !!w.absentType);
 
-    const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
-    if (!matchActor(item, user)) return;
+  if (absentWorkers.length > 0) {
+    const docNo = `ABSEN-${todayStr.replace(/\//g, '')}`;
+    const virtualItem = {
+      id: docNo,
+      docNo,
+      date: todayStr,
+      type: 'TIDAK_HADIR',
+      status: 'READY_TO_CONFIRM', // default sebelum konfirmasi
+      submittedByUserId: user?.id || user?.userId,
+      submittedByName: user?.name || 'Mantri Bibitan',
+      estateId: user?.estateId,
+      divisionId: user?.divisionId,
+      detailPekerja: absentWorkers.map(w => ({
+        workerId: w.id,
+        name: w.name,
+        code: w.code,
+        absentType: w.absentType || 'C'
+      }))
+    };
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.PRESENSI, verifMap);
-    const docNo = item.docNo || item.id || `ATT-${id}`;
-    const actor = item.actorName || item.workerName || item.name || user?.name || 'Mantri Bibitan';
-    const summary = `${item.totalWorkers || item.workerCount || 1} Kehadiran (${item.status || item.type || 'HADIR'})`;
+    const stat = resolveTransactionStatus(virtualItem, MODULE_TYPES.TIDAK_HADIR, verifMap);
+    const summary = `${absentWorkers.length} Pekerja Tidak Hadir`;
+    const infoText = absentWorkers.map(w => w.name || w.code).join(', ');
 
     normalizedList.push({
-      id: String(id),
+      id: docNo,
       docNo,
-      moduleType: MODULE_TYPES.PRESENSI,
-      moduleLabel: MODULE_LABELS[MODULE_TYPES.PRESENSI],
-      date: bDate,
-      actor,
+      moduleType: MODULE_TYPES.TIDAK_HADIR,
+      moduleLabel: MODULE_LABELS[MODULE_TYPES.TIDAK_HADIR],
+      date: todayStr,
+      actor: user?.name || 'Mantri Bibitan',
       summary,
       status: stat.status,
       verificationStatus: stat.verificationStatus,
-      rawRecord: item,
-      storageKey: 'attendance_transactions'
+      rawRecord: virtualItem,
+      storageKey: 'virtual_tidak_hadir',
+      display: {
+        title: 'Tidak Hadir',
+        info: infoText || '-',
+        mainQty: `${absentWorkers.length} Pekerja Tidak Hadir`,
+        unit: 'Orang',
+        fields: [
+          { label: 'Total Tidak Hadir', value: `${absentWorkers.length} Orang`, highlight: true },
+          { label: 'Rincian Pekerja', value: absentWorkers.map(w => `${w.name || '-'} (${w.code || '-'}) · Izin: ${w.absentType || 'C'}`).join('<br>') }
+        ]
+      }
     });
-  });
+  }
+
 
   // 2. Penerimaan: receipt_ksp_transactions & penerimaan_biji_records & receipt_transactions
   const receipts = [
@@ -358,9 +451,14 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const stat = resolveTransactionStatus(item, MODULE_TYPES.PENERIMAAN, verifMap);
     const docNo = item.docNo || item.receiptDocNo || item.id || `RCV-${id}`;
     const actor = item.penerima || item.actorName || item.createdByName || user?.name || 'Mantri Bibitan';
-    const qty = item.qty || item.quantity || item.receivedQty || item.acceptedQty || 0;
-    const unit = item.satuan || item.unit || 'Pkk';
-    const summary = `${Number(qty).toLocaleString('id-ID')} ${unit} (Klon: ${item.klon || item.clone || '-'})`;
+    const rawQty = item.qty !== undefined ? item.qty : (item.quantity !== undefined ? item.quantity : (item.receivedQty !== undefined ? item.receivedQty : (item.acceptedQty !== undefined ? item.acceptedQty : '-')));
+    const unit = item.satuan || item.unit || 'Butir';
+    const hasUnitInRaw = typeof rawQty === 'string' && /[a-zA-Z]/.test(rawQty.trim());
+    const safeQtyFormatted = formatSafeNumber(rawQty);
+    const formattedDisplayQty = hasUnitInRaw ? rawQty.trim() : `${safeQtyFormatted} ${unit}`;
+    const klon = item.klon || item.clone || '-';
+    const tipeAsal = item.tipeAsal || item.asal || item.sumber || item.sourceType || 'Kebun Induk';
+    const summary = `${formattedDisplayQty} (Klon: ${klon})`;
 
     normalizedList.push({
       id: String(id),
@@ -373,7 +471,20 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'receipt_ksp_transactions'
+      storageKey: 'receipt_ksp_transactions',
+      display: {
+        title: 'Penerimaan Benih',
+        info: `Klon ${klon} · ${tipeAsal}`,
+        mainQty: formattedDisplayQty,
+        unit,
+        fields: [
+          { label: 'Klon', value: klon },
+          { label: 'Tipe Asal', value: tipeAsal },
+          { label: 'Sumber', value: item.sumber || '-' },
+          { label: 'No. SIR', value: item.sir || '-' },
+          { label: 'Jumlah Diterima', value: formattedDisplayQty, highlight: true }
+        ]
+      }
     });
   });
 
@@ -392,8 +503,11 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const stat = resolveTransactionStatus(item, MODULE_TYPES.PENYEMAIAN, verifMap);
     const docNo = item.docNo || item.nomorDokumen || item.id || `SEED-${id}`;
     const actor = item.mantri || item.actorName || item.createdByName || user?.name || 'Mantri Bibitan';
-    const qty = item.totalDisemai || item.qty || 0;
-    const summary = `${Number(qty).toLocaleString('id-ID')} Butir di Bedengan ${item.bedengan || item.bedenganCode || '-'} (Batch: ${item.batchNo || '-'})`;
+    const qty = item.totalDisemai !== undefined ? item.totalDisemai : (item.qty || 0);
+    const formattedQty = formatSafeNumber(qty);
+    const bedengan = item.bedengan || item.bedenganCode || '-';
+    const batch = item.batchNo || '-';
+    const summary = `${formattedQty} Butir di Bedengan ${bedengan} (Batch: ${batch})`;
 
     normalizedList.push({
       id: String(id),
@@ -406,7 +520,21 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'seeding_transactions'
+      storageKey: 'seeding_transactions',
+      display: {
+        title: 'Penyemaian Benih',
+        info: `Batch ${batch} · Bedengan ${bedengan}`,
+        mainQty: `${formattedQty} Bibit`,
+        unit: 'Bibit',
+        fields: [
+          { label: 'Program', value: item.program || '-' },
+          { label: 'Batch', value: batch },
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon', value: item.klonAwal || item.klon || '-' },
+          { label: 'Total Disemai', value: `${formattedQty} Bibit`, highlight: true },
+          { label: 'Total Polybag', value: `${formatSafeNumber(item.totalPolybag || 0)} Pkk` }
+        ]
+      }
     });
   });
 
@@ -425,8 +553,11 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const stat = resolveTransactionStatus(item, MODULE_TYPES.DEDERAN, verifMap);
     const docNo = item.docNo || item.id || `DED-${id}`;
     const actor = item.mantri || item.actorName || item.recordedBy || user?.name || 'Mantri Bibitan';
-    const qty = item.totalDeder || item.jumlahDeder || item.qty || 0;
-    const summary = `${Number(qty).toLocaleString('id-ID')} Butir Germinasi di Bedengan ${item.bedenganCode || item.bedengan || '-'}`;
+    const qty = item.jumlahDeder !== undefined ? item.jumlahDeder : (item.totalDeder || item.qty || 0);
+    const formattedQty = formatSafeNumber(qty);
+    const bedengan = item.bedenganCode || item.bedengan || '-';
+    const klon = item.klon || item.varietas || '-';
+    const summary = `${formattedQty} Butir Germinasi di Bedengan ${bedengan}`;
 
     normalizedList.push({
       id: String(id),
@@ -439,7 +570,18 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'dederan_transactions'
+      storageKey: 'dederan_transactions',
+      display: {
+        title: 'Germinasi / Dederan',
+        info: `Bedengan ${bedengan} · Klon ${klon}`,
+        mainQty: `${formattedQty} Butir Deder`,
+        unit: 'Butir',
+        fields: [
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon', value: klon },
+          { label: 'Jumlah Deder', value: `${formattedQty} Butir`, highlight: true }
+        ]
+      }
     });
   });
 
@@ -458,24 +600,41 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     if (bDate !== todayStr) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.MENUNAS, verifMap);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.KEBUN_ENTRES, verifMap);
     const docNo = item.docNo || item.id || `TUNAS-${id}`;
     const actor = item.mantri || item.actorName || item.mandor || user?.name || 'Mantri Bibitan';
-    const qty = item.jumlahPokok || item.jumlahTunas || item.qty || 0;
-    const summary = `${Number(qty).toLocaleString('id-ID')} Pokok di Plot ${item.plotId || item.plotNo || '-'} (Klon: ${item.klon || '-'})`;
+    const qty = item.jumlahPohonDitunas !== undefined ? item.jumlahPohonDitunas : (item.jumlahPokok || item.jumlahTunas || item.qty || 0);
+    const formattedQty = formatSafeNumber(qty);
+    const plot = item.kodePlot || item.plotId || item.plotNo || '-';
+    const klon = item.namaKlon || item.klon || '-';
+    const summary = `${formattedQty} Pokok Ditunas di Plot ${plot} (Klon: ${klon})`;
 
     normalizedList.push({
       id: String(id),
       docNo,
-      moduleType: MODULE_TYPES.MENUNAS,
-      moduleLabel: MODULE_LABELS[MODULE_TYPES.MENUNAS],
+      moduleType: MODULE_TYPES.KEBUN_ENTRES,
+      activityType: 'MENUNAS',
+      referenceType: 'MENUNAS',
+      moduleLabel: MODULE_LABELS[MODULE_TYPES.KEBUN_ENTRES],
       date: bDate,
       actor,
       summary,
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'entres_menunas_transactions'
+      storageKey: 'entres_menunas_transactions',
+      display: {
+        title: 'Entres Menunas',
+        info: `Plot ${plot} · Klon ${klon}`,
+        mainQty: `${formattedQty} Pokok Ditunas`,
+        unit: 'Pkk',
+        fields: [
+          { label: 'Plot', value: plot },
+          { label: 'Klon', value: klon },
+          { label: 'Kebun Entres', value: item.budwoodCode || '-' },
+          { label: 'Realisasi Ditunas', value: `${formattedQty} Pkk`, highlight: true }
+        ]
+      }
     });
   });
 
@@ -494,24 +653,44 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     if (bDate !== todayStr) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.TOPPING, verifMap);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.KEBUN_ENTRES, verifMap);
     const docNo = item.docNo || item.id || `TOP-${id}`;
     const actor = item.mantri || item.actorName || item.mandor || user?.name || 'Mantri Bibitan';
-    const qty = item.jumlahPokok || item.jumlahTopping || item.qty || 0;
-    const summary = `${Number(qty).toLocaleString('id-ID')} Pokok di Plot ${item.plotId || item.plotNo || '-'} (Klon: ${item.klon || '-'})`;
+    const stik = item.jumlahKayu !== undefined ? item.jumlahKayu : (item.jumlahStik || 0);
+    const perisai = item.jumlahPerisai !== undefined ? item.jumlahPerisai : 0;
+    const formattedStik = formatSafeNumber(stik);
+    const formattedPerisai = formatSafeNumber(perisai);
+    const plot = item.kodePlot || item.plotId || item.plotNo || '-';
+    const klon = item.namaKlon || item.klon || '-';
+    const summary = `${formattedStik} Btg · ${formattedPerisai} Perisai di Plot ${plot} (Klon: ${klon})`;
 
     normalizedList.push({
       id: String(id),
       docNo,
-      moduleType: MODULE_TYPES.TOPPING,
-      moduleLabel: MODULE_LABELS[MODULE_TYPES.TOPPING],
+      moduleType: MODULE_TYPES.KEBUN_ENTRES,
+      activityType: 'TOPPING',
+      referenceType: 'TOPPING',
+      moduleLabel: MODULE_LABELS[MODULE_TYPES.KEBUN_ENTRES],
       date: bDate,
       actor,
       summary,
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'entres_topping_transactions'
+      storageKey: 'entres_topping_transactions',
+      display: {
+        title: 'Entres Topping',
+        info: `Plot ${plot} · Klon ${klon}`,
+        mainQty: `${formattedStik} Btg · ${formattedPerisai} Perisai`,
+        unit: 'Btg/Perisai',
+        fields: [
+          { label: 'Plot', value: plot },
+          { label: 'Klon', value: klon },
+          { label: 'Kebun Entres', value: item.budwoodCode || '-' },
+          { label: 'Jumlah Kayu', value: `${formattedStik} Btg`, highlight: true },
+          { label: 'Panen Perisai (Mata Entres)', value: `${formattedPerisai} Perisai`, highlight: true }
+        ]
+      }
     });
   });
 
@@ -530,9 +709,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const stat = resolveTransactionStatus(item, MODULE_TYPES.OKULASI, verifMap);
     const docNo = item.docNo || item.nomorDokumen || item.id || `OKL-${id}`;
     const actor = item.mantri || item.actorName || item.okulator || user?.name || 'Mantri Bibitan';
-    const qty = item.jumlah || item.qty || 0;
+    const qty = item.jumlah !== undefined ? item.jumlah : (item.qty || 0);
+    const formattedQty = formatSafeNumber(qty);
     const typeLabel = item.type === 'REGRAFTING' ? 'Regrafting' : 'Grafting';
-    const summary = `${Number(qty).toLocaleString('id-ID')} Pkk (${typeLabel}) di Bedengan ${item.bedengan || '-'} (Klon: ${item.klonEntres || item.klon || '-'})`;
+    const bedengan = item.bedengan || '-';
+    const klon = item.klonEntres || item.klon || '-';
+    const summary = `${formattedQty} Pkk (${typeLabel}) di Bedengan ${bedengan} (Klon: ${klon})`;
 
     normalizedList.push({
       id: String(id),
@@ -545,7 +727,20 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'budding_transactions'
+      storageKey: 'budding_transactions',
+      display: {
+        title: 'Okulasi Bibitan',
+        info: `${typeLabel} · Bedengan ${bedengan}`,
+        mainQty: `${formattedQty} Pkk`,
+        unit: 'Pkk',
+        fields: [
+          { label: 'Tipe Okulasi', value: typeLabel },
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon Entres', value: klon },
+          { label: 'Klon Batang Bawah', value: item.klonRootstock || '-' },
+          { label: 'Total Okulasi', value: `${formattedQty} Pkk`, highlight: true }
+        ]
+      }
     });
   });
 
@@ -564,10 +759,16 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const stat = resolveTransactionStatus(item, MODULE_TYPES.PEMERIKSAAN, verifMap);
     const docNo = item.docNo || item.id || `INSP-${id}`;
     const actor = item.mantri || item.actorName || item.inspektur || user?.name || 'Mantri Bibitan';
-    const checked = item.totalDiperiksa || item.qty || 0;
-    const jadi = item.jumlahJadi || 0;
-    const pct = item.persenJadi || (checked > 0 ? Math.round((jadi / checked) * 100) : 0);
-    const summary = `Periksa: ${Number(checked).toLocaleString('id-ID')} Pkk, Jadi: ${Number(jadi).toLocaleString('id-ID')} Pkk (${pct}%)`;
+    const checked = Number(item.totalDiperiksa !== undefined ? item.totalDiperiksa : (item.qty || 0));
+    const jadi = Number(item.jumlahJadi || 0);
+    const gagal = Number(item.jumlahGagal !== undefined ? item.jumlahGagal : (checked >= jadi ? (checked - jadi) : 0));
+    const pct = item.persenJadi !== undefined ? item.persenJadi : (checked > 0 ? Math.round((jadi / checked) * 100) : 0);
+    const formattedChecked = formatSafeNumber(checked);
+    const formattedJadi = formatSafeNumber(jadi);
+    const formattedGagal = formatSafeNumber(gagal);
+    const bedengan = item.bedengan || '-';
+    const klon = item.klonEntres || '-';
+    const summary = `Periksa: ${formattedChecked} Pkk, Jadi: ${formattedJadi} Pkk (${pct}%)`;
 
     normalizedList.push({
       id: String(id),
@@ -580,7 +781,22 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'inspection_transactions'
+      storageKey: 'inspection_transactions',
+      display: {
+        title: 'Pemeriksaan Okulasi',
+        info: `Bedengan ${bedengan} · Klon ${klon}`,
+        mainQty: `${formattedChecked} Diperiksa`,
+        breakdown: `${formattedJadi} Berhasil, ${formattedGagal} Tidak Berhasil`,
+        unit: 'Pkk',
+        fields: [
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon', value: klon },
+          { label: 'Total Diperiksa', value: `${formattedChecked} Pkk` },
+          { label: 'Jumlah Berhasil', value: `${formattedJadi} Pkk`, highlight: true },
+          { label: 'Jumlah Tidak Berhasil', value: `${formattedGagal} Pkk` },
+          { label: 'Persentase Jadi', value: `${pct}%`, highlight: true }
+        ]
+      }
     });
   });
 
@@ -598,10 +814,16 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
 
     const stat = resolveTransactionStatus(item, MODULE_TYPES.PEMERIKSAAN_DEDERAN, verifMap);
     const docNo = item.docNo || item.id || `DINSP-${id}`;
-    const actor = item.mantri || item.actorName || item.inspektur || user?.name || 'Mantri Bibitan';
-    const normal = item.totalLayak || item.sproutNormal || item.jumlahLayak || 0;
-    const afkir = item.totalAfkir || item.sproutAfkir || item.jumlahAfkir || 0;
-    const summary = `Bedengan ${item.bedenganCode || item.bedengan || '-'}: ${Number(normal).toLocaleString('id-ID')} Normal, ${Number(afkir).toLocaleString('id-ID')} Afkir`;
+    const actor = item.mantri || item.actorName || item.inspektur || item.inspectorName || user?.name || 'Mantri Bibitan';
+    const diperiksa = item.jumlahDiperiksa !== undefined ? item.jumlahDiperiksa : (item.totalDiperiksa || item.jumlahDeder || 0);
+    const berhasil = item.jumlahBerhasil !== undefined ? item.jumlahBerhasil : (item.totalLayak || item.sproutNormal || item.jumlahLayak || 0);
+    const tidakBerhasil = item.jumlahTidakBerhasil !== undefined ? item.jumlahTidakBerhasil : (item.totalAfkir || item.sproutAfkir || item.jumlahAfkir || 0);
+    const formattedDiperiksa = formatSafeNumber(diperiksa);
+    const formattedBerhasil = formatSafeNumber(berhasil);
+    const formattedTidakBerhasil = formatSafeNumber(tidakBerhasil);
+    const bedengan = item.bedenganCode || item.bedengan || '-';
+    const klon = item.klon || '-';
+    const summary = `Bedengan ${bedengan}: ${formattedDiperiksa} Diperiksa, ${formattedBerhasil} Berhasil, ${formattedTidakBerhasil} Tidak Berhasil`;
 
     normalizedList.push({
       id: String(id),
@@ -614,7 +836,21 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'dederan_inspections'
+      storageKey: 'dederan_inspections',
+      display: {
+        title: 'Pemeriksaan Dederan',
+        info: `Bedengan ${bedengan} · Klon ${klon}`,
+        mainQty: `${formattedDiperiksa} Diperiksa`,
+        breakdown: `${formattedBerhasil} Berhasil, ${formattedTidakBerhasil} Tidak Berhasil`,
+        unit: 'Butir',
+        fields: [
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon', value: klon },
+          { label: 'Total Diperiksa', value: `${formattedDiperiksa} Butir` },
+          { label: 'Jumlah Berhasil', value: `${formattedBerhasil} Butir`, highlight: true },
+          { label: 'Jumlah Tidak Berhasil', value: `${formattedTidakBerhasil} Butir` }
+        ]
+      }
     });
   });
 
@@ -636,7 +872,13 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const stage = item.selectionStage || 'Seleksi I';
     const layak = item.totalLayak !== undefined ? item.totalLayak : (item.finalBibitQty || 0);
     const afkir = item.totalAfkir !== undefined ? item.totalAfkir : (item.rejectedBibitQty || 0);
-    const summary = `${stage}: ${Number(layak).toLocaleString('id-ID')} Layak, ${Number(afkir).toLocaleString('id-ID')} Afkir (Batch: ${item.batchCode || '-'})`;
+    const diperiksa = item.totalDiperiksa !== undefined ? item.totalDiperiksa : (Number(layak) + Number(afkir));
+    const formattedLayak = formatSafeNumber(layak);
+    const formattedAfkir = formatSafeNumber(afkir);
+    const formattedDiperiksa = formatSafeNumber(diperiksa);
+    const batch = item.batchCode || '-';
+    const bedengan = item.bedengan || '-';
+    const summary = `${stage}: ${formattedLayak} Layak, ${formattedAfkir} Afkir (Batch: ${batch})`;
 
     normalizedList.push({
       id: String(id),
@@ -649,7 +891,21 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'pre_grafting_selection_documents'
+      storageKey: 'pre_grafting_selection_documents',
+      display: {
+        title: `Seleksi Pra-Okulasi (${stage})`,
+        info: `Batch ${batch} · Bedengan ${bedengan}`,
+        mainQty: `${formattedLayak} Layak`,
+        unit: 'Pkk',
+        fields: [
+          { label: 'Tahap Seleksi', value: stage },
+          { label: 'Batch', value: batch },
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Populasi Diperiksa', value: `${formattedDiperiksa} Pkk` },
+          { label: 'Bibit Layak', value: `${formattedLayak} Pkk`, highlight: true },
+          { label: 'Bibit Afkir', value: `${formattedAfkir} Pkk` }
+        ]
+      }
     });
   });
 
@@ -670,7 +926,11 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const actor = item.mantri || item.createdByName || item.actorName || user?.name || 'Mantri Bibitan';
     const layak = item.actualBibitRetainedQty !== undefined ? item.actualBibitRetainedQty : (item.bibitDipertahankan !== undefined ? item.bibitDipertahankan : (item.jumlahLayak || 0));
     const afkir = item.actualBibitSelectedQty !== undefined ? item.actualBibitSelectedQty : (item.bibitReject !== undefined ? item.bibitReject : (item.jumlahAfkir || 0));
-    const summary = `Seleksi ${item.stage || item.selectionStage || 'Bibit'}: ${Number(layak).toLocaleString('id-ID')} Layak, ${Number(afkir).toLocaleString('id-ID')} Afkir`;
+    const formattedLayak = formatSafeNumber(layak);
+    const formattedAfkir = formatSafeNumber(afkir);
+    const reason = item.reason || item.kategoriAfkir || item.stage || 'Afkir';
+    const bedengan = item.bedengan || item.lokasi || '-';
+    const summary = `Seleksi ${item.stage || item.selectionStage || 'Bibit'}: ${formattedLayak} Layak, ${formattedAfkir} Afkir`;
 
     normalizedList.push({
       id: String(id),
@@ -683,7 +943,20 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'selection_transactions'
+      storageKey: 'selection_transactions',
+      display: {
+        title: 'Penyeleksian Bibit',
+        info: `Kategori ${reason} · Bedengan ${bedengan}`,
+        mainQty: `${formattedAfkir} Bibit Afkir`,
+        unit: 'Pkk',
+        fields: [
+          { label: 'Tahap Seleksi', value: item.stage || item.selectionStage || 'Bibit' },
+          { label: 'Kategori / Alasan Afkir', value: reason },
+          { label: 'Bedengan / Lokasi', value: bedengan },
+          { label: 'Bibit Afkir (Selected)', value: `${formattedAfkir} Pkk`, highlight: true },
+          { label: 'Bibit Dipertahankan (Retained)', value: `${formattedLayak} Pkk` }
+        ]
+      }
     });
   });
 
@@ -705,8 +978,11 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const stat = resolveTransactionStatus(item, MODULE_TYPES.PEMELIHARAAN, verifMap);
     const docNo = item.docNo || item.id || `ACT-${id}`;
     const actor = item.mantri || item.actorName || item.mandor || user?.name || 'Mantri Bibitan';
-    const vol = item.volumePkk || item.volume || item.qty || 0;
-    const summary = `${item.activityType || 'Pemeliharaan'} - Bedengan: ${item.bedengan || '-'} (${Number(vol).toLocaleString('id-ID')} Pkk)`;
+    const actName = item.aktivitas?.nama || item.activityType || 'Pemeliharaan';
+    const vol = item.volumePkk !== undefined ? item.volumePkk : (item.aktivitas?.volume !== undefined ? item.aktivitas?.volume : (item.volume || item.qty || 0));
+    const formattedVol = formatSafeNumber(vol);
+    const loc = item.bedengan || item.location || item.lokasiBlok || item.blok || '-';
+    const summary = `${actName} - Bedengan: ${loc} (${formattedVol} Pkk)`;
 
     normalizedList.push({
       id: String(id),
@@ -719,7 +995,18 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'nursery_activity_transactions'
+      storageKey: 'nursery_activity_transactions',
+      display: {
+        title: 'Rekam Pemeliharaan',
+        info: `${actName} · Bedengan ${loc}`,
+        mainQty: `${formattedVol} Pkk`,
+        unit: 'Pkk',
+        fields: [
+          { label: 'Jenis Pemeliharaan', value: actName },
+          { label: 'Lokasi / Bedengan', value: loc },
+          { label: 'Volume Realisasi', value: `${formattedVol} Pkk`, highlight: true }
+        ]
+      }
     });
   });
 
@@ -737,9 +1024,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
 
     const stat = resolveTransactionStatus(item, MODULE_TYPES.PENGELUARAN, verifMap);
     const docNo = item.docNo || item.dispatchNo || item.id || `DSP-${id}`;
-    const actor = item.mantri || item.dispatcher || item.actorName || user?.name || 'Mantri Bibitan';
-    const qty = item.qtyDispatched || item.quantity || item.qty || 0;
-    const summary = `Dispatch: ${Number(qty).toLocaleString('id-ID')} Pkk ke ${item.targetDivision || item.targetEstate || '-'}`;
+    const actor = item.mantri || item.dispatcher || item.actorName || item.issuedByName || user?.name || 'Mantri Bibitan';
+    const qty = item.issuedQty !== undefined ? item.issuedQty : (item.qtyDispatched || item.quantity || item.qty || item.totalBatang || 0);
+    const formattedQty = formatSafeNumber(qty);
+    const clone = item.clone || item.klon || '-';
+    const destination = item.targetDivisionName || item.targetEstateId || item.destination || item.targetDivision || item.targetEstate || '-';
+    const summary = `Dispatch: ${formattedQty} Pkk ke ${destination} (Klon: ${clone})`;
 
     normalizedList.push({
       id: String(id),
@@ -752,7 +1042,19 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'dispatch_transactions'
+      storageKey: 'dispatch_transactions',
+      display: {
+        title: 'Pengeluaran Bibit',
+        info: `Tujuan ${destination} · Klon ${clone}`,
+        mainQty: `${formattedQty} Pkk`,
+        unit: 'Pkk',
+        fields: [
+          { label: 'Klon', value: clone },
+          { label: 'Tujuan Pengiriman', value: destination },
+          { label: 'Jumlah Pengeluaran', value: `${formattedQty} Pkk`, highlight: true },
+          { label: 'Kendaraan / Plat', value: item.vehiclePlate || '-' }
+        ]
+      }
     });
   });
 
@@ -774,9 +1076,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const stat = resolveTransactionStatus(item, MODULE_TYPES.MATERIAL, verifMap);
     const docNo = item.docNo || item.id || `MAT-${id}`;
     const actor = item.mantri || item.actorName || user?.name || 'Mantri Bibitan';
-    const qty = item.qty || item.quantity || item.qtyOut || 0;
+    const qty = item.qty !== undefined ? item.qty : (item.quantity !== undefined ? item.quantity : (item.qtyOut !== undefined ? item.qtyOut : (item.currentStock || 0)));
+    const formattedQty = formatSafeNumber(qty);
     const unit = item.unit || item.satuan || 'Unit';
-    const summary = `${item.materialName || item.itemName || 'Material'}: ${Number(qty).toLocaleString('id-ID')} ${unit}`;
+    const matName = item.materialName || item.itemName || item.name || 'Material';
+    const category = item.category || item.kategori || 'Umum';
+    const summary = `${matName}: ${formattedQty} ${unit}`;
 
     normalizedList.push({
       id: String(id),
@@ -789,7 +1094,18 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'material_usage_transactions'
+      storageKey: 'material_usage_transactions',
+      display: {
+        title: 'Material & Bahan',
+        info: `${matName} · ${category}`,
+        mainQty: `${formattedQty} ${unit}`,
+        unit,
+        fields: [
+          { label: 'Nama Material', value: matName },
+          { label: 'Kategori', value: category },
+          { label: 'Jumlah Digunakan', value: `${formattedQty} ${unit}`, highlight: true }
+        ]
+      }
     });
   });
 
@@ -808,9 +1124,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const stat = resolveTransactionStatus(item, MODULE_TYPES.SIMULASI_GUDANG, verifMap);
     const docNo = item.docNo || item.issueDocNo || item.id || `WHS-${id}`;
     const actor = item.mantri || item.actorName || user?.name || 'Mantri Bibitan';
-    const qty = item.qty || item.quantity || 0;
+    const qty = item.qty !== undefined ? item.qty : (item.quantity || 0);
+    const formattedQty = formatSafeNumber(qty);
     const unit = item.unit || 'Unit';
-    const summary = `Issue ${item.itemName || item.materialName || '-'}: ${Number(qty).toLocaleString('id-ID')} ${unit}`;
+    const itemName = item.itemName || item.materialName || '-';
+    const issueDoc = item.issueDocNo || item.docNo || '-';
+    const summary = `Issue ${itemName}: ${formattedQty} ${unit}`;
 
     normalizedList.push({
       id: String(id),
@@ -823,8 +1142,33 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'warehouse_issue_simulations'
+      storageKey: 'warehouse_issue_simulations',
+      display: {
+        title: 'Simulasi Issue Gudang',
+        info: `No ${issueDoc} · ${itemName}`,
+        mainQty: `${formattedQty} ${unit}`,
+        unit,
+        fields: [
+          { label: 'No. Issue Gudang', value: issueDoc },
+          { label: 'Nama Item / Barang', value: itemName },
+          { label: 'Jumlah Issue', value: `${formattedQty} ${unit}`, highlight: true }
+        ]
+      }
     });
+  });
+
+  // Enrich all normalized items with latestVerification & submittedAt from verifMap and rawRecord
+  normalizedList.forEach(tx => {
+    const v = verifMap.get(String(tx.id)) || verifMap.get(String(tx.docNo));
+    if (v) {
+      tx.latestVerification = v;
+      if (v.submittedAt && !tx.submittedAt) {
+        tx.submittedAt = v.submittedAt;
+      }
+    }
+    if (!tx.submittedAt) {
+      tx.submittedAt = tx.rawRecord?.submittedAt || tx.rawRecord?.confirmedAt || tx.rawRecord?.updatedAt || null;
+    }
   });
 
   return normalizedList;
@@ -904,7 +1248,7 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
       allVerifs.push({
         verificationId: `VRF-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         verificationNo: vNo,
-        referenceType: tx.moduleType,
+        referenceType: tx.referenceType || tx.activityType || tx.moduleType,
         referenceId: tx.id,
         referenceDocNo: tx.docNo,
         estateId: tx.rawRecord?.targetEstateId || tx.rawRecord?.estateId || tx.rawRecord?.sourceEstateId || user?.estateId || 'EST-01',

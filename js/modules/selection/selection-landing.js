@@ -169,31 +169,23 @@ export function renderSelectionLanding() {
 function renderAsistenSelectionReview(app, currentUser) {
   // 1. Pre-Grafting Seleksi I Documents
   const allPreDocs = getPreGraftingSelectionDocuments({}, currentUser);
-  const pendingPreDocs = allPreDocs.filter(d => (
-    (d.status || '').toUpperCase() === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
-    (d.status || '').toUpperCase() === SELECTION_STATUS.DIAJUKAN
-  ));
-  const historyPreDocs = allPreDocs.filter(d => (
-    (d.status || '').toUpperCase() === SELECTION_STATUS.DISETUJUI ||
-    (d.status || '').toUpperCase() === SELECTION_STATUS.DIKEMBALIKAN
-  ));
+  const pendingPreDocs = allPreDocs.filter(d => canPerformAsistenSelectionAction(d, currentUser));
+  const historyPreDocs = allPreDocs.filter(d => {
+    const s = (d.status || '').toUpperCase();
+    return s === SELECTION_STATUS.DISETUJUI || s === SELECTION_STATUS.DIKEMBALIKAN || s === 'TERVERIFIKASI' || s === 'VERIFIED';
+  });
 
   // 2. Post-Grafting Records (Existing)
   const allRecords = storage.get(SELECTION_STORAGE_KEY, []);
   const postGraftingRecords = allRecords.filter(r => !r.selectionDocumentId && !r.parentSelectionDocumentId && r.selectionType !== SELECTION_TYPES.PRA_OKULASI && r.selectionStage !== SELECTION_STAGES.SELEKSI_1);
   const scopedPostRecords = filterSelectionByScope(postGraftingRecords, currentUser);
 
-  const pendingPostRecords = scopedPostRecords.filter(r => (
-    (r.status || '').toUpperCase() === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
-    (r.status || '').toUpperCase() === SELECTION_STATUS.DIAJUKAN ||
-    (r.status || '').toUpperCase() === 'PENDING_DECLARATION'
-  ));
+  const pendingPostRecords = scopedPostRecords.filter(r => canPerformAsistenSelectionAction(r, currentUser));
 
-  const historyPostRecords = scopedPostRecords.filter(r => (
-    (r.status || '').toUpperCase() === SELECTION_STATUS.DISETUJUI ||
-    (r.status || '').toUpperCase() === SELECTION_STATUS.DIKEMBALIKAN ||
-    (r.status || '').toUpperCase() === 'DECLARED_CULLED'
-  ));
+  const historyPostRecords = scopedPostRecords.filter(r => {
+    const s = (r.status || '').toUpperCase();
+    return s === SELECTION_STATUS.DISETUJUI || s === SELECTION_STATUS.DIKEMBALIKAN || s === 'DECLARED_CULLED' || s === 'TERVERIFIKASI' || s === 'VERIFIED';
+  });
 
   const totalPendingCount = pendingPreDocs.length + pendingPostRecords.length;
   const totalHistoryCount = historyPreDocs.length + historyPostRecords.length;
@@ -448,30 +440,49 @@ function renderAsistenSelectionReview(app, currentUser) {
                     </div>
                   </div>
 
-                  <!-- 3-KOLOM METRIK SELEKSI -->
-                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 2px; margin-bottom: 8px; text-align: center;">
-                    <div>
-                      <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Diperiksa</div>
-                      <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">
-                        ${checked.toLocaleString('id-ID')}
+                  <!-- METRIK HASIL PENGAJUAN -->
+                  ${isDederan ? `
+                    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px;">
+                      <div style="font-size: 0.62rem; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">
+                        Hasil Pengajuan Mantri
                       </div>
-                      <div style="font-size: 0.58rem; color: #94A3B8;">${unit}</div>
-                    </div>
-                    <div style="border-left: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0;">
-                      <div style="font-size: 0.58rem; font-weight: 700; color: #15803D; text-transform: uppercase; letter-spacing: 0.02em;">Layak</div>
-                      <div style="font-size: 0.88rem; font-weight: 800; color: #15803D; line-height: 1.2; margin-top: 1px;">
-                        ${pass.toLocaleString('id-ID')}
+                      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem;">
+                        <span style="color: #64748B;">Diperiksa di Dederan</span>
+                        <strong style="color: #0F172A; font-weight: 800;">${checked.toLocaleString('id-ID')} ${unit}</strong>
                       </div>
-                      <div style="font-size: 0.58rem; color: #15803D; font-weight: 600;">${passPct}%</div>
-                    </div>
-                    <div>
-                      <div style="font-size: 0.58rem; font-weight: 700; color: #DC2626; text-transform: uppercase; letter-spacing: 0.02em;">Afkir</div>
-                      <div style="font-size: 0.88rem; font-weight: 800; color: #DC2626; line-height: 1.2; margin-top: 1px;">
-                        ${cull.toLocaleString('id-ID')}
+                      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; padding-top: 4px; border-top: 1px dashed #CBD5E1;">
+                        <span style="color: #DC2626; font-weight: 700;">Diajukan sebagai Afkir</span>
+                        <div style="text-align: right;">
+                          <strong style="color: #DC2626; font-weight: 900; font-size: 0.88rem;">${cull.toLocaleString('id-ID')} ${unit}</strong>
+                          <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-left: 2px;">(${cullPct}%)</span>
+                        </div>
                       </div>
-                      <div style="font-size: 0.58rem; color: #DC2626; font-weight: 600;">${cullPct}%</div>
                     </div>
-                  </div>
+                  ` : `
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 2px; margin-bottom: 8px; text-align: center;">
+                      <div>
+                        <div style="font-size: 0.58rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Diperiksa</div>
+                        <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin-top: 1px;">
+                          ${checked.toLocaleString('id-ID')}
+                        </div>
+                        <div style="font-size: 0.58rem; color: #94A3B8;">${unit}</div>
+                      </div>
+                      <div style="border-left: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0;">
+                        <div style="font-size: 0.58rem; font-weight: 700; color: #15803D; text-transform: uppercase; letter-spacing: 0.02em;">Layak</div>
+                        <div style="font-size: 0.88rem; font-weight: 800; color: #15803D; line-height: 1.2; margin-top: 1px;">
+                          ${pass.toLocaleString('id-ID')}
+                        </div>
+                        <div style="font-size: 0.58rem; color: #15803D; font-weight: 600;">${passPct}%</div>
+                      </div>
+                      <div>
+                        <div style="font-size: 0.58rem; font-weight: 700; color: #DC2626; text-transform: uppercase; letter-spacing: 0.02em;">Afkir</div>
+                        <div style="font-size: 0.88rem; font-weight: 800; color: #DC2626; line-height: 1.2; margin-top: 1px;">
+                          ${cull.toLocaleString('id-ID')}
+                        </div>
+                        <div style="font-size: 0.58rem; color: #DC2626; font-weight: 600;">${cullPct}%</div>
+                      </div>
+                    </div>
+                  `}
 
                   <!-- METADATA SUBMISSION -->
                   <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: #64748B; margin-bottom: ${isActionable ? '8px' : '0'};">
@@ -667,9 +678,20 @@ function renderAsistenSelectionReview(app, currentUser) {
             : `Apakah Anda yakin ingin menyetujui hasil seleksi bibit untuk batch <strong>${esc(target.batchCode)}</strong>?`}
             </p>
             <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.78rem;">
-              <div>Diperiksa: <strong>${parseInt(target.jumlahDiperiksa || target.quantity || 0).toLocaleString('id-ID')}</strong> ${targetUnit}</div>
-              <div>Layak: <strong style="color: #15803D;">${parseInt(target.jumlahLayak || 0).toLocaleString('id-ID')}</strong> ${targetUnit}</div>
-              <div>Afkir: <strong style="color: #DC2626;">${parseInt(target.jumlahAfkir || target.quantity || 0).toLocaleString('id-ID')}</strong> ${targetUnit}</div>
+              ${isDederan ? `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <span style="color: #64748B;">Diperiksa di Dederan:</span>
+                  <strong style="color: #0F172A;">${parseInt(target.jumlahDiperiksa || target.quantity || 0).toLocaleString('id-ID')} ${targetUnit}</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; color: #DC2626;">
+                  <span style="font-weight: 700;">Pengajuan Afkir:</span>
+                  <strong style="font-weight: 800;">${parseInt(target.jumlahAfkir || target.quantity || 0).toLocaleString('id-ID')} ${targetUnit}</strong>
+                </div>
+              ` : `
+                <div>Diperiksa: <strong>${parseInt(target.jumlahDiperiksa || target.quantity || 0).toLocaleString('id-ID')}</strong> ${targetUnit}</div>
+                <div>Layak: <strong style="color: #15803D;">${parseInt(target.jumlahLayak || 0).toLocaleString('id-ID')}</strong> ${targetUnit}</div>
+                <div>Afkir: <strong style="color: #DC2626;">${parseInt(target.jumlahAfkir || target.quantity || 0).toLocaleString('id-ID')}</strong> ${targetUnit}</div>
+              `}
             </div>
             <div style="margin-bottom: 14px;">
               <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">Catatan Persetujuan (Opsional)</label>
@@ -798,7 +820,10 @@ function renderMantriSelectionLanding(app, user) {
     return false;
   });
 
-  const preSowingSelectionPool = scopedPool.filter(item => item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN');
+  const preSowingSelectionPool = scopedPool.filter(item => 
+    (item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN') &&
+    (parseInt(item.jumlahAfkir || item.quantity || 0, 10) > 0)
+  );
   const postGraftingSelectionPool = scopedPool.filter(item => item.originType !== 'REJECT_DEDERAN' && item.sourceModule !== 'DEDERAN');
 
   const allCulledTxs = storage.get('selection_transactions', []);
@@ -3012,44 +3037,81 @@ function renderAfkirPoolList(poolItems, culledItems, emptyTitle, emptyDesc, pool
     }
 
     return `
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
+            <div class="card-selection-history-item" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; min-width: 0;">
+              
+              <!-- 1. HEADER: IDENTITAS (BEDENGAN / BATCH + KLON) & STATUS BADGE -->
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <div style="min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">
+                    ${esc(histCardTitle)}
+                  </span>
+                  ${klonDisplay ? `
+                    <span style="font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: #F1F5F9; color: #475569; border: 1px solid #E2E8F0;">
+                      Klon ${esc(klonDisplay)}
+                    </span>
+                  ` : ''}
+                </div>
+                <div style="flex-shrink: 0;">
+                  ${badgeHtml}
+                </div>
+              </div>
+
+              <!-- 2. QUANTITY & SUMBER SUMMARY BOX -->
+              <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px; box-sizing: border-box;">
+                <div style="min-width: 0; flex: 1;">
+                  <div style="font-size: 0.64rem; font-weight: 800; color: #DC2626; text-transform: uppercase; letter-spacing: 0.03em;">
+                    Bibit Afkir
+                  </div>
+                  <div style="font-size: 0.70rem; font-weight: 600; color: #64748B; margin-top: 1px; word-break: break-word;">
+                    ${esc(src)}
+                  </div>
+                </div>
+                <div style="text-align: right; flex-shrink: 0; display: flex; align-items: baseline; gap: 3px;">
+                  <span style="font-size: 1.10rem; font-weight: 900; color: #DC2626; line-height: 1;">-${qty.toLocaleString('id-ID')}</span>
+                  <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B;">${unit}</span>
+                </div>
+              </div>
+
+              <!-- 3. METADATA GRID 2-KOLOM (BERSIH & TERSTRUKTUR DENGAN LABEL ATAS) -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 6px 0; border-top: 1px solid #F1F5F9; border-bottom: 1px solid #F1F5F9; font-size: 0.72rem;">
                 <div style="min-width: 0;">
-                  <div style="font-weight: 800; font-size: 0.90rem; color: #0F172A; word-break: break-word;">
-                    ${esc(histCardTitle)}${klonDisplay ? ` <span style="font-size: 0.74rem; font-weight: 600; color: #64748B;">• Klon ${esc(klonDisplay)}</span>` : ''}
-                  </div>
-                  <div style="font-size: 0.70rem; color: #64748B; margin-top: 2px;">
-                    Dok. Seleksi: <strong style="color: #0F172A;">${esc(ctx.docNo || '-')}</strong> • Sumber: <strong style="color: #0F172A;">${esc(src)}</strong>
+                  <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px;">Dok. Seleksi</div>
+                  <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
+                    ${esc(ctx.docNo || '-')}
                   </div>
                 </div>
-                <div style="flex-shrink: 0; text-align: right;">
-                  <div>${badgeHtml}</div>
-                  <div style="margin-top: 4px;">
-                    <span style="font-weight: 900; font-size: 0.95rem; color: #DC2626;">-${qty.toLocaleString('id-ID')}</span>
-                    <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-left: 1px;">${unit}</span>
+                <div style="min-width: 0;">
+                  <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px;">Dok. Asal</div>
+                  <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
+                    ${esc(ctx.sourceDocNo || ctx.dederanDocNo || '-')}
+                  </div>
+                </div>
+                <div style="min-width: 0; grid-column: span 2;">
+                  <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px;">Program</div>
+                  <div style="font-weight: 700; color: #1E293B; word-break: break-word; overflow-wrap: break-word;">
+                    ${esc(ctx.programName || ctx.programCode || ctx.program || '-')}
                   </div>
                 </div>
               </div>
 
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 0.70rem; color: #64748B; padding: 6px 0; border-top: 1px solid #F1F5F9; border-bottom: 1px solid #F1F5F9;">
-                <div>Dok. Asal: <strong style="color: #334155;">${esc(ctx.sourceDocNo || '-')}</strong></div>
-                <div>Program: <strong style="color: #334155;">${esc(ctx.programName || ctx.programCode || '-')}</strong></div>
-              </div>
-
+              <!-- 4. CATATAN PERSETUJUAN / ALASAN PENGEMBALIAN -->
               ${isApproved && ctx.approvalNotes ? `
-                <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 4px; padding: 6px 8px; font-size: 0.70rem; color: #15803D; margin-top: 6px;">
-                  <strong>Catatan Persetujuan:</strong> ${esc(ctx.approvalNotes)}
+                <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 6px 8px; font-size: 0.70rem; color: #166534; line-height: 1.4;">
+                  <strong style="display: block; font-size: 0.65rem; color: #15803D; margin-bottom: 1px;">Catatan Persetujuan:</strong>
+                  ${esc(ctx.approvalNotes)}
                 </div>
               ` : ''}
 
               ${isReturned && ctx.returnReason ? `
-                <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; padding: 6px 8px; font-size: 0.70rem; color: #DC2626; margin-top: 6px;">
-                  <strong>Alasan Pengembalian:</strong> ${esc(ctx.returnReason)}
+                <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 6px 8px; font-size: 0.70rem; color: #991B1B; line-height: 1.4;">
+                  <strong style="display: block; font-size: 0.65rem; color: #DC2626; margin-bottom: 1px;">Alasan Pengembalian:</strong>
+                  ${esc(ctx.returnReason)}
                 </div>
               ` : ''}
 
-              <div style="font-size: 0.68rem; color: #94A3B8; margin-top: 6px; display: flex; justify-content: space-between;">
-                <div>Pengaju: <strong>${esc(ctx.createdByName || ctx.mantri || user.name)}</strong></div>
+              <!-- 5. FOOTER: PENGAJU & TANGGAL -->
+              <div style="font-size: 0.68rem; color: #64748B; display: flex; justify-content: space-between; align-items: center; margin-top: 1px;">
+                <div>Pengaju: <strong style="color: #334155;">${esc(ctx.createdByName || ctx.mantri || user.name)}</strong></div>
                 <div>${esc(ctx.tanggalSeleksi || ctx.tanggal || today)}</div>
               </div>
             </div>

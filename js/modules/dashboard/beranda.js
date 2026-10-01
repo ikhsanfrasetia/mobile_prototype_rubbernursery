@@ -28,6 +28,7 @@ import {
 } from '../seeding/dederan-manager.js';
 import { getEligiblePindahSemaiSources } from '../seeding/dederan-pindah-semai-adapter.js';
 import { getMantriTodayTransactions } from '../verification/mantri-confirmation-service.js';
+import { renderAsbBottomNav, attachAsbBottomNavEvents } from '../../components/bottom-nav-asb.js';
 
 /* SVG Icons sesuai desain acuan - proporsional & tajam */
 const ICONS = {
@@ -459,8 +460,14 @@ function renderRoleDevelopmentHome(user) {
   app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
 }
 
+export const ASISTEN_BIBITAN_BERANDA_MENUS = Object.freeze([
+  { id: 'penerimaan', title: 'Penerimaan<br>Bibit', label: 'Penerimaan Bibit', iconName: 'documentPlus', route: '/reception/kebun-sepupu' },
+  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', label: 'Permintaan Bibit', iconName: 'documentPlus', route: '/request' },
+  { id: 'pengeluaran-bibit', title: 'Pengeluaran<br>Bibit', label: 'Pengeluaran Bibit', iconName: 'sprout', route: '/dispatch' }
+]);
+
 function renderBerandaAsistenBibitan() {
-  const app = document.getElementById('app');
+  const app = document.getElementById('main-content') || document.getElementById('app');
   if (!app) return;
 
   const user = session.get();
@@ -472,15 +479,6 @@ function renderBerandaAsistenBibitan() {
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
-
-  const allSelections = storage.get('selection_transactions', []);
-  const hasActionableSelectionBadge = hasActionableSelection(userCtx);
-
-  const allDestructions = storage.get('destruction_transactions', []);
-  const hasActionableDestruction = getActionableDestructionCount(allDestructions, userCtx) > 0;
-
-  const hasActionableVerification = getPendingVerificationCount(userCtx) > 0;
-  const hasActionableConsolidation = getActionableConsolidationCount(userCtx) > 0;
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -497,29 +495,13 @@ function renderBerandaAsistenBibitan() {
     }
   }).catch(() => {});
 
-  const menuCards = ASISTEN_BIBITAN_MAIN_MENUS.map((item) => {
+  const menuCards = ASISTEN_BIBITAN_BERANDA_MENUS.map((item) => {
     let badgeHtml = '';
     if (item.id === 'permintaan-bibit' && hasActionableRequest) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
     } else if (item.id === 'penerimaan' && hasActionableReceipt) {
-      badgeHtml = `
-        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
-      `;
-    } else if (item.id === 'pemeriksaan-seleksi' && hasActionableSelectionBadge) {
-      badgeHtml = `
-        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
-      `;
-    } else if (item.id === 'pemusnahan-bibit' && hasActionableDestruction) {
-      badgeHtml = `
-        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
-      `;
-    } else if (item.id === 'verifikasi-data' && hasActionableVerification) {
-      badgeHtml = `
-        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
-      `;
-    } else if (item.id === 'konsolidasi-data' && hasActionableConsolidation) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
@@ -532,37 +514,66 @@ function renderBerandaAsistenBibitan() {
     const iconHtml = ICONS[item.iconName] || ICONS.documentPlus;
 
     return `
-      <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
-        <div class="beranda-card-icon">${iconHtml}</div>
-        <div class="beranda-card-title">${item.title}</div>
+      <button class="beranda-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 18px 8px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: transform 0.1s ease; text-align: center; gap: 8px; min-height: 115px; position: relative;">
+        <div class="beranda-card-icon" style="display: flex; align-items: center; justify-content: center;">${iconHtml}</div>
+        <div class="beranda-card-title" style="font-size: 0.8rem; font-weight: 700; color: #111827; line-height: 1.25;">${item.title}</div>
         ${badgeHtml}
       </button>
     `;
   }).join('');
 
   app.innerHTML = `
-    <div class="page beranda-page">
-      <header class="beranda-header">
-        <button class="beranda-menu-btn" id="beranda-drawer-btn" type="button" aria-label="Menu">
-          <svg viewBox="0 0 24 24" width="26" height="26" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
-        <h1 class="beranda-header-title">Beranda</h1>
+    <div class="page beranda-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      <header class="beranda-header" style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button class="beranda-menu-btn" id="beranda-drawer-btn" type="button" aria-label="Menu" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <h1 class="beranda-header-title" style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0; letter-spacing: -0.01em;">Beranda</h1>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="beranda-refresh-btn" type="button" aria-label="Segarkan" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+          </button>
+          <button id="beranda-notif-btn" type="button" aria-label="Notifikasi" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+          </button>
+        </div>
       </header>
 
-      <main class="beranda-body">
-        <div class="beranda-grid">
+      <main class="beranda-body" style="flex: 1; min-height: 0; overflow-y: auto; padding: 18px 14px;">
+        <div class="beranda-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
           ${menuCards}
         </div>
       </main>
+
+      <!-- BOTTOM NAVIGATION (4 ITEMS) -->
+      ${renderAsbBottomNav('beranda')}
     </div>
   `;
 
   // Drawer Toggle
   app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
+
+  // Refresh
+  app.querySelector('#beranda-refresh-btn')?.addEventListener('click', () => {
+    toast('Data beranda diperbarui', 'info');
+    renderBerandaAsistenBibitan();
+  });
+
+  // Notif
+  app.querySelector('#beranda-notif-btn')?.addEventListener('click', () => {
+    toast('Tidak ada notifikasi baru', 'info');
+  });
 
   // Menu clicks
   app.querySelectorAll('.beranda-menu-card').forEach((card) => {
@@ -576,6 +587,9 @@ function renderBerandaAsistenBibitan() {
       }
     });
   });
+
+  // Attach bottom nav events
+  attachAsbBottomNavEvents(app);
 }
 
 export function renderBeranda() {

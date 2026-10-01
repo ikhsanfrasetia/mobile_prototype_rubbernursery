@@ -2,6 +2,12 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
+import { session } from '../../core/session.js';
+import { openDrawer } from '../../components/drawer.js';
+import { getCurrentUserContext, resolveUserContext, ROLES } from '../../core/user-context.js';
+import { hasActionableSelection } from '../selection/selection-manager.js';
+import { getActionableDestructionCount } from '../destruction/destruction-manager.js';
+import { renderAsbBottomNav, attachAsbBottomNavEvents } from '../../components/bottom-nav-asb.js';
 import {
   syncDederanIndukDocuments,
   getDederanIndukDocuments,
@@ -10,12 +16,161 @@ import {
   deleteDederanInspection,
   DEDERAN_STORAGE_KEYS
 } from '../seeding/dederan-manager.js';
+import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 
 let activeInspectionModuleTab = 'DEDERAN'; // 'DEDERAN' | 'OKULASI'
 
+const ASB_INSP_ICONS = {
+  sprout: `
+    <svg viewBox="2 1.5 28 19" width="56" height="56" fill="#116834">
+      <path d="M16 2.5 C16 2.5 11.5 8.5 11.5 14 C11.5 16.8 13.5 19 16 19 C18.5 19 20.5 16.8 20.5 14 C20.5 8.5 16 2.5 16 2.5 Z" fill="#116834"/>
+      <path d="M13.2 19.5 C9.5 19.5 3.5 15.2 3.5 9 C9.5 8.5 13.8 13.2 13.8 17 C13.8 18 13.5 18.8 13.2 19.5 Z" fill="#116834"/>
+      <path d="M18.8 19.5 C22.5 19.5 28.5 15.2 28.5 9 C22.5 8.5 18.2 13.2 18.2 17 C18.2 18 18.5 18.8 18.8 19.5 Z" fill="#116834"/>
+    </svg>
+  `,
+  document: `
+    <svg viewBox="3 2 26 27" width="56" height="56" fill="#116834">
+      <rect x="5" y="4" width="22" height="24" rx="4.5" fill="#116834"/>
+      <line x1="9" y1="12" x2="19" y2="12" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="9" y1="16" x2="19" y2="16" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="9" y1="20" x2="16" y2="20" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    </svg>
+  `
+};
+
+export const ASISTEN_BIBITAN_PEMERIKSAAN_MENUS = Object.freeze([
+  {
+    id: 'pemeriksaan-seleksi',
+    title: 'Pemeriksaan<br>Hasil Seleksi',
+    label: 'Pemeriksaan Hasil Seleksi',
+    route: '/selection',
+    icon: ASB_INSP_ICONS.sprout
+  },
+  {
+    id: 'pemusnahan-bibit',
+    title: 'Pemusnahan<br>Bibit',
+    label: 'Pemusnahan Bibit',
+    route: '/destruction',
+    icon: ASB_INSP_ICONS.document
+  }
+]);
+
+function renderInspectionLandingAsistenBibitan() {
+  const app = document.getElementById('main-content') || document.getElementById('app');
+  if (!app) return;
+
+  const user = session.get();
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
+
+  const hasActionableSelectionBadge = hasActionableSelection(userCtx);
+  const allDestructions = storage.get('destruction_transactions', []);
+  const hasActionableDestruction = getActionableDestructionCount(allDestructions, userCtx) > 0;
+
+  const menuCards = ASISTEN_BIBITAN_PEMERIKSAAN_MENUS.map((item) => {
+    let badgeHtml = '';
+    if (item.id === 'pemeriksaan-seleksi' && hasActionableSelectionBadge) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    } else if (item.id === 'pemusnahan-bibit' && hasActionableDestruction) {
+      badgeHtml = `
+        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
+      `;
+    }
+
+    return `
+      <button class="beranda-menu-card inspection-asb-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
+        <div class="beranda-card-icon">${item.icon}</div>
+        <div class="beranda-card-title">${item.title}</div>
+        ${badgeHtml}
+      </button>
+    `;
+  }).join('');
+
+  app.innerHTML = `
+    <div class="page inspection-asb-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button id="insp-drawer-btn" type="button" aria-label="Menu" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0; letter-spacing: -0.01em;">Pemeriksaan</h1>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="insp-refresh-btn" type="button" aria-label="Segarkan" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+          </button>
+          <button id="insp-notif-btn" type="button" aria-label="Notifikasi" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- BODY / CARDS GRID -->
+      <main class="beranda-body" style="flex: 1; min-height: 0; overflow-y: auto; padding: 18px 16px;">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          ${menuCards}
+        </div>
+      </main>
+
+      <!-- BOTTOM NAVIGATION (4 ITEMS) -->
+      ${renderAsbBottomNav('pemeriksaan')}
+
+    </div>
+  `;
+
+  // Attach drawer
+  app.querySelector('#insp-drawer-btn')?.addEventListener('click', openDrawer);
+
+  // Refresh
+  app.querySelector('#insp-refresh-btn')?.addEventListener('click', () => {
+    toast('Data pemeriksaan diperbarui', 'info');
+    renderInspectionLandingAsistenBibitan();
+  });
+
+  // Notif
+  app.querySelector('#insp-notif-btn')?.addEventListener('click', () => {
+    toast('Tidak ada notifikasi baru', 'info');
+  });
+
+  // Menu clicks
+  app.querySelectorAll('.inspection-asb-menu-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const route = card.dataset.route;
+      if (route) {
+        navigate(route);
+      } else {
+        toast('Modul akan segera dibuka', 'info');
+      }
+    });
+  });
+
+  // Attach bottom nav events
+  attachAsbBottomNavEvents(app);
+}
+
 export function renderInspectionLanding() {
-  const app = document.getElementById('app');
+  const user = session.get();
+  const userCtx = getCurrentUserContext() || resolveUserContext(user);
+
+  if (userCtx?.role === ROLES.ASISTEN_BIBITAN || user?.role === ROLES.ASISTEN_BIBITAN) {
+    renderInspectionLandingAsistenBibitan();
+    return;
+  }
+
+  const app = document.getElementById('main-content') || document.getElementById('app');
   if (!app) return;
 
   // Load all budding transactions (both Grafting & Regrafting) and inspection transactions
@@ -377,7 +532,9 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
       <div style="margin: 20px 0 10px 0;">
         <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Ringkasan Data Pemeriksaan Dederan (${dederInspections.length})</h2>
         <div style="display: flex; flex-direction: column; gap: 8px;">
-          ${dederInspections.map((insp, idx) => `
+          ${dederInspections.map((insp, idx) => {
+            const isDederLocked = isTransactionLockedForMantri(insp);
+            return `
             <div class="card-deder-insp-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); position: relative;">
               
               <!-- BARIS 1: JUDUL DOKUMEN & TANGGAL & 3-DOTS ACTION -->
@@ -387,28 +544,34 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
                   <span style="color: #6B7280; font-size: 0.70rem;">${insp.tanggalPemeriksaan || '-'}</span>
                 </div>
 
-                <!-- TOMBOL AKSI 3-DOTS -->
-                <div style="position: relative;">
-                  <button type="button" class="btn-deder-insp-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
-                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
-                      <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
-                      <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
-                    </svg>
-                  </button>
+                <!-- TOMBOL AKSI 3-DOTS (HANYA DITAMPILKAN JIKA BELUM LOCKED) -->
+                ${!isDederLocked ? `
+                  <div style="position: relative;">
+                    <button type="button" class="btn-deder-insp-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
+                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
+                        <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
+                        <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
+                      </svg>
+                    </button>
 
-                  <!-- POPUP MENU -->
-                  <div class="deder-insp-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 130px; overflow: hidden;">
-                    <button type="button" class="menu-action-edit-deder-insp" data-doc="${insp.docNo}" data-tx="${insp.dederanTxDocNo || insp.dederanTxId}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
-                      <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                      <span>Edit</span>
-                    </button>
-                    <button type="button" class="menu-action-delete-deder-insp" data-doc="${insp.docNo}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                      <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                      <span>Hapus</span>
-                    </button>
+                    <!-- POPUP MENU -->
+                    <div class="deder-insp-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 130px; overflow: hidden;">
+                      <button type="button" class="menu-action-edit-deder-insp" data-doc="${insp.docNo}" data-tx="${insp.dederanTxDocNo || insp.dederanTxId}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        <span>Edit</span>
+                      </button>
+                      <button type="button" class="menu-action-delete-deder-insp" data-doc="${insp.docNo}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <span>Hapus</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ` : `
+                  <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 7px; border-radius: 4px;">
+                    ${insp.status === 'DISETUJUI' || insp.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi'}
+                  </span>
+                `}
               </div>
 
               <!-- BARIS 2: BEDENGAN & SUMBER DEDER -->
@@ -433,7 +596,8 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
               </div>
 
             </div>
-          `).join('')}
+            `;
+          }).join('')}
         </div>
       </div>
     ` : ''}
@@ -641,6 +805,8 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
             const selectionTotal = insp.totalToSelection !== undefined ? parseInt(insp.totalToSelection || 0) : Math.max(0, inspGagal - regraftTotal);
             const isRegraftInsp = insp.buddingType === 'REGRAFTING';
 
+            const isOkulasiInspLocked = isTransactionLockedForMantri(insp);
+
             return `
               <div class="card-insp-summary-wrapper" data-type="${isRegraftInsp ? 'REGRAFTING' : 'GRAFTING'}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); box-sizing: border-box; position: relative;">
                 
@@ -669,14 +835,16 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
                         <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                         <span class="text-menu-rincian">Rincian</span>
                       </button>
-                      <button type="button" class="menu-action-edit" data-index="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        <span>Edit</span>
-                      </button>
-                      <button type="button" class="menu-action-delete" data-index="${idx}" data-doc="${insp.docNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                        <span>Hapus</span>
-                      </button>
+                      ${!isOkulasiInspLocked ? `
+                        <button type="button" class="menu-action-edit" data-index="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
+                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                          <span>Edit</span>
+                        </button>
+                        <button type="button" class="menu-action-delete" data-index="${idx}" data-doc="${insp.docNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                          <span>Hapus</span>
+                        </button>
+                      ` : ''}
                     </div>
                   </div>
                 </div>
@@ -755,6 +923,12 @@ function attachDederanInspectionEvents(app) {
       e.stopPropagation();
       const docNo = e.currentTarget.dataset.doc;
       const txDocNo = e.currentTarget.dataset.tx;
+      const allDeder = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
+      const targetInsp = allDeder.find(d => d.docNo === docNo || d.id === docNo);
+      if (isTransactionLockedForMantri(targetInsp)) {
+        toast.error('Data pemeriksaan tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+        return;
+      }
       storage.set('editing_dederan_inspection_id', docNo);
       storage.set('active_dederan_inspection_tx_id', txDocNo);
       navigate('/inspection/dederan/form');
@@ -783,6 +957,12 @@ function attachDederanInspectionEvents(app) {
       e.preventDefault();
       e.stopPropagation();
       pendingDeleteDederDocNo = e.currentTarget.dataset.doc;
+      const allDeder = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
+      const targetInsp = allDeder.find(d => d.docNo === pendingDeleteDederDocNo || d.id === pendingDeleteDederDocNo);
+      if (isTransactionLockedForMantri(targetInsp)) {
+        toast.error('Data pemeriksaan tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+        return;
+      }
       if (dialogDeleteMsg) {
         dialogDeleteMsg.innerHTML = `Apakah Anda yakin ingin menghapus data pemeriksaan dederan <strong>${pendingDeleteDederDocNo}</strong>? Data yang terhubung ke Seleksi Bibit juga akan disinkronisasikan kembali.`;
       }
@@ -898,6 +1078,12 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
       e.preventDefault();
       e.stopPropagation();
       const index = e.currentTarget.dataset.index;
+      const allInsp = storage.get('inspection_transactions', []);
+      const targetInsp = allInsp[index];
+      if (isTransactionLockedForMantri(targetInsp)) {
+        toast.error('Data pemeriksaan tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+        return;
+      }
       storage.set('editing_inspection_index', index);
       navigate('/inspection/form');
     });
@@ -925,6 +1111,12 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
       e.preventDefault();
       e.stopPropagation();
       pendingDeleteDocNo = e.currentTarget.dataset.doc;
+      const allInsp = storage.get('inspection_transactions', []);
+      const targetInsp = allInsp.find(i => i.docNo === pendingDeleteDocNo || i.id === pendingDeleteDocNo);
+      if (isTransactionLockedForMantri(targetInsp)) {
+        toast.error('Data pemeriksaan tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+        return;
+      }
       if (dialogDeleteMsg) {
         dialogDeleteMsg.innerHTML = `Apakah Anda yakin ingin menghapus data pemeriksaan okulasi <strong>${pendingDeleteDocNo}</strong>?`;
       }
@@ -936,7 +1128,13 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
   btnConfirmDelete?.addEventListener('click', () => {
     if (pendingDeleteDocNo) {
       let currentInspTxs = storage.get('inspection_transactions', []);
-      currentInspTxs = currentInspTxs.filter(i => i.docNo !== pendingDeleteDocNo);
+      const targetInsp = currentInspTxs.find(i => i.docNo === pendingDeleteDocNo || i.id === pendingDeleteDocNo);
+      if (isTransactionLockedForMantri(targetInsp)) {
+        toast.error('Data pemeriksaan tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+        closeDeleteDialog();
+        return;
+      }
+      currentInspTxs = currentInspTxs.filter(i => i.docNo !== pendingDeleteDocNo && i.id !== pendingDeleteDocNo);
       storage.set('inspection_transactions', currentInspTxs);
       toast.success(`Data pemeriksaan ${pendingDeleteDocNo} berhasil dihapus`);
     }

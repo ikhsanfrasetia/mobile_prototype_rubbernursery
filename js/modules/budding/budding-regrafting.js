@@ -1,9 +1,10 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo } from '../../core/utils.js';
-import { normalizeKlonName } from '../../data/klon-master.js';
 import { formatBedenganCode } from './budding-grafting.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { toast } from '../../components/toast.js';
 
 export function renderBuddingRegrafting() {
   const app = document.getElementById('app');
@@ -411,28 +412,41 @@ export function renderBuddingRegrafting() {
                       </div>
                     </div>
 
-                    <!-- TOMBOL AKSI 3-DOTS -->
-                    <div style="position: relative; flex-shrink: 0; margin-top: 2px;">
-                      <button type="button" class="btn-tx-action-trigger" data-index="${rIdx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                          <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
-                          <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
-                          <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
-                        </svg>
-                      </button>
+                    <!-- TOMBOL AKSI 3-DOTS / STATUS BADGE -->
+                    ${(() => {
+                      const isRegraftLocked = isTransactionLockedForMantri(rtx);
+                      if (!isRegraftLocked) {
+                        return `
+                          <div style="position: relative; flex-shrink: 0; margin-top: 2px;">
+                            <button type="button" class="btn-tx-action-trigger" data-index="${rIdx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
+                              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
+                                <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
+                                <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
+                              </svg>
+                            </button>
 
-                      <!-- DROPDOWN POPUP MENU -->
-                      <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 34px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 130px; overflow: hidden;">
-                        <button type="button" class="menu-action-edit-regraft" data-original-index="${originalIndex >= 0 ? originalIndex : rIdx}" data-pool-doc="${rtx.regraftPoolDocNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
-                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                          <span>Edit</span>
-                        </button>
-                        <button type="button" class="menu-action-delete-regraft" data-original-index="${originalIndex >= 0 ? originalIndex : rIdx}" data-doc="${rtx.docNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                          <span>Hapus</span>
-                        </button>
-                      </div>
-                    </div>
+                            <!-- DROPDOWN POPUP MENU -->
+                            <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 34px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 130px; overflow: hidden;">
+                              <button type="button" class="menu-action-edit-regraft" data-original-index="${originalIndex >= 0 ? originalIndex : rIdx}" data-pool-doc="${rtx.regraftPoolDocNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                <span>Edit</span>
+                              </button>
+                              <button type="button" class="menu-action-delete-regraft" data-original-index="${originalIndex >= 0 ? originalIndex : rIdx}" data-doc="${rtx.docNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                <span>Hapus</span>
+                              </button>
+                            </div>
+                          </div>
+                        `;
+                      } else {
+                        return `
+                          <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 7px; border-radius: 4px; margin-top: 2px;">
+                            ${rtx.status === 'DISETUJUI' || rtx.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi'}
+                          </span>
+                        `;
+                      }
+                    })()}
                   </div>
 
                   <!-- BAGIAN B: TOMBOL LIHAT DETAIL -->
@@ -669,6 +683,13 @@ export function renderBuddingRegrafting() {
       e.stopPropagation();
       const origIdx = parseInt(e.currentTarget.dataset.originalIndex);
       const poolDoc = e.currentTarget.dataset.poolDoc;
+
+      let allTxs = storage.get('budding_transactions', []);
+      const existing = allTxs[origIdx];
+      if (existing && isTransactionLockedForMantri(existing)) {
+        toast('Transaksi terkunci karena sedang/sudah diverifikasi.', 'warning');
+        return;
+      }
       
       let poolIdx = regraftPool.findIndex(p => p.docNo === poolDoc);
       if (poolIdx < 0) poolIdx = 0;
@@ -691,8 +712,15 @@ export function renderBuddingRegrafting() {
 
       const origIdx = parseInt(e.currentTarget.dataset.originalIndex);
       const doc = e.currentTarget.dataset.doc;
+
+      let allTxs = storage.get('budding_transactions', []);
+      const existing = allTxs.find(b => b.docNo === doc) || allTxs[origIdx];
+      if (existing && isTransactionLockedForMantri(existing)) {
+        toast('Transaksi terkunci karena sedang/sudah diverifikasi.', 'warning');
+        return;
+      }
+
       if (confirm(`Apakah Anda yakin ingin menghapus transaksi okulasi janda "${doc}"?`)) {
-        let allTxs = storage.get('budding_transactions', []);
         const actualIdx = allTxs.findIndex(b => b.docNo === doc);
         if (actualIdx !== -1) {
           allTxs.splice(actualIdx, 1);

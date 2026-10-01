@@ -21,6 +21,7 @@ import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { todayISO } from '../../core/utils.js';
+import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { attendanceRepository } from '../../db/repositories.js';
 import { getCfnaByCode, getCfnaByName, getCfnaActivityMappings, getActiveCfnaMaster, getAllCfnaMaster, MAPPING_STATUS, CFNA_STATUS } from '../../data/cfna-master.js';
 import {
@@ -395,6 +396,10 @@ export function deleteMaintenanceRecord(idOrDocNo, userContext = null) {
     return false;
   }
 
+  if (isTransactionLockedForMantri(targetRecord)) {
+    return false;
+  }
+
   allRecords.splice(targetIdx, 1);
   storage.set('nursery_activity_records', allRecords);
   return true;
@@ -493,18 +498,31 @@ export function renderNurseryActivityLanding() {
                   <span style="background: #E8F5E9; color: #116834; font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; white-space: nowrap; border: 1px solid #116834; max-width: 140px; overflow: hidden; text-overflow: ellipsis;">
                     ${rec.aktivitas?.nama || 'Pemeliharaan'}
                   </span>
-                  <button class="btn-card-menu-activity" data-index="${idx}" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #111;">
-                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="1"></circle>
-                      <circle cx="12" cy="5" r="1"></circle>
-                      <circle cx="12" cy="19" r="1"></circle>
-                    </svg>
-                  </button>
-                  <div class="card-popover-activity" id="popover-activity-${idx}" style="display: none; position: absolute; top: 28px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
-                    <button class="btn-popover-activity-hapus" data-index="${idx}" data-id="${rec.id || ''}" data-doc="${rec.docNo || `ACT/NUR/2026/0${idx + 1}`}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 600; color: #D32F2F; cursor: pointer;">
-                      Hapus
-                    </button>
-                  </div>
+                  ${(() => {
+                    const isLocked = isTransactionLockedForMantri(rec);
+                    if (!isLocked) {
+                      return `
+                        <button class="btn-card-menu-activity" data-index="${idx}" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #111;">
+                          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="5" r="1"></circle>
+                            <circle cx="12" cy="19" r="1"></circle>
+                          </svg>
+                        </button>
+                        <div class="card-popover-activity" id="popover-activity-${idx}" style="display: none; position: absolute; top: 28px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
+                          <button class="btn-popover-activity-hapus" data-index="${idx}" data-id="${rec.id || ''}" data-doc="${rec.docNo || `ACT/NUR/2026/0${idx + 1}`}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 600; color: #DC2626; cursor: pointer;">
+                            Hapus
+                          </button>
+                        </div>
+                      `;
+                    } else {
+                      return `
+                        <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 7px; border-radius: 4px;">
+                          ${rec.status === 'DISETUJUI' || rec.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi'}
+                        </span>
+                      `;
+                    }
+                  })()}
                 </div>
               </div>
 
@@ -659,11 +677,18 @@ export function renderNurseryActivityLanding() {
 
   btnConfirmDelete?.addEventListener('click', () => {
     const targetIdOrDoc = pendingDeleteId || pendingDeleteDocNo;
+    const allRecords = storage.get('nursery_activity_records', []);
+    const target = allRecords.find((r) => r.id === targetIdOrDoc || r.docNo === targetIdOrDoc);
+    if (target && isTransactionLockedForMantri(target)) {
+      toast('Transaksi terkunci karena sedang/sudah diverifikasi.', 'warning');
+      closeDeleteDialog();
+      return;
+    }
     const success = deleteMaintenanceRecord(targetIdOrDoc, userCtx);
     if (success) {
       toast('Dokumen aktivitas berhasil dihapus.', 'info');
     } else {
-      toast('Anda tidak memiliki hak untuk menghapus dokumen ini.', 'error');
+      toast('Anda tidak memiliki hak untuk menghapus dokumen ini atau transaksi terkunci.', 'error');
     }
     closeDeleteDialog();
     renderNurseryActivityLanding();
@@ -742,7 +767,7 @@ export async function renderNurseryActivityForm() {
   if (!app) return;
 
   const userCtx = getCurrentUserContext();
-  const activeWorkers = await attendanceRepository.getPresentWorkers(userCtx, todayISO());
+  const activeWorkers = await attendanceRepository.getFinalPresentWorkers(userCtx, todayISO());
   const hasPresentWorkers = activeWorkers.length > 0;
   const openPrograms = getOpenPrograms({ estateId: userCtx?.estateId });
 
@@ -1013,6 +1038,14 @@ export async function renderNurseryActivityForm() {
     if (selectedWorkersList.length === 0) {
       toast('Pilih minimal 1 pekerja pelaksana aktivitas.', 'error');
       return;
+    }
+
+    // Finalization Guard: Datang + Pulang (PRS-AUD-003)
+    for (const w of selectedWorkersList) {
+      if (!attendanceRepository.hasPulangAttendance(w.id, todayISO())) {
+        toast('Transaksi tidak dapat disimpan. Terdapat pekerja yang belum melakukan Presensi Pulang.', 'error');
+        return;
+      }
     }
 
     // Validasi & Ambil Canonical Worker Data

@@ -134,6 +134,8 @@ export function updateWorkspaceActivePageLabel() {
     '/dispatch': 'Surat Jalan / Dispatch',
     '/dispatch/report': 'Laporan Pengeluaran',
     '/entres': 'Kebun Entres',
+    '/entres/stock': 'Stok Mata Entres',
+    '/entres/stock/detail': 'Detail Stok Klon',
     '/entres/menunas': 'Menunas Kebun Entres',
     '/entres/menunas/form': 'Form Menunas',
     '/entres/topping': 'Topping Kebun Entres',

@@ -20,6 +20,7 @@ import {
   deleteDederanTransaction
 } from './dederan-manager.js';
 import { getEligiblePindahSemaiSources, getAllInspectedDederanSources } from './dederan-pindah-semai-adapter.js';
+import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { toast } from '../../components/toast.js';
 
@@ -319,7 +320,8 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
 
         ${eligibleSources.length === 0 ? renderEmptyStateCard({
     title: 'Belum Ada Sumber Siap Pindah Semai',
-    description: 'Hasil Dederan 100% selesai periksa dan telah disetujui Asisten Bibitan akan tampil di sini.'
+    description: 'Hasil Dederan 100% selesai diperiksa dan telah disetujui Asisten Bibitan akan tampil di sini.',
+    customStyle: 'padding: 24px 16px;'
   }) : `
           <div style="display: flex; flex-direction: column; gap: 12px;">
             ${eligibleSources.map(src => {
@@ -422,50 +424,61 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
 
       <!-- SECTION 1B: INFORMATIONAL QUEUE - MENUNGGU PERSETUJUAN ASISTEN BIBITAN -->
       ${pendingApprovalSources.length > 0 ? `
-        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 8px;">
-            <div style="font-size: 0.86rem; font-weight: 700; color: #1E293B; line-height: 1.3;">
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+          
+          <!-- SECTION HEADER: TITLE & COUNT BADGE (VERTICAL BLOCK HIERARCHY) -->
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <h3 style="font-size: 0.90rem; font-weight: 800; color: #1E293B; margin: 0; line-height: 1.3; letter-spacing: -0.01em;">
               Menunggu Persetujuan Asisten
+            </h3>
+            <div>
+              <span style="display: inline-flex; align-items: center; font-size: 0.68rem; font-weight: 700; background: #E2E8F0; color: #475569; padding: 2px 8px; border-radius: 9999px;">
+                ${pendingApprovalSources.length} Bedengan
+              </span>
             </div>
-            <span style="font-size: 0.68rem; font-weight: 600; background: #E2E8F0; color: #475569; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; flex-shrink: 0;">
-              ${pendingApprovalSources.length} Bedengan
-            </span>
+            <div style="font-size: 0.73rem; color: #64748B; margin-top: 2px; line-height: 1.45;">
+              Bedengan selesai diperiksa, menunggu persetujuan Asisten Bibitan sebelum dapat dipindah semai.
+            </div>
           </div>
 
-          <div style="font-size: 0.73rem; color: #64748B; margin-bottom: 12px; line-height: 1.45;">
-            Bedengan selesai diperiksa, menunggu persetujuan Asisten Bibitan sebelum dapat dipindah semai.
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- CARDS LIST -->
+          <div style="display: flex; flex-direction: column; gap: 10px;">
             ${pendingApprovalSources.map(psrc => `
-              <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px;">
-                  <div style="min-width: 0; flex: 1;">
-                    <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; line-height: 1.2;">
-                      ${esc(psrc.bedenganCode)}
-                    </div>
-                    <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px; word-break: break-all;">
-                      ${esc(psrc.dederanTxDocNo)}
-                    </div>
+              <div class="card-waiting-approval" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 10px; width: 100%; min-width: 0; box-sizing: border-box;">
+                
+                <!-- ROW 1 & 2: BED CODE & DOCUMENT NUMBER -->
+                <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+                  <div style="font-size: 0.92rem; font-weight: 800; color: #0F172A; line-height: 1.2; white-space: nowrap;">
+                    ${esc(psrc.bedenganCode || psrc.bedengan || '-')}
                   </div>
-                  <span style="font-size: 0.62rem; font-weight: 600; color: #475569; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;">
-                    ${esc(psrc.selectionStatusLabel || 'Menunggu Persetujuan')}
+                  <div style="font-size: 0.72rem; color: #64748B; word-break: break-all;">
+                    ${esc(psrc.dederanTxDocNo || psrc.docNo || '-')}
+                  </div>
+                </div>
+
+                <!-- ROW 3: STATUS BADGE (STACKED BELOW IDENTITY, FIT-CONTENT) -->
+                <div>
+                  <span style="display: inline-block; font-size: 0.65rem; font-weight: 600; color: #475569; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 3px 8px; border-radius: 6px; line-height: 1.35; max-width: 100%; box-sizing: border-box;">
+                    ${esc(psrc.selectionStatusLabel || 'Menunggu Persetujuan Pemeriksaan')}
                   </span>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 6px 10px; background: #F8FAFC; border-radius: 6px; font-size: 0.72rem;">
-                  <div>
-                    <span style="color: #64748B; display: block; font-size: 0.64rem; margin-bottom: 1px;">Hasil Layak</span>
-                    <strong style="color: #0F172A; font-size: 0.78rem;">${(psrc.totalBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
+                <!-- ROW 4: QUANTITY SUMMARY (2-COLUMN EQUAL GRID) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; font-size: 0.74rem;">
+                  <div style="min-width: 0;">
+                    <span style="color: #64748B; display: block; font-size: 0.67rem; margin-bottom: 2px;">Hasil Layak</span>
+                    <strong style="color: #0F172A; font-size: 0.85rem; font-weight: 800;">${(psrc.totalBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
                   </div>
-                  <div>
-                    <span style="color: #64748B; display: block; font-size: 0.64rem; margin-bottom: 1px;">Afkir</span>
-                    <strong style="color: #64748B; font-size: 0.78rem;">${(psrc.totalTidakBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
+                  <div style="min-width: 0;">
+                    <span style="color: #64748B; display: block; font-size: 0.67rem; margin-bottom: 2px;">Afkir</span>
+                    <strong style="color: #64748B; font-size: 0.85rem; font-weight: 700;">${(psrc.totalTidakBerhasil || 0).toLocaleString('id-ID')} Butir</strong>
                   </div>
                 </div>
+
               </div>
             `).join('')}
           </div>
+
         </div>
       ` : ''}
 
@@ -487,7 +500,9 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
     description: 'Transaksi Pindah Semai yang telah dicatat akan tampil pada daftar ini.'
   }) : `
           <div style="display: flex; flex-direction: column; gap: 10px;">
-            ${seedingTxs.map((stx, idx) => `
+            ${seedingTxs.map((stx, idx) => {
+              const isPindahLocked = isTransactionLockedForMantri(stx);
+              return `
               <div class="card-summary-wrapper card-pindah-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); position: relative; display: flex; flex-direction: column; gap: 10px;">
                 
                 <!-- HEADER BARIS 1: NO DOKUMEN & 3-DOTS -->
@@ -499,34 +514,40 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
                     </span>
                   </div>
 
-                  <!-- 3-DOTS ACTION TRIGGER -->
-                  <div style="position: relative; flex-shrink: 0;">
-                    <button type="button" class="btn-pindah-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569; padding: 0; transition: background 0.15s ease;">
-                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
-                        <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
-                        <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
-                        <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
-                      </svg>
-                    </button>
+                  <!-- 3-DOTS ACTION TRIGGER / STATUS BADGE -->
+                  ${!isPindahLocked ? `
+                    <div style="position: relative; flex-shrink: 0;">
+                      <button type="button" class="btn-pindah-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569; padding: 0; transition: background 0.15s ease;">
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+                          <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
+                          <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
+                          <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
+                        </svg>
+                      </button>
 
-                    <!-- POPUP MENU -->
-                    <div class="pindah-action-menu" style="display: none; position: absolute; right: 0; top: 36px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.18), 0 8px 10px -6px rgba(0,0,0,0.08); z-index: 1000; min-width: 140px; overflow: hidden;">
-                      <button type="button" class="menu-action-edit-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #1E293B; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F1F5F9; transition: background 0.15s ease;">
-                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="#2563EB" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                        </svg>
-                        <span>Edit</span>
-                      </button>
-                      <button type="button" class="menu-action-delete-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: background 0.15s ease;">
-                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="#DC2626" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
-                          <polyline points="3 6 5 6 21 6"></polyline>
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                        <span>Hapus</span>
-                      </button>
+                      <!-- POPUP MENU -->
+                      <div class="pindah-action-menu" style="display: none; position: absolute; right: 0; top: 36px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.18), 0 8px 10px -6px rgba(0,0,0,0.08); z-index: 1000; min-width: 140px; overflow: hidden;">
+                        <button type="button" class="menu-action-edit-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #1E293B; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F1F5F9; transition: background 0.15s ease;">
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="#2563EB" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                          </svg>
+                          <span>Edit</span>
+                        </button>
+                        <button type="button" class="menu-action-delete-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: background 0.15s ease;">
+                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="#DC2626" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                          </svg>
+                          <span>Hapus</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ` : `
+                    <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 7px; border-radius: 4px;">
+                      ${stx.status === 'DISETUJUI' || stx.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi'}
+                    </span>
+                  `}
                 </div>
 
                 <!-- HARMONIZED STRUCTURED METADATA (2-COLUMN GRID) -->
@@ -593,7 +614,8 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
                 </div>
 
               </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         `}
       </div>
@@ -739,6 +761,11 @@ function attachPindahSemaiEvents(app) {
         return;
       }
 
+      if (isTransactionLockedForMantri(stx)) {
+        toast('Transaksi tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');
+        return;
+      }
+
       // Set edit mode session keys
       storage.set('editing_seeding_index', idx);
       storage.set('seeding_source_index', stx.sourceIndex || stx.sourceDederTxId || stx.sourceDocNo || stx.dederanTxDocNo);
@@ -765,12 +792,18 @@ function attachPindahSemaiEvents(app) {
       e.stopPropagation();
       const idx = parseInt(e.currentTarget.dataset.index, 10);
       const docNo = e.currentTarget.dataset.doc;
+      const txs = storage.get('seeding_transactions', []);
+      const stx = txs[idx];
+
+      if (isTransactionLockedForMantri(stx)) {
+        toast('Transaksi tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');
+        return;
+      }
 
       if (!confirm(`Apakah Anda yakin ingin menghapus transaksi Pindah Semai '${docNo}'?`)) {
         return;
       }
 
-      let txs = storage.get('seeding_transactions', []);
       if (idx >= 0 && idx < txs.length) {
         txs.splice(idx, 1);
         storage.set('seeding_transactions', txs);

@@ -150,7 +150,9 @@ export const MODULE_DOC_CODES = {
   'DED-INS': 'DED-INS',
   mataEntres: 'REQ/ETRS',
   MATA_ENTRES: 'REQ/ETRS',
-  'REQ/ETRS': 'REQ/ETRS'
+  'REQ/ETRS': 'REQ/ETRS',
+  BWGDTL: 'BWGDTL',
+  'BWGDTL': 'BWGDTL'
 };
 
 export function getModuleDocCode(modId) {

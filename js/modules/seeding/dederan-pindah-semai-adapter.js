@@ -57,15 +57,95 @@ export function getDederanSelectionRecord(dtx) {
 }
 
 /**
- * Resolves the current Selection Approval Status for a Dederan transaction
+ * Checks if all Pemeriksaan Dederan records associated with a specific Dederan transaction
+ * have been verified and approved by Asisten Bibitan (status === 'DISETUJUI' or verificationStatus === 'TERVERIFIKASI' or isFinal === true)
  * @param {Object} dtx - Dederan Transaction object
- * @returns {{ isApproved: boolean, status: string, statusLabel: string, selectionRecord: Object|null }}
+ * @returns {boolean} True if all associated inspections exist and are fully approved
+ */
+export function isDederanInspectionApproved(dtx) {
+  if (!dtx) return false;
+  const docNo = String(dtx.docNo || dtx.dederanTxDocNo || '').trim();
+  const txId = String(dtx.id || '').trim();
+  const allInspections = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
+
+  // Filter exact matching inspections for this specific dederan transaction
+  const relevantInspections = allInspections.filter(i => {
+    if (docNo && (i.dederanTxDocNo === docNo || i.sourceDocNo === docNo)) return true;
+    if (txId && (i.dederanTxId === txId || i.sourceDederTxId === txId)) return true;
+    return false;
+  });
+
+  if (relevantInspections.length === 0) return false;
+
+  // Scope validation: if dtx has estateId or divisionId, ensure inspections match
+  const dtxEstate = dtx.estateId || null;
+  const dtxDiv = dtx.divisionId || null;
+
+  return relevantInspections.every(insp => {
+    if (dtxEstate && insp.estateId && insp.estateId !== dtxEstate) return false;
+    if (dtxDiv && insp.divisionId && insp.divisionId !== dtxDiv) return false;
+
+    const statusUpper = String(insp.status || '').toUpperCase();
+    const verifStatusUpper = String(insp.verificationStatus || '').toUpperCase();
+    const isFinal = insp.isFinal === true;
+
+    const isApproved = statusUpper === 'DISETUJUI' || 
+                       statusUpper === 'TERVERIFIKASI' || 
+                       verifStatusUpper === 'TERVERIFIKASI' || 
+                       verifStatusUpper === 'DISETUJUI' || 
+                       isFinal;
+
+    return isApproved;
+  });
+}
+
+/**
+ * Resolves the current Selection & Inspection Approval Status for a Dederan transaction
+ * @param {Object} dtx - Dederan Transaction object
+ * @returns {{ isApproved: boolean, status: string, statusLabel: string, selectionRecord: Object|null, isNoReject?: boolean }}
  */
 export function getDederanSelectionApprovalStatus(dtx) {
   if (!dtx) {
     return { isApproved: false, status: 'NO_SELECTION', statusLabel: 'Belum Ada Seleksi', selectionRecord: null };
   }
 
+  const summary = getBedenganInspectionSummary(dtx);
+
+  // STEP 1: Validate inspection completion
+  if (!summary.isComplete) {
+    return { isApproved: false, status: 'INCOMPLETE', statusLabel: 'Pemeriksaan Belum Selesai', selectionRecord: null };
+  }
+
+  // STEP 2: Validate successful seed quantity
+  if (summary.totalBerhasil <= 0) {
+    return { isApproved: false, status: 'NO_SUCCESSFUL_SEED', statusLabel: 'Tidak Ada Bibit Berhasil', selectionRecord: null };
+  }
+
+  // STEP 3: COMMON GATE — Validate that all Dederan Inspections are APPROVED by Asisten Bibitan
+  const inspectionApproved = isDederanInspectionApproved(dtx);
+  if (!inspectionApproved) {
+    return {
+      isApproved: false,
+      status: 'WAITING_INSPECTION_APPROVAL',
+      statusLabel: 'Menunggu Persetujuan Pemeriksaan',
+      selectionRecord: getDederanSelectionRecord(dtx)
+    };
+  }
+
+  const totalTidakBerhasil = summary.totalTidakBerhasil || 0;
+
+  // STEP 4: PATH B — Jika reject = 0 (100% Berhasil, tidak perlu proses seleksi afkir)
+  if (totalTidakBerhasil === 0) {
+    return {
+      isApproved: true,
+      status: 'DIRECT_ELIGIBLE',
+      statusLabel: '100% Berhasil (Tanpa Afkir)',
+      selectionRecord: null,
+      isNoReject: true
+    };
+  }
+
+  // STEP 5: PATH A — Jika reject > 0, wajib melalui alur seleksi afkir & persetujuan Asisten Bibitan
   const selTx = getDederanSelectionRecord(dtx);
   if (!selTx) {
     // Check if in selection_pool as PENDING_DECLARATION
@@ -77,7 +157,7 @@ export function getDederanSelectionApprovalStatus(dtx) {
     if (poolItem) {
       return { isApproved: false, status: 'PENDING_DECLARATION', statusLabel: 'Perlu Deklarasi Afkir', selectionRecord: null, poolItem };
     }
-    return { isApproved: false, status: 'NO_SELECTION', statusLabel: 'Belum Ada Seleksi', selectionRecord: null };
+    return { isApproved: false, status: 'NO_SELECTION', statusLabel: 'Menunggu Deklarasi Seleksi', selectionRecord: null };
   }
 
   const rawStatus = (selTx.status || '').toUpperCase();
@@ -126,12 +206,12 @@ export function getEligiblePindahSemaiSources() {
     let processedQty = 0;
     seedingTxs.forEach(stx => {
       if (
-        stx.sourceDederTxId === dtx.id ||
-        stx.sourceDederDocNo === dtx.docNo ||
-        stx.sourceDocNo === dtx.docNo ||
-        stx.dederanTxDocNo === dtx.docNo ||
-        stx.dederanDocNo === dtx.docNo ||
-        (stx.bedenganId === dtx.bedenganId && stx.parentDederIndukDocNo === dtx.parentDederIndukDocNo)
+        (stx.sourceDederTxId && (stx.sourceDederTxId === dtx.id || stx.sourceDederTxId === dtx.docNo)) ||
+        (stx.sourceDederDocNo && (stx.sourceDederDocNo === dtx.docNo || stx.sourceDederDocNo === dtx.id)) ||
+        (stx.sourceDocNo && (stx.sourceDocNo === dtx.docNo || stx.sourceDocNo === dtx.id)) ||
+        (stx.dederanTxDocNo && (stx.dederanTxDocNo === dtx.docNo || stx.dederanTxDocNo === dtx.id)) ||
+        (stx.dederanDocNo && (stx.dederanDocNo === dtx.docNo || stx.dederanDocNo === dtx.id)) ||
+        (stx.bedenganId && dtx.bedenganId && stx.bedenganId === dtx.bedenganId && stx.parentDederIndukDocNo && dtx.parentDederIndukDocNo && stx.parentDederIndukDocNo === dtx.parentDederIndukDocNo)
       ) {
         processedQty += parseInt(stx.totalDisemai || stx.disemai || 0, 10);
       }
@@ -173,7 +253,7 @@ export function getEligiblePindahSemaiSources() {
       isFromDederan: true,
       selectionStatus: approval.status,
       selectionApprovedAt: approval.verifiedAt,
-      selectionApprovedBy: approval.verifiedByName
+      selectionApprovedBy: approval.verifiedByName || (summary.totalTidakBerhasil === 0 ? 'Pemeriksaan 100% Normal' : 'Asisten Bibitan')
     };
 
     eligibleSources.push(normalizedSource);
@@ -202,12 +282,12 @@ export function getAllInspectedDederanSources() {
     let processedQty = 0;
     seedingTxs.forEach(stx => {
       if (
-        stx.sourceDederTxId === dtx.id ||
-        stx.sourceDederDocNo === dtx.docNo ||
-        stx.sourceDocNo === dtx.docNo ||
-        stx.dederanTxDocNo === dtx.docNo ||
-        stx.dederanDocNo === dtx.docNo ||
-        (stx.bedenganId === dtx.bedenganId && stx.parentDederIndukDocNo === dtx.parentDederIndukDocNo)
+        (stx.sourceDederTxId && (stx.sourceDederTxId === dtx.id || stx.sourceDederTxId === dtx.docNo)) ||
+        (stx.sourceDederDocNo && (stx.sourceDederDocNo === dtx.docNo || stx.sourceDederDocNo === dtx.id)) ||
+        (stx.sourceDocNo && (stx.sourceDocNo === dtx.docNo || stx.sourceDocNo === dtx.id)) ||
+        (stx.dederanTxDocNo && (stx.dederanTxDocNo === dtx.docNo || stx.dederanTxDocNo === dtx.id)) ||
+        (stx.dederanDocNo && (stx.dederanDocNo === dtx.docNo || stx.dederanDocNo === dtx.id)) ||
+        (stx.bedenganId && dtx.bedenganId && stx.bedenganId === dtx.bedenganId && stx.parentDederIndukDocNo && dtx.parentDederIndukDocNo && stx.parentDederIndukDocNo === dtx.parentDederIndukDocNo)
       ) {
         processedQty += parseInt(stx.totalDisemai || stx.disemai || 0, 10);
       }

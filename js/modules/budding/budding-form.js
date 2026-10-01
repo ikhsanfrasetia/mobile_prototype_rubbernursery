@@ -5,6 +5,7 @@ import { getCurrentUserContext } from '../../core/user-context.js';
 import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
 import { getWorkersForUserContext, getWorkerById, isWorkerInScope } from '../../data/worker-master.js';
 import { getActiveKlons, getKlonsForUsage, KLON_USAGE, normalizeKlonName, resolveKlon } from '../../data/klon-master.js';
+import { attendanceRepository } from '../../db/repositories.js';
 import { formatBedenganCode } from './budding-grafting.js';
 import {
   getAvailableKlonsForOkulasi,
@@ -29,7 +30,7 @@ const MASTER_WORKERS = [
 
 
 
-export function renderBuddingForm() {
+export async function renderBuddingForm() {
   const app = document.getElementById('app');
   const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan' };
   const today = formatDate(new Date().toISOString());
@@ -148,9 +149,9 @@ export function renderBuddingForm() {
 
   const sisaBelumDiokulasi = Math.max(0, totalDisemai - totalDiokulasiSDHI);
 
-  // Current user context & available worker scope
+  // Current user context & available worker scope (Presensi Datang)
   const userCtx = getCurrentUserContext();
-  const availableScopedWorkers = getWorkersForUserContext(userCtx);
+  const availableScopedWorkers = await attendanceRepository.getWorkersWithDatangAttendance(userCtx);
 
   // State
   let selectedKlon = editingTx ? (editingTx.klonEntres || editingTx.klon || '') : '';
@@ -828,10 +829,18 @@ export function renderBuddingForm() {
               validationErrors.push(`Pekerja ${sw.name || sw.id} tidak terdaftar di Master Pekerja.`);
             } else if (masterRec.status !== 'ACTIVE' || masterRec.active === false) {
               validationErrors.push(`Pekerja ${masterRec.name} berstatus tidak aktif.`);
-            } else if (currentCtx && currentCtx.scopeType === 'DIVISION' && (masterRec.estateId !== currentCtx.estateId || masterRec.divisionId !== currentCtx.divisionId)) {
-              validationErrors.push(`Pekerja ${masterRec.name} berada di luar cakupan unit kerja Anda.`);
+            } else if (currentCtx && currentCtx.estateId && masterRec.estateId !== currentCtx.estateId) {
+              validationErrors.push(`Pekerja ${masterRec.name} berada di luar cakupan estate Anda.`);
             }
           }
+        }
+      }
+
+      // Finalization Guard: Datang + Pulang (PRS-AUD-003)
+      for (const sw of selectedWorkers) {
+        if (!attendanceRepository.hasPulangAttendance(sw.id)) {
+          validationErrors.push('Transaksi tidak dapat disimpan. Terdapat pekerja yang belum melakukan Presensi Pulang.');
+          break;
         }
       }
 

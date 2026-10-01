@@ -1,561 +1,998 @@
 /**
  * js/modules/verification/verification-landing.js
- * UI Modul Verifikasi Data Asisten Bibitan (TASK ASB-12)
+ * Workspace Verifikasi Data Asisten Bibitan
+ * Sesuai Desain Acuan 10-Screen Mobile Reference
+ * 
+ * Alur Views:
+ * 1. MODULE_GRID (Screen 3): 10 Modul Card Grid + CTA Tinjau Data Hari Ini
+ * 2. TRANSACTION_LIST (Screen 5): Daftar Transaksi per Modul + Filter Tanggal
+ * 3. TRANSACTION_DETAIL (Screen 6): Detail Transaksi + [ Kembalikan ] [ Setujui ]
+ * 4. TINJAU_FILTER (Screen 7): Tinjau Data Hari Ini - Form Filter
+ * 5. TINJAU_SUMMARY (Screen 8 / 10): Tinjau Data Hari Ini - Ringkasan 10 Modul & Kirim Data
+ * 6. TINJAU_DETAIL (Screen 9): Detail Transaksi Terverifikasi (Read-only)
  */
 
 import { session } from '../../core/session.js';
+import { openDrawer } from '../../components/drawer.js';
+import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
+import { todayDDMMYYYY, esc } from '../../core/utils.js';
+import { getCurrentUserContext, resolveUserContext, ROLES } from '../../core/user-context.js';
+import { renderAsbBottomNav, attachAsbBottomNavEvents } from '../../components/bottom-nav-asb.js';
 import {
+  VERIFICATION_10_MODULES,
   VERIFICATION_STATUS,
-  REFERENCE_TYPES,
+  REFERENCE_TYPE_LABELS,
   getActionableRecordsForAsb,
-  getVerificationHistory,
+  getVerifiedTransactionsByScope,
+  get10ModulesSummary,
+  canSubmitFinalVerificationToServer,
+  submitFinalVerificationToServer,
   approveVerification,
   returnVerification,
-  evaluateRecordConsistency,
-  getPendingVerificationCount
+  findSourceRecord
 } from './verification-manager.js';
-import { buildTraceabilityChain } from '../consolidation/consolidation-manager.js';
-import { getEstateById } from '../../data/estate-master.js';
-import { renderEmptyStateCard } from '../../components/empty-state.js';
 
-let activeTab = 'PENDING'; // 'PENDING' | 'HISTORY'
-let currentFilters = {
-  referenceType: 'ALL',
-  status: 'ALL',
-  severity: 'ALL',
-  keyword: ''
+// State Halaman
+let currentVerifView = 'MODULE_GRID'; // 'MODULE_GRID' | 'TRANSACTION_LIST' | 'TRANSACTION_DETAIL' | 'TINJAU_FILTER' | 'TINJAU_SUMMARY' | 'TINJAU_DETAIL'
+let activeModuleId = null; // e.g. 'PRESENSI', 'OKULASI', etc.
+let selectedTxItem = null; // Transaksi yang dibuka di detail
+let activeFilterDate = todayDDMMYYYY();
+let tinjauFilter = {
+  date: todayDDMMYYYY(),
+  estateId: 'Tanah Besih',
+  divisionId: 'Divisi I'
 };
-let selectedItem = null;
 
-function esc(str) {
-  if (str === null || str === undefined) return '-';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+const MODULE_ICONS = {
+  team: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="#116834">
+      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 7.66 5 11s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+    </svg>
+  `,
+  documentPlus: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="#116834">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="#116834"/>
+      <line x1="12" y1="11" x2="12" y2="17" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+      <line x1="9" y1="14" x2="15" y2="14" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  `,
+  sprout: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22v-9"></path>
+      <path d="M12 13a5 5 0 0 0 5-5c0-4-5-6-5-6s-5 2-5 6a5 5 0 0 0 5 5z"></path>
+    </svg>
+  `,
+  scissors: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="6" cy="6" r="3"></circle>
+      <circle cx="6" cy="18" r="3"></circle>
+      <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+      <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+      <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+    </svg>
+  `,
+  documentSearch: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <circle cx="11" cy="14" r="3"></circle>
+      <line x1="13.5" y1="16.5" x2="16.5" y2="19.5"></line>
+    </svg>
+  `,
+  leafCheck: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+      <polyline points="9 12 11 14 15 10"></polyline>
+    </svg>
+  `,
+  tree: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22V12 M12 12C12 7 8 4 8 4s-1 4 4 8z M12 12c0-5 4-8 4-8s1 4-4 8z"></path>
+    </svg>
+  `,
+  material: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+      <line x1="12" y1="22.08" x2="12" y2="12"></line>
+    </svg>
+  `,
+  plantCare: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22v-9"></path>
+      <path d="M12 13a5 5 0 0 0 5-5c0-4-5-6-5-6s-5 2-5 6a5 5 0 0 0 5 5z"></path>
+      <path d="M12 13a5 5 0 0 1-5-5c0-4 5-6 5-6s5 2 5 6a5 5 0 0 1-5 5z"></path>
+    </svg>
+  `,
+  dispatch: `
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="#116834">
+      <path d="M16 2.5 C16 2.5 11.5 8.5 11.5 14 C11.5 16.8 13.5 19 16 19 C18.5 19 20.5 16.8 20.5 14 C20.5 8.5 16 2.5 16 2.5 Z" fill="#116834"/>
+      <path d="M13.2 19.5 C9.5 19.5 3.5 15.2 3.5 9 C9.5 8.5 13.8 13.2 13.8 17 C13.8 18 13.5 18.8 13.2 19.5 Z" fill="#116834"/>
+      <path d="M18.8 19.5 C22.5 19.5 28.5 15.2 28.5 9 C22.5 8.5 18.2 13.2 18.2 17 C18.2 18 18.5 18.8 18.8 19.5 Z" fill="#116834"/>
+    </svg>
+  `
+};
 
 export function renderVerificationLanding() {
-  const main = document.getElementById('main-content') || document.getElementById('app');
-  if (!main) return;
+  const app = document.getElementById('main-content') || document.getElementById('app');
+  if (!app) return;
 
-  const currentUser = session.getUser();
-  const estate = currentUser?.estateId ? getEstateById(currentUser.estateId) : null;
-  const estateLabel = estate ? `${estate.name} (${estate.code})` : currentUser?.estateId || 'Semua Kebun';
-  const divisionLabel = currentUser?.divisionId || 'Semua Divisi';
+  const currentUser = session.getUser ? session.getUser() : (session.get ? session.get() : null);
+  const userCtx = getCurrentUserContext() || resolveUserContext(currentUser);
 
-  const actionableList = getActionableRecordsForAsb(currentUser, currentFilters);
-  const historyList = getVerificationHistory(currentUser, currentFilters);
+  if (currentVerifView === 'MODULE_GRID') {
+    renderModuleGridView(app, userCtx);
+  } else if (currentVerifView === 'TRANSACTION_LIST') {
+    renderTransactionListView(app, userCtx);
+  } else if (currentVerifView === 'TRANSACTION_DETAIL') {
+    renderTransactionDetailView(app, userCtx);
+  } else if (currentVerifView === 'TINJAU_FILTER') {
+    renderTinjauFilterView(app, userCtx);
+  } else if (currentVerifView === 'TINJAU_SUMMARY') {
+    renderTinjauSummaryView(app, userCtx);
+  } else if (currentVerifView === 'TINJAU_DETAIL') {
+    renderTinjauDetailView(app, userCtx);
+  }
+}
 
-  const pendingCount = getActionableRecordsForAsb(currentUser).length;
-  const verifiedCount = getVerificationHistory(currentUser, { verificationStatus: VERIFICATION_STATUS.TERVERIFIKASI }).length;
-  const returnedCount = getVerificationHistory(currentUser, { verificationStatus: VERIFICATION_STATUS.DIKEMBALIKAN }).length;
-  const errorCount = actionableList.filter(item => item.errors.length > 0).length;
+/**
+ * SCREEN 3: Grid 10 Modul Verifikasi
+ */
+function renderModuleGridView(app, userCtx) {
+  const actionableList = getActionableRecordsForAsb(userCtx);
 
-  main.innerHTML = `
-    <div class="verification-workspace-container" style="padding: 20px; max-width: 1400px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-      
-      <!-- Top Header -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
-        <div>
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-            <h1 style="margin: 0; font-size: 1.6rem; font-weight: 700; color: #0F172A;">Verifikasi Data Transaksi</h1>
-            <span style="font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 9999px; background: #EEF2FF; color: #4338CA; border: 1px solid #C7D2FE;">
-              Audit Layer ASB
-            </span>
-          </div>
-          <p style="margin: 0; color: #64748B; font-size: 0.9rem;">
-            Pemeriksaan kelengkapan, validasi konsistensi rantai transaksi, dan persetujuan audit final.
-          </p>
+  const moduleCards = VERIFICATION_10_MODULES.map((mod) => {
+    const modCount = actionableList.filter(item => mod.types.includes(item.referenceType) || item.moduleCategory === mod.id).length;
+    const iconSvg = MODULE_ICONS[mod.iconName] || MODULE_ICONS.sprout;
+
+    return `
+      <button class="verif-grid-card" data-module-id="${mod.id}" type="button" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 14px 6px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.04); text-align: center; gap: 6px; min-height: 98px; position: relative;">
+        <div style="display: flex; align-items: center; justify-content: center;">
+          ${iconSvg}
         </div>
+        <div style="font-size: 0.72rem; font-weight: 700; color: #111827; line-height: 1.2;">
+          ${mod.label}
+        </div>
+        ${modCount > 0 ? `
+          <span style="position: absolute; top: 6px; right: 6px; background: #EF4444; color: #FFFFFF; font-size: 0.62rem; font-weight: 800; min-width: 18px; height: 18px; border-radius: 999px; display: flex; align-items: center; justify-content: center; padding: 0 4px;">
+            ${modCount}
+          </span>
+        ` : ''}
+      </button>
+    `;
+  }).join('');
 
-        <div style="display: flex; gap: 8px;">
-          <button id="btn-refresh-verif" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.85rem; font-weight: 600; color: #334155; cursor: pointer;">
-            🔄 Refresh
+  app.innerHTML = `
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button id="verif-drawer-btn" type="button" aria-label="Menu" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0; letter-spacing: -0.01em;">Verifikasi</h1>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="verif-refresh-btn" type="button" aria-label="Segarkan" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+          </button>
+          <button id="verif-notif-btn" type="button" aria-label="Notifikasi" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
           </button>
         </div>
-      </div>
+      </header>
 
-      <!-- Metric Cards -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-        <div style="background: #FFFFFF; border-radius: 12px; padding: 16px; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div style="font-size: 0.8rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Menunggu Verifikasi</div>
-          <div style="font-size: 1.8rem; font-weight: 700; color: #D97706; margin-top: 6px;">${pendingCount}</div>
-          <div style="font-size: 0.75rem; color: #94A3B8; margin-top: 4px;">Perlu audit & verifikasi</div>
+      <!-- BODY: 10 MODULES GRID -->
+      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+          ${moduleCards}
         </div>
 
-        <div style="background: #FFFFFF; border-radius: 12px; padding: 16px; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div style="font-size: 0.8rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Telah Terverifikasi</div>
-          <div style="font-size: 1.8rem; font-weight: 700; color: #16A34A; margin-top: 6px;">${verifiedCount}</div>
-          <div style="font-size: 0.75rem; color: #94A3B8; margin-top: 4px;">Audit disetujui</div>
+        <!-- CTA TINJAU DATA HARI INI -->
+        <div style="margin-top: auto; padding-top: 10px;">
+          <button id="btn-open-tinjau" type="button" style="width: 100%; height: 42px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.84rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span>Tinjau Data Hari Ini</span>
+          </button>
         </div>
+      </main>
 
-        <div style="background: #FFFFFF; border-radius: 12px; padding: 16px; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div style="font-size: 0.8rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Dikembalikan (Revisi)</div>
-          <div style="font-size: 1.8rem; font-weight: 700; color: #DC2626; margin-top: 6px;">${returnedCount}</div>
-          <div style="font-size: 0.75rem; color: #94A3B8; margin-top: 4px;">Perlu perbaikan data</div>
-        </div>
+      <!-- BOTTOM NAVIGATION (4 ITEMS) -->
+      ${renderAsbBottomNav('verifikasi')}
 
-        <div style="background: #FFFFFF; border-radius: 12px; padding: 16px; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div style="font-size: 0.8rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Temuan Anomali / Error</div>
-          <div style="font-size: 1.8rem; font-weight: 700; color: ${errorCount > 0 ? '#DC2626' : '#16A34A'}; margin-top: 6px;">${errorCount}</div>
-          <div style="font-size: 0.75rem; color: #94A3B8; margin-top: 4px;">${errorCount > 0 ? 'Blokir approval aktif' : 'Semua data bersih'}</div>
-        </div>
-      </div>
-
-      <!-- Filter Bar -->
-      <div style="background: #FFFFFF; border-radius: 12px; padding: 16px; border: 1px solid #E2E8F0; margin-bottom: 20px;">
-        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
-          <div style="flex: 1; min-width: 180px;">
-            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 4px;">Tipe Dokumen</label>
-            <select id="filter-ref-type" style="width: 100%; padding: 8px 12px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem;">
-              <option value="ALL" ${currentFilters.referenceType === 'ALL' ? 'selected' : ''}>Semua Tipe</option>
-              <option value="REQUEST" ${currentFilters.referenceType === 'REQUEST' ? 'selected' : ''}>Permintaan (SPB)</option>
-              <option value="DISPATCH" ${currentFilters.referenceType === 'DISPATCH' ? 'selected' : ''}>Pengeluaran (Dispatch)</option>
-              <option value="RECEIPT" ${currentFilters.referenceType === 'RECEIPT' ? 'selected' : ''}>Penerimaan KSP</option>
-              <option value="SELECTION" ${currentFilters.referenceType === 'SELECTION' ? 'selected' : ''}>Hasil Seleksi</option>
-              <option value="DESTRUCTION" ${currentFilters.referenceType === 'DESTRUCTION' ? 'selected' : ''}>Pemusnahan Bibit</option>
-            </select>
-          </div>
-
-          <div style="flex: 1; min-width: 160px;">
-            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 4px;">Konsistensi</label>
-            <select id="filter-severity" style="width: 100%; padding: 8px 12px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem;">
-              <option value="ALL" ${currentFilters.severity === 'ALL' ? 'selected' : ''}>Semua Status Konsistensi</option>
-              <option value="CLEAN" ${currentFilters.severity === 'CLEAN' ? 'selected' : ''}>✅ Clean (Siap Verifikasi)</option>
-              <option value="WARNING" ${currentFilters.severity === 'WARNING' ? 'selected' : ''}>⚠️ Warning (Perhatian)</option>
-              <option value="ERROR" ${currentFilters.severity === 'ERROR' ? 'selected' : ''}>⛔ Error (Bermasalah)</option>
-            </select>
-          </div>
-
-          <div style="flex: 2; min-width: 200px;">
-            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 4px;">Pencarian Dokumen</label>
-            <input type="text" id="filter-keyword" placeholder="Cari No Dokumen / Catatan..." value="${esc(currentFilters.keyword || '')}" style="width: 100%; padding: 8px 12px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem;" />
-          </div>
-
-          <div style="align-self: flex-end;">
-            <button id="btn-reset-filters" style="padding: 8px 14px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem; color: #475569; cursor: pointer;">
-              Reset
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Navigation Tabs -->
-      <div style="display: flex; border-bottom: 2px solid #E2E8F0; margin-bottom: 20px;">
-        <button id="tab-pending" style="padding: 10px 20px; font-size: 0.9rem; font-weight: 700; border: none; background: none; cursor: pointer; border-bottom: 3px solid ${activeTab === 'PENDING' ? '#2563EB' : 'transparent'}; color: ${activeTab === 'PENDING' ? '#2563EB' : '#64748B'}; margin-bottom: -2px;">
-          ⏳ Menunggu Verifikasi (${actionableList.length})
-        </button>
-        <button id="tab-history" style="padding: 10px 20px; font-size: 0.9rem; font-weight: 700; border: none; background: none; cursor: pointer; border-bottom: 3px solid ${activeTab === 'HISTORY' ? '#2563EB' : 'transparent'}; color: ${activeTab === 'HISTORY' ? '#2563EB' : '#64748B'}; margin-bottom: -2px;">
-          📜 Riwayat Audit Verifikasi (${historyList.length})
-        </button>
-      </div>
-
-      <!-- Tab Content -->
-      <div id="verif-tab-content">
-        ${activeTab === 'PENDING' ? renderPendingTable(actionableList) : renderHistoryTable(historyList)}
-      </div>
-
-      <!-- Modal Container -->
-      <div id="verif-modal-container"></div>
     </div>
   `;
 
-  attachEventListeners(main, currentUser);
-}
+  // Attach drawer
+  app.querySelector('#verif-drawer-btn')?.addEventListener('click', openDrawer);
 
-function renderPendingTable(records) {
-  if (!records || records.length === 0) {
-    return renderEmptyStateCard({
-      title: 'Tidak Ada Data Menunggu Verifikasi',
-      description: 'Seluruh data transaksi dalam scope Anda sudah terverifikasi dan memenuhi syarat konsistensi.'
-    });
-  }
-
-  return `
-    <div style="background: #FFFFFF; border-radius: 12px; border: 1px solid #E2E8F0; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-      <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
-        <thead>
-          <tr style="background: #F8FAFC; border-bottom: 1px solid #E2E8F0; color: #475569;">
-            <th style="padding: 12px 16px; font-weight: 600;">Tipe Dokumen</th>
-            <th style="padding: 12px 16px; font-weight: 600;">No. Dokumen / Referensi</th>
-            <th style="padding: 12px 16px; font-weight: 600;">Tanggal</th>
-            <th style="padding: 12px 16px; font-weight: 600;">Estate / Divisi</th>
-            <th style="padding: 12px 16px; font-weight: 600;">Status Sumber</th>
-            <th style="padding: 12px 16px; font-weight: 600;">Konsistensi</th>
-            <th style="padding: 12px 16px; font-weight: 600; text-align: center;">Aksi</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${records.map(r => {
-            let consistencyBadge = `<span style="font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0;">✅ CLEAN</span>`;
-            if (r.errors.length > 0) {
-              consistencyBadge = `<span style="font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA;">⛔ ERROR (${r.errors.length})</span>`;
-            } else if (r.warnings.length > 0) {
-              consistencyBadge = `<span style="font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A;">⚠️ WARNING (${r.warnings.length})</span>`;
-            }
-
-            return `
-              <tr style="border-bottom: 1px solid #F1F5F9; hover: background-color: #F8FAFC;">
-                <td style="padding: 12px 16px; font-weight: 600; color: #1E293B;">
-                  <span style="display: inline-block; padding: 2px 6px; font-size: 0.7rem; font-weight: 700; border-radius: 4px; background: #F1F5F9; color: #334155;">
-                    ${esc(r.referenceType)}
-                  </span>
-                </td>
-                <td style="padding: 12px 16px; font-weight: 600; color: #2563EB;">${esc(r.referenceDocNo)}</td>
-                <td style="padding: 12px 16px; color: #64748B;">${esc(r.date ? r.date.substring(0, 10) : '-')}</td>
-                <td style="padding: 12px 16px; color: #334155;">${esc(r.estateId)} / ${esc(r.divisionId)}</td>
-                <td style="padding: 12px 16px;">
-                  <span style="font-size: 0.75rem; font-weight: 600; color: #475569;">${esc(r.currentStatus)}</span>
-                </td>
-                <td style="padding: 12px 16px;">${consistencyBadge}</td>
-                <td style="padding: 12px 16px; text-align: center;">
-                  <button class="btn-open-detail" data-type="${esc(r.referenceType)}" data-id="${esc(r.referenceId)}" style="padding: 6px 14px; background: #2563EB; color: #FFFFFF; border: none; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
-                    🔍 Periksa & Verifikasi
-                  </button>
-                </td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function renderHistoryTable(records) {
-  if (!records || records.length === 0) {
-    return renderEmptyStateCard({
-      title: 'Belum Ada Riwayat Verifikasi',
-      description: 'Catatan audit verifikasi dan keputusan pengembalian akan tercatat di sini.'
-    });
-  }
-
-  return `
-    <div style="background: #FFFFFF; border-radius: 12px; border: 1px solid #E2E8F0; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-      <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
-        <thead>
-          <tr style="background: #F8FAFC; border-bottom: 1px solid #E2E8F0; color: #475569;">
-            <th style="padding: 12px 16px; font-weight: 600;">No. Verifikasi</th>
-            <th style="padding: 12px 16px; font-weight: 600;">Tipe & No Dokumen</th>
-            <th style="padding: 12px 16px; font-weight: 600;">Status Audit</th>
-            <th style="padding: 12px 16px; font-weight: 600;">Verifikator</th>
-            <th style="padding: 12px 16px; font-weight: 600;">Tanggal & Waktu</th>
-            <th style="padding: 12px 16px; font-weight: 600;">Catatan / Alasan</th>
-            <th style="padding: 12px 16px; font-weight: 600; text-align: center;">Trace</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${records.map(v => {
-            const isApproved = v.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI;
-            const badge = isApproved 
-              ? `<span style="font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0;">✅ TERVERIFIKASI</span>`
-              : `<span style="font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA;">↩️ DIKEMBALIKAN</span>`;
-
-            return `
-              <tr style="border-bottom: 1px solid #F1F5F9;">
-                <td style="padding: 12px 16px; font-weight: 700; color: #1E293B;">${esc(v.verificationNo)}</td>
-                <td style="padding: 12px 16px;">
-                  <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #F1F5F9; color: #475569; margin-right: 4px;">${esc(v.referenceType)}</span>
-                  <strong style="color: #2563EB;">${esc(v.referenceDocNo)}</strong>
-                </td>
-                <td style="padding: 12px 16px;">${badge}</td>
-                <td style="padding: 12px 16px; color: #334155;">
-                  <strong>${esc(v.verifiedByName)}</strong><br>
-                  <span style="font-size: 0.72rem; color: #64748B;">${esc(v.verifiedByRole)}</span>
-                </td>
-                <td style="padding: 12px 16px; color: #64748B; font-size: 0.8rem;">
-                  ${esc(v.verifiedAt ? v.verifiedAt.replace('T', ' ').substring(0, 19) : '-')}
-                </td>
-                <td style="padding: 12px 16px; color: #334155; max-width: 250px;">
-                  ${v.returnReason ? `<div style="color: #DC2626; font-size: 0.8rem;"><strong>Alasan:</strong> ${esc(v.returnReason)}</div>` : ''}
-                  ${v.notes ? `<div style="color: #475569; font-size: 0.8rem;"><strong>Catatan:</strong> ${esc(v.notes)}</div>` : '-'}
-                </td>
-                <td style="padding: 12px 16px; text-align: center;">
-                  <button class="btn-trace-history" data-type="${esc(v.referenceType)}" data-no="${esc(v.referenceDocNo)}" style="padding: 4px 10px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.75rem; color: #334155; cursor: pointer;">
-                    🔗 Rantai
-                  </button>
-                </td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function openDetailModal(item, currentUser) {
-  const container = document.getElementById('verif-modal-container');
-  if (!container) return;
-
-  const raw = item.rawRecord || {};
-  const evalResult = evaluateRecordConsistency(item.referenceType, raw);
-  const chain = buildTraceabilityChain(item.referenceType, item.referenceDocNo);
-
-  container.innerHTML = `
-    <div class="verif-modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px;">
-      <div style="background: #FFFFFF; border-radius: 16px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);">
-        
-        <!-- Modal Header -->
-        <div style="padding: 20px 24px; border-bottom: 1px solid #E2E8F0; display: flex; justify-content: space-between; align-items: center; background: #F8FAFC;">
-          <div>
-            <div style="font-size: 0.75rem; font-weight: 700; color: #2563EB; text-transform: uppercase;">Pemeriksaan & Verifikasi Dokumen</div>
-            <h2 style="margin: 4px 0 0 0; font-size: 1.25rem; font-weight: 700; color: #0F172A;">
-              [${esc(item.referenceType)}] ${esc(item.referenceDocNo)}
-            </h2>
-          </div>
-          <button id="btn-close-modal" style="background: none; border: none; font-size: 1.5rem; color: #64748B; cursor: pointer; padding: 4px 8px;">&times;</button>
-        </div>
-
-        <!-- Modal Body (Scrollable) -->
-        <div style="padding: 24px; overflow-y: auto; flex: 1;">
-          
-          <!-- Consistency Gate Alert -->
-          <div style="margin-bottom: 20px;">
-            ${evalResult.errors.length > 0 ? `
-              <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 14px 16px; color: #991B1B;">
-                <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                  ⛔ Peringatan Konsistensi (ERROR Ditemukan)
-                </div>
-                <div style="font-size: 0.85rem; line-height: 1.4;">
-                  Dokumen ini memiliki kesalahan konsistensi fatal. Tombol approval dinonaktifkan sampai data diperbaiki.
-                </div>
-                <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 0.8rem;">
-                  ${evalResult.errors.map(e => `<li>${esc(e.message)}</li>`).join('')}
-                </ul>
-              </div>
-            ` : evalResult.warnings.length > 0 ? `
-              <div style="background: #FEF3C7; border: 1px solid #FDE68A; border-radius: 8px; padding: 14px 16px; color: #92400E;">
-                <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                  ⚠️ Catatan Konsistensi (WARNING)
-                </div>
-                <div style="font-size: 0.85rem; line-height: 1.4;">
-                  Terdapat catatan pada alur rantai dokumen, namun verifikasi tetap dapat disetujui jika dapat dijustifikasi.
-                </div>
-                <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 0.8rem;">
-                  ${evalResult.warnings.map(w => `<li>${esc(w.message)}</li>`).join('')}
-                </ul>
-              </div>
-            ` : `
-              <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 12px 16px; color: #166534; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
-                <span>✅</span> <strong>Data Konsisten:</strong> Seluruh rantai relasi dan kuantitas valid. Dokumen siap diverifikasi.
-              </div>
-            `}
-          </div>
-
-          <!-- Document Key Attributes -->
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-            <div style="font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 10px; text-transform: uppercase;">Informasi Dokumen</div>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; font-size: 0.85rem;">
-              <div><span style="color: #64748B;">Kebun / Divisi:</span> <strong>${esc(item.estateId)} / ${esc(item.divisionId)}</strong></div>
-              <div><span style="color: #64748B;">Status Sumber:</span> <strong>${esc(item.currentStatus)}</strong></div>
-              <div><span style="color: #64748B;">Tanggal:</span> <strong>${esc(item.date ? item.date.substring(0, 10) : '-')}</strong></div>
-              <div><span style="color: #64748B;">Jumlah / Qty:</span> <strong>${esc(raw.requestedQty || raw.shippedQty || raw.acceptedQty || raw.quantity || raw.inspectedQty || '-')}</strong></div>
-            </div>
-          </div>
-
-          <!-- Traceability Chain -->
-          <div style="margin-bottom: 20px;">
-            <div style="font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 8px; text-transform: uppercase;">Silsilah Rantai Transaksi</div>
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; font-size: 0.85rem;">
-              ${chain.type === 'DISTRIBUTION_CHAIN' ? `
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                  <span style="padding: 4px 8px; background: ${chain.request ? '#EFF6FF' : '#F1F5F9'}; color: #1E40AF; border-radius: 4px; font-weight: 600;">
-                    1. Request: ${esc(chain.request ? chain.request.docNo || chain.request.nir : 'N/A')}
-                  </span>
-                  <span>➔</span>
-                  <span style="padding: 4px 8px; background: ${chain.dispatch ? '#EFF6FF' : '#F1F5F9'}; color: #1E40AF; border-radius: 4px; font-weight: 600;">
-                    2. Dispatch: ${esc(chain.dispatch ? chain.dispatch.docNo || chain.dispatch.dispatchNo : 'N/A')}
-                  </span>
-                  <span>➔</span>
-                  <span style="padding: 4px 8px; background: ${chain.receipt ? '#EFF6FF' : '#F1F5F9'}; color: #1E40AF; border-radius: 4px; font-weight: 600;">
-                    3. Receipt: ${esc(chain.receipt ? chain.receipt.docNo || chain.receipt.receiptDocNo : 'N/A')}
-                  </span>
-                </div>
-              ` : `
-                <div style="color: #64748B; font-size: 0.8rem;">
-                  Batch Referensi: <strong>${esc(chain.batch ? chain.batch.batchCode : raw.batchId || '-')}</strong> | 
-                  Seleksi Terkait: <strong>${chain.selections ? chain.selections.length : 0}</strong> | 
-                  Pemusnahan Terkait: <strong>${chain.destructions ? chain.destructions.length : 0}</strong>
-                </div>
-              `}
-            </div>
-          </div>
-
-          <!-- Audit Action Form -->
-          <div>
-            <div style="margin-bottom: 12px;">
-              <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #334155; margin-bottom: 4px;">Catatan Verifikasi (Opsional untuk Approve):</label>
-              <textarea id="modal-notes" placeholder="Tuliskan catatan hasil audit atau pemeriksaan..." style="width: 100%; padding: 8px 12px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem; height: 60px;"></textarea>
-            </div>
-
-            <div id="return-reason-container" style="display: none; margin-bottom: 12px;">
-              <label style="display: block; font-size: 0.8rem; font-weight: 700; color: #DC2626; margin-bottom: 4px;">Alasan Pengembalian (Wajib diisi jika dikembalikan): *</label>
-              <textarea id="modal-return-reason" placeholder="Jelaskan alasan pengembalian data untuk perbaikan..." style="width: 100%; padding: 8px 12px; border: 1px solid #FCA5A5; border-radius: 6px; font-size: 0.85rem; height: 60px; background: #FEF2F2;"></textarea>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- Modal Footer -->
-        <div style="padding: 16px 24px; border-top: 1px solid #E2E8F0; background: #F8FAFC; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-          <div>
-            <button id="btn-toggle-return" style="padding: 8px 16px; background: #FFFFFF; border: 1px solid #FCA5A5; color: #DC2626; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
-              ↩️ Kembalikan (Revisi)
-            </button>
-            <button id="btn-confirm-return" style="display: none; padding: 8px 16px; background: #DC2626; color: #FFFFFF; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
-              Kirim Pengembalian
-            </button>
-          </div>
-
-          <div style="display: flex; gap: 8px;">
-            <button id="btn-cancel-modal" style="padding: 8px 16px; background: #FFFFFF; border: 1px solid #CBD5E1; color: #475569; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
-              Tutup
-            </button>
-            <button id="btn-approve-modal" ${!evalResult.canApprove ? 'disabled style="padding: 8px 16px; background: #94A3B8; color: #FFFFFF; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: not-allowed;"' : 'style="padding: 8px 16px; background: #16A34A; color: #FFFFFF; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;"'}>
-              ✅ Setujui & Verifikasi
-            </button>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  `;
-
-  // Attach Modal Listeners
-  const closeModal = () => { container.innerHTML = ''; };
-  document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
-  document.getElementById('btn-cancel-modal')?.addEventListener('click', closeModal);
-
-  // Toggle Return Form
-  const btnToggleReturn = document.getElementById('btn-toggle-return');
-  const btnConfirmReturn = document.getElementById('btn-confirm-return');
-  const returnContainer = document.getElementById('return-reason-container');
-  const btnApprove = document.getElementById('btn-approve-modal');
-
-  btnToggleReturn?.addEventListener('click', () => {
-    returnContainer.style.display = 'block';
-    btnToggleReturn.style.display = 'none';
-    btnConfirmReturn.style.display = 'inline-block';
-    if (btnApprove) btnApprove.style.display = 'none';
-  });
-
-  // Handle Confirm Return
-  btnConfirmReturn?.addEventListener('click', () => {
-    const returnReason = document.getElementById('modal-return-reason')?.value || '';
-    const notes = document.getElementById('modal-notes')?.value || '';
-    if (!returnReason.trim()) {
-      toast('Alasan pengembalian wajib diisi!', 'error');
-      return;
-    }
-
-    try {
-      returnVerification({
-        referenceType: item.referenceType,
-        referenceId: item.referenceId,
-        returnReason,
-        notes,
-        currentUser
-      });
-      toast(`Dokumen ${item.referenceDocNo} berhasil dikembalikan untuk perbaikan.`, 'success');
-      closeModal();
-      renderVerificationLanding();
-    } catch (err) {
-      toast(err.message || 'Gagal mengembalikan dokumen.', 'error');
-    }
-  });
-
-  // Handle Approve
-  btnApprove?.addEventListener('click', () => {
-    if (!evalResult.canApprove) {
-      toast('Dokumen memiliki kesalahan konsistensi (ERROR). Approval diblokir.', 'error');
-      return;
-    }
-
-    const notes = document.getElementById('modal-notes')?.value || '';
-
-    try {
-      const record = approveVerification({
-        referenceType: item.referenceType,
-        referenceId: item.referenceId,
-        notes,
-        currentUser
-      });
-      toast(`Dokumen ${item.referenceDocNo} berhasil diverifikasi (No: ${record.verificationNo}).`, 'success');
-      closeModal();
-      renderVerificationLanding();
-    } catch (err) {
-      toast(err.message || 'Gagal memverifikasi dokumen.', 'error');
-    }
-  });
-}
-
-function attachEventListeners(main, currentUser) {
-  // Tab Switching
-  document.getElementById('tab-pending')?.addEventListener('click', () => {
-    activeTab = 'PENDING';
+  // Refresh
+  app.querySelector('#verif-refresh-btn')?.addEventListener('click', () => {
+    toast('Data verifikasi diperbarui', 'info');
     renderVerificationLanding();
   });
-  document.getElementById('tab-history')?.addEventListener('click', () => {
-    activeTab = 'HISTORY';
+
+  // Notif
+  app.querySelector('#verif-notif-btn')?.addEventListener('click', () => {
+    toast('Tidak ada notifikasi baru', 'info');
+  });
+
+  // Module card clicks -> open Screen 5
+  app.querySelectorAll('.verif-grid-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      activeModuleId = card.dataset.moduleId;
+      currentVerifView = 'TRANSACTION_LIST';
+      renderVerificationLanding();
+    });
+  });
+
+  // Open Tinjau Data -> Screen 7
+  app.querySelector('#btn-open-tinjau')?.addEventListener('click', () => {
+    currentVerifView = 'TINJAU_FILTER';
+    renderVerificationLanding();
+  });
+
+  attachAsbBottomNavEvents(app);
+}
+
+/**
+ * SCREEN 5: Verifikasi - Daftar Transaksi per Modul
+ */
+function renderTransactionListView(app, userCtx) {
+  const currentMod = VERIFICATION_10_MODULES.find(m => m.id === activeModuleId) || VERIFICATION_10_MODULES[0];
+  const allActionable = getActionableRecordsForAsb(userCtx);
+  const allVerified = getVerifiedTransactionsByScope(userCtx);
+
+  // Filter items matching this module
+  const pendingForMod = allActionable.filter(item => currentMod.types.includes(item.referenceType) || item.moduleCategory === currentMod.id);
+  const verifiedForMod = allVerified.filter(item => currentMod.types.includes(item.referenceType) || item.moduleCategory === currentMod.id);
+
+  const combinedList = [...pendingForMod, ...verifiedForMod];
+
+  app.innerHTML = `
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-back-to-grid" type="button" aria-label="Kembali" style="background: transparent; border: none; padding: 4px; margin-left: -4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0;">${currentMod.label}</h1>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="verif-refresh-btn2" type="button" aria-label="Segarkan" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+          </button>
+          <button id="verif-notif-btn2" type="button" aria-label="Notifikasi" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- DATE FILTER SELECTOR -->
+      <div style="padding: 12px 14px 6px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border: 1px solid #CBD5E1; border-radius: 8px; padding: 8px 12px; background: #FFFFFF;">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 700; color: #111827;">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#116834" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span>${activeFilterDate}</span>
+          </div>
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+      </div>
+
+      <!-- TRANSACTION LIST -->
+      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+        ${combinedList.length === 0 ? `
+          <div style="background: #FFFFFF; border: 1px dashed #CBD5E1; border-radius: 12px; padding: 32px 16px; text-align: center; color: #64748B;">
+            <div style="font-size: 1.8rem; margin-bottom: 8px;">📋</div>
+            <div style="font-size: 0.88rem; font-weight: 700; color: #1E293B;">Belum Ada Transaksi ${currentMod.label}</div>
+            <div style="font-size: 0.74rem; margin-top: 4px;">Transaksi dari Mantri akan muncul di sini setelah dikirim via Central Hub.</div>
+          </div>
+        ` : combinedList.map(item => {
+          const isVerified = item.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI;
+          const isPending = !isVerified;
+          const docNo = item.referenceDocNo || item.docNo || item.id;
+          const dateStr = item.date ? String(item.date).substring(0, 10) : activeFilterDate;
+          const workerName = item.submittedByName || item.rawRecord?.mantri || item.rawRecord?.actorName || 'Mantri Bibitan';
+
+          return `
+            <div class="verif-tx-item" data-ref-type="${item.referenceType}" data-ref-id="${item.referenceId}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.02); gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+                <div style="width: 36px; height: 36px; border-radius: 8px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="#116834">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  </svg>
+                </div>
+                <div style="min-width: 0; flex: 1;">
+                  <div style="font-size: 0.82rem; font-weight: 800; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${esc(docNo)}
+                  </div>
+                  <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">
+                    ${esc(workerName)} &bull; ${esc(dateStr)}
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                <span style="font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: ${isVerified ? '#DEF7EC' : '#FEF3C7'}; color: ${isVerified ? '#03543F' : '#92400E'};">
+                  ${isVerified ? 'Terverifikasi' : 'Menunggu'}
+                </span>
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="#94A3B8" stroke-width="2.2" fill="none">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </main>
+
+      <!-- BOTTOM NAVIGATION (4 ITEMS) -->
+      ${renderAsbBottomNav('verifikasi')}
+
+    </div>
+  `;
+
+  // Back button
+  app.querySelector('#btn-back-to-grid')?.addEventListener('click', () => {
+    currentVerifView = 'MODULE_GRID';
     renderVerificationLanding();
   });
 
   // Refresh
-  document.getElementById('btn-refresh-verif')?.addEventListener('click', () => {
+  app.querySelector('#verif-refresh-btn2')?.addEventListener('click', () => {
+    toast('Data diperbarui', 'info');
     renderVerificationLanding();
-    toast('Data verifikasi diperbarui.', 'info');
   });
 
-  // Filters
-  document.getElementById('filter-ref-type')?.addEventListener('change', (e) => {
-    currentFilters.referenceType = e.target.value;
+  // Click transaction -> Screen 6
+  app.querySelectorAll('.verif-tx-item').forEach((card) => {
+    card.addEventListener('click', () => {
+      const refType = card.dataset.refType;
+      const refId = card.dataset.refId;
+      const target = combinedList.find(t => t.referenceType === refType && String(t.referenceId) === String(refId));
+      if (target) {
+        selectedTxItem = target;
+        currentVerifView = 'TRANSACTION_DETAIL';
+        renderVerificationLanding();
+      }
+    });
+  });
+
+  attachAsbBottomNavEvents(app);
+}
+
+/**
+ * SCREEN 6: Verifikasi - Detail Transaksi
+ */
+function renderTransactionDetailView(app, userCtx) {
+  if (!selectedTxItem) {
+    currentVerifView = 'MODULE_GRID';
+    renderVerificationLanding();
+    return;
+  }
+
+  const raw = selectedTxItem.rawRecord || {};
+  const currentMod = VERIFICATION_10_MODULES.find(m => m.id === selectedTxItem.moduleCategory || m.types.includes(selectedTxItem.referenceType)) || VERIFICATION_10_MODULES[0];
+  const docNo = selectedTxItem.referenceDocNo || selectedTxItem.docNo || selectedTxItem.id;
+  const isVerified = selectedTxItem.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI;
+  const dateStr = selectedTxItem.date ? String(selectedTxItem.date).substring(0, 10) : activeFilterDate;
+  const workerName = selectedTxItem.submittedByName || raw.mantri || raw.actorName || userCtx?.name || 'Mantri';
+
+  // Specific Module Details
+  let detailRows = '';
+  if (selectedTxItem.referenceType === 'TOPPING' || currentMod.id === 'KEBUN_ENTRES') {
+    const stikHijau = raw.jumlahStikHijau !== undefined ? raw.jumlahStikHijau : (raw.jumlahStik || raw.jumlahPokok || raw.qty || 500);
+    const perisai = raw.jumlahPerisai !== undefined ? raw.jumlahPerisai : (raw.jumlahMata || raw.jumlahTopping || 120);
+    detailRows = `
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Jumlah Kayu</span>
+        <strong style="color: #0F172A;">${stikHijau}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Jumlah Perisai</span>
+        <strong style="color: #0F172A;">${perisai}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+        <span style="color: #64748B;">Keterangan</span>
+        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
+      </div>
+    `;
+  } else if (selectedTxItem.referenceType === 'OKULASI' || currentMod.id === 'OKULASI') {
+    const mata = raw.jumlahMataOkulasi !== undefined ? raw.jumlahMataOkulasi : (raw.jumlahMata || raw.jumlah || 300);
+    const stik = raw.jumlahStik !== undefined ? raw.jumlahStik : (raw.jumlahKayu || 250);
+    detailRows = `
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Jumlah Mata Okulasi</span>
+        <strong style="color: #0F172A;">${mata}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Jumlah Stik</span>
+        <strong style="color: #0F172A;">${stik}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+        <span style="color: #64748B;">Keterangan</span>
+        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
+      </div>
+    `;
+  } else if (selectedTxItem.referenceType === 'PRESENSI' || currentMod.id === 'PRESENSI') {
+    detailRows = `
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Jumlah Kehadiran</span>
+        <strong style="color: #0F172A;">${raw.totalWorkers || raw.workerCount || 1} Orang</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Status Presensi</span>
+        <strong style="color: #116834;">${raw.status || raw.type || 'HADIR'}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+        <span style="color: #64748B;">Keterangan</span>
+        <span style="color: #0F172A;">${esc(raw.keterangan || '-')}</span>
+      </div>
+    `;
+  } else {
+    const qty = raw.qty || raw.quantity || raw.totalDisemai || raw.totalDeder || raw.actualBibitRetainedQty || raw.volumePkk || raw.jumlah || '-';
+    detailRows = `
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Volume / Kuantitas</span>
+        <strong style="color: #0F172A;">${qty}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+        <span style="color: #64748B;">Keterangan</span>
+        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
+      </div>
+    `;
+  }
+
+  app.innerHTML = `
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-back-to-list" type="button" aria-label="Kembali" style="background: transparent; border: none; padding: 4px; margin-left: -4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0;">Detail Transaksi</h1>
+        </div>
+      </header>
+
+      <!-- BODY -->
+      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+        
+        <!-- CARD HEADER DOKUMEN -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 44px; height: 44px; border-radius: 10px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              ${MODULE_ICONS[currentMod.iconName] || MODULE_ICONS.sprout}
+            </div>
+            <div>
+              <div style="font-size: 0.95rem; font-weight: 800; color: #111827;">${currentMod.label}</div>
+              <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 1px;">${esc(docNo)}</div>
+              <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">${esc(workerName)} &bull; ${esc(dateStr)}</div>
+            </div>
+          </div>
+          <span style="font-size: 0.65rem; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: ${isVerified ? '#DEF7EC' : '#FEF3C7'}; color: ${isVerified ? '#03543F' : '#92400E'};">
+            ${isVerified ? 'Terverifikasi' : 'Menunggu'}
+          </span>
+        </div>
+
+        <!-- INFORMASI UMUM -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="font-size: 0.84rem; font-weight: 800; color: #111827; margin-bottom: 10px; border-bottom: 1.5px solid #F1F5F9; padding-bottom: 6px;">
+            Informasi Umum
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem;">
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Tanggal</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(dateStr)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Kebun</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(selectedTxItem.estateId || userCtx?.estateName || 'Tanah Besih')}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Divisi</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(selectedTxItem.divisionId || userCtx?.divisionName || 'Divisi I')}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Mantri</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(workerName)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Nomor Dokumen</span>
+              <span style="color: #116834; font-weight: 700;">${esc(docNo)}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- RINCIAN DATA -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="font-size: 0.84rem; font-weight: 800; color: #111827; margin-bottom: 10px; border-bottom: 1.5px solid #F1F5F9; padding-bottom: 6px;">
+            Rincian Data
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem;">
+            ${detailRows}
+          </div>
+        </div>
+
+        <!-- ACTION BUTTONS IF PENDING -->
+        ${!isVerified ? `
+          <div style="display: flex; gap: 10px; margin-top: 10px; padding-bottom: 10px;">
+            <button id="btn-tx-return" type="button" style="flex: 1; height: 42px; background: #FFFFFF; border: 1.5px solid #EF4444; color: #DC2626; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+              Kembalikan
+            </button>
+            <button id="btn-tx-approve" type="button" style="flex: 1; height: 42px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+              Setujui
+            </button>
+          </div>
+        ` : `
+          <div style="background: #DEF7EC; border: 1px solid #A7F3D0; border-radius: 8px; padding: 12px; text-align: center; color: #03543F; font-size: 0.78rem; font-weight: 700; margin-top: 8px;">
+            ✓ Dokumen ini telah selesai diverifikasi
+          </div>
+        `}
+
+      </main>
+
+      <!-- BOTTOM NAVIGATION (4 ITEMS) -->
+      ${renderAsbBottomNav('verifikasi')}
+
+    </div>
+  `;
+
+  // Back button
+  app.querySelector('#btn-back-to-list')?.addEventListener('click', () => {
+    currentVerifView = 'TRANSACTION_LIST';
     renderVerificationLanding();
   });
-  document.getElementById('filter-severity')?.addEventListener('change', (e) => {
-    currentFilters.severity = e.target.value;
-    renderVerificationLanding();
+
+  // Approve
+  app.querySelector('#btn-tx-approve')?.addEventListener('click', () => {
+    try {
+      approveVerification({
+        referenceType: selectedTxItem.referenceType,
+        referenceId: selectedTxItem.referenceId,
+        currentUser: userCtx
+      });
+      toast(`Dokumen ${docNo} berhasil disetujui`, 'success');
+      currentVerifView = 'TRANSACTION_LIST';
+      renderVerificationLanding();
+    } catch (err) {
+      toast(err.message || 'Gagal menyetujui dokumen', 'error');
+    }
   });
-  document.getElementById('filter-keyword')?.addEventListener('input', (e) => {
-    currentFilters.keyword = e.target.value;
-    const content = document.getElementById('verif-tab-content');
-    if (content) {
-      if (activeTab === 'PENDING') {
-        content.innerHTML = renderPendingTable(getActionableRecordsForAsb(currentUser, currentFilters));
-      } else {
-        content.innerHTML = renderHistoryTable(getVerificationHistory(currentUser, currentFilters));
+
+  // Return
+  app.querySelector('#btn-tx-return')?.addEventListener('click', () => {
+    const reason = prompt('Masukkan alasan pengembalian:');
+    if (reason && reason.trim()) {
+      try {
+        returnVerification({
+          referenceType: selectedTxItem.referenceType,
+          referenceId: selectedTxItem.referenceId,
+          returnReason: reason.trim(),
+          currentUser: userCtx
+        });
+        toast(`Dokumen ${docNo} dikembalikan untuk revisi`, 'info');
+        currentVerifView = 'TRANSACTION_LIST';
+        renderVerificationLanding();
+      } catch (err) {
+        toast(err.message || 'Gagal mengembalikan dokumen', 'error');
       }
     }
   });
-  document.getElementById('btn-reset-filters')?.addEventListener('click', () => {
-    currentFilters = { referenceType: 'ALL', status: 'ALL', severity: 'ALL', keyword: '' };
+
+  attachAsbBottomNavEvents(app);
+}
+
+/**
+ * SCREEN 7: Tinjau Data Hari Ini (Form Filter)
+ */
+function renderTinjauFilterView(app, userCtx) {
+  app.innerHTML = `
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-back-to-grid2" type="button" aria-label="Kembali" style="background: transparent; border: none; padding: 4px; margin-left: -4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0;">Tinjau Data Hari Ini</h1>
+        </div>
+      </header>
+
+      <!-- BODY: FILTER FORM -->
+      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 16px;">
+        
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          
+          <!-- Periode Data -->
+          <div>
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #64748B; margin-bottom: 6px;">Periode Data</label>
+            <div style="display: flex; align-items: center; justify-content: space-between; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px; background: #FFFFFF;">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; font-weight: 700; color: #111827;">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#116834" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <span>${tinjauFilter.date}</span>
+              </div>
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </div>
+
+          <!-- Kebun -->
+          <div>
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #64748B; margin-bottom: 6px;">Kebun</label>
+            <div style="display: flex; align-items: center; justify-content: space-between; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px; background: #FFFFFF;">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; font-weight: 700; color: #111827;">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#116834" stroke-width="2"><path d="M12 22V12 M12 12C12 7 8 4 8 4s-1 4 4 8z M12 12c0-5 4-8 4-8s1 4-4 8z"></path></svg>
+                <span>${tinjauFilter.estateId}</span>
+              </div>
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </div>
+
+          <!-- Divisi -->
+          <div>
+            <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #64748B; margin-bottom: 6px;">Divisi</label>
+            <div style="display: flex; align-items: center; justify-content: space-between; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 12px; background: #FFFFFF;">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; font-weight: 700; color: #111827;">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#116834" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                <span>${tinjauFilter.divisionId}</span>
+              </div>
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="#64748B" stroke-width="2" fill="none"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </div>
+
+          <!-- Tombol Lihat Data -->
+          <div style="margin-top: 8px;">
+            <button id="btn-submit-tinjau-filter" type="button" style="width: 100%; height: 44px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.86rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="#FFFFFF" stroke-width="2.2" fill="none"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <span>Lihat Data</span>
+            </button>
+          </div>
+
+        </div>
+
+      </main>
+
+      <!-- BOTTOM NAVIGATION (4 ITEMS) -->
+      ${renderAsbBottomNav('verifikasi')}
+
+    </div>
+  `;
+
+  app.querySelector('#btn-back-to-grid2')?.addEventListener('click', () => {
+    currentVerifView = 'MODULE_GRID';
     renderVerificationLanding();
   });
 
-  // Open Detail
-  main.querySelectorAll('.btn-open-detail').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const type = btn.getAttribute('data-type');
-      const id = btn.getAttribute('data-id');
-      const list = getActionableRecordsForAsb(currentUser, {});
-      const target = list.find(item => item.referenceType === type && String(item.referenceId) === String(id));
-      if (target) {
-        openDetailModal(target, currentUser);
+  app.querySelector('#btn-submit-tinjau-filter')?.addEventListener('click', () => {
+    currentVerifView = 'TINJAU_SUMMARY';
+    renderVerificationLanding();
+  });
+
+  attachAsbBottomNavEvents(app);
+}
+
+/**
+ * SCREEN 8 & 10: Tinjau Data Hari Ini - Daftar Transaksi Ringkasan 10 Modul
+ */
+function renderTinjauSummaryView(app, userCtx) {
+  const summary10 = get10ModulesSummary(userCtx);
+  const canSend = canSubmitFinalVerificationToServer(userCtx);
+  const allVerified = summary10.every(m => m.pendingCount === 0);
+
+  const moduleRows = summary10.map(mod => {
+    const iconSvg = MODULE_ICONS[VERIFICATION_10_MODULES.find(m => m.id === mod.id)?.iconName] || MODULE_ICONS.sprout;
+
+    return `
+      <div class="tinjau-mod-row" data-mod-id="${mod.id}" style="display: flex; align-items: center; justify-content: space-between; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; color: #116834;">
+            ${iconSvg}
+          </div>
+          <span style="font-size: 0.82rem; font-weight: 700; color: #111827;">${mod.label}</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 0.74rem; font-weight: 700; color: ${mod.verifiedCount > 0 ? '#116834' : '#64748B'};">
+            ${mod.verifiedCount} transaksi
+          </span>
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="#94A3B8" stroke-width="2.2" fill="none">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  app.innerHTML = `
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-back-to-filter" type="button" aria-label="Kembali" style="background: transparent; border: none; padding: 4px; margin-left: -4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0;">Tinjau Data Hari Ini</h1>
+        </div>
+      </header>
+
+      <!-- BODY -->
+      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+        
+        <!-- TOP CARD PERIODE & SCOPE -->
+        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 36px; height: 36px; border-radius: 8px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#116834" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            </div>
+            <div>
+              <div style="font-size: 0.68rem; color: #64748B;">Periode Data</div>
+              <div style="font-size: 0.82rem; font-weight: 800; color: #111827;">${tinjauFilter.date}</div>
+              <div style="font-size: 0.7rem; color: #64748B;">${tinjauFilter.estateId} - ${tinjauFilter.divisionId}</div>
+            </div>
+          </div>
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="#94A3B8" stroke-width="2.2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </div>
+
+        <!-- LIST OF 10 MODULES -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${moduleRows}
+        </div>
+
+        <!-- SCREEN 10 CHECKMARK & KIRIM DATA -->
+        <div style="margin-top: 10px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          ${canSend ? `
+            <div style="width: 52px; height: 52px; border-radius: 50%; background: #116834; display: flex; align-items: center; justify-content: center; color: #FFFFFF; margin-bottom: 2px;">
+              <svg viewBox="0 0 24 24" width="30" height="30" stroke="#FFFFFF" stroke-width="3" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div style="font-size: 0.95rem; font-weight: 800; color: #111827;">Semua transaksi sudah diverifikasi</div>
+            <div style="font-size: 0.74rem; color: #64748B; margin-bottom: 8px;">Data siap dikirim ke server.</div>
+            <button id="btn-send-to-server" type="button" style="width: 100%; height: 44px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.86rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="#FFFFFF" stroke-width="2.2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <span>Kirim Data ke Server</span>
+            </button>
+          ` : `
+            <div style="font-size: 0.84rem; font-weight: 700; color: #B45309;">Masih ada transaksi yang belum selesai diverifikasi</div>
+            <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 8px;">Selesaikan verifikasi seluruh modul sebelum mengirim ke server.</div>
+            <button id="btn-send-to-server" type="button" disabled style="width: 100%; height: 44px; background: #E2E8F0; color: #94A3B8; border: none; border-radius: 8px; font-size: 0.86rem; font-weight: 700; cursor: not-allowed; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="#94A3B8" stroke-width="2.2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <span>Kirim Data ke Server</span>
+            </button>
+          `}
+        </div>
+
+      </main>
+
+      <!-- BOTTOM NAVIGATION (4 ITEMS) -->
+      ${renderAsbBottomNav('verifikasi')}
+
+    </div>
+  `;
+
+  // Back button
+  app.querySelector('#btn-back-to-filter')?.addEventListener('click', () => {
+    currentVerifView = 'TINJAU_FILTER';
+    renderVerificationLanding();
+  });
+
+  // Click module row -> open Screen 9 if verified items exist
+  app.querySelectorAll('.tinjau-mod-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const modId = row.dataset.modId;
+      const modSummary = summary10.find(m => m.id === modId);
+      if (modSummary && modSummary.verifiedItems.length > 0) {
+        selectedTxItem = modSummary.verifiedItems[0];
+        currentVerifView = 'TINJAU_DETAIL';
+        renderVerificationLanding();
+      } else {
+        toast(`Belum ada transaksi terverifikasi untuk modul ini`, 'info');
       }
     });
   });
 
-  // History Trace
-  main.querySelectorAll('.btn-trace-history').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const type = btn.getAttribute('data-type');
-      const no = btn.getAttribute('data-no');
-      const chain = buildTraceabilityChain(type, no);
-      toast(`Rantai: ${chain.type} (Status: ${chain.status})`, 'info');
-    });
+  // Kirim ke server
+  app.querySelector('#btn-send-to-server')?.addEventListener('click', () => {
+    if (!canSend) return;
+    try {
+      const result = submitFinalVerificationToServer(userCtx);
+      toast(result.message || 'Data berhasil dikirim ke server!', 'success');
+      currentVerifView = 'MODULE_GRID';
+      renderVerificationLanding();
+    } catch (err) {
+      toast(err.message || 'Gagal mengirim data ke server', 'error');
+    }
   });
+
+  attachAsbBottomNavEvents(app);
+}
+
+/**
+ * SCREEN 9: Tinjau Data Hari Ini - Detail Transaksi (Read-Only)
+ */
+function renderTinjauDetailView(app, userCtx) {
+  if (!selectedTxItem) {
+    currentVerifView = 'TINJAU_SUMMARY';
+    renderVerificationLanding();
+    return;
+  }
+
+  const raw = selectedTxItem.rawRecord || {};
+  const currentMod = VERIFICATION_10_MODULES.find(m => m.id === selectedTxItem.moduleCategory || m.types.includes(selectedTxItem.referenceType)) || VERIFICATION_10_MODULES[0];
+  const docNo = selectedTxItem.referenceDocNo || selectedTxItem.docNo || selectedTxItem.id;
+  const dateStr = selectedTxItem.date ? String(selectedTxItem.date).substring(0, 10) : tinjauFilter.date;
+  const workerName = selectedTxItem.submittedByName || raw.mantri || raw.actorName || userCtx?.name || 'Wagiman';
+
+  let detailRows = '';
+  if (selectedTxItem.referenceType === 'TOPPING' || currentMod.id === 'KEBUN_ENTRES') {
+    const stikHijau = raw.jumlahStikHijau !== undefined ? raw.jumlahStikHijau : (raw.jumlahStik || raw.jumlahPokok || raw.qty || 500);
+    const perisai = raw.jumlahPerisai !== undefined ? raw.jumlahPerisai : (raw.jumlahMata || raw.jumlahTopping || 120);
+    detailRows = `
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Jumlah Kayu</span>
+        <strong style="color: #0F172A;">${stikHijau}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Jumlah Perisai</span>
+        <strong style="color: #0F172A;">${perisai}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+        <span style="color: #64748B;">Keterangan</span>
+        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
+      </div>
+    `;
+  } else {
+    const qty = raw.qty || raw.quantity || raw.totalDisemai || raw.totalDeder || raw.actualBibitRetainedQty || raw.volumePkk || raw.jumlah || '-';
+    detailRows = `
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+        <span style="color: #64748B;">Volume / Kuantitas</span>
+        <strong style="color: #0F172A;">${qty}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+        <span style="color: #64748B;">Keterangan</span>
+        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
+      </div>
+    `;
+  }
+
+  app.innerHTML = `
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-back-to-tinjau-summary" type="button" aria-label="Kembali" style="background: transparent; border: none; padding: 4px; margin-left: -4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0;">Detail Transaksi</h1>
+        </div>
+      </header>
+
+      <!-- BODY -->
+      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+        
+        <!-- CARD HEADER DOKUMEN -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 44px; height: 44px; border-radius: 10px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              ${MODULE_ICONS[currentMod.iconName] || MODULE_ICONS.sprout}
+            </div>
+            <div>
+              <div style="font-size: 0.95rem; font-weight: 800; color: #111827;">${currentMod.label}</div>
+              <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 1px;">${esc(docNo)}</div>
+              <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">${esc(workerName)} &bull; ${esc(dateStr)}</div>
+            </div>
+          </div>
+          <span style="font-size: 0.65rem; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: #DEF7EC; color: #03543F;">
+            Terverifikasi
+          </span>
+        </div>
+
+        <!-- INFORMASI UMUM -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="font-size: 0.84rem; font-weight: 800; color: #111827; margin-bottom: 10px; border-bottom: 1.5px solid #F1F5F9; padding-bottom: 6px;">
+            Informasi Umum
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem;">
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Periode Data</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(tinjauFilter.date)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Kebun</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(tinjauFilter.estateId)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Divisi</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(tinjauFilter.divisionId)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Mantri</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(workerName)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Tanggal Transaksi</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(dateStr)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+              <span style="color: #64748B;">Nomor Dokumen</span>
+              <span style="color: #116834; font-weight: 700;">${esc(docNo)}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- RINCIAN DATA -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="font-size: 0.84rem; font-weight: 800; color: #111827; margin-bottom: 10px; border-bottom: 1.5px solid #F1F5F9; padding-bottom: 6px;">
+            Rincian Data
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem;">
+            ${detailRows}
+          </div>
+        </div>
+
+      </main>
+
+      <!-- BOTTOM NAVIGATION (4 ITEMS) -->
+      ${renderAsbBottomNav('verifikasi')}
+
+    </div>
+  `;
+
+  app.querySelector('#btn-back-to-tinjau-summary')?.addEventListener('click', () => {
+    currentVerifView = 'TINJAU_SUMMARY';
+    renderVerificationLanding();
+  });
+
+  attachAsbBottomNavEvents(app);
 }

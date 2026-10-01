@@ -148,10 +148,14 @@ export function getActionableSelectionCount(records = null, currentUser) {
   if (records !== null && Array.isArray(records)) {
     return records.filter(item => canPerformAsistenSelectionAction(item, currentUser)).length;
   }
-  const preDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
+  const preDocs = getPreGraftingSelectionDocuments({}, currentUser);
   const preCount = preDocs.filter(item => canPerformAsistenSelectionAction(item, currentUser)).length;
-  const list = storage.get(SELECTION_STORAGE_KEY, []);
-  const txCount = list.filter(item => canPerformAsistenSelectionAction(item, currentUser)).length;
+
+  const allRecords = storage.get(SELECTION_STORAGE_KEY, []);
+  const postGraftingRecords = allRecords.filter(r => !r.selectionDocumentId && !r.parentSelectionDocumentId && r.selectionType !== SELECTION_TYPES.PRA_OKULASI && r.selectionStage !== SELECTION_STAGES.SELEKSI_1);
+  const scopedPost = filterSelectionByScope(postGraftingRecords, currentUser);
+  const txCount = scopedPost.filter(item => canPerformAsistenSelectionAction(item, currentUser)).length;
+
   return preCount + txCount;
 }
 

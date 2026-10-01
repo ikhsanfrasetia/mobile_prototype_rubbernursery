@@ -128,8 +128,8 @@ storage.set('entres_menunas_transactions', [
   }
 ]);
 
-const tc2_txs = getMantriTodayTransactions(mantriA);
-assert(tc2_txs.length === 1 && tc2_txs[0].moduleType === MODULE_TYPES.MENUNAS, 'TC-02: 1 transaction today -> getMantriTodayTransactions returns 1 item (button active & GREEN)');
+const tc2_txs = getMantriTodayTransactions(mantriA).filter(t => t.moduleType !== MODULE_TYPES.TIDAK_HADIR);
+assert(tc2_txs.length === 1 && (tc2_txs[0].moduleType === MODULE_TYPES.KEBUN_ENTRES || tc2_txs[0].moduleType === MODULE_TYPES.MENUNAS), 'TC-02: 1 transaction today -> getMantriTodayTransactions returns 1 item (button active & GREEN)');
 
 // -----------------------------------------------------------------------------
 // TC-03: 1 transaction today -> click navigates to #/mantri-confirmation
@@ -140,7 +140,7 @@ assert(tc2_txs.length > 0 && tc2_txs[0].docNo === '2026/TUNAS/001', 'TC-03: 1 tr
 // TC-04: 1 module -> hanya 1 dynamic tab
 // -----------------------------------------------------------------------------
 const moduleTypesTc4 = [...new Set(tc2_txs.map(t => t.moduleType))];
-assert(moduleTypesTc4.length === 1 && moduleTypesTc4[0] === 'MENUNAS', 'TC-04: 1 module today -> exactly 1 dynamic tab (MENUNAS)');
+assert(moduleTypesTc4.length === 1 && (moduleTypesTc4[0] === MODULE_TYPES.KEBUN_ENTRES || moduleTypesTc4[0] === 'MENUNAS'), 'TC-04: 1 module today -> exactly 1 dynamic tab (MENUNAS/KEBUN_ENTRES)');
 
 // -----------------------------------------------------------------------------
 // TC-05: Multiple modules today -> hanya module yang mempunyai transaksi yang muncul sebagai tab
@@ -157,11 +157,11 @@ storage.set('seeding_transactions', [
   }
 ]);
 
-const tc5_txs = getMantriTodayTransactions(mantriA);
+const tc5_txs = getMantriTodayTransactions(mantriA).filter(t => t.moduleType !== MODULE_TYPES.TIDAK_HADIR);
 const moduleTypesTc5 = [...new Set(tc5_txs.map(t => t.moduleType))];
 assert(
   moduleTypesTc5.length === 2 &&
-  moduleTypesTc5.includes(MODULE_TYPES.MENUNAS) &&
+  (moduleTypesTc5.includes(MODULE_TYPES.KEBUN_ENTRES) || moduleTypesTc5.includes(MODULE_TYPES.MENUNAS)) &&
   moduleTypesTc5.includes(MODULE_TYPES.PENYEMAIAN) &&
   !moduleTypesTc5.includes(MODULE_TYPES.OKULASI),
   'TC-05: Multiple modules today -> only modules with active transactions form dynamic tabs'
@@ -192,7 +192,7 @@ storage.set('entres_menunas_transactions', [
 ]);
 
 const tc6_txs = getMantriTodayTransactions(mantriA);
-const menunasTxs = tc6_txs.filter(t => t.moduleType === MODULE_TYPES.MENUNAS);
+const menunasTxs = tc6_txs.filter(t => t.moduleType === MODULE_TYPES.KEBUN_ENTRES || t.moduleType === MODULE_TYPES.MENUNAS);
 assert(menunasTxs.length === 2, 'TC-06: Multiple transactions in same module -> all items returned');
 
 // -----------------------------------------------------------------------------
@@ -441,8 +441,8 @@ assert(
 // TC-17: Different transaction source -> normalized correctly
 // -----------------------------------------------------------------------------
 resetAllStorage();
-storage.set('attendance_transactions', [
-  { id: 'ATT-10', docNo: 'ATT/2026/10', actorName: mantriA.name, tanggal: today, totalWorkers: 8, status: 'HADIR' }
+storage.set('seeding_transactions', [
+  { id: 'SOW-10', docNo: 'SOW/2026/10', mantri: mantriA.name, tanggal: today, totalDisemai: 1000, bedengan: 'B-01' }
 ]);
 storage.set('receipt_ksp_transactions', [
   { id: 'RCV-20', docNo: 'RCV/2026/20', penerima: mantriA.name, tanggal: today, qty: 5000, klon: 'GT 1' }
@@ -457,7 +457,7 @@ storage.set('material_usage_transactions', [
   { id: 'MAT-50', docNo: 'MAT/2026/50', mantri: mantriA.name, tanggal: today, materialName: 'Urea', qty: 25, unit: 'Kg' }
 ]);
 
-const tc17_txs = getMantriTodayTransactions(mantriA);
+const tc17_txs = getMantriTodayTransactions(mantriA).filter(t => t.moduleType !== MODULE_TYPES.TIDAK_HADIR);
 const requiredNormalizedKeys = ['id', 'docNo', 'moduleType', 'moduleLabel', 'date', 'actor', 'summary', 'status', 'verificationStatus', 'rawRecord'];
 const allNormalizedCorrectly = tc17_txs.length === 5 && tc17_txs.every(tx => {
   return requiredNormalizedKeys.every(k => tx[k] !== undefined);

@@ -17,7 +17,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { toast } from '../../components/toast.js';
-import { todayISO, formatDate } from '../../core/utils.js';
+import { todayISO, formatDate, generateUniqueDocNo } from '../../core/utils.js';
 import { resolvePlot, getAllBudwoodPlots } from '../../data/budwood-plot-master.js';
 
 function formatDateDDMMYYYY(val) {
@@ -108,9 +108,6 @@ export function renderMenunasForm() {
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <div>
-              <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px;">
-                Identitas Plot Entres (QR Verified)
-              </span>
               <div style="font-size: 1.15rem; font-weight: 800; color: #111827; line-height: 1.2;">
                 ${selectedPlot.kodePlot}
               </div>
@@ -129,7 +126,7 @@ export function renderMenunasForm() {
               </div>
             </div>
             <div style="border-left: 1px solid #E2E8F0; padding-left: 12px;">
-              <div style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Populasi Master Plot:</div>
+              <div style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Populasi Jumlah Pokok:</div>
               <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin-top: 3px;">
                 ${parseInt(selectedPlot.jlhPokok || 0).toLocaleString('id-ID')} Pkk
               </div>
@@ -155,20 +152,20 @@ export function renderMenunasForm() {
               </div>
             </div>
 
-            <!-- 2. INPUT JUMLAH POHON DITUNAS* (NUMBER) -->
+            <!-- 2. INPUT JUMLAH POKOK DITUNAS* (NUMBER) -->
             <div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                 <label for="inp-pohon-ditunas" style="font-size: 0.76rem; font-weight: 700; color: #111827;">
-                  Jumlah Pohon Ditunas <span style="color: #DC2626;">*</span>
+                  Jumlah Pokok Ditunas <span style="color: #DC2626;">*</span>
                 </label>
                 <span style="font-size: 0.68rem; color: #116834; font-weight: 700;">Realisasi Aktual</span>
               </div>
               <div style="position: relative;">
                 <input id="inp-pohon-ditunas" type="number" min="1" value="${initialPohonDitunas}" placeholder="Contoh: 120" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #116834; border-radius: 8px; font-size: 0.92rem; font-weight: 800; color: #116834; box-sizing: border-box; transition: border-color 0.15s ease;" />
-                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #116834;">Pohon</span>
+                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #116834;">Pkk</span>
               </div>
               <div style="font-size: 0.68rem; color: #64748B; margin-top: 4px;">
-                Masukkan jumlah pohon aktual yang dikerjakan pada kegiatan menunas hari ini.
+                Masukkan jumlah pokok aktual yang dikerjakan pada kegiatan menunas hari ini.
               </div>
             </div>
 
@@ -256,7 +253,7 @@ export function renderMenunasForm() {
     const errors = [];
     if (!tgl) errors.push('Tanggal Menunas wajib diisi.');
     if (!pohonDitunasVal || parseInt(pohonDitunasVal, 10) <= 0) {
-      errors.push('Jumlah Pohon Ditunas wajib diisi angka > 0.');
+      errors.push('Jumlah Pokok Ditunas wajib diisi angka > 0.');
     }
 
     if (errors.length > 0) {
@@ -280,7 +277,12 @@ export function renderMenunasForm() {
       return;
     }
 
-    const docNo = `MEN/ENT/2026/0${txs.length + 1}`;
+    const combinedTxs = [
+      ...storage.get('entres_topping_transactions', []),
+      ...storage.get('entres_menunas_transactions', [])
+    ];
+    const currentYear = tgl ? (parseInt(String(tgl).substring(0, 4), 10) || new Date().getFullYear()) : new Date().getFullYear();
+    const docNo = generateUniqueDocNo('BWGDTL', combinedTxs, currentYear);
 
     const newTx = {
       docNo,
@@ -304,7 +306,7 @@ export function renderMenunasForm() {
     txs.push(newTx);
     storage.set('entres_menunas_transactions', txs);
 
-    toast(`Transaksi Menunas ${docNo} (${jumlahPohonDitunas} Pohon) berhasil disimpan!`, 'success');
+    toast(`Transaksi Menunas ${docNo} (${jumlahPohonDitunas} Pkk) berhasil disimpan!`, 'success');
     navigate('/entres');
   });
 }

@@ -86,6 +86,8 @@ export const CANONICAL_PAGE_MAP = Object.freeze({
   '/dispatch': 'Pengeluaran Bibit',
   '/dispatch/report': 'Laporan Pengeluaran Bibit',
   '/entres': 'Kebun Entres',
+  '/entres/stock': 'Stok Mata Entres',
+  '/entres/stock/detail': 'Detail Stok Klon',
   '/entres/menunas': 'Menunas Entres',
   '/entres/menunas/form': 'Form Menunas Entres',
   '/entres/topping': 'Topping Entres',

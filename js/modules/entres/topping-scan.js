@@ -146,7 +146,7 @@ export function renderToppingScan() {
                     Klon: ${p.namaKlon}
                   </div>
                   <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">
-                    Populasi: ${parseInt(p.jlhPokok || 0).toLocaleString('id-ID')} Pokok • Tanam: ${p.tahunTanam || '-'}
+                    Populasi: ${parseInt(p.jlhPokok || 0).toLocaleString('id-ID')} Pkk • Tanam: ${p.tahunTanam || '-'}
                   </div>
                 </div>
                 <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #DCFCE7; color: #15803D;">
