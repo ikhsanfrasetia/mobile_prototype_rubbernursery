@@ -3,11 +3,12 @@
  * Service Sentral Perhitungan Saldo Mata Entres & Alokasi FIFO
  * 
  * Business Rules:
- * 1. Saldo Perisai Klon = SUM(Topping.jumlahPerisai) - SUM(Grafting.jumlahMataEntres) - SUM(Regrafting.jumlahMataEntres)
- * 2. Process Order Konsumsi: GRAFTING -> PEMERIKSAAN OKULASI (No consumption) -> REGRAFTING
+ * 1. Saldo Perisai Klon = SUM(Topping.jumlahPerisai) - SUM(Grafting.jumlahMataEntres) - SUM(Regrafting.jumlahMataEntres) - SUM(Dispatch.jumlahMataEntresDikeluarkan)
+ * 2. Process Order Konsumsi FIFO: GRAFTING -> REGRAFTING -> DISPATCH (PENGELUARAN MATA ENTRES)
  * 3. FIFO Source Selection: Batch Topping diurutkan createdAt ASC (fallback docNo ASC)
  * 4. Immutability: Topping.jumlahPerisai adalah historical harvest quantity (tidak pernah di-overwrite)
  * 5. Single Source of Truth: Kalkulasi deterministik on-the-fly berbasis storage
+ * 6. Zero Heuristic Ratio: Pengurangan stok murni dari jumlahMataEntresDikeluarkan, bukan perkalian Batang.
  */
 
 import { storage } from './storage.js';
@@ -25,17 +26,33 @@ export function canonicalKlon(klonName) {
 }
 
 /**
+ * Helper untuk pencocokan ID/kode Estate
+ */
+function matchEstate(targetEstate, currentEstate) {
+  if (!targetEstate || !currentEstate) return true;
+  const cleanTarget = String(targetEstate).trim().toUpperCase().replace(/^EST-/, '');
+  const cleanCurrent = String(currentEstate).trim().toUpperCase().replace(/^EST-/, '');
+  return cleanTarget === cleanCurrent;
+}
+
+/**
  * Mengambil dan mengurutkan seluruh transaksi Topping untuk klon tertentu secara FIFO (createdAt ASC, fallback docNo ASC)
  * @param {string} klonKey
  * @param {Array<Object>} [toppingTxs=null]
+ * @param {Object} [options={}]
  * @returns {Array<Object>}
  */
-export function getSortedToppingSources(klonKey, toppingTxs = null) {
+export function getSortedToppingSources(klonKey, toppingTxs = null, options = {}) {
   const txs = toppingTxs || storage.get('entres_topping_transactions', []);
   const targetKey = canonicalKlon(klonKey);
 
   return txs
-    .filter(t => t && t.status !== 'VOID' && canonicalKlon(t.namaKlon) === targetKey)
+    .filter(t => {
+      if (!t || t.status === 'VOID') return false;
+      if (canonicalKlon(t.namaKlon) !== targetKey) return false;
+      if (options.estateId && !matchEstate(t.estateId || t.estateCode, options.estateId)) return false;
+      return true;
+    })
     .sort((a, b) => {
       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -51,7 +68,7 @@ export function getSortedToppingSources(klonKey, toppingTxs = null) {
 /**
  * Menghitung rincian alokasi FIFO dan saldo Mata Entres per klon
  * @param {string} klonName
- * @param {Object} [options={}] - { excludeBuddingDocNo?: string, excludeToppingDocNo?: string }
+ * @param {Object} [options={}] - { excludeBuddingDocNo?: string, excludeToppingDocNo?: string, excludeDispatchDocNo?: string, estateId?: string }
  * @returns {Object}
  */
 export function getFifoAllocationBreakdown(klonName, options = {}) {
@@ -62,6 +79,7 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
       totalPanenTopping: 0,
       totalPakaiGrafting: 0,
       totalPakaiRegrafting: 0,
+      totalPakaiDispatch: 0,
       totalKonsumsi: 0,
       saldoMataEntres: 0,
       saldoSetelahGrafting: 0,
@@ -72,13 +90,22 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
 
   const allToppings = storage.get('entres_topping_transactions', []);
   const allBuddings = storage.get('budding_transactions', []);
+  const allDispatches = storage.get('dispatch_transactions', []);
 
   const excludeBudDoc = options.excludeBuddingDocNo || null;
   const excludeTopDoc = options.excludeToppingDocNo || null;
+  const excludeDspDoc = options.excludeDispatchDocNo || null;
+  const estateIdFilter = options.estateId || null;
 
   // 1. Ambil Topping sources
   const toppingList = allToppings
-    .filter(t => t && t.status !== 'VOID' && canonicalKlon(t.namaKlon) === targetKey && (!excludeTopDoc || t.docNo !== excludeTopDoc))
+    .filter(t => {
+      if (!t || t.status === 'VOID') return false;
+      if (canonicalKlon(t.namaKlon) !== targetKey) return false;
+      if (excludeTopDoc && t.docNo === excludeTopDoc) return false;
+      if (estateIdFilter && !matchEstate(t.estateId || t.estateCode, estateIdFilter)) return false;
+      return true;
+    })
     .sort((a, b) => {
       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -97,9 +124,11 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
       namaKlon: t.namaKlon || klonName,
       tanggal: t.tanggal || '',
       createdAt: t.createdAt || '',
+      estateId: t.estateId || '',
       originalHarvestQty: harvestQty,
       consumedGrafting: 0,
       consumedRegrafting: 0,
+      consumedDispatch: 0,
       totalConsumed: 0,
       remainingQty: harvestQty
     };
@@ -108,12 +137,13 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
   const totalPanenTopping = sources.reduce((acc, s) => acc + s.originalHarvestQty, 0);
 
   // 3. Ambil transaksi Okulasi aktif untuk klon ini (dipisahkan Grafting vs Regrafting)
-  const relevantBuddings = allBuddings.filter(b => 
-    b && 
-    b.status !== 'VOID' && 
-    canonicalKlon(b.klonEntres || b.klon || b.namaKlon || b.klonName) === targetKey &&
-    (!excludeBudDoc || b.docNo !== excludeBudDoc)
-  );
+  const relevantBuddings = allBuddings.filter(b => {
+    if (!b || b.status === 'VOID') return false;
+    if (canonicalKlon(b.klonEntres || b.klon || b.namaKlon || b.klonName) !== targetKey) return false;
+    if (excludeBudDoc && b.docNo === excludeBudDoc) return false;
+    if (estateIdFilter && !matchEstate(b.estateId || b.estateCode, estateIdFilter)) return false;
+    return true;
+  });
 
   const graftingTxs = relevantBuddings.filter(b => b.type === 'GRAFTING' || !b.type);
   const regraftingTxs = relevantBuddings.filter(b => b.type === 'REGRAFTING');
@@ -140,7 +170,7 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
 
   const saldoSetelahGrafting = Math.max(0, totalPanenTopping - totalPakaiGrafting);
 
-  // STEP 6 & 7: Alokasikan REGRAFTING dari sisa source Topping secara FIFO
+  // STEP 5: Alokasikan REGRAFTING dari sisa source Topping secara FIFO
   let totalPakaiRegrafting = 0;
   for (const rTx of regraftingTxs) {
     const perisaiUsed = parseInt(rTx.jumlahMataEntres !== undefined && rTx.jumlahMataEntres !== null ? rTx.jumlahMataEntres : (rTx.jumlah || 0), 10) || 0;
@@ -160,14 +190,51 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
     }
   }
 
+  // STEP 6: Alokasikan DISPATCH (Pengeluaran Mata Entres Antarkebun) dari sisa source Topping secara FIFO
+  const relevantDispatches = allDispatches.filter(d => {
+    if (!d || d.status === 'VOID') return false;
+    const isMataEntres = d.type === 'MATA_ENTRES' || d.transactionType === 'PENGELUARAN_MATA_ENTRES';
+    if (!isMataEntres) return false;
+    const dKlon = d.details?.[0]?.klon || d.klon || d.klonName || '';
+    if (canonicalKlon(dKlon) !== targetKey) return false;
+    if (excludeDspDoc && (d.docNo === excludeDspDoc || d.dispatchNo === excludeDspDoc)) return false;
+    if (estateIdFilter && !matchEstate(d.estateId || d.dispatchedFromEstateId, estateIdFilter)) return false;
+    return true;
+  });
+
+  let totalPakaiDispatch = 0;
+  for (const dTx of relevantDispatches) {
+    const mataUsed = parseInt(
+      dTx.jumlahMataEntresDikeluarkan !== undefined && dTx.jumlahMataEntresDikeluarkan !== null
+        ? dTx.jumlahMataEntresDikeluarkan
+        : (dTx.details?.[0]?.mataQty || 0),
+      10
+    ) || 0;
+    totalPakaiDispatch += mataUsed;
+
+    let demand = mataUsed;
+    for (const src of sources) {
+      if (demand <= 0) break;
+      const availableInSrc = src.originalHarvestQty - src.totalConsumed;
+      if (availableInSrc > 0) {
+        const take = Math.min(availableInSrc, demand);
+        src.consumedDispatch += take;
+        src.totalConsumed += take;
+        src.remainingQty = src.originalHarvestQty - src.totalConsumed;
+        demand -= take;
+      }
+    }
+  }
+
   const sourcesWithAliases = sources.map(s => ({
     ...s,
     allocatedGrafting: s.consumedGrafting,
     allocatedRegrafting: s.consumedRegrafting,
+    allocatedDispatch: s.consumedDispatch,
     remaining: s.remainingQty
   }));
 
-  const totalKonsumsi = totalPakaiGrafting + totalPakaiRegrafting;
+  const totalKonsumsi = totalPakaiGrafting + totalPakaiRegrafting + totalPakaiDispatch;
   const saldoMataEntres = totalPanenTopping - totalKonsumsi;
 
   return {
@@ -177,6 +244,7 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
     totalPanenTopping,
     totalPakaiGrafting,
     totalPakaiRegrafting,
+    totalPakaiDispatch,
     totalKonsumsi,
     saldoSetelahGrafting,
     saldoMataEntres,
@@ -187,12 +255,14 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
 }
 
 /**
- * Mengambil ringkasan saldo seluruh klon yang memiliki riwayat Topping atau Okulasi
+ * Mengambil ringkasan saldo seluruh klon yang memiliki riwayat Topping, Okulasi, atau Dispatch
+ * @param {Object} [options={}] - { estateId?: string }
  * @returns {Array<Object>}
  */
-export function getMataEntresBalances() {
+export function getMataEntresBalances(options = {}) {
   const allToppings = storage.get('entres_topping_transactions', []);
   const allBuddings = storage.get('budding_transactions', []);
+  const allDispatches = storage.get('dispatch_transactions', []);
 
   const klonSet = new Set();
 
@@ -208,10 +278,18 @@ export function getMataEntresBalances() {
     }
   });
 
+  allDispatches.forEach(d => {
+    const isMataEntres = d && (d.type === 'MATA_ENTRES' || d.transactionType === 'PENGELUARAN_MATA_ENTRES');
+    if (isMataEntres) {
+      const dKlon = d.details?.[0]?.klon || d.klon || d.klonName;
+      if (dKlon) klonSet.add(normalizeKlonName(dKlon));
+    }
+  });
+
   const list = [];
   klonSet.forEach(k => {
     if (k) {
-      const summary = getFifoAllocationBreakdown(k);
+      const summary = getFifoAllocationBreakdown(k, options);
       list.push(summary);
     }
   });
@@ -221,11 +299,11 @@ export function getMataEntresBalances() {
 
 /**
  * Mengambil daftar klon yang memiliki saldo Mata Entres > 0 untuk pilihan Okulasi
- * @param {Object} [options={}] - { isRegrafting?: boolean, includeKlon?: string, editingDocNo?: string }
+ * @param {Object} [options={}] - { isRegrafting?: boolean, includeKlon?: string, editingDocNo?: string, estateId?: string }
  * @returns {Array<Object>}
  */
 export function getAvailableKlonsForOkulasi(options = {}) {
-  const allBalances = getMataEntresBalances();
+  const allBalances = getMataEntresBalances(options);
   const includeKlonKey = options.includeKlon ? canonicalKlon(options.includeKlon) : null;
   const editingDocNo = options.editingDocNo || null;
 
@@ -233,7 +311,7 @@ export function getAvailableKlonsForOkulasi(options = {}) {
     .map(b => {
       // Jika ada editingDocNo, hitung ulang ketersediaan dengan mengecualikan dokumen yang sedang diedit
       if (editingDocNo) {
-        const custom = getFifoAllocationBreakdown(b.klonName, { excludeBuddingDocNo: editingDocNo });
+        const custom = getFifoAllocationBreakdown(b.klonName, { ...options, excludeBuddingDocNo: editingDocNo });
         return {
           ...b,
           namaKlon: b.klonName,

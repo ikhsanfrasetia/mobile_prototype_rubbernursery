@@ -15,6 +15,7 @@
 import { navigate } from '../../core/router.js';
 import { esc } from '../../core/utils.js';
 import { openModal, closeModal } from '../../components/modal.js';
+import { storage } from '../../core/storage.js';
 import {
   getAllMaterials,
   getMaterialByItemCode,
@@ -471,120 +472,154 @@ export function renderMaterialMaster() {
     const statusInfo = formatStatusBadge(status);
     const usedTxs = getIssueUsageTransactions(doc.id);
 
+    const seedingTxs = storage.get('seeding_transactions', []);
+    const allVerifs = storage.get('verification_transactions', []);
+
     const modalBody = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1E293B;">
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1E293B; display: flex; flex-direction: column; gap: 12px;">
         
-        <!-- SECTION 1: ITEM / MATERIAL (PRIMARY IDENTITY) -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <div style="font-size: 0.7rem; font-weight: 700; color: #242731ff; text-transform: uppercase; letter-spacing: 0.5px;">Ringkasan Material</div>
-            <span style="display: inline-block; padding: 2px 7px; background: #E0F2FE; color: #1d272dff; font-weight: 700; border-radius: 4px; font-size: 0.72rem;">
-              UOM: ${esc(item.uom || '-')}
-            </span>
-          </div>
-          
-          <div style="font-size: 1.05rem; font-weight: 800; color: #0F172A; line-height: 1.35; margin-bottom: 6px;">
-            ${esc(item.itemName || '-')}
-          </div>
-
-          <div style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-family: monospace; font-size: 0.78rem; font-weight: 700; color: #0F172A;">
-            Item Code: ${esc(item.itemCode || '-')}
-          </div>
-        </div>
-
-        <!-- SECTION 2: ISSUE INFORMATION -->
-        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <div style="font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">DOKUMEN ISSUE GUDANG</div>
-            <span style="display: inline-block; padding: 3px 8px; ${statusInfo.style} font-weight: 700; border-radius: 6px; font-size: 0.7rem;">
+        <!-- 1. MATERIAL & ISSUE HERO CARD -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
+            <div style="font-size: 1.02rem; font-weight: 800; color: #0F172A; line-height: 1.35;">
+              ${esc(item.itemName || '-')}
+            </div>
+            <span style="display: inline-block; padding: 3px 8px; ${statusInfo.style} font-weight: 700; border-radius: 6px; font-size: 0.68rem; white-space: nowrap; flex-shrink: 0;">
               ${esc(statusInfo.label)}
             </span>
           </div>
 
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 0.78rem;">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.74rem; color: #64748B; margin-bottom: 10px;">
+            <span style="font-family: monospace; font-weight: 700; color: #334155; background: #F1F5F9; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0;">
+              Item: ${esc(item.itemCode || '-')}
+            </span>
+            <span style="font-weight: 700; color: #0369A1; background: #E0F2FE; padding: 2px 6px; border-radius: 4px;">
+              UOM: ${esc(item.uom || '-')}
+            </span>
+            <span>·</span>
+            <span>No. Issue: <strong style="font-family: monospace; color: #0F172A;">${esc(doc.noIssue)}</strong></span>
+          </div>
+
+          <div style="border-top: 1px solid #F1F5F9; padding-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 8px; font-size: 0.76rem;">
             <div>
-              <span style="color: #64748B; display: block; font-size: 0.7rem;">No Issue:</span>
-              <strong style="font-family: monospace; color: #0F172A; font-size: 0.85rem;">${esc(doc.noIssue)}</strong>
+              <span style="color: #64748B; display: block; font-size: 0.68rem;">Alokasi Biaya</span>
+              <strong style="color: #1E293B; font-size: 0.78rem;">${esc(doc.kodeAlokasi)} — ${esc(doc.namaAlokasi)}</strong>
             </div>
             <div>
-              <span style="color: #64748B; display: block; font-size: 0.7rem;">Tanggal Posting:</span>
-              <strong style="color: #0F172A;">${esc(doc.tanggal)}</strong>
+              <span style="color: #64748B; display: block; font-size: 0.68rem;">Tanggal Posting</span>
+              <strong style="color: #1E293B; font-size: 0.78rem;">${esc(doc.tanggal)}</strong>
             </div>
           </div>
+
+          ${item.purpose ? `
+            <div style="margin-top: 8px; font-size: 0.74rem; color: #475569; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 6px 10px; border-radius: 6px; line-height: 1.35;">
+              <span style="font-weight: 600; color: #64748B;">Peruntukan:</span> ${esc(item.purpose)}
+            </div>
+          ` : ''}
         </div>
 
-        <!-- SECTION 3: ALOKASI BIAYA & PURPOSE -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;">
-          <div style="font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">ALOKASI BIAYA</div>
-          
-          <div style="margin-bottom: 8px;">
-            <span style="color: #64748B; display: block; font-size: 0.7rem;">Alokasi Biaya Issue:</span>
-            <strong style="color: #1E293B; font-size: 0.82rem;">${esc(doc.kodeAlokasi)} — ${esc(doc.namaAlokasi)}</strong>
+        <!-- 2. QUANTITY & SALDO STRIP -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <div style="font-size: 0.68rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+            Ringkasan Kuantitas & Saldo
           </div>
-
-          <div>
-            <span style="color: #64748B; display: block; font-size: 0.7rem;">Keterangan Penggunaan:</span>
-            <div style="font-size: 0.8rem; color: #334155; margin-top: 2px; line-height: 1.4; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 6px 10px; border-radius: 6px;">
-              ${esc(item.purpose || 'Tidak ada keterangan peruntukan')}
-            </div>
-          </div>
-        </div>
-
-        <!-- SECTION 4: QUANTITY & SALDO ISSUE -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;">
-          <div style="font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">QUANTITY & SALDO ISSUE</div>
           
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center;">
-            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 4px;">
-              <div style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Kuantitas Issue</div>
-              <div style="font-size: 1.1rem; font-weight: 800; color: #0F172A; margin-top: 3px;">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center;">
+            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 4px;">
+              <div style="font-size: 0.66rem; color: #64748B; font-weight: 600;">Issue</div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: #0F172A; margin-top: 2px;">
                 ${Number(item.quantityIssue).toLocaleString('id-ID')}
               </div>
-              <div style="font-size: 0.7rem; font-weight: 700; color: #0369A1;">${esc(item.uom)}</div>
+              <div style="font-size: 0.66rem; font-weight: 700; color: #0369A1;">${esc(item.uom)}</div>
             </div>
 
-            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 4px;">
-              <div style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Sudah Digunakan</div>
-              <div style="font-size: 1.1rem; font-weight: 800; color: #64748B; margin-top: 3px;">
+            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 4px;">
+              <div style="font-size: 0.66rem; color: #64748B; font-weight: 600;">Digunakan</div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: #475569; margin-top: 2px;">
                 ${Number(usedQty).toLocaleString('id-ID')}
               </div>
-              <div style="font-size: 0.7rem; font-weight: 700; color: #64748B;">${esc(item.uom)}</div>
+              <div style="font-size: 0.66rem; font-weight: 700; color: #64748B;">${esc(item.uom)}</div>
             </div>
 
-            <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 10px 4px;">
-              <div style="font-size: 0.68rem; color: #065F46; font-weight: 600;">Belum Digunakan</div>
-              <div style="font-size: 1.1rem; font-weight: 800; color: #047857; margin-top: 3px;">
+            <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 8px 4px;">
+              <div style="font-size: 0.66rem; color: #065F46; font-weight: 600;">Sisa Saldo</div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: #047857; margin-top: 2px;">
                 ${Number(remQty).toLocaleString('id-ID')}
               </div>
-              <div style="font-size: 0.7rem; font-weight: 700; color: #047857;">${esc(item.uom)}</div>
+              <div style="font-size: 0.66rem; font-weight: 700; color: #047857;">${esc(item.uom)}</div>
             </div>
           </div>
         </div>
 
-        <!-- SECTION 5: DOKUMEN TRANSAKSI PENGGUNA -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px;">
-          <div style="font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-            DOKUMEN PENGGUNA ISSUE
+        <!-- 3. DOKUMEN PENGGUNA ISSUE -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <div style="font-size: 0.68rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">
+              Dokumen Pengguna Issue
+            </div>
+            <span style="font-size: 0.68rem; font-weight: 700; color: #334155; background: #F1F5F9; padding: 1px 6px; border-radius: 10px; border: 1px solid #E2E8F0;">
+              ${usedTxs.length} Transaksi
+            </span>
           </div>
           
           ${usedTxs.length === 0 ? `
-            <div style="font-size: 0.78rem; color: #94A3B8; font-style: italic; background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 6px; padding: 10px; text-align: center;">
+            <div style="font-size: 0.76rem; color: #94A3B8; font-style: italic; background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 6px; padding: 14px; text-align: center;">
               Belum ada transaksi yang menggunakan No Issue ini
             </div>
           ` : `
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-              ${usedTxs.map(tx => `
-                <div style="display: flex; justify-content: space-between; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px;">
-                  <div>
-                    <span style="color: #64748B; display: block; font-size: 0.65rem; font-weight: 600; text-transform: uppercase;">No Dokumen</span>
-                    <strong style="font-family: monospace; font-size: 0.82rem; color: #0F766E;">${esc(tx.docNo)}</strong>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              ${usedTxs.map(tx => {
+                const sTx = seedingTxs.find(s => s.docNo === tx.docNo || s.id === tx.docNo) || {};
+                const usedPolybag = Number(sTx.totalPolybag !== undefined ? sTx.totalPolybag : (sTx.rows?.[0]?.polybag || 0));
+                const verif = allVerifs.find(v =>
+                  ((v.referenceId && String(v.referenceId) === String(tx.docNo)) ||
+                   (v.referenceDocNo && String(v.referenceDocNo) === String(tx.docNo))) &&
+                  ((v.referenceType || v.moduleType || '').toUpperCase() === 'MATERIAL')
+                );
+                const vStat = (verif?.verificationStatus || sTx.materialSubmissionStatus || sTx.status || '').toUpperCase();
+                
+                let vBadge = { label: 'Belum Dikonfirmasi', style: 'background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1;' };
+                if (vStat === 'TERVERIFIKASI' || vStat === 'DISETUJUI' || vStat === 'VERIFIED' || vStat === 'APPROVED') {
+                  vBadge = { label: 'Disetujui ASB', style: 'background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0;' };
+                } else if (vStat === 'DIKEMBALIKAN' || vStat === 'REVISION') {
+                  vBadge = { label: 'Perlu Revisi', style: 'background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA;' };
+                } else if (vStat === 'MENUNGGU_VERIFIKASI' || vStat === 'SUBMITTED_TO_ASB') {
+                  vBadge = { label: 'Menunggu Verifikasi', style: 'background: #FFFBEB; color: #92400E; border: 1px solid #FDE68A;' };
+                }
+
+                const batchDisplay = sTx.batchCode || sTx.batchNo || '-';
+                const bedenganDisplay = sTx.bedenganCode || sTx.bedengan || '-';
+
+                return `
+                  <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Top row: Doc number & Status badge -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                      <div style="min-width: 0;">
+                        <span style="color: #64748B; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; display: block;">Dokumen SOW</span>
+                        <span style="font-family: monospace; font-size: 0.84rem; font-weight: 800; color: #0F766E;">${esc(tx.docNo)}</span>
+                      </div>
+                      <span style="display: inline-block; padding: 2px 7px; ${vBadge.style} font-weight: 700; border-radius: 4px; font-size: 0.66rem; white-space: nowrap; flex-shrink: 0;">
+                        ${esc(vBadge.label)}
+                      </span>
+                    </div>
+
+                    <!-- Bottom row: Scope info on left, Clean Quantity on right -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; border-top: 1px solid #E2E8F0; padding-top: 6px;">
+                      <div style="font-size: 0.72rem; color: #64748B; line-height: 1.45;">
+                        <div>Batch: <strong style="color: #1E293B;">${esc(batchDisplay)}</strong></div>
+                        <div>Bedengan: <strong style="color: #1E293B;">${esc(bedenganDisplay)}</strong></div>
+                        <div>Tanggal: <span style="color: #334155; font-weight: 600;">${esc(tx.tanggal)}</span></div>
+                      </div>
+                      <div style="text-align: right; flex-shrink: 0;">
+                        <span style="color: #64748B; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; display: block; letter-spacing: 0.3px;">Pemakaian</span>
+                        <div style="font-size: 0.95rem; font-weight: 800; color: #0F172A; white-space: nowrap; margin-top: 2px;">
+                          ${usedPolybag.toLocaleString('id-ID')} <span style="font-size: 0.7rem; font-weight: 700; color: #0369A1;">${esc(item.uom || 'LBR')}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div style="text-align: right;">
-                    <span style="color: #64748B; display: block; font-size: 0.65rem; font-weight: 600; text-transform: uppercase;">Tanggal</span>
-                    <span style="font-size: 0.78rem; font-weight: 600; color: #334155;">${esc(tx.tanggal)}</span>
-                  </div>
-                </div>
-              `).join('')}
+                `;
+              }).join('')}
             </div>
           `}
         </div>

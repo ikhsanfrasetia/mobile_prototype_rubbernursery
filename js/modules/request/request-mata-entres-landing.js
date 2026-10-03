@@ -30,6 +30,12 @@ import { formatDate, todayISO, nowISO, esc } from '../../core/utils.js';
 import { createReceiptFromDispatch, getReceiptKspTransactions, updateReceiptKsp } from '../../core/receipt-ksp-manager.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { RECEIPT_KSP_STATUS, RECEIPT_KSP_STATUS_LABELS } from '../../core/receipt-ksp-constants.js';
+import { getFifoAllocationBreakdown } from '../../core/entres-inventory-service.js';
+import {
+  getGlobalAttendanceGateStatus,
+  showAttendanceRequirementModal,
+  assertAttendanceGateOrThrow
+} from '../../core/attendance-gate-service.js';
 
 let activeTab = null; // 'MY_REQUESTS' | 'INCOMING_REQUESTS'
 let activeStatusFilter = 'SEMUA'; // 'SEMUA' | 'DIAJUKAN' | 'DIPROSES' | 'SELESAI' | 'DITOLAK'
@@ -42,6 +48,7 @@ export const MATA_ENTRES_STATUS = {
   PERLU_REVISI_PENGURUS: 'PERLU_REVISI_PENGURUS',
   PERLU_REVISI_ASISTEN_KEPALA: 'PERLU_REVISI_ASISTEN_KEPALA',
   TERVERIFIKASI: 'TERVERIFIKASI',
+  PENGELUARAN_BERJALAN: 'PENGELUARAN_BERJALAN',
   DIKELUARKAN: 'DIKELUARKAN',
   MENUNGGU_PENERIMAAN_PENGURUS: 'MENUNGGU_PENERIMAAN_PENGURUS',
   MENUNGGU_PENERIMAAN_MANTRI_BIBITAN: 'MENUNGGU_PENERIMAAN_MANTRI_BIBITAN',
@@ -60,6 +67,7 @@ export const MATA_ENTRES_STATUS_LABELS = {
   PERLU_REVISI_PENGURUS: 'Perlu Revisi Pengurus',
   PERLU_REVISI_ASISTEN_KEPALA: 'Perlu Revisi Askep',
   TERVERIFIKASI: 'Siap Pengeluaran',
+  PENGELUARAN_BERJALAN: 'Pengeluaran Berjalan',
   DIKELUARKAN: 'Mata Entres Dikeluarkan',
   MENUNGGU_PENERIMAAN_PENGURUS: 'Menunggu Penerimaan Pengurus',
   MENUNGGU_PENERIMAAN_MANTRI_BIBITAN: 'Menunggu Penerimaan Mantri Bibitan',
@@ -78,6 +86,7 @@ export const MATA_ENTRES_STATUS_BADGES = {
   PERLU_REVISI_PENGURUS: { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA' },
   PERLU_REVISI_ASISTEN_KEPALA: { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA' },
   TERVERIFIKASI: { bg: '#F0FDF4', text: '#15803D', border: '#BBF7D0' },
+  PENGELUARAN_BERJALAN: { bg: '#F5F3FF', text: '#6D28D9', border: '#DDD6FE' },
   DIKELUARKAN: { bg: '#F5F3FF', text: '#6D28D9', border: '#DDD6FE' },
   MENUNGGU_PENERIMAAN_PENGURUS: { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
   MENUNGGU_PENERIMAAN_MANTRI_BIBITAN: { bg: '#FEF3C7', text: '#B45309', border: '#FDE68A' },
@@ -88,6 +97,60 @@ export const MATA_ENTRES_STATUS_BADGES = {
   SELESAI: { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
   DITOLAK: { bg: '#FEF2F2', text: '#DC2626', border: '#FCA5A5' }
 };
+
+/**
+ * Menghitung rincian akumulasi pengeluaran child dispatches untuk parent request
+ * @param {string} requestId
+ * @param {Object} fallbackRequest
+ * @returns {Object}
+ */
+export function getRequestDispatchAggregate(requestId, fallbackRequest = {}) {
+  const allDispatches = storage.get('dispatch_transactions', []);
+  const childDispatches = allDispatches.filter(d => 
+    d && d.status !== 'VOID' && 
+    (d.type === 'MATA_ENTRES' || d.transactionType === 'PENGELUARAN_MATA_ENTRES') &&
+    (d.parentRequestId === requestId || d.parentRequestDocNo === fallbackRequest.docNo || (requestId && d.parentRequestId === fallbackRequest.id))
+  );
+
+  const totalIssuedMata = childDispatches.reduce((acc, d) => 
+    acc + (Number(d.jumlahMataEntresDikeluarkan !== undefined && d.jumlahMataEntresDikeluarkan !== null ? d.jumlahMataEntresDikeluarkan : (d.details?.[0]?.mataQty || 0)) || 0), 0);
+
+  const totalIssuedBatang = childDispatches.reduce((acc, d) => 
+    acc + (Number(d.jumlahBatangDikeluarkan !== undefined && d.jumlahBatangDikeluarkan !== null ? d.jumlahBatangDikeluarkan : (d.details?.[0]?.qty || 0)) || 0), 0);
+
+  // Kuantitas Resmi Mata Entres (NULL JIKA RECORD HISTORIS HANYA PUNYA BATANG)
+  const approvedMata = fallbackRequest.approval?.approvedMataEntres !== undefined && fallbackRequest.approval?.approvedMataEntres !== null
+    ? Number(fallbackRequest.approval.approvedMataEntres)
+    : (fallbackRequest.jumlahMataEntres !== undefined && fallbackRequest.jumlahMataEntres !== null ? Number(fallbackRequest.jumlahMataEntres) : null);
+
+  const approvedBatang = fallbackRequest.approval?.approvedBatang !== undefined && fallbackRequest.approval?.approvedBatang !== null
+    ? Number(fallbackRequest.approval.approvedBatang)
+    : (fallbackRequest.jumlahBatang !== undefined && fallbackRequest.jumlahBatang !== null ? Number(fallbackRequest.jumlahBatang) : null);
+
+  const finalIssuedMata = childDispatches.length > 0 ? totalIssuedMata : (Number(fallbackRequest.jumlahMataEntresDikeluarkan) || 0);
+  const finalIssuedBatang = childDispatches.length > 0 ? totalIssuedBatang : (Number(fallbackRequest.jumlahBatangDikeluarkan) || 0);
+
+  const remainingMata = approvedMata !== null ? Math.max(0, approvedMata - finalIssuedMata) : null;
+  const remainingBatang = approvedBatang !== null ? Math.max(0, approvedBatang - finalIssuedBatang) : null;
+
+  const isLegacyBatangOnly = approvedMata === null && approvedBatang !== null;
+
+  return {
+    dispatchCount: childDispatches.length,
+    totalIssuedMata: finalIssuedMata,
+    totalIssuedBatang: finalIssuedBatang,
+    totalDispatchedMata: finalIssuedMata,
+    totalDispatchedBatang: finalIssuedBatang,
+    approvedMata,
+    approvedBatang,
+    remainingMata,
+    remainingBatang,
+    isLegacyBatangOnly,
+    isFullyDispatched: isLegacyBatangOnly ? (remainingBatang === 0) : (remainingMata === 0),
+    childDispatches,
+    dispatches: childDispatches
+  };
+}
 
 // ============================================================================
 // HELPER PERMISSION & ROLE CHECKS (ESTATE & DIVISION ISOLATION)
@@ -189,7 +252,15 @@ export function canPerformMantriDispatch(tx, currentUser) {
   }
 
   const status = (tx.status || '').toUpperCase();
-  return status === MATA_ENTRES_STATUS.TERVERIFIKASI;
+  if (
+    status === MATA_ENTRES_STATUS.TERVERIFIKASI ||
+    status === MATA_ENTRES_STATUS.PENGELUARAN_BERJALAN ||
+    status === MATA_ENTRES_STATUS.SEDANG_DIPROSES
+  ) {
+    const agg = getRequestDispatchAggregate(tx.id, tx);
+    return !agg.isFullyDispatched;
+  }
+  return false;
 }
 
 // ----------------------------------------------------------------------------
@@ -389,6 +460,7 @@ export function filterMataEntresByStatus(list, filter) {
         s === MATA_ENTRES_STATUS.PERLU_REVISI_PENGURUS ||
         s === MATA_ENTRES_STATUS.PERLU_REVISI_ASISTEN_KEPALA ||
         s === MATA_ENTRES_STATUS.TERVERIFIKASI ||
+        s === MATA_ENTRES_STATUS.PENGELUARAN_BERJALAN ||
         s === MATA_ENTRES_STATUS.DIKELUARKAN ||
         s === MATA_ENTRES_STATUS.MENUNGGU_PENERIMAAN_PENGURUS ||
         s === MATA_ENTRES_STATUS.MENUNGGU_PENERIMAAN_MANTRI_BIBITAN ||
@@ -431,10 +503,14 @@ export async function updateMataEntresRecord(id, patch, currentUser, actionType,
 
 // 1. Pengurus Kebun Tujuan Review & Setujui
 export async function processPengurusReview(txId, formValues, currentUser) {
-  const { approvedBatang, approvedKlon, estimatedDeliveryDate, notes } = formValues;
-  const calculatedMata = formValues.approvedMataEntres !== undefined && formValues.approvedMataEntres !== null
-    ? Number(formValues.approvedMataEntres)
-    : (Number(approvedBatang) * 2);
+  const { approvedMataEntres, approvedBatang, approvedKlon, estimatedDeliveryDate, notes } = formValues;
+  const finalMata = approvedMataEntres !== undefined && approvedMataEntres !== null
+    ? Number(approvedMataEntres)
+    : (approvedBatang !== undefined && approvedBatang !== null ? null : null);
+
+  const finalBatang = approvedBatang !== undefined && approvedBatang !== null
+    ? Number(approvedBatang)
+    : null;
 
   const patch = {
     status: MATA_ENTRES_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_KEPALA,
@@ -445,14 +521,14 @@ export async function processPengurusReview(txId, formValues, currentUser) {
       approvedByName: currentUser.name || 'Pengurus',
       approvedByRole: 'PENGURUS',
       approvedAt: nowISO(),
-      approvedBatang: Number(approvedBatang),
-      approvedMataEntres: calculatedMata,
+      approvedMataEntres: finalMata,
+      approvedBatang: finalBatang,
       approvedKlon: approvedKlon,
       estimatedDeliveryDate: estimatedDeliveryDate,
       notes: notes || null
     }
   };
-  const details = `Pengurus (${currentUser.name}) menyetujui kuota ${approvedBatang} batang dan meneruskan ke Askep.`;
+  const details = `Pengurus (${currentUser.name}) menyetujui kuota ${finalMata ? finalMata.toLocaleString('id-ID') + ' mata entres' : (finalBatang ? finalBatang + ' batang' : '')} dan meneruskan ke Askep.`;
   return updateMataEntresRecord(txId, patch, currentUser, AUDIT_EVENT_TYPES.APPROVE, details);
 }
 
@@ -550,64 +626,93 @@ export async function processAsistenBibitanReturn(txId, reason, currentUser) {
 
 // 4. Mantri Bibitan Pengirim Pengeluaran Fisik (Dispatch -> Auto Receipt Handoff)
 export async function processMantriDispatch(txId, formValues, currentUser) {
+  assertAttendanceGateOrThrow(currentUser);
   const { jumlahBatangDikeluarkan, jumlahMataEntresDikeluarkan, tanggalPengeluaran, vehiclePlate, photoEvidence, notes } = formValues;
   
   const allReqs = storage.get('requests_transactions', []);
   const parentReq = allReqs.find(t => t.id === txId || t.docNo === txId) || { id: txId, type: 'MATA_ENTRES' };
 
-  // Simpan dispatch history (Cek idempoten: jika dispatch untuk parentRequestId ini sudah ada, gunakan yang ada)
-  const dispatches = storage.get('dispatch_transactions', []);
-  let dispatchRecord = dispatches.find(d => d.parentRequestId === parentReq.id && (d.type === 'MATA_ENTRES' || d.transactionType === 'PENGELUARAN_MATA_ENTRES'));
-
-  if (!dispatchRecord) {
-    const dispatchDocNo = `DSP-${Date.now().toString().slice(-6)}`;
-    dispatchRecord = {
-      id: `DSP-${Date.now()}`,
-      docNo: dispatchDocNo,
-      dispatchNo: dispatchDocNo,
-      transactionType: 'PENGELUARAN_MATA_ENTRES',
-      type: 'MATA_ENTRES',
-      parentRequestId: parentReq.id,
-      parentRequestDocNo: parentReq.docNo,
-      estateId: currentUser.estateId,
-      estateName: currentUser.estateName,
-      divisionId: currentUser.divisionId || parentReq.targetNextDivisionId,
-      jumlahBatangDikeluarkan: Number(jumlahBatangDikeluarkan),
-      jumlahMataEntresDikeluarkan: Number(jumlahMataEntresDikeluarkan),
-      issuedQty: Number(jumlahBatangDikeluarkan),
-      vehiclePlate: vehiclePlate ? vehiclePlate.trim().toUpperCase() : null,
-      photoEvidence: photoEvidence || null,
-      issuedDate: tanggalPengeluaran || todayISO(),
-      createdAt: nowISO(),
-      details: [
-        {
-          batchId: `BATCH-ETRS-${parentReq.klon || 'KLON'}`,
-          batchCode: `ETRS-${parentReq.klon || 'KLON'}`,
-          klon: parentReq.klon || 'IRCA 19',
-          qty: Number(jumlahBatangDikeluarkan),
-          mataQty: Number(jumlahMataEntresDikeluarkan)
-        }
-      ]
-    };
-    dispatches.push(dispatchRecord);
-    storage.set('dispatch_transactions', dispatches);
+  // Validasi sisa kuota yang disetujui (Service-level enforcement)
+  const currentAgg = getRequestDispatchAggregate(parentReq.id, parentReq);
+  if (currentAgg.remainingMata !== null && Number(jumlahMataEntresDikeluarkan) > currentAgg.remainingMata) {
+    throw new Error(`Jumlah mata dikeluarkan (${jumlahMataEntresDikeluarkan}) melebihi sisa kuota yang disetujui (${currentAgg.remainingMata} Mata)`);
   }
+
+  // Bentuk record dispatch baru untuk pengeluaran fisik saat ini
+  const dispatches = storage.get('dispatch_transactions', []);
+  const dispatchSeq = String(dispatches.length + 1).padStart(3, '0');
+  const dispatchDocNo = `DSP-${Date.now().toString().slice(-6)}-${dispatchSeq}`;
+  const dispatchRecord = {
+    id: `DSP-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    docNo: dispatchDocNo,
+    dispatchNo: dispatchDocNo,
+    transactionType: 'PENGELUARAN_MATA_ENTRES',
+    type: 'MATA_ENTRES',
+    parentRequestId: parentReq.id,
+    parentRequestDocNo: parentReq.docNo,
+    sourceEstateId: parentReq.sourceEstateId,
+    targetEstateId: parentReq.targetEstateId,
+    dispatchedFromEstateId: currentUser.estateId,
+    estateId: currentUser.estateId,
+    estateName: currentUser.estateName,
+    divisionId: currentUser.divisionId || parentReq.targetNextDivisionId,
+    jumlahBatangDikeluarkan: Number(jumlahBatangDikeluarkan || 0),
+    jumlahMataEntresDikeluarkan: Number(jumlahMataEntresDikeluarkan),
+    issuedQty: Number(jumlahBatangDikeluarkan || jumlahMataEntresDikeluarkan),
+    vehiclePlate: vehiclePlate ? vehiclePlate.trim().toUpperCase() : null,
+    photoEvidence: photoEvidence || null,
+    issuedDate: tanggalPengeluaran || todayISO(),
+    createdAt: nowISO(),
+    details: [
+      {
+        batchId: `BATCH-ETRS-${parentReq.klon || 'KLON'}`,
+        batchCode: `ETRS-${parentReq.klon || 'KLON'}`,
+        klon: parentReq.approval?.approvedKlon || parentReq.klon || 'IRCA 19',
+        qty: Number(jumlahBatangDikeluarkan || 0),
+        mataQty: Number(jumlahMataEntresDikeluarkan)
+      }
+    ]
+  };
+
+  dispatches.push(dispatchRecord);
+  storage.set('dispatch_transactions', dispatches);
 
   // Buat Dokumen Penerimaan (Receipt) Otomatis di Kebun Pemohon
   let createdReceipt = null;
   try {
     createdReceipt = createReceiptFromDispatch(dispatchRecord, parentReq, currentUser);
   } catch (err) {
-    console.warn('[processMantriDispatch] Warning creating receipt:', err);
+    console.error('[processMantriDispatch] Warning creating receipt:', err);
+    // Rollback record dispatch jika pembuatan receipt gagal
+    const currentDispatches = storage.get('dispatch_transactions', []);
+    const rolledBack = currentDispatches.filter(d => d.id !== dispatchRecord.id);
+    storage.set('dispatch_transactions', rolledBack);
+    throw err;
+  }
+
+  // Hitung akumulasi pengeluaran dan status berikutnya
+  const agg = getRequestDispatchAggregate(parentReq.id, parentReq);
+  const isFinished = agg.isFullyDispatched;
+
+  let nextStatus = MATA_ENTRES_STATUS.MENUNGGU_PENERIMAAN_PENGURUS;
+  let nextStatusLabel = MATA_ENTRES_STATUS_LABELS.MENUNGGU_PENERIMAAN_PENGURUS;
+  let nextTargetRole = 'PENGURUS';
+  let nextTargetEstateId = parentReq.sourceEstateId || parentReq.estateId;
+
+  if (!isFinished) {
+    nextStatus = MATA_ENTRES_STATUS.PENGELUARAN_BERJALAN || MATA_ENTRES_STATUS.SEDANG_DIPROSES || 'PENGELUARAN_BERJALAN';
+    nextStatusLabel = 'Pengeluaran Berjalan';
+    nextTargetRole = 'MANTRI_TANAMAN';
+    nextTargetEstateId = currentUser.estateId;
   }
 
   const patch = {
-    status: MATA_ENTRES_STATUS.MENUNGGU_PENERIMAAN_PENGURUS,
-    statusLabel: MATA_ENTRES_STATUS_LABELS.MENUNGGU_PENERIMAAN_PENGURUS,
-    targetNextRole: 'PENGURUS',
-    targetNextEstateId: parentReq.sourceEstateId || parentReq.estateId,
-    jumlahBatangDikeluarkan: Number(jumlahBatangDikeluarkan),
-    jumlahMataEntresDikeluarkan: Number(jumlahMataEntresDikeluarkan),
+    status: nextStatus,
+    statusLabel: nextStatusLabel,
+    targetNextRole: nextTargetRole,
+    targetNextEstateId: nextTargetEstateId,
+    jumlahBatangDikeluarkan: agg.totalIssuedBatang,
+    jumlahMataEntresDikeluarkan: agg.totalIssuedMata,
     tanggalPengeluaran: tanggalPengeluaran || todayISO(),
     vehiclePlate: vehiclePlate ? vehiclePlate.trim().toUpperCase() : null,
     photoEvidence: photoEvidence || null,
@@ -619,8 +724,10 @@ export async function processMantriDispatch(txId, formValues, currentUser) {
       dispatchedByUserId: currentUser.userId || currentUser.id,
       dispatchedByName: currentUser.name || 'Mantri Bibitan',
       dispatchedAt: nowISO(),
-      jumlahBatang: Number(jumlahBatangDikeluarkan),
+      jumlahBatang: Number(jumlahBatangDikeluarkan || 0),
       jumlahMataEntres: Number(jumlahMataEntresDikeluarkan),
+      totalIssuedMata: agg.totalIssuedMata,
+      totalIssuedBatang: agg.totalIssuedBatang,
       tanggal: tanggalPengeluaran || todayISO(),
       vehiclePlate: vehiclePlate ? vehiclePlate.trim().toUpperCase() : null,
       photoEvidence: photoEvidence || null,
@@ -628,7 +735,7 @@ export async function processMantriDispatch(txId, formValues, currentUser) {
     }
   };
 
-  const details = `Mantri Bibitan (${currentUser.name}) mencatat pengeluaran fisik: ${jumlahBatangDikeluarkan} batang (${jumlahMataEntresDikeluarkan} mata entres)${vehiclePlate ? ` [Plat: ${vehiclePlate.toUpperCase()}]` : ''}. Dokumen penerimaan ${createdReceipt?.receiptDocNo || ''} otomatis dibuat di Kebun Pemohon.`;
+  const details = `Mantri Bibitan (${currentUser.name}) mencatat pengeluaran fisik: ${jumlahMataEntresDikeluarkan} mata entres${jumlahBatangDikeluarkan ? ` (${jumlahBatangDikeluarkan} batang)` : ''}${vehiclePlate ? ` [Plat: ${vehiclePlate.toUpperCase()}]` : ''}. Dokumen penerimaan ${createdReceipt?.receiptDocNo || ''} otomatis dibuat di Kebun Pemohon. Sisa kuota: ${agg.remainingMata !== null ? agg.remainingMata : '-'}`;
   return updateMataEntresRecord(txId, patch, currentUser, AUDIT_EVENT_TYPES.UPDATE, details);
 }
 
@@ -878,7 +985,8 @@ export async function processRequesterReceipt(txId, formValues, currentUser) {
 
 // MODAL 1: Review Pengurus Pengirim
 export function openPengurusReviewModal(tx, currentUser, onSuccess) {
-  const defaultBatang = tx.jumlahBatang || 0;
+  const defaultMata = tx.jumlahMataEntres || tx.qty || '';
+  const defaultBatang = tx.jumlahBatang || '';
   const activeKlons = getActiveKlons();
   const klonOptions = activeKlons.map(k => `
     <option value="${esc(k.canonicalName)}" ${k.canonicalName === tx.klon ? 'selected' : ''}>${esc(k.canonicalName)}</option>
@@ -901,8 +1009,8 @@ export function openPengurusReviewModal(tx, currentUser, onSuccess) {
             ` : ''}
             <span style="color: #64748B;">Klon Diminta:</span>
             <span style="font-weight: 700; color: #1E293B;">${esc(tx.klon)}</span>
-            <span style="color: #64748B;">Permintaan Batang:</span>
-            <span style="font-weight: 700; color: #1E293B;">${defaultBatang.toLocaleString('id-ID')} Batang</span>
+            <span style="color: #64748B;">Permintaan Mata:</span>
+            <span style="font-weight: 700; color: #116834;">${tx.jumlahMataEntres ? tx.jumlahMataEntres.toLocaleString('id-ID') + ' Mata' : (tx.jumlahBatang ? tx.jumlahBatang.toLocaleString('id-ID') + ' Batang (Legacy)' : '-')}</span>
             <span style="color: #64748B;">Tgl Dibutuhkan:</span>
             <span style="font-weight: 700; color: #1E293B;">${esc(tx.requiredDate || '-')}</span>
             ${tx.catatan ? `
@@ -926,9 +1034,16 @@ export function openPengurusReviewModal(tx, currentUser, onSuccess) {
 
           <div style="margin-bottom: 10px;">
             <label style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.74rem;">
-              Jlh Permintaan Disetujui (Batang) <span style="color: #DC2626;">*</span>
+              Jlh Permintaan Disetujui (Mata) <span style="color: #DC2626;">*</span>
             </label>
-            <input type="number" id="rev-approved-batang" value="${defaultBatang}" min="1" style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-weight: 700;" required />
+            <input type="number" id="rev-approved-mata" value="${defaultMata}" min="1" placeholder="Masukkan kuota mata entres disetujui" style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-weight: 700;" required />
+          </div>
+
+          <div style="margin-bottom: 10px;">
+            <label style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.74rem;">
+              Estimasi Batang Fisik (Opsional)
+            </label>
+            <input type="number" id="rev-approved-batang" value="${defaultBatang}" min="0" placeholder="Estimasi batang kayu entres..." style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;" />
           </div>
 
           <div style="margin-bottom: 10px;">
@@ -963,17 +1078,19 @@ export function openPengurusReviewModal(tx, currentUser, onSuccess) {
   modalRoot?.querySelector('#form-pengurus-review')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const approvedKlon = modalRoot.querySelector('#rev-approved-klon')?.value;
-    const approvedBatang = parseInt(modalRoot.querySelector('#rev-approved-batang')?.value, 10);
+    const approvedMataEntres = parseInt(modalRoot.querySelector('#rev-approved-mata')?.value, 10);
+    const rawBatang = modalRoot.querySelector('#rev-approved-batang')?.value;
+    const approvedBatang = rawBatang ? parseInt(rawBatang, 10) : null;
     const estimatedDeliveryDate = modalRoot.querySelector('#rev-delivery-date')?.value;
     const notes = modalRoot.querySelector('#rev-notes')?.value;
 
-    if (!approvedKlon || isNaN(approvedBatang) || approvedBatang <= 0) {
-      toast('Silakan isi jumlah batang disetujui yang valid.', 'error');
+    if (!approvedKlon || isNaN(approvedMataEntres) || approvedMataEntres <= 0) {
+      toast('Silakan isi jumlah mata entres disetujui yang valid.', 'error');
       return;
     }
 
     try {
-      await processPengurusReview(tx.id, { approvedBatang, approvedKlon, estimatedDeliveryDate, notes }, currentUser);
+      await processPengurusReview(tx.id, { approvedMataEntres, approvedBatang, approvedKlon, estimatedDeliveryDate, notes }, currentUser);
       closeModal();
       toast('Permintaan Mata Entres disetujui dan diteruskan ke Asisten Kepala.', 'success');
       if (typeof onSuccess === 'function') onSuccess();
@@ -1248,9 +1365,36 @@ export function openReturnToAskepModal(tx, currentUser, onSuccess) {
 }
 
 // MODAL 4: Mantri Bibitan Pengirim Pengeluaran Fisik (Dispatch Modal)
-export function openMantriDispatchModal(tx, currentUser, onSuccess) {
-  const targetBatang = tx.approval?.approvedBatang || tx.jumlahBatang || 0;
-  const targetMata = tx.approval?.approvedMataEntres || tx.jumlahMataEntres || (targetBatang * 2);
+export async function openMantriDispatchModal(tx, currentUser, onSuccess) {
+  // Attendance Gate Check for MANTRI_TANAMAN
+  const role = normalizeRole(currentUser?.role || currentUser?.rawRole || session.getRole());
+  if (role === 'MANTRI_TANAMAN') {
+    const gate = getGlobalAttendanceGateStatus(currentUser);
+    if (!gate.isGateUnlocked) {
+      showAttendanceRequirementModal({ targetModuleName: 'Pengeluaran Mata Entres', gateStatus: gate });
+      return;
+    }
+  }
+
+  const agg = getRequestDispatchAggregate(tx.id, tx);
+  const targetMata = agg.approvedMata || tx.approval?.approvedMataEntres || tx.jumlahMataEntres || 0;
+  const remainingMata = agg.remainingMata;
+  const targetBatang = agg.approvedBatang || tx.approval?.approvedBatang || tx.jumlahBatang || 0;
+  const remainingBatang = agg.remainingBatang;
+  const klonName = tx.approval?.approvedKlon || tx.klon;
+  const estateId = tx.targetEstateId || currentUser.estateId;
+
+  let availableStock = 0;
+  try {
+    const breakdown = getFifoAllocationBreakdown(klonName, { estateId });
+    if (breakdown) {
+      availableStock = breakdown.saldoMataEntres ?? breakdown.finalBalance ?? 0;
+    }
+  } catch (e) {
+    console.warn('Error fetching entres stock breakdown:', e);
+  }
+
+  const defaultDispatchMata = Math.max(0, Math.min(remainingMata, availableStock > 0 ? availableStock : remainingMata));
   let currentPhotoMetadata = null;
 
   openModal({
@@ -1264,9 +1408,13 @@ export function openMantriDispatchModal(tx, currentUser, onSuccess) {
             <span style="color: #64748B;">Kebun Peminta:</span>
             <span style="font-weight: 700; color: #1E293B;">${esc(tx.sourceEstateName || tx.estateId)}</span>
             <span style="color: #64748B;">Jenis Klon:</span>
-            <span style="font-weight: 700; color: #1E293B;">${esc(tx.approval?.approvedKlon || tx.klon)}</span>
+            <span style="font-weight: 700; color: #1E293B;">${esc(klonName)}</span>
             <span style="color: #64748B;">Target Kuota:</span>
-            <span style="font-weight: 700; color: #116834;">${targetBatang.toLocaleString('id-ID')} Batang / ${targetMata.toLocaleString('id-ID')} Mata</span>
+            <span style="font-weight: 700; color: #116834;">${targetMata ? targetMata.toLocaleString('id-ID') + ' Mata' : '-'} ${targetBatang ? '(' + targetBatang.toLocaleString('id-ID') + ' Batang)' : ''}</span>
+            <span style="color: #64748B;">Sisa Belum Kirim:</span>
+            <span style="font-weight: 700; color: #DC2626;">${remainingMata.toLocaleString('id-ID')} Mata ${remainingBatang ? '(' + remainingBatang.toLocaleString('id-ID') + ' Batang)' : ''}</span>
+            <span style="color: #64748B;">Stok Tersedia di Kebun:</span>
+            <span style="font-weight: 700; color: #2563EB;">${availableStock.toLocaleString('id-ID')} Mata</span>
           </div>
         </div>
 
@@ -1278,15 +1426,15 @@ export function openMantriDispatchModal(tx, currentUser, onSuccess) {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
             <div>
               <label style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.74rem;">
-                Batang Dikeluarkan <span style="color: #DC2626;">*</span>
+                Mata Dikeluarkan <span style="color: #DC2626;">*</span>
               </label>
-              <input type="number" id="dsp-batang" value="${targetBatang}" min="1" style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-weight: 700;" required />
+              <input type="number" id="dsp-mata" value="${defaultDispatchMata}" min="1" max="${remainingMata}" style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-weight: 700;" required />
             </div>
             <div>
               <label style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.74rem;">
-                Mata Dikeluarkan <span style="color: #DC2626;">*</span>
+                Batang Dikeluarkan (Opsional)
               </label>
-              <input type="number" id="dsp-mata" value="${targetMata}" min="1" style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-weight: 700;" required />
+              <input type="number" id="dsp-batang" value="${remainingBatang}" min="0" style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-weight: 700;" />
             </div>
           </div>
 
@@ -1545,14 +1693,24 @@ export function openMantriDispatchModal(tx, currentUser, onSuccess) {
     const submitBtn = modalRoot.querySelector('button[type="submit"]');
     if (submitBtn?.disabled) return;
 
-    const jumlahBatangDikeluarkan = parseInt(modalRoot.querySelector('#dsp-batang')?.value, 10);
     const jumlahMataEntresDikeluarkan = parseInt(modalRoot.querySelector('#dsp-mata')?.value, 10);
+    const jumlahBatangDikeluarkan = parseInt(modalRoot.querySelector('#dsp-batang')?.value, 10) || 0;
     const tanggalPengeluaran = modalRoot.querySelector('#dsp-date')?.dataset?.iso || modalRoot.querySelector('#dsp-date')?.value || todayISO();
     const vehiclePlate = modalRoot.querySelector('#dsp-vehicle')?.value || '';
     const notes = modalRoot.querySelector('#dsp-notes')?.value;
 
-    if (isNaN(jumlahBatangDikeluarkan) || jumlahBatangDikeluarkan <= 0 || isNaN(jumlahMataEntresDikeluarkan) || jumlahMataEntresDikeluarkan <= 0) {
-      toast('Jumlah batang dan mata dikeluarkan harus lebih dari 0', 'error');
+    if (isNaN(jumlahMataEntresDikeluarkan) || jumlahMataEntresDikeluarkan <= 0) {
+      toast('Jumlah mata dikeluarkan harus lebih dari 0', 'error');
+      return;
+    }
+
+    if (jumlahMataEntresDikeluarkan > remainingMata) {
+      toast(`Jumlah mata dikeluarkan (${jumlahMataEntresDikeluarkan.toLocaleString('id-ID')}) melebihi sisa kuota yang disetujui (${remainingMata.toLocaleString('id-ID')} Mata)`, 'error');
+      return;
+    }
+
+    if (availableStock > 0 && jumlahMataEntresDikeluarkan > availableStock) {
+      toast(`Jumlah mata dikeluarkan (${jumlahMataEntresDikeluarkan.toLocaleString('id-ID')}) melebihi stok saldo kebun (${availableStock.toLocaleString('id-ID')} Mata)`, 'error');
       return;
     }
 
@@ -1568,7 +1726,7 @@ export function openMantriDispatchModal(tx, currentUser, onSuccess) {
         notes
       }, currentUser);
       closeModal();
-      toast(`Mata Entres ${tx.docNo} berhasil dikeluarkan dan diteruskan ke Kebun Pemohon.`, 'success');
+      toast(`Mata Entres ${tx.docNo} berhasil dikeluarkan (${jumlahMataEntresDikeluarkan.toLocaleString('id-ID')} Mata) dan diteruskan ke Kebun Pemohon.`, 'success');
       if (typeof onSuccess === 'function') onSuccess();
       else renderRequestMataEntresLanding();
     } catch (err) {
@@ -1581,7 +1739,7 @@ export function openMantriDispatchModal(tx, currentUser, onSuccess) {
 // MODAL 5: Pengurus Pemohon Catat Kedatangan Awal
 export function openPengurusArrivalModal(tx, currentUser, onSuccess) {
   const dspBatang = tx.jumlahBatangDikeluarkan || tx.jumlahBatang || 0;
-  const dspMata = tx.jumlahMataEntresDikeluarkan || tx.jumlahMataEntres || (dspBatang * 2);
+  const dspMata = tx.jumlahMataEntresDikeluarkan || tx.jumlahMataEntres || null;
 
   openModal({
     title: 'Catat Kedatangan Mata Entres',
@@ -1596,7 +1754,7 @@ export function openPengurusArrivalModal(tx, currentUser, onSuccess) {
             <span style="color: #64748B;">Jenis Klon:</span>
             <span style="font-weight: 700; color: #1E293B;">${esc(tx.approval?.approvedKlon || tx.klon)}</span>
             <span style="color: #64748B;">Jlh Dikeluarkan:</span>
-            <span style="font-weight: 700; color: #6D28D9;">${dspBatang.toLocaleString('id-ID')} Btg / ${dspMata.toLocaleString('id-ID')} Mata</span>
+            <span style="font-weight: 700; color: #6D28D9;">${dspMata ? dspMata.toLocaleString('id-ID') + ' Mata' : '-'} ${dspBatang ? '(' + dspBatang.toLocaleString('id-ID') + ' Btg)' : ''}</span>
             ${tx.vehiclePlate || tx.pengeluaran?.vehiclePlate ? `
               <span style="color: #64748B;">Plat Kendaraan:</span>
               <span style="font-weight: 700; color: #1E293B;">${esc(tx.vehiclePlate || tx.pengeluaran?.vehiclePlate)}</span>
@@ -1786,7 +1944,7 @@ export function openAsistenBibitanReceiptModal(tx, currentUser, onSuccess) {
             <span style="color: #64748B;">Jenis Klon:</span>
             <span style="font-weight: 700; color: #1E293B;">${esc(tx.approval?.approvedKlon || tx.klon)}</span>
             <span style="color: #64748B;">Jumlah Dikirim:</span>
-            <span style="font-weight: 700; color: #6D28D9;">${(tx.jumlahBatangDikeluarkan || tx.jumlahBatang || 0).toLocaleString('id-ID')} Batang / ${(tx.jumlahMataEntresDikeluarkan || tx.jumlahMataEntres || ((tx.jumlahBatangDikeluarkan || tx.jumlahBatang || 0) * 2)).toLocaleString('id-ID')} Mata</span>
+            <span style="font-weight: 700; color: #6D28D9;">${(tx.jumlahMataEntresDikeluarkan || tx.jumlahMataEntres) ? (tx.jumlahMataEntresDikeluarkan || tx.jumlahMataEntres).toLocaleString('id-ID') + ' Mata' : '-'} ${(tx.jumlahBatangDikeluarkan || tx.jumlahBatang) ? '(' + (tx.jumlahBatangDikeluarkan || tx.jumlahBatang).toLocaleString('id-ID') + ' Batang)' : ''}</span>
             ${tx.askepReceiptVerification?.notes ? `
               <span style="color: #64748B;">Catatan Askep:</span>
               <span style="color: #334155; font-style: italic;">${esc(tx.askepReceiptVerification.notes)}</span>
@@ -1879,7 +2037,7 @@ export function openAsistenBibitanReceiptReturnModal(tx, currentUser, onSuccess)
 // MODAL 8: Mantri Bibitan Pemohon Finalisasi Penerimaan Fisik
 export function openMantriBibitanReceiptModal(tx, currentUser, onSuccess) {
   const dspBatang = tx.jumlahBatangDikeluarkan || tx.jumlahBatang || 0;
-  const dspMata = tx.jumlahMataEntresDikeluarkan || tx.jumlahMataEntres || (dspBatang * 2);
+  const dspMata = tx.jumlahMataEntresDikeluarkan || tx.jumlahMataEntres || null;
   let currentPhotoMetadata = null;
 
   openModal({
@@ -1895,7 +2053,7 @@ export function openMantriBibitanReceiptModal(tx, currentUser, onSuccess) {
             <span style="color: #64748B;">Jenis Klon:</span>
             <span style="font-weight: 700; color: #1E293B;">${esc(tx.approval?.approvedKlon || tx.klon)}</span>
             <span style="color: #64748B;">Jlh Dikeluarkan:</span>
-            <span style="font-weight: 700; color: #6D28D9;">${dspBatang.toLocaleString('id-ID')} Btg / ${dspMata.toLocaleString('id-ID')} Mata</span>
+            <span style="font-weight: 700; color: #6D28D9;">${dspMata ? dspMata.toLocaleString('id-ID') + ' Mata' : '-'} ${dspBatang ? '(' + dspBatang.toLocaleString('id-ID') + ' Btg)' : ''}</span>
             ${tx.vehiclePlate || tx.pengeluaran?.vehiclePlate ? `
               <span style="color: #64748B;">Plat Kendaraan:</span>
               <span style="font-weight: 700; color: #1E293B;">${esc(tx.vehiclePlate || tx.pengeluaran?.vehiclePlate)}</span>
@@ -2221,6 +2379,7 @@ export function openMataEntresDetailModal(tx) {
   const photo = tx.photoEvidence || tx.pengeluaran?.photoEvidence;
   const vehicle = tx.vehiclePlate || tx.pengeluaran?.vehiclePlate;
   const receiptPhoto = tx.receiptPhotoEvidence || tx.penerimaan?.photoEvidence;
+  const agg = getRequestDispatchAggregate(tx.id, tx);
 
   openModal({
     title: `Detail Dokumen: ${esc(tx.docNo)}`,
@@ -2243,29 +2402,58 @@ export function openMataEntresDetailModal(tx) {
             ` : ''}
             <span style="color: #64748B;">Klon Diminta:</span>
             <span style="font-weight: 600;">${esc(tx.klon)}</span>
+            <span style="color: #64748B;">Permintaan Mata:</span>
+            <span style="font-weight: 700; color: #116834;">${tx.jumlahMataEntres !== undefined && tx.jumlahMataEntres !== null ? tx.jumlahMataEntres.toLocaleString('id-ID') + ' Mata' : '-'}</span>
             <span style="color: #64748B;">Permintaan Batang:</span>
-            <span style="font-weight: 700;">${(tx.jumlahBatang || 0).toLocaleString('id-ID')} Batang</span>
+            <span style="font-weight: 600;">${(tx.jumlahBatang || 0).toLocaleString('id-ID')} Batang</span>
             <span style="color: #64748B;">Tgl Dibutuhkan:</span>
             <span>${esc(tx.requiredDate || '-')}</span>
           </div>
         </div>
 
-        <!-- SECTION 2: PERSETUJUAN & PENGELUARAN -->
-        ${tx.jumlahBatangDikeluarkan !== null && tx.jumlahBatangDikeluarkan !== undefined ? `
-          <div style="background: #F5F3FF; border: 1px solid #DDD6FE; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
-            <div style="font-size: 0.72rem; font-weight: 700; color: #6D28D9; text-transform: uppercase; margin-bottom: 6px;">2. Realisasi Pengeluaran (Kebun Pengirim)</div>
+        <!-- SECTION 2: PERSETUJUAN PENGURUS -->
+        ${tx.approval ? `
+          <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #15803D; text-transform: uppercase; margin-bottom: 6px;">2. Persetujuan Kuota (Pengurus Pengirim)</div>
             <div style="display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.78rem;">
-              <span style="color: #6B7280;">Batang Dikeluarkan:</span>
-              <span style="font-weight: 700; color: #6D28D9;">${(tx.jumlahBatangDikeluarkan || 0).toLocaleString('id-ID')} Batang</span>
-              <span style="color: #6B7280;">Mata Dikeluarkan:</span>
-              <span style="font-weight: 700; color: #6D28D9;">${(tx.jumlahMataEntresDikeluarkan || 0).toLocaleString('id-ID')} Mata</span>
-              ${vehicle ? `
-                <span style="color: #6B7280;">Plat Kendaraan:</span>
-                <span style="font-weight: 700; color: #1E293B;">${esc(vehicle)}</span>
+              <span style="color: #64748B;">Disetujui Mata:</span>
+              <span style="font-weight: 700; color: #15803D;">${tx.approval.approvedMataEntres ? tx.approval.approvedMataEntres.toLocaleString('id-ID') + ' Mata' : '-'}</span>
+              <span style="color: #64748B;">Disetujui Batang:</span>
+              <span style="font-weight: 600;">${(tx.approval.approvedBatang || 0).toLocaleString('id-ID')} Batang</span>
+              ${tx.approval.approvedKlon ? `
+                <span style="color: #64748B;">Klon Disetujui:</span>
+                <span style="font-weight: 600;">${esc(tx.approval.approvedKlon)}</span>
               ` : ''}
-              <span style="color: #6B7280;">Tgl Pengeluaran:</span>
-              <span>${esc(tx.tanggalPengeluaran || '-')}</span>
+              ${tx.approval.estimatedDeliveryDate ? `
+                <span style="color: #64748B;">Estimasi Kirim:</span>
+                <span>${esc(formatDate(tx.approval.estimatedDeliveryDate))}</span>
+              ` : ''}
+              <span style="color: #64748B;">Total Terkirim:</span>
+              <span style="font-weight: 700; color: #6D28D9;">${agg.totalDispatchedMata.toLocaleString('id-ID')} Mata (${agg.totalDispatchedBatang.toLocaleString('id-ID')} Btg)</span>
+              <span style="color: #64748B;">Sisa Belum Kirim:</span>
+              <span style="font-weight: 700; color: #DC2626;">${agg.remainingMata.toLocaleString('id-ID')} Mata (${agg.remainingBatang.toLocaleString('id-ID')} Btg)</span>
             </div>
+          </div>
+        ` : ''}
+
+        <!-- SECTION 3: REALISASI PENGELUARAN -->
+        ${agg.dispatches.length > 0 ? `
+          <div style="background: #F5F3FF; border: 1px solid #DDD6FE; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #6D28D9; text-transform: uppercase; margin-bottom: 6px;">3. Realisasi Pengeluaran (${agg.dispatches.length} Pengiriman)</div>
+            ${agg.dispatches.map((d, dIdx) => `
+              <div style="padding: 6px 0; ${dIdx > 0 ? 'border-top: 1px dashed #DDD6FE; margin-top: 6px;' : ''}">
+                <div style="display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.78rem;">
+                  <span style="color: #6B7280;">Pengiriman #${dIdx + 1}:</span>
+                  <span style="font-weight: 700; color: #6D28D9;">${(d.jumlahMataEntresDikeluarkan || 0).toLocaleString('id-ID')} Mata (${(d.jumlahBatangDikeluarkan || 0).toLocaleString('id-ID')} Btg)</span>
+                  <span style="color: #6B7280;">Tgl Pengeluaran:</span>
+                  <span>${esc(d.tanggalPengeluaran || d.tanggal || '-')}</span>
+                  ${d.vehiclePlate ? `
+                    <span style="color: #6B7280;">Plat Kendaraan:</span>
+                    <span style="font-weight: 600;">${esc(d.vehiclePlate)}</span>
+                  ` : ''}
+                </div>
+              </div>
+            `).join('')}
             ${photo && photo.image ? `
               <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #E9D5FF;">
                 <div style="font-size: 0.70rem; font-weight: 700; color: #6D28D9; margin-bottom: 4px;">Foto Bukti Pengeluaran:</div>
@@ -2273,17 +2461,33 @@ export function openMataEntresDetailModal(tx) {
               </div>
             ` : ''}
           </div>
-        ` : ''}
+        ` : (tx.jumlahBatangDikeluarkan !== null && tx.jumlahBatangDikeluarkan !== undefined ? `
+          <div style="background: #F5F3FF; border: 1px solid #DDD6FE; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #6D28D9; text-transform: uppercase; margin-bottom: 6px;">3. Realisasi Pengeluaran (Kebun Pengirim)</div>
+            <div style="display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.78rem;">
+              <span style="color: #6B7280;">Mata Dikeluarkan:</span>
+              <span style="font-weight: 700; color: #6D28D9;">${(tx.jumlahMataEntresDikeluarkan || 0).toLocaleString('id-ID')} Mata</span>
+              <span style="color: #6B7280;">Batang Dikeluarkan:</span>
+              <span style="font-weight: 600;">${(tx.jumlahBatangDikeluarkan || 0).toLocaleString('id-ID')} Batang</span>
+              ${vehicle ? `
+                <span style="color: #6B7280;">Plat Kendaraan:</span>
+                <span style="font-weight: 700; color: #1E293B;">${esc(vehicle)}</span>
+              ` : ''}
+              <span style="color: #6B7280;">Tgl Pengeluaran:</span>
+              <span>${esc(tx.tanggalPengeluaran || '-')}</span>
+            </div>
+          </div>
+        ` : '')}
 
-        <!-- SECTION 3: PENERIMAAN FISIK -->
+        <!-- SECTION 4: PENERIMAAN FISIK -->
         ${tx.jumlahBatangDiterima !== null && tx.jumlahBatangDiterima !== undefined ? `
           <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
-            <div style="font-size: 0.72rem; font-weight: 700; color: #047857; text-transform: uppercase; margin-bottom: 6px;">3. Realisasi Penerimaan (Kebun Pemohon)</div>
+            <div style="font-size: 0.72rem; font-weight: 700; color: #047857; text-transform: uppercase; margin-bottom: 6px;">4. Realisasi Penerimaan (Kebun Pemohon)</div>
             <div style="display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.78rem;">
-              <span style="color: #6B7280;">Batang Diterima:</span>
-              <span style="font-weight: 700; color: #047857;">${(tx.jumlahBatangDiterima || 0).toLocaleString('id-ID')} Batang</span>
               <span style="color: #6B7280;">Mata Diterima:</span>
               <span style="font-weight: 700; color: #047857;">${(tx.jumlahMataEntresDiterima || 0).toLocaleString('id-ID')} Mata</span>
+              <span style="color: #6B7280;">Batang Diterima:</span>
+              <span style="font-weight: 600;">${(tx.jumlahBatangDiterima || 0).toLocaleString('id-ID')} Batang</span>
               ${tx.rejectBatang ? `
                 <span style="color: #6B7280;">Batang Reject:</span>
                 <span style="font-weight: 700; color: #DC2626;">${tx.rejectBatang} Batang</span>
@@ -2382,7 +2586,9 @@ export async function renderRequestMataEntresLanding() {
 
     const sourceName = esc(tx.sourceEstateName || tx.estateId || 'Tanah Besih');
     const targetName = esc(tx.targetEstateName || tx.targetEstateId || 'Aek Pamingke');
-    const qtyFormatted = (tx.jumlahBatang || 0).toLocaleString('id-ID');
+    const qtyFormatted = tx.jumlahMataEntres !== undefined && tx.jumlahMataEntres !== null
+      ? `${Number(tx.jumlahMataEntres).toLocaleString('id-ID')} Mata`
+      : `${(tx.jumlahBatang || 0).toLocaleString('id-ID')} Batang (Legacy)`;
     const formattedRequiredDate = formatDate(tx.requiredDate);
     const formattedRequestDate = formatDate(tx.requestDate || tx.tanggal || tx.createdAt);
 
@@ -2439,7 +2645,7 @@ export async function renderRequestMataEntresLanding() {
 
         <!-- ROW 4: BANYAKNYA & TANGGAL -->
         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-bottom: ${isExpanded ? '0' : '4px'};">
-          <span style="font-weight: 800; color: #116834; font-size: 0.82rem;">${qtyFormatted} Btg</span>
+          <span style="font-weight: 800; color: #116834; font-size: 0.82rem;">${qtyFormatted}</span>
           <span style="color: #64748B; font-size: 0.72rem;">Dibutuhkan: ${esc(formattedRequiredDate || '-')}</span>
         </div>
 
@@ -2452,7 +2658,7 @@ export async function renderRequestMataEntresLanding() {
 
               ${tx.approval ? `
                 <span style="color: #15803D; font-weight: 700;">Disetujui Pengurus</span>
-                <span style="font-weight: 800; color: #15803D; text-align: right;">${(tx.approval.approvedBatang || 0).toLocaleString('id-ID')} Btg (${(tx.approval.approvedMataEntres || (tx.approval.approvedBatang * 2) || 0).toLocaleString('id-ID')} Mata)</span>
+                <span style="font-weight: 800; color: #15803D; text-align: right;">${tx.approval.approvedMataEntres ? tx.approval.approvedMataEntres.toLocaleString('id-ID') + ' Mata' : '-'} ${tx.approval.approvedBatang ? '(' + tx.approval.approvedBatang.toLocaleString('id-ID') + ' Btg)' : ''}</span>
                 
                 ${tx.approval.approvedKlon ? `
                   <span style="color: #15803D; font-weight: 700;">Klon Disetujui</span>
@@ -2477,14 +2683,14 @@ export async function renderRequestMataEntresLanding() {
 
               ${tx.jumlahBatangDikeluarkan !== null && tx.jumlahBatangDikeluarkan !== undefined ? `
                 <span style="color: #6D28D9; font-weight: 700;">Realisasi Keluar</span>
-                <span style="font-weight: 800; color: #6D28D9; text-align: right;">${tx.jumlahBatangDikeluarkan} Btg / ${tx.jumlahMataEntresDikeluarkan || (tx.jumlahBatangDikeluarkan * 2)} Mata</span>
+                <span style="font-weight: 800; color: #6D28D9; text-align: right;">${tx.jumlahMataEntresDikeluarkan ? tx.jumlahMataEntresDikeluarkan.toLocaleString('id-ID') + ' Mata' : '-'} ${tx.jumlahBatangDikeluarkan ? '(' + tx.jumlahBatangDikeluarkan + ' Btg)' : ''}</span>
                 <span style="color: #6D28D9; font-weight: 700;">Tgl Pengeluaran</span>
                 <span style="font-weight: 700; color: #6D28D9; text-align: right;">${esc(formatDate(tx.tanggalPengeluaran || '-'))}</span>
               ` : ''}
 
               ${tx.jumlahBatangDiterima !== null && tx.jumlahBatangDiterima !== undefined ? `
                 <span style="color: #047857; font-weight: 700;">Realisasi Diterima</span>
-                <span style="font-weight: 800; color: #047857; text-align: right;">${tx.jumlahBatangDiterima} Btg / ${tx.jumlahMataEntresDiterima || (tx.jumlahBatangDiterima * 2)} Mata</span>
+                <span style="font-weight: 800; color: #047857; text-align: right;">${tx.jumlahMataEntresDiterima ? tx.jumlahMataEntresDiterima.toLocaleString('id-ID') + ' Mata' : '-'} ${tx.jumlahBatangDiterima ? '(' + tx.jumlahBatangDiterima + ' Btg)' : ''}</span>
                 ${tx.rejectBatang ? `
                   <span style="color: #DC2626; font-weight: 700;">Afkir / Reject</span>
                   <span style="font-weight: 700; color: #DC2626; text-align: right;">${tx.rejectBatang} Btg</span>
@@ -2602,7 +2808,9 @@ export async function renderRequestMataEntresLanding() {
 
   // Attach Event Handlers
   app.querySelector('#btn-back-landing')?.addEventListener('click', () => {
-    navigate('/request');
+    const origin = storage.get('mata_entres_origin_route', '/request');
+    storage.remove('mata_entres_origin_route');
+    navigate(origin === '/reception' ? '/reception' : '/request');
   });
 
   app.querySelector('#btn-sync-landing')?.addEventListener('click', () => {

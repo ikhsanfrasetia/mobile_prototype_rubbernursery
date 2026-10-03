@@ -12,12 +12,13 @@
  */
 
 import { storage } from '../../core/storage.js';
-import { normalizeRole, ROLES } from '../../core/user-context.js';
+import { normalizeRole, ROLES, getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
 import { getConsolidatedData, runConsistencyCheck, buildTraceabilityChain } from '../consolidation/consolidation-manager.js';
 import { getAllBatches } from '../../data/batch-master.js';
 import { getAllBedengan } from '../../data/bedengan-master.js';
 import { getProgramById } from '../../data/program-master.js';
 import { getEstateById } from '../../data/estate-master.js';
+import { getWorkersForUserContext } from '../../data/worker-master.js';
 
 export const VERIFICATION_STORAGE_KEY = 'verification_transactions';
 
@@ -65,7 +66,7 @@ export const VERIFICATION_10_MODULES = Object.freeze([
   {
     id: 'TIDAK_HADIR',
     label: 'Tidak Hadir',
-    types: ['TIDAK_HADIR'],
+    types: ['TIDAK_HADIR', 'PRESENSI'],
     iconName: 'team',
     order: 1
   },
@@ -139,6 +140,7 @@ export const VERIFICATION_10_MODULES = Object.freeze([
  */
 export const REFERENCE_TYPE_LABELS = Object.freeze({
   TIDAK_HADIR: 'Tidak Hadir',
+  PRESENSI: 'Presensi',
   PENYEMAIAN: 'Penyemaian',
   DEDERAN: 'Dederan (Germinasi)',
   MENUNAS: 'Menunas',
@@ -163,6 +165,51 @@ export const REFERENCE_TYPE_LABELS = Object.freeze({
 });
 
 /**
+ * Canonical Storage Map per Reference Type
+ */
+export const CANONICAL_STORAGE_MAP = Object.freeze({
+  TIDAK_HADIR: ['virtual_tidak_hadir'],
+  PRESENSI: ['attendance_transactions'],
+  PENERIMAAN: ['receipt_ksp_transactions', 'penerimaan_biji_records', 'receipt_transactions'],
+  RECEIPT: ['receipt_ksp_transactions', 'penerimaan_biji_records', 'receipt_transactions'],
+  PENYEMAIAN: ['seeding_transactions'],
+  SEEDING: ['seeding_transactions'],
+  DEDERAN: ['dederan_transactions'],
+  OKULASI: ['budding_transactions'],
+  BUDDING: ['budding_transactions'],
+  PEMERIKSAAN: ['inspection_transactions'],
+  INSPECTION: ['inspection_transactions'],
+  PEMERIKSAAN_DEDERAN: ['dederan_inspections'],
+  PENYELEKSIAN: ['selection_transactions'],
+  SELECTION: ['selection_transactions'],
+  SELEKSI_PRA_OKULASI: ['pre_grafting_selection_documents'],
+  KEBUN_ENTRES: ['entres_topping_transactions', 'entres_menunas_transactions', 'entres_transactions'],
+  ENTRES: ['entres_topping_transactions', 'entres_menunas_transactions', 'entres_transactions'],
+  MENUNAS: ['entres_menunas_transactions', 'entres_transactions'],
+  TOPPING: ['entres_topping_transactions', 'entres_transactions'],
+  MATERIAL: ['seeding_transactions', 'material_usage_transactions'],
+  SIMULASI_GUDANG: ['warehouse_issue_simulations'],
+  REKAM_PEMELIHARAAN: ['nursery_activity_transactions', 'nursery_activity_records'],
+  PEMELIHARAAN: ['nursery_activity_transactions', 'nursery_activity_records'],
+  NURSERY_ACTIVITY: ['nursery_activity_transactions', 'nursery_activity_records'],
+  PENGELUARAN: ['dispatch_transactions'],
+  DISPATCH: ['dispatch_transactions'],
+  DESTRUCTION: ['destruction_transactions'],
+  REQUEST: ['requests_transactions']
+});
+
+/**
+ * Helper: Safe number formatting yang aman terhadap null, undefined, numeric string, '-' (hyphen)
+ */
+export function formatSafeNumber(val, defaultFallback = '-') {
+  if (val === undefined || val === null || val === '') return defaultFallback;
+  if (val === '-') return '-';
+  const n = Number(val);
+  if (Number.isNaN(n)) return String(val);
+  return n.toLocaleString('id-ID');
+}
+
+/**
  * Mengambil semua riwayat verifikasi audit dari storage
  */
 export function getAllVerifications() {
@@ -181,72 +228,671 @@ export function getVerificationByReference(referenceType, referenceId) {
 }
 
 /**
- * Helper mencari source transaction record dan storage key-nya dengan EXACT MATCH referenceType scope
- * 
- * Priority:
- * 1. referenceType + referenceId
- * Fallback:
- * 2. referenceType + source.id
- * 3. referenceType + source.docNo
- * 4. referenceType + source.nir
- * 5. referenceType + source.referenceDocNo
+ * Deterministic Reconstruction untuk TIDAK_HADIR berdasarkan attendance_transactions
  */
-export function findSourceRecord(referenceType, referenceId) {
-  if (!referenceType || !referenceId) return null;
-
-  const typeMap = {
-    TIDAK_HADIR: 'virtual_tidak_hadir',
-    PENERIMAAN: 'receipt_ksp_transactions',
-    RECEIPT: 'receipt_ksp_transactions',
-    PENYEMAIAN: 'seeding_transactions',
-    SEEDING: 'seeding_transactions',
-    DEDERAN: 'dederan_transactions',
-    OKULASI: 'budding_transactions',
-    BUDDING: 'budding_transactions',
-    PEMERIKSAAN: 'inspection_transactions',
-    INSPECTION: 'inspection_transactions',
-    PEMERIKSAAN_DEDERAN: 'dederan_inspections',
-    PENYELEKSIAN: 'selection_transactions',
-    SELECTION: 'selection_transactions',
-    SELEKSI_PRA_OKULASI: 'pre_grafting_selection_documents',
-    KEBUN_ENTRES: 'entres_topping_transactions',
-    ENTRES: 'entres_topping_transactions',
-    MENUNAS: 'entres_menunas_transactions',
-    TOPPING: 'entres_topping_transactions',
-    MATERIAL: 'material_usage_transactions',
-    SIMULASI_GUDANG: 'warehouse_issue_simulations',
-    REKAM_PEMELIHARAAN: 'nursery_activity_transactions',
-    PEMELIHARAAN: 'nursery_activity_transactions',
-    NURSERY_ACTIVITY: 'nursery_activity_transactions',
-    PENGELUARAN: 'dispatch_transactions',
-    DISPATCH: 'dispatch_transactions',
-    REQUEST: 'requests_transactions',
-    DESTRUCTION: 'destruction_transactions'
-  };
-
-  const storeKey = typeMap[referenceType];
-  if (!storeKey) return null;
-
-  const items = storage.get(storeKey, []);
+export function resolveTidakHadirDeterministic(referenceId, userCtx = null) {
+  if (!referenceId) return null;
   const targetId = String(referenceId);
 
-  // 1. Exact match by id/referenceId
-  let match = items.find(item => String(item.id || item.requestId || item.dispatchId || item.receiptId || item.selectionId || item.destructionId || '') === targetId);
-  if (match) return { ...match, _storeKey: storeKey };
+  // Extract date from referenceId (e.g. ABSEN-02102026 -> 02/10/2026 or ABSEN-20261002)
+  let dateStr = '';
+  const m1 = targetId.match(/ABSEN-(\d{2})(\d{2})(\d{4})/i);
+  if (m1) {
+    dateStr = `${m1[1]}/${m1[2]}/${m1[3]}`;
+  } else {
+    const m2 = targetId.match(/ABSEN-(\d{4})(\d{2})(\d{2})/i);
+    if (m2) {
+      dateStr = `${m2[3]}/${m2[2]}/${m2[1]}`;
+    }
+  }
 
-  // 2. Fallback: match by docNo
-  match = items.find(item => String(item.docNo || '') === targetId);
-  if (match) return { ...match, _storeKey: storeKey };
+  const user = userCtx || getCurrentUserContext() || resolveUserContext();
+  const storedAtts = storage.get('attendance_transactions', []);
 
-  // 3. Fallback: match by nir
-  match = items.find(item => String(item.nir || '') === targetId);
-  if (match) return { ...match, _storeKey: storeKey };
+  // Find attendance records matching the date and scope
+  const matchingAtts = storedAtts.filter(a => {
+    if (a.type !== 'WORKER' && a.attendanceType !== 'DATANG') return false;
+    if (a.attendanceType && a.attendanceType !== 'DATANG') return false;
 
-  // 4. Fallback: match by referenceDocNo / selectionNo / dispatchNo / receiptDocNo / destructionNo
-  match = items.find(item => String(item.referenceDocNo || item.selectionNo || item.dispatchNo || item.receiptDocNo || item.destructionNo || '') === targetId);
-  if (match) return { ...match, _storeKey: storeKey };
+    if (dateStr) {
+      const aDate = a.date || a.tanggal || a.attendanceDate || '';
+      const normADate = aDate.includes('-') ? aDate.split('-').reverse().join('/') : aDate;
+      if (normADate && !normADate.includes(dateStr) && !dateStr.includes(normADate)) return false;
+    }
+
+    if (user?.estateId && a.estateId && a.estateId !== user.estateId) return false;
+    if (user?.divisionId && a.divisionId && a.divisionId !== user.divisionId) return false;
+    return true;
+  });
+
+  if (matchingAtts.length > 0) {
+    let activePool = [];
+    try {
+      activePool = getWorkersForUserContext(user, { activeOnly: true }) || [];
+    } catch (_) {
+      activePool = [];
+    }
+
+    const presentWorkerKeys = new Set();
+    matchingAtts.forEach(a => {
+      if (a.workerId) presentWorkerKeys.add(String(a.workerId));
+      if (a.code) presentWorkerKeys.add(String(a.code));
+      if (a.workerCode) presentWorkerKeys.add(String(a.workerCode));
+    });
+
+    const absentWorkers = activePool.filter(w =>
+      !presentWorkerKeys.has(String(w.id)) &&
+      !presentWorkerKeys.has(String(w.code))
+    );
+
+    return {
+      id: targetId,
+      docNo: targetId,
+      date: dateStr || matchingAtts[0]?.date || matchingAtts[0]?.tanggal || '-',
+      type: 'TIDAK_HADIR',
+      status: 'SUBMITTED',
+      submittedByUserId: matchingAtts[0]?.createdByUserId || user?.id || user?.userId,
+      submittedByName: matchingAtts[0]?.createdByName || user?.name || 'Mantri Bibitan',
+      estateId: matchingAtts[0]?.estateId || user?.estateId,
+      divisionId: matchingAtts[0]?.divisionId || user?.divisionId,
+      totalAbsent: absentWorkers.length,
+      detailPekerja: absentWorkers.map(w => ({
+        workerId: w.id,
+        name: w.name,
+        code: w.code,
+        absentType: w.absentType || 'C'
+      })),
+      _isDeterministic: true
+    };
+  }
+
+  // Fallback: legacy read-only virtual_tidak_hadir
+  const virtualList = storage.get('virtual_tidak_hadir', []);
+  const vMatch = virtualList.find(item =>
+    String(item.id || item.docNo || '') === targetId
+  );
+  if (vMatch) {
+    return { ...vMatch, _storeKey: 'virtual_tidak_hadir' };
+  }
+
+  // Fallback default structure with "-" (guardrail: do not invent fake data)
+  return {
+    id: targetId,
+    docNo: targetId,
+    date: dateStr || '-',
+    type: 'TIDAK_HADIR',
+    status: 'SUBMITTED',
+    submittedByName: 'Mantri Bibitan',
+    estateId: user?.estateId || '-',
+    divisionId: user?.divisionId || '-',
+    totalAbsent: '-',
+    detailPekerja: [],
+    _isFallback: true
+  };
+}
+
+/**
+ * Helper mencari source transaction record dan storage key-nya dengan EXACT MATCH referenceType scope
+ */
+export function findSourceRecord(referenceType, referenceId, userCtx = null) {
+  if (!referenceType || !referenceId) return null;
+  const targetId = String(referenceId);
+
+  // 1. TIDAK_HADIR special deterministic resolution
+  if (referenceType === 'TIDAK_HADIR') {
+    return resolveTidakHadirDeterministic(targetId, userCtx);
+  }
+
+  const storeKeys = CANONICAL_STORAGE_MAP[referenceType] || [];
+  if (storeKeys.length === 0) return null;
+
+  for (const storeKey of storeKeys) {
+    const items = storage.get(storeKey, []);
+    if (!Array.isArray(items) || items.length === 0) continue;
+
+    // Filter by type if in mixed table like entres_transactions
+    let filteredItems = items;
+    if (storeKey === 'entres_transactions') {
+      if (referenceType === 'MENUNAS') {
+        filteredItems = items.filter(t => (t.activityType || t.type || '').toUpperCase() === 'MENUNAS');
+      } else if (referenceType === 'TOPPING') {
+        filteredItems = items.filter(t => (t.activityType || t.type || '').toUpperCase() === 'TOPPING');
+      }
+    }
+
+    // 1. Exact match by primary IDs
+    let match = filteredItems.find(item =>
+      String(item.id || item.requestId || item.dispatchId || item.receiptId || item.selectionId || item.destructionId || '') === targetId
+    );
+    if (match) return { ...match, _storeKey: storeKey };
+
+    // 2. Match by docNo / nomorDokumen / selectionDocNo / issueDocNo
+    match = filteredItems.find(item =>
+      String(item.docNo || item.nomorDokumen || item.selectionDocNo || item.issueDocNo || '') === targetId
+    );
+    if (match) return { ...match, _storeKey: storeKey };
+
+    // 3. Match by nir
+    match = filteredItems.find(item => String(item.nir || '') === targetId);
+    if (match) return { ...match, _storeKey: storeKey };
+
+    // 4. Match by referenceDocNo / selectionNo / dispatchNo / receiptDocNo / destructionNo
+    match = filteredItems.find(item =>
+      String(item.referenceDocNo || item.selectionNo || item.dispatchNo || item.receiptDocNo || item.destructionNo || '') === targetId
+    );
+    if (match) return { ...match, _storeKey: storeKey };
+  }
 
   return null;
+}
+
+/**
+ * Normalisasi data detail transaksi untuk List dan Detail view secara terpusat (Single Source of Truth)
+ * Menghilangkan seluruh hardcoded fallback angka (500, 120, 300, 250, 1).
+ */
+export function getVerificationDetailData(sourceRecord, userCtx = null, referenceType = null) {
+  const raw = sourceRecord || {};
+  const refType = referenceType || raw.referenceType || raw.type || raw.moduleType || 'PENERIMAAN';
+
+  switch (refType) {
+    case 'TIDAK_HADIR': {
+      const totalAbsent = raw.totalAbsent !== undefined
+        ? raw.totalAbsent
+        : (raw.detailPekerja?.length !== undefined ? raw.detailPekerja.length : (raw.absentWorkers?.length !== undefined ? raw.absentWorkers.length : '-'));
+      const workers = raw.detailPekerja || raw.absentWorkers || [];
+      const info = workers.length > 0 ? workers.map(w => w.name || w.code).join(', ') : (raw.info || '-');
+      const summary = totalAbsent !== '-' ? `${totalAbsent} Pekerja Tidak Hadir` : 'Tidak Hadir';
+
+      return {
+        title: 'Tidak Hadir',
+        info: info || '-',
+        mainQty: totalAbsent !== '-' ? `${totalAbsent} Pekerja Tidak Hadir` : '-',
+        unit: 'Orang',
+        summary,
+        fields: [
+          { label: 'Total Tidak Hadir', value: totalAbsent !== '-' ? `${totalAbsent} Orang` : '-', highlight: true },
+          { label: 'Rincian Pekerja', value: workers.length > 0 ? workers.map(w => `${w.name || '-'} (${w.code || '-'}) · Izin: ${w.absentType || 'C'}`).join('<br>') : (raw.keterangan || '-') }
+        ]
+      };
+    }
+
+    case 'PRESENSI': {
+      const totalWorkers = raw.totalWorkers !== undefined ? raw.totalWorkers : (raw.workerCount !== undefined ? raw.workerCount : (raw.totalAbsent !== undefined ? raw.totalAbsent : '-'));
+      const formattedWorkers = formatSafeNumber(totalWorkers);
+      const presensiStatus = raw.status || raw.type || 'HADIR';
+      return {
+        title: 'Presensi Pekerja',
+        info: `Status: ${presensiStatus}`,
+        mainQty: totalWorkers !== '-' ? `${formattedWorkers} Orang` : '-',
+        unit: 'Orang',
+        summary: `Presensi: ${formattedWorkers} Orang (${presensiStatus})`,
+        fields: [
+          { label: 'Jumlah Pekerja', value: totalWorkers !== '-' ? `${formattedWorkers} Orang` : '-', highlight: true },
+          { label: 'Status Presensi', value: presensiStatus },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'PENERIMAAN':
+    case 'RECEIPT': {
+      const rawQty = raw.qty !== undefined
+        ? raw.qty
+        : (raw.quantity !== undefined ? raw.quantity : (raw.receivedQty !== undefined ? raw.receivedQty : (raw.acceptedQty !== undefined ? raw.acceptedQty : '-')));
+      const unit = raw.satuan || raw.unit || 'Butir';
+      const hasUnitInRaw = typeof rawQty === 'string' && /[a-zA-Z]/.test(rawQty.trim());
+      const safeQtyFormatted = formatSafeNumber(rawQty);
+      const formattedDisplayQty = rawQty === '-' ? '-' : (hasUnitInRaw ? rawQty.trim() : `${safeQtyFormatted} ${unit}`);
+      const klon = raw.klon || raw.clone || '-';
+      const tipeAsal = raw.tipeAsal || raw.asal || raw.sumber || raw.sourceType || 'Kebun Induk';
+      const summary = `${formattedDisplayQty} (Klon: ${klon})`;
+
+      return {
+        title: 'Penerimaan Benih',
+        info: `Klon ${klon} · ${tipeAsal}`,
+        mainQty: formattedDisplayQty,
+        unit,
+        summary,
+        fields: [
+          { label: 'Klon', value: klon },
+          { label: 'Tipe Asal', value: tipeAsal },
+          { label: 'Sumber', value: raw.sumber || '-' },
+          { label: 'No. SIR', value: raw.sir || '-' },
+          { label: 'Jumlah Diterima', value: formattedDisplayQty, highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'PENYEMAIAN':
+    case 'SEEDING': {
+      const qty = raw.totalDisemai !== undefined ? raw.totalDisemai : (raw.qty !== undefined ? raw.qty : '-');
+      const formattedQty = formatSafeNumber(qty);
+      const bedengan = raw.bedengan || raw.bedenganCode || '-';
+      const batch = raw.batchNo || raw.batchCode || '-';
+      const klon = raw.klonAwal || raw.klon || '-';
+      const summary = `${formattedQty} Butir di Bedengan ${bedengan} (Batch: ${batch})`;
+
+      return {
+        title: 'Penyemaian Benih',
+        info: `Batch ${batch} · Bedengan ${bedengan}`,
+        mainQty: qty !== '-' ? `${formattedQty} Bibit` : '-',
+        unit: 'Bibit',
+        summary,
+        fields: [
+          { label: 'Program', value: raw.program || '-' },
+          { label: 'Batch', value: batch },
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon', value: klon },
+          { label: 'Total Disemai', value: qty !== '-' ? `${formattedQty} Bibit` : '-', highlight: true },
+          { label: 'Total Polybag', value: raw.totalPolybag !== undefined ? `${formatSafeNumber(raw.totalPolybag)} Pkk` : '-' },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'DEDERAN': {
+      const qty = raw.jumlahDeder !== undefined
+        ? raw.jumlahDeder
+        : (raw.totalDeder !== undefined ? raw.totalDeder : (raw.qty !== undefined ? raw.qty : '-'));
+      const formattedQty = formatSafeNumber(qty);
+      const bedengan = raw.bedenganCode || raw.bedengan || '-';
+      const klon = raw.klon || raw.varietas || '-';
+      const summary = `${formattedQty} Butir Germinasi di Bedengan ${bedengan}`;
+
+      return {
+        title: 'Germinasi / Dederan',
+        info: `Bedengan ${bedengan} · Klon ${klon}`,
+        mainQty: qty !== '-' ? `${formattedQty} Butir Deder` : '-',
+        unit: 'Butir',
+        summary,
+        fields: [
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon', value: klon },
+          { label: 'Jumlah Deder', value: qty !== '-' ? `${formattedQty} Butir` : '-', highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'OKULASI':
+    case 'BUDDING': {
+      const qty = raw.jumlah !== undefined
+        ? raw.jumlah
+        : (raw.jumlahMataOkulasi !== undefined ? raw.jumlahMataOkulasi : (raw.qty !== undefined ? raw.qty : '-'));
+      const formattedQty = formatSafeNumber(qty);
+      const typeLabel = raw.type === 'REGRAFTING' ? 'Regrafting' : 'Grafting';
+      const bedengan = raw.bedengan || '-';
+      const klon = raw.klonEntres || raw.klon || '-';
+      const summary = `${formattedQty} Pkk (${typeLabel}) di Bedengan ${bedengan} (Klon: ${klon})`;
+
+      return {
+        title: 'Okulasi Bibitan',
+        info: `${typeLabel} · Bedengan ${bedengan}`,
+        mainQty: qty !== '-' ? `${formattedQty} Pkk` : '-',
+        unit: 'Pkk',
+        summary,
+        fields: [
+          { label: 'Tipe Okulasi', value: typeLabel },
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon Entres', value: klon },
+          { label: 'Klon Batang Bawah', value: raw.klonRootstock || '-' },
+          { label: 'Total Okulasi', value: qty !== '-' ? `${formattedQty} Pkk` : '-', highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'PEMERIKSAAN':
+    case 'INSPECTION': {
+      const checked = raw.totalDiperiksa !== undefined ? raw.totalDiperiksa : (raw.qty !== undefined ? raw.qty : '-');
+      const jadi = raw.jumlahJadi !== undefined ? raw.jumlahJadi : '-';
+      const gagal = raw.jumlahGagal !== undefined ? raw.jumlahGagal : (checked !== '-' && jadi !== '-' ? Number(checked) - Number(jadi) : '-');
+      const pct = raw.persenJadi !== undefined ? raw.persenJadi : (checked !== '-' && jadi !== '-' && Number(checked) > 0 ? Math.round((Number(jadi) / Number(checked)) * 100) : '-');
+      const formattedChecked = formatSafeNumber(checked);
+      const formattedJadi = formatSafeNumber(jadi);
+      const formattedGagal = formatSafeNumber(gagal);
+      const bedengan = raw.bedengan || '-';
+      const klon = raw.klonEntres || '-';
+      const summary = `Periksa: ${formattedChecked} Pkk, Jadi: ${formattedJadi} Pkk (${pct !== '-' ? `${pct}%` : '-'})`;
+
+      return {
+        title: 'Pemeriksaan Okulasi',
+        info: `Bedengan ${bedengan} · Klon ${klon}`,
+        mainQty: checked !== '-' ? `${formattedChecked} Diperiksa` : '-',
+        breakdown: `${formattedJadi} Berhasil, ${formattedGagal} Tidak Berhasil`,
+        unit: 'Pkk',
+        summary,
+        fields: [
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon', value: klon },
+          { label: 'Total Diperiksa', value: checked !== '-' ? `${formattedChecked} Pkk` : '-' },
+          { label: 'Jumlah Berhasil', value: jadi !== '-' ? `${formattedJadi} Pkk` : '-', highlight: true },
+          { label: 'Jumlah Tidak Berhasil', value: gagal !== '-' ? `${formattedGagal} Pkk` : '-' },
+          { label: 'Persentase Jadi', value: pct !== '-' ? `${pct}%` : '-', highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'PEMERIKSAAN_DEDERAN': {
+      const diperiksa = raw.jumlahDiperiksa !== undefined
+        ? raw.jumlahDiperiksa
+        : (raw.totalDiperiksa !== undefined ? raw.totalDiperiksa : (raw.jumlahDeder !== undefined ? raw.jumlahDeder : '-'));
+      const berhasil = raw.jumlahBerhasil !== undefined
+        ? raw.jumlahBerhasil
+        : (raw.totalLayak !== undefined ? raw.totalLayak : (raw.sproutNormal !== undefined ? raw.sproutNormal : (raw.jumlahLayak !== undefined ? raw.jumlahLayak : '-')));
+      const tidakBerhasil = raw.jumlahTidakBerhasil !== undefined
+        ? raw.jumlahTidakBerhasil
+        : (raw.totalAfkir !== undefined ? raw.totalAfkir : (raw.sproutAfkir !== undefined ? raw.sproutAfkir : (raw.jumlahAfkir !== undefined ? raw.jumlahAfkir : '-')));
+      const formattedDiperiksa = formatSafeNumber(diperiksa);
+      const formattedBerhasil = formatSafeNumber(berhasil);
+      const formattedTidakBerhasil = formatSafeNumber(tidakBerhasil);
+      const bedengan = raw.bedenganCode || raw.bedengan || '-';
+      const klon = raw.klon || '-';
+      const summary = `Bedengan ${bedengan}: ${formattedDiperiksa} Diperiksa, ${formattedBerhasil} Berhasil, ${formattedTidakBerhasil} Tidak Berhasil`;
+
+      return {
+        title: 'Pemeriksaan Dederan',
+        info: `Bedengan ${bedengan} · Klon ${klon}`,
+        mainQty: diperiksa !== '-' ? `${formattedDiperiksa} Diperiksa` : '-',
+        breakdown: `${formattedBerhasil} Berhasil, ${formattedTidakBerhasil} Tidak Berhasil`,
+        unit: 'Butir',
+        summary,
+        fields: [
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Klon', value: klon },
+          { label: 'Total Diperiksa', value: diperiksa !== '-' ? `${formattedDiperiksa} Butir` : '-' },
+          { label: 'Jumlah Berhasil', value: berhasil !== '-' ? `${formattedBerhasil} Butir` : '-', highlight: true },
+          { label: 'Jumlah Tidak Berhasil', value: tidakBerhasil !== '-' ? `${formattedTidakBerhasil} Butir` : '-' },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'SELEKSI_PRA_OKULASI': {
+      const stage = raw.selectionStage || 'Seleksi I';
+      const layak = raw.totalLayak !== undefined ? raw.totalLayak : (raw.finalBibitQty !== undefined ? raw.finalBibitQty : '-');
+      const afkir = raw.totalAfkir !== undefined ? raw.totalAfkir : (raw.rejectedBibitQty !== undefined ? raw.rejectedBibitQty : '-');
+      const diperiksa = raw.totalDiperiksa !== undefined ? raw.totalDiperiksa : (layak !== '-' && afkir !== '-' ? Number(layak) + Number(afkir) : '-');
+      const formattedLayak = formatSafeNumber(layak);
+      const formattedAfkir = formatSafeNumber(afkir);
+      const formattedDiperiksa = formatSafeNumber(diperiksa);
+      const batch = raw.batchCode || raw.batchNo || '-';
+      const bedengan = raw.bedengan || '-';
+      const summary = `${stage}: ${formattedLayak} Layak, ${formattedAfkir} Afkir (Batch: ${batch})`;
+
+      return {
+        title: `Seleksi Pra-Okulasi (${stage})`,
+        info: `Batch ${batch} · Bedengan ${bedengan}`,
+        mainQty: layak !== '-' ? `${formattedLayak} Layak` : '-',
+        unit: 'Pkk',
+        summary,
+        fields: [
+          { label: 'Tahap Seleksi', value: stage },
+          { label: 'Batch', value: batch },
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Populasi Diperiksa', value: diperiksa !== '-' ? `${formattedDiperiksa} Pkk` : '-' },
+          { label: 'Bibit Layak', value: layak !== '-' ? `${formattedLayak} Pkk` : '-', highlight: true },
+          { label: 'Bibit Afkir', value: afkir !== '-' ? `${formattedAfkir} Pkk` : '-' },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'PENYELEKSIAN':
+    case 'SELECTION': {
+      const stage = raw.stage || raw.selectionStage || 'Bibit';
+      const layak = raw.actualBibitRetainedQty !== undefined
+        ? raw.actualBibitRetainedQty
+        : (raw.bibitDipertahankan !== undefined ? raw.bibitDipertahankan : (raw.jumlahLayak !== undefined ? raw.jumlahLayak : '-'));
+      const afkir = raw.actualBibitSelectedQty !== undefined
+        ? raw.actualBibitSelectedQty
+        : (raw.bibitReject !== undefined ? raw.bibitReject : (raw.jumlahAfkir !== undefined ? raw.jumlahAfkir : '-'));
+      const formattedLayak = formatSafeNumber(layak);
+      const formattedAfkir = formatSafeNumber(afkir);
+      const reason = raw.reason || raw.kategoriAfkir || stage;
+      const bedengan = raw.bedengan || raw.lokasi || '-';
+      const summary = `Seleksi ${stage}: ${formattedLayak} Layak, ${formattedAfkir} Afkir`;
+
+      return {
+        title: 'Penyeleksian Bibit',
+        info: `Kategori ${reason} · Bedengan ${bedengan}`,
+        mainQty: afkir !== '-' ? `${formattedAfkir} Bibit Afkir` : '-',
+        unit: 'Pkk',
+        summary,
+        fields: [
+          { label: 'Tahap Seleksi', value: stage },
+          { label: 'Kategori / Alasan Afkir', value: reason },
+          { label: 'Bedengan / Lokasi', value: bedengan },
+          { label: 'Bibit Afkir (Selected)', value: afkir !== '-' ? `${formattedAfkir} Pkk` : '-', highlight: true },
+          { label: 'Bibit Dipertahankan (Retained)', value: layak !== '-' ? `${formattedLayak} Pkk` : '-' },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'TOPPING': {
+      const stik = raw.jumlahKayu !== undefined
+        ? raw.jumlahKayu
+        : (raw.jumlahStik !== undefined ? raw.jumlahStik : (raw.jumlahStikHijau !== undefined ? raw.jumlahStikHijau : (raw.jumlahPokok !== undefined ? raw.jumlahPokok : '-')));
+      const perisai = raw.jumlahPerisai !== undefined
+        ? raw.jumlahPerisai
+        : (raw.jumlahMata !== undefined ? raw.jumlahMata : (raw.jumlahTopping !== undefined ? raw.jumlahTopping : '-'));
+      const formattedStik = formatSafeNumber(stik);
+      const formattedPerisai = formatSafeNumber(perisai);
+      const plot = raw.kodePlot || raw.plotId || raw.plotNo || '-';
+      const klon = raw.namaKlon || raw.klon || '-';
+      const summary = `${formattedStik} Btg · ${formattedPerisai} Perisai di Plot ${plot} (Klon: ${klon})`;
+
+      return {
+        title: 'Entres Topping',
+        info: `Plot ${plot} · Klon ${klon}`,
+        mainQty: `${stik !== '-' ? `${formattedStik} Btg` : '-'} · ${perisai !== '-' ? `${formattedPerisai} Perisai` : '-'}`,
+        unit: 'Btg/Perisai',
+        summary,
+        fields: [
+          { label: 'Plot', value: plot },
+          { label: 'Klon', value: klon },
+          { label: 'Kebun Entres', value: raw.budwoodCode || '-' },
+          { label: 'Jumlah Kayu', value: stik !== '-' ? `${formattedStik} Btg` : '-', highlight: true },
+          { label: 'Panen Perisai (Mata Entres)', value: perisai !== '-' ? `${formattedPerisai} Perisai` : '-', highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'MENUNAS': {
+      const qty = raw.jumlahPohonDitunas !== undefined
+        ? raw.jumlahPohonDitunas
+        : (raw.jumlahPokok !== undefined ? raw.jumlahPokok : (raw.jumlahTunas !== undefined ? raw.jumlahTunas : (raw.qty !== undefined ? raw.qty : '-')));
+      const formattedQty = formatSafeNumber(qty);
+      const plot = raw.kodePlot || raw.plotId || raw.plotNo || '-';
+      const klon = raw.namaKlon || raw.klon || '-';
+      const summary = `${formattedQty} Pokok Ditunas di Plot ${plot} (Klon: ${klon})`;
+
+      return {
+        title: 'Entres Menunas',
+        info: `Plot ${plot} · Klon ${klon}`,
+        mainQty: qty !== '-' ? `${formattedQty} Pokok Ditunas` : '-',
+        unit: 'Pkk',
+        summary,
+        fields: [
+          { label: 'Plot', value: plot },
+          { label: 'Klon', value: klon },
+          { label: 'Kebun Entres', value: raw.budwoodCode || '-' },
+          { label: 'Realisasi Ditunas', value: qty !== '-' ? `${formattedQty} Pkk` : '-', highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'KEBUN_ENTRES':
+    case 'ENTRES': {
+      if ((raw.activityType || raw.type || '').toUpperCase() === 'MENUNAS' || raw.jumlahPohonDitunas !== undefined) {
+        return getVerificationDetailData(raw, userCtx, 'MENUNAS');
+      }
+      return getVerificationDetailData(raw, userCtx, 'TOPPING');
+    }
+
+    case 'MATERIAL': {
+      const isSowMaterial = Boolean(raw.issueDocNo || raw.totalPolybag !== undefined || raw.sourceTransactionType === 'PINDAH_SEMAI_MATERIAL' || raw.dederanTxDocNo || raw.sourceDederDocNo);
+      const qty = raw.totalPolybag !== undefined
+        ? raw.totalPolybag
+        : (raw.quantityUsed !== undefined
+            ? raw.quantityUsed
+            : (raw.qty !== undefined
+                ? raw.qty
+                : (raw.quantity !== undefined ? raw.quantity : (raw.qtyOut !== undefined ? raw.qtyOut : (raw.currentStock !== undefined ? raw.currentStock : '-')))));
+      const formattedQty = formatSafeNumber(qty);
+      const unit = raw.uom || raw.unit || raw.satuan || 'LBR';
+      const matName = raw.itemName || raw.materialName || raw.name || 'Biaya Polybag';
+      const issueDoc = raw.issueDocNo || raw.noIssue || '-';
+      const sowDoc = raw.docNo || raw.referenceDocNo || '-';
+      const batch = raw.batchCode || raw.batchNo || '-';
+      const bedengan = raw.bedenganCode || raw.bedengan || '-';
+      const category = raw.category || raw.kategori || (isSowMaterial ? 'Pindah Semai (SOW)' : 'Umum');
+      const summary = `${matName}: ${formattedQty} ${unit} (${sowDoc})`;
+
+      const fields = [
+        { label: 'Nama Material', value: matName },
+        { label: 'No. Dokumen Issue', value: issueDoc },
+        { label: 'Dokumen SOW', value: sowDoc },
+        { label: 'Batch', value: batch },
+        { label: 'Bedengan', value: bedengan },
+        { label: 'Jumlah Digunakan', value: qty !== '-' ? `${formattedQty} ${unit}` : '-', highlight: true },
+        { label: 'Kategori / Keterangan', value: raw.keterangan || raw.notes || (isSowMaterial ? 'Material Pindah Semai (SOW)' : '-') }
+      ];
+
+      return {
+        title: 'Material & Bahan',
+        info: `${matName} · ${category}`,
+        mainQty: qty !== '-' ? `${formattedQty} ${unit}` : '-',
+        unit,
+        summary,
+        fields
+      };
+    }
+
+    case 'SIMULASI_GUDANG': {
+      const qty = raw.qty !== undefined ? raw.qty : (raw.quantity !== undefined ? raw.quantity : '-');
+      const formattedQty = formatSafeNumber(qty);
+      const unit = raw.unit || 'Unit';
+      const itemName = raw.itemName || raw.materialName || '-';
+      const issueDoc = raw.issueDocNo || raw.docNo || '-';
+      const summary = `Issue ${itemName}: ${formattedQty} ${unit}`;
+
+      return {
+        title: 'Simulasi Issue Gudang',
+        info: `No ${issueDoc} · ${itemName}`,
+        mainQty: qty !== '-' ? `${formattedQty} ${unit}` : '-',
+        unit,
+        summary,
+        fields: [
+          { label: 'No. Issue Gudang', value: issueDoc },
+          { label: 'Nama Item / Barang', value: itemName },
+          { label: 'Jumlah Issue', value: qty !== '-' ? `${formattedQty} ${unit}` : '-', highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'PEMELIHARAAN':
+    case 'REKAM_PEMELIHARAAN':
+    case 'NURSERY_ACTIVITY': {
+      const actName = raw.aktivitas?.nama || raw.activityType || 'Pemeliharaan';
+      const vol = raw.volumePkk !== undefined
+        ? raw.volumePkk
+        : (raw.aktivitas?.volume !== undefined ? raw.aktivitas?.volume : (raw.volume !== undefined ? raw.volume : (raw.qty !== undefined ? raw.qty : '-')));
+      const formattedVol = formatSafeNumber(vol);
+      const loc = raw.bedengan || raw.location || raw.lokasiBlok || raw.blok || '-';
+      const summary = `${actName} - Bedengan: ${loc} (${formattedVol} Pkk)`;
+
+      return {
+        title: 'Rekam Pemeliharaan',
+        info: `${actName} · Bedengan ${loc}`,
+        mainQty: vol !== '-' ? `${formattedVol} Pkk` : '-',
+        unit: 'Pkk',
+        summary,
+        fields: [
+          { label: 'Jenis Pemeliharaan', value: actName },
+          { label: 'Lokasi / Bedengan', value: loc },
+          { label: 'Volume Realisasi', value: vol !== '-' ? `${formattedVol} Pkk` : '-', highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'PENGELUARAN':
+    case 'DISPATCH': {
+      const qty = raw.issuedQty !== undefined
+        ? raw.issuedQty
+        : (raw.qtyDispatched !== undefined ? raw.qtyDispatched : (raw.quantity !== undefined ? raw.quantity : (raw.qty !== undefined ? raw.qty : (raw.totalBatang !== undefined ? raw.totalBatang : '-'))));
+      const formattedQty = formatSafeNumber(qty);
+      const clone = raw.clone || raw.klon || '-';
+      const destination = raw.targetDivisionName || raw.targetEstateId || raw.destination || raw.targetDivision || raw.targetEstate || '-';
+      const plate = raw.vehiclePlate || '-';
+      const summary = `Dispatch: ${formattedQty} Pkk ke ${destination} (Klon: ${clone})`;
+
+      return {
+        title: 'Pengeluaran Bibit',
+        info: `Tujuan ${destination} · Klon ${clone}`,
+        mainQty: qty !== '-' ? `${formattedQty} Pkk` : '-',
+        unit: 'Pkk',
+        summary,
+        fields: [
+          { label: 'Klon', value: clone },
+          { label: 'Tujuan Pengiriman', value: destination },
+          { label: 'Jumlah Pengeluaran', value: qty !== '-' ? `${formattedQty} Pkk` : '-', highlight: true },
+          { label: 'Kendaraan / Plat', value: plate },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    case 'DESTRUCTION': {
+      const qty = raw.qty !== undefined ? raw.qty : (raw.destructionQty !== undefined ? raw.destructionQty : (raw.jumlah !== undefined ? raw.jumlah : '-'));
+      const formattedQty = formatSafeNumber(qty);
+      const batch = raw.batchId || raw.batchCode || '-';
+      const reason = raw.reason || raw.alasan || '-';
+      const summary = `Pemusnahan: ${formattedQty} Pkk (Batch: ${batch})`;
+
+      return {
+        title: 'Pemusnahan Bibit',
+        info: `Batch ${batch} · Alasan ${reason}`,
+        mainQty: qty !== '-' ? `${formattedQty} Pkk` : '-',
+        unit: 'Pkk',
+        summary,
+        fields: [
+          { label: 'Batch', value: batch },
+          { label: 'Alasan Pemusnahan', value: reason },
+          { label: 'Jumlah Dimusnahkan', value: qty !== '-' ? `${formattedQty} Pkk` : '-', highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+
+    default: {
+      const qty = raw.qty !== undefined ? raw.qty : (raw.quantity !== undefined ? raw.quantity : '-');
+      const formattedQty = formatSafeNumber(qty);
+      const unit = raw.unit || raw.satuan || 'Pkk';
+      const title = REFERENCE_TYPE_LABELS[refType] || refType || 'Transaksi';
+      const summary = qty !== '-' ? `${formattedQty} ${unit}` : title;
+
+      return {
+        title,
+        info: raw.docNo || raw.id || '-',
+        mainQty: qty !== '-' ? `${formattedQty} ${unit}` : '-',
+        unit,
+        summary,
+        fields: [
+          { label: 'Nomor Referensi', value: raw.docNo || raw.id || '-' },
+          { label: 'Kuantitas', value: qty !== '-' ? `${formattedQty} ${unit}` : '-', highlight: true },
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+        ]
+      };
+    }
+  }
 }
 
 /**
@@ -326,7 +972,7 @@ export function getActionableRecordsForAsb(currentUser, filters = {}) {
     if (verifRecord.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || verifRecord.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI) return;
 
     // 3. Resolve source record untuk enrichment & scope check
-    const sourceRecord = findSourceRecord(refType, refId);
+    const sourceRecord = findSourceRecord(refType, refId, currentUser);
     const rawRecord = sourceRecord || verifRecord;
 
     const estateId = verifRecord.estateId || rawRecord.targetEstateId || rawRecord.estateId || rawRecord.sourceEstateId;
@@ -361,12 +1007,17 @@ export function getActionableRecordsForAsb(currentUser, filters = {}) {
     const matchedModule = VERIFICATION_10_MODULES.find(m => m.types.includes(refType) || m.id === refType);
     const moduleCategory = matchedModule ? matchedModule.id : refType;
 
+    // 8. Single canonical normalization
+    const normalizedData = getVerificationDetailData(sourceRecord || rawRecord, currentUser, refType);
+
     actionableList.push({
       referenceType: refType,
       referenceId: refId,
       referenceDocNo: docNo,
       moduleCategory,
       rawRecord: sourceRecord || rawRecord,
+      normalizedData,
+      summary: normalizedData.summary,
       estateId,
       divisionId,
       currentStatus: rawRecord.status || verifRecord.verificationStatus || 'SUBMITTED',
@@ -434,12 +1085,17 @@ export function getVerifiedTransactionsByScope(currentUser, filters = {}) {
 
     return true;
   }).map(v => {
-    const sourceRecord = findSourceRecord(v.referenceType, v.referenceId);
+    const sourceRecord = findSourceRecord(v.referenceType, v.referenceId, currentUser);
     const matchedModule = VERIFICATION_10_MODULES.find(m => m.types.includes(v.referenceType) || m.id === v.referenceType);
+    const rawRecord = sourceRecord || v;
+    const normalizedData = getVerificationDetailData(rawRecord, currentUser, v.referenceType);
+
     return {
       ...v,
       moduleCategory: matchedModule ? matchedModule.id : v.referenceType,
-      rawRecord: sourceRecord || v
+      rawRecord,
+      normalizedData,
+      summary: normalizedData.summary
     };
   });
 }
@@ -580,7 +1236,7 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
   }
 
   // 1. Ambil source record
-  const sourceRecord = findSourceRecord(referenceType, referenceId);
+  const sourceRecord = findSourceRecord(referenceType, referenceId, currentUser);
   if (!sourceRecord) {
     throw new Error(`Data transaksi sumber tidak ditemukan (${referenceType}:${referenceId}).`);
   }
@@ -597,8 +1253,8 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
 
   // 3. Cek apakah sudah terverifikasi final
   const existingVerif = getVerificationByReference(referenceType, referenceId);
-  if (existingVerif && existingVerif.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI) {
-    throw new Error(`Dokumen ini sudah diverifikasi sebelumnya dengan No: ${existingVerif.verificationNo}.`);
+  if (existingVerif && (existingVerif.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || existingVerif.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI)) {
+    throw new Error(`Dokumen ini sudah diverifikasi sebelumnya dengan No: ${existingVerif.verificationNo || existingVerif.verificationId}.`);
   }
 
   // 4. CONSISTENCY GATE
@@ -637,8 +1293,8 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
   // 6. Simpan / perbarui di verification_transactions
   const currentVerifs = storage.get(VERIFICATION_STORAGE_KEY, []);
   const existIdx = currentVerifs.findIndex(v =>
-    (v.referenceType === referenceType && String(v.referenceId) === String(referenceId)) ||
-    (v.referenceDocNo && String(v.referenceDocNo) === String(docNo))
+    ((v.referenceType || v.moduleType || '').toUpperCase() === (referenceType || '').toUpperCase()) &&
+    (String(v.referenceId) === String(referenceId) || String(v.referenceDocNo) === String(docNo))
   );
 
   if (existIdx !== -1) {
@@ -655,11 +1311,15 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
   // 7. Update status pada raw source record jika ada storeKey
   if (sourceRecord._storeKey) {
     const records = storage.get(sourceRecord._storeKey, []);
-    const idx = records.findIndex(r => String(r.id || r.docNo || '') === String(referenceId));
+    const idx = records.findIndex(r => String(r.id || r.docNo || '') === String(referenceId) || String(r.docNo || '') === String(docNo));
     if (idx !== -1) {
-      records[idx].status = referenceType === 'TIDAK_HADIR' ? 'TERKONFIRMASI' : 'DISETUJUI';
-      records[idx].isFinal = true;
-      records[idx].verificationStatus = referenceType === 'TIDAK_HADIR' ? VERIFICATION_STATUS.DATA_TERKONFIRMASI : VERIFICATION_STATUS.TERVERIFIKASI;
+      if (referenceType === 'MATERIAL') {
+        records[idx].materialSubmissionStatus = 'DISETUJUI';
+      } else {
+        records[idx].status = referenceType === 'TIDAK_HADIR' ? 'TERKONFIRMASI' : 'DISETUJUI';
+        records[idx].isFinal = true;
+        records[idx].verificationStatus = referenceType === 'TIDAK_HADIR' ? VERIFICATION_STATUS.DATA_TERKONFIRMASI : VERIFICATION_STATUS.TERVERIFIKASI;
+      }
       records[idx].verifiedAt = nowIso;
       records[idx].verifiedByUserId = currentUser.userId || currentUser.id;
       records[idx].verifiedByName = currentUser.name || 'Asisten Bibitan';
@@ -686,15 +1346,15 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
     throw new Error('Otorisasi gagal: User aktif tidak ditemukan.');
   }
 
-  // 1. Ambil source record
-  const sourceRecord = findSourceRecord(referenceType, referenceId);
-  if (!sourceRecord) {
-    throw new Error(`Data transaksi sumber tidak ditemukan (${referenceType}:${referenceId}).`);
-  }
-
-  // 1.5 Cegah Return untuk TIDAK_HADIR
+  // 1. Cegah Return untuk TIDAK_HADIR
   if (referenceType === 'TIDAK_HADIR') {
     throw new Error('Dokumen Tidak Hadir tidak dapat dikembalikan (Return). Hanya dapat diverifikasi.');
+  }
+
+  // 2. Ambil source record
+  const sourceRecord = findSourceRecord(referenceType, referenceId, currentUser);
+  if (!sourceRecord) {
+    throw new Error(`Data transaksi sumber tidak ditemukan (${referenceType}:${referenceId}).`);
   }
 
   // 2. Scope validation
@@ -740,8 +1400,8 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
   // 5. Simpan / perbarui ke verification_transactions (ZERO STOCK MUTATION)
   const currentVerifs = storage.get(VERIFICATION_STORAGE_KEY, []);
   const existIdx = currentVerifs.findIndex(v =>
-    (v.referenceType === referenceType && String(v.referenceId) === String(referenceId)) ||
-    (v.referenceDocNo && String(v.referenceDocNo) === String(docNo))
+    ((v.referenceType || v.moduleType || '').toUpperCase() === (referenceType || '').toUpperCase()) &&
+    (String(v.referenceId) === String(referenceId) || String(v.referenceDocNo) === String(docNo))
   );
 
   if (existIdx !== -1) {
@@ -758,12 +1418,17 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
   // 6. Update status raw record menjadi REVISION / DIKEMBALIKAN
   if (sourceRecord._storeKey) {
     const records = storage.get(sourceRecord._storeKey, []);
-    const idx = records.findIndex(r => String(r.id || r.docNo || '') === String(referenceId));
+    const idx = records.findIndex(r => String(r.id || r.docNo || '') === String(referenceId) || String(r.docNo || '') === String(docNo));
     if (idx !== -1) {
-      records[idx].status = 'DIKEMBALIKAN';
-      records[idx].verificationStatus = VERIFICATION_STATUS.DIKEMBALIKAN;
+      if (referenceType === 'MATERIAL') {
+        records[idx].materialSubmissionStatus = 'DIKEMBALIKAN';
+      } else {
+        records[idx].status = 'DIKEMBALIKAN';
+        records[idx].verificationStatus = VERIFICATION_STATUS.DIKEMBALIKAN;
+      }
       records[idx].returnReason = returnReason.trim();
       records[idx].returnedAt = nowIso;
+      records[idx].returnedByUserId = currentUser.userId || currentUser.id;
       storage.set(sourceRecord._storeKey, records);
     }
   }

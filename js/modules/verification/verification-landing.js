@@ -19,6 +19,7 @@ import { toast } from '../../components/toast.js';
 import { todayDDMMYYYY, esc } from '../../core/utils.js';
 import { getCurrentUserContext, resolveUserContext, ROLES } from '../../core/user-context.js';
 import { renderAsbBottomNav, attachAsbBottomNavEvents } from '../../components/bottom-nav-asb.js';
+import { renderVerifikasiSummaryCardHtml } from './asb-summary-cards.js';
 import {
   VERIFICATION_10_MODULES,
   VERIFICATION_STATUS,
@@ -30,13 +31,14 @@ import {
   submitFinalVerificationToServer,
   approveVerification,
   returnVerification,
-  findSourceRecord
+  findSourceRecord,
+  getVerificationDetailData
 } from './verification-manager.js';
 
 // State Halaman
 let currentVerifView = 'MODULE_GRID'; // 'MODULE_GRID' | 'TRANSACTION_LIST' | 'TRANSACTION_DETAIL' | 'TINJAU_FILTER' | 'TINJAU_SUMMARY' | 'TINJAU_DETAIL'
-let activeModuleId = null; // e.g. 'PRESENSI', 'OKULASI', etc.
-let selectedTxItem = null; // Transaksi yang dibuka di detail
+let activeModuleId = null; // e.g. 'TIDAK_HADIR', 'OKULASI', etc.
+let selectedTxItem = null; // Transaksi yang dibuka di detail (berisi normalizedData)
 let activeFilterDate = todayDDMMYYYY();
 let tinjauFilter = {
   date: todayDDMMYYYY(),
@@ -46,67 +48,90 @@ let tinjauFilter = {
 
 const MODULE_ICONS = {
   team: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="#116834">
-      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 7.66 5 11s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+    <svg viewBox="2 3 26 22" width="56" height="56" fill="#116834">
+      <circle cx="11" cy="9" r="4.3" fill="#116834"/>
+      <path d="M4 23 C4 18 7.5 15.5 11 15.5 C14.5 15.5 18 18 18 23 Z" fill="#116834"/>
+      <circle cx="21" cy="10.5" r="3.5" fill="#116834"/>
+      <path d="M16.8 23 C17 19.8 18.8 17.8 21 17.8 C23.5 17.8 26.5 19.8 26.5 23 Z" fill="#116834"/>
     </svg>
   `,
   documentPlus: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="#116834">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="#116834"/>
-      <line x1="12" y1="11" x2="12" y2="17" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
-      <line x1="9" y1="14" x2="15" y2="14" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+    <svg viewBox="3 2 26 27" width="56" height="56" fill="#116834">
+      <rect x="5" y="4" width="22" height="24" rx="4.5" fill="#116834"/>
+      <line x1="9" y1="12" x2="19" y2="12" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="9" y1="16" x2="19" y2="16" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="9" y1="20" x2="16" y2="20" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="23" cy="7" r="4.2" fill="#116834" stroke="#ffffff" stroke-width="1.5"/>
+      <line x1="23" y1="4.8" x2="23" y2="9.2" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="20.8" y1="7" x2="25.2" y2="7" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
     </svg>
   `,
   sprout: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 22v-9"></path>
-      <path d="M12 13a5 5 0 0 0 5-5c0-4-5-6-5-6s-5 2-5 6a5 5 0 0 0 5 5z"></path>
+    <svg viewBox="2 1.5 28 19" width="56" height="56" fill="#116834">
+      <path d="M16 2.5 C16 2.5 11.5 8.5 11.5 14 C11.5 16.8 13.5 19 16 19 C18.5 19 20.5 16.8 20.5 14 C20.5 8.5 16 2.5 16 2.5 Z" fill="#116834"/>
+      <path d="M13.2 19.5 C9.5 19.5 3.5 15.2 3.5 9 C9.5 8.5 13.8 13.2 13.8 17 C13.8 18 13.5 18.8 13.2 19.5 Z" fill="#116834"/>
+      <path d="M18.8 19.5 C22.5 19.5 28.5 15.2 28.5 9 C22.5 8.5 18.2 13.2 18.2 17 C18.2 18 18.5 18.8 18.8 19.5 Z" fill="#116834"/>
     </svg>
   `,
   scissors: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="6" cy="6" r="3"></circle>
-      <circle cx="6" cy="18" r="3"></circle>
-      <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
-      <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
-      <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+    <svg viewBox="2 1.5 28 19" width="56" height="56" fill="#116834">
+      <path d="M16 2.5 C16 2.5 11.5 8.5 11.5 14 C11.5 16.8 13.5 19 16 19 C18.5 19 20.5 16.8 20.5 14 C20.5 8.5 16 2.5 16 2.5 Z" fill="#116834"/>
+      <path d="M13.2 19.5 C9.5 19.5 3.5 15.2 3.5 9 C9.5 8.5 13.8 13.2 13.8 17 C13.8 18 13.5 18.8 13.2 19.5 Z" fill="#116834"/>
+      <path d="M18.8 19.5 C22.5 19.5 28.5 15.2 28.5 9 C22.5 8.5 18.2 13.2 18.2 17 C18.2 18 18.5 18.8 18.8 19.5 Z" fill="#116834"/>
     </svg>
   `,
   documentSearch: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-      <polyline points="14 2 14 8 20 8"></polyline>
-      <circle cx="11" cy="14" r="3"></circle>
-      <line x1="13.5" y1="16.5" x2="16.5" y2="19.5"></line>
+    <svg viewBox="3 2 26 27" width="56" height="56" fill="#116834">
+      <rect x="5" y="4" width="22" height="24" rx="4.5" fill="#116834"/>
+      <line x1="9" y1="12" x2="19" y2="12" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="9" y1="16" x2="19" y2="16" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="9" y1="20" x2="16" y2="20" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="23" cy="7" r="4.2" fill="#116834" stroke="#ffffff" stroke-width="1.5"/>
+      <line x1="23" y1="4.8" x2="23" y2="9.2" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="20.8" y1="7" x2="25.2" y2="7" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
     </svg>
   `,
   leafCheck: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-      <polyline points="9 12 11 14 15 10"></polyline>
+    <svg viewBox="2 1.5 28 19" width="56" height="56" fill="#116834">
+      <path d="M16 2.5 C16 2.5 11.5 8.5 11.5 14 C11.5 16.8 13.5 19 16 19 C18.5 19 20.5 16.8 20.5 14 C20.5 8.5 16 2.5 16 2.5 Z" fill="#116834"/>
+      <path d="M13.2 19.5 C9.5 19.5 3.5 15.2 3.5 9 C9.5 8.5 13.8 13.2 13.8 17 C13.8 18 13.5 18.8 13.2 19.5 Z" fill="#116834"/>
+      <path d="M18.8 19.5 C22.5 19.5 28.5 15.2 28.5 9 C22.5 8.5 18.2 13.2 18.2 17 C18.2 18 18.5 18.8 18.8 19.5 Z" fill="#116834"/>
     </svg>
   `,
   tree: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 22V12 M12 12C12 7 8 4 8 4s-1 4 4 8z M12 12c0-5 4-8 4-8s1 4-4 8z"></path>
+    <svg viewBox="2 2 28 28" width="56" height="56" fill="#116834">
+      <path d="M14 26 C14 26 14 13 14 9 C14 5.5 17.5 3 22 2.5 C22.5 7 19.5 10.5 15.8 11 C15.8 13 15.8 17 15.8 26 Z" fill="#116834"/>
+      <path d="M14 16.5 C10.5 16.5 6.5 14 6 10 C10 9.5 13.5 12 14 15 Z" fill="#116834"/>
+      <circle cx="14" cy="24" r="2.5" fill="#116834"/>
+    </svg>
+  `,
+  entres: `
+    <svg viewBox="2 2 28 28" width="56" height="56" fill="#116834">
+      <path d="M14 26 C14 26 14 13 14 9 C14 5.5 17.5 3 22 2.5 C22.5 7 19.5 10.5 15.8 11 C15.8 13 15.8 17 15.8 26 Z" fill="#116834"/>
+      <path d="M14 16.5 C10.5 16.5 6.5 14 6 10 C10 9.5 13.5 12 14 15 Z" fill="#116834"/>
+      <circle cx="14" cy="24" r="2.5" fill="#116834"/>
     </svg>
   `,
   material: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-      <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-      <line x1="12" y1="22.08" x2="12" y2="12"></line>
+    <svg viewBox="2 1.5 28 19" width="56" height="56" fill="#116834">
+      <path d="M16 2.5 C16 2.5 11.5 8.5 11.5 14 C11.5 16.8 13.5 19 16 19 C18.5 19 20.5 16.8 20.5 14 C20.5 8.5 16 2.5 16 2.5 Z" fill="#116834"/>
+      <path d="M13.2 19.5 C9.5 19.5 3.5 15.2 3.5 9 C9.5 8.5 13.8 13.2 13.8 17 C13.8 18 13.5 18.8 13.2 19.5 Z" fill="#116834"/>
+      <path d="M18.8 19.5 C22.5 19.5 28.5 15.2 28.5 9 C22.5 8.5 18.2 13.2 18.2 17 C18.2 18 18.5 18.8 18.8 19.5 Z" fill="#116834"/>
     </svg>
   `,
   plantCare: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#116834" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 22v-9"></path>
-      <path d="M12 13a5 5 0 0 0 5-5c0-4-5-6-5-6s-5 2-5 6a5 5 0 0 0 5 5z"></path>
-      <path d="M12 13a5 5 0 0 1-5-5c0-4 5-6 5-6s5 2 5 6a5 5 0 0 1-5 5z"></path>
+    <svg viewBox="3 2 26 27" width="56" height="56" fill="#116834">
+      <rect x="5" y="4" width="22" height="24" rx="4.5" fill="#116834"/>
+      <line x1="9" y1="12" x2="19" y2="12" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="9" y1="16" x2="19" y2="16" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="9" y1="20" x2="16" y2="20" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="23" cy="7" r="4.2" fill="#116834" stroke="#ffffff" stroke-width="1.5"/>
+      <line x1="23" y1="4.8" x2="23" y2="9.2" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="20.8" y1="7" x2="25.2" y2="7" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
     </svg>
   `,
   dispatch: `
-    <svg viewBox="0 0 24 24" width="36" height="36" fill="#116834">
+    <svg viewBox="2 1.5 28 19" width="56" height="56" fill="#116834">
       <path d="M16 2.5 C16 2.5 11.5 8.5 11.5 14 C11.5 16.8 13.5 19 16 19 C18.5 19 20.5 16.8 20.5 14 C20.5 8.5 16 2.5 16 2.5 Z" fill="#116834"/>
       <path d="M13.2 19.5 C9.5 19.5 3.5 15.2 3.5 9 C9.5 8.5 13.8 13.2 13.8 17 C13.8 18 13.5 18.8 13.2 19.5 Z" fill="#116834"/>
       <path d="M18.8 19.5 C22.5 19.5 28.5 15.2 28.5 9 C22.5 8.5 18.2 13.2 18.2 17 C18.2 18 18.5 18.8 18.8 19.5 Z" fill="#116834"/>
@@ -147,15 +172,11 @@ function renderModuleGridView(app, userCtx) {
     const iconSvg = MODULE_ICONS[mod.iconName] || MODULE_ICONS.sprout;
 
     return `
-      <button class="verif-grid-card" data-module-id="${mod.id}" type="button" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 14px 6px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.04); text-align: center; gap: 6px; min-height: 98px; position: relative;">
-        <div style="display: flex; align-items: center; justify-content: center;">
-          ${iconSvg}
-        </div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #111827; line-height: 1.2;">
-          ${mod.label}
-        </div>
+      <button class="beranda-menu-card verif-grid-card" data-module-id="${mod.id}" type="button" style="position: relative;">
+        <div class="beranda-card-icon">${iconSvg}</div>
+        <div class="beranda-card-title">${mod.label}</div>
         ${modCount > 0 ? `
-          <span style="position: absolute; top: 6px; right: 6px; background: #EF4444; color: #FFFFFF; font-size: 0.62rem; font-weight: 800; min-width: 18px; height: 18px; border-radius: 999px; display: flex; align-items: center; justify-content: center; padding: 0 4px;">
+          <span style="position: absolute; top: 6px; right: 6px; background: #EF4444; color: #FFFFFF; font-size: 0.62rem; font-weight: 800; min-width: 18px; height: 18px; border-radius: 999px; display: flex; align-items: center; justify-content: center; padding: 0 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.15); z-index: 5;">
             ${modCount}
           </span>
         ` : ''}
@@ -193,9 +214,11 @@ function renderModuleGridView(app, userCtx) {
         </div>
       </header>
 
-      <!-- BODY: 10 MODULES GRID -->
-      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px;">
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+      <!-- BODY: VERIFIKASI SUMMARY CARD + 10 MODULES GRID -->
+      <main class="beranda-body" style="flex: 1; min-height: 0; overflow-y: auto; padding: 12px 10px 14px; display: flex; flex-direction: column; gap: 10px;">
+        ${renderVerifikasiSummaryCardHtml(userCtx)}
+
+        <div class="beranda-grid">
           ${moduleCards}
         </div>
 
@@ -321,11 +344,11 @@ function renderTransactionListView(app, userCtx) {
             <div style="font-size: 0.74rem; margin-top: 4px;">Transaksi dari Mantri akan muncul di sini setelah dikirim via Central Hub.</div>
           </div>
         ` : combinedList.map(item => {
-          const isVerified = item.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI;
-          const isPending = !isVerified;
+          const isVerified = item.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || item.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI;
           const docNo = item.referenceDocNo || item.docNo || item.id;
           const dateStr = item.date ? String(item.date).substring(0, 10) : activeFilterDate;
           const workerName = item.submittedByName || item.rawRecord?.mantri || item.rawRecord?.actorName || 'Mantri Bibitan';
+          const summaryText = item.normalizedData?.summary || item.summary || '';
 
           return `
             <div class="verif-tx-item" data-ref-type="${item.referenceType}" data-ref-id="${item.referenceId}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.02); gap: 10px;">
@@ -339,7 +362,12 @@ function renderTransactionListView(app, userCtx) {
                   <div style="font-size: 0.82rem; font-weight: 800; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                     ${esc(docNo)}
                   </div>
-                  <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">
+                  ${summaryText ? `
+                    <div style="font-size: 0.72rem; font-weight: 600; color: #334155; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                      ${esc(summaryText)}
+                    </div>
+                  ` : ''}
+                  <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">
                     ${esc(workerName)} &bull; ${esc(dateStr)}
                   </div>
                 </div>
@@ -403,77 +431,21 @@ function renderTransactionDetailView(app, userCtx) {
     return;
   }
 
-  const raw = selectedTxItem.rawRecord || {};
+  // Gunakan normalizedData yang sudah terlampir pada selectedTxItem (Single Source of Truth)
+  const norm = selectedTxItem.normalizedData || getVerificationDetailData(selectedTxItem.rawRecord, userCtx, selectedTxItem.referenceType);
   const currentMod = VERIFICATION_10_MODULES.find(m => m.id === selectedTxItem.moduleCategory || m.types.includes(selectedTxItem.referenceType)) || VERIFICATION_10_MODULES[0];
   const docNo = selectedTxItem.referenceDocNo || selectedTxItem.docNo || selectedTxItem.id;
-  const isVerified = selectedTxItem.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI;
+  const isVerified = selectedTxItem.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || selectedTxItem.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI;
   const dateStr = selectedTxItem.date ? String(selectedTxItem.date).substring(0, 10) : activeFilterDate;
-  const workerName = selectedTxItem.submittedByName || raw.mantri || raw.actorName || userCtx?.name || 'Mantri';
+  const workerName = selectedTxItem.submittedByName || selectedTxItem.rawRecord?.mantri || selectedTxItem.rawRecord?.actorName || userCtx?.name || 'Mantri';
 
-  // Specific Module Details
-  let detailRows = '';
-  if (selectedTxItem.referenceType === 'TOPPING' || currentMod.id === 'KEBUN_ENTRES') {
-    const stikHijau = raw.jumlahStikHijau !== undefined ? raw.jumlahStikHijau : (raw.jumlahStik || raw.jumlahPokok || raw.qty || 500);
-    const perisai = raw.jumlahPerisai !== undefined ? raw.jumlahPerisai : (raw.jumlahMata || raw.jumlahTopping || 120);
-    detailRows = `
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Jumlah Kayu</span>
-        <strong style="color: #0F172A;">${stikHijau}</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Jumlah Perisai</span>
-        <strong style="color: #0F172A;">${perisai}</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
-        <span style="color: #64748B;">Keterangan</span>
-        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
-      </div>
-    `;
-  } else if (selectedTxItem.referenceType === 'OKULASI' || currentMod.id === 'OKULASI') {
-    const mata = raw.jumlahMataOkulasi !== undefined ? raw.jumlahMataOkulasi : (raw.jumlahMata || raw.jumlah || 300);
-    const stik = raw.jumlahStik !== undefined ? raw.jumlahStik : (raw.jumlahKayu || 250);
-    detailRows = `
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Jumlah Mata Okulasi</span>
-        <strong style="color: #0F172A;">${mata}</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Jumlah Stik</span>
-        <strong style="color: #0F172A;">${stik}</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
-        <span style="color: #64748B;">Keterangan</span>
-        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
-      </div>
-    `;
-  } else if (selectedTxItem.referenceType === 'PRESENSI' || currentMod.id === 'PRESENSI') {
-    detailRows = `
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Jumlah Kehadiran</span>
-        <strong style="color: #0F172A;">${raw.totalWorkers || raw.workerCount || 1} Orang</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Status Presensi</span>
-        <strong style="color: #116834;">${raw.status || raw.type || 'HADIR'}</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
-        <span style="color: #64748B;">Keterangan</span>
-        <span style="color: #0F172A;">${esc(raw.keterangan || '-')}</span>
-      </div>
-    `;
-  } else {
-    const qty = raw.qty || raw.quantity || raw.totalDisemai || raw.totalDeder || raw.actualBibitRetainedQty || raw.volumePkk || raw.jumlah || '-';
-    detailRows = `
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Volume / Kuantitas</span>
-        <strong style="color: #0F172A;">${qty}</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
-        <span style="color: #64748B;">Keterangan</span>
-        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
-      </div>
-    `;
-  }
+  // Render Rincian Data dinamis dari normalized fields (Zero hardcoding)
+  const detailRows = (norm.fields || []).map(f => `
+    <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+      <span style="color: #64748B;">${esc(f.label)}</span>
+      <strong style="color: ${f.highlight ? '#116834' : '#0F172A'}; text-align: right;">${f.value}</strong>
+    </div>
+  `).join('');
 
   app.innerHTML = `
     <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -496,15 +468,10 @@ function renderTransactionDetailView(app, userCtx) {
         
         <!-- CARD HEADER DOKUMEN -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 44px; height: 44px; border-radius: 10px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              ${MODULE_ICONS[currentMod.iconName] || MODULE_ICONS.sprout}
-            </div>
-            <div>
-              <div style="font-size: 0.95rem; font-weight: 800; color: #111827;">${currentMod.label}</div>
-              <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 1px;">${esc(docNo)}</div>
-              <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">${esc(workerName)} &bull; ${esc(dateStr)}</div>
-            </div>
+          <div>
+            <div style="font-size: 0.95rem; font-weight: 800; color: #111827;">${esc(norm.title || currentMod.label)}</div>
+            <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 1px;">${esc(docNo)}</div>
+            <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">${esc(workerName)} &bull; ${esc(dateStr)}</div>
           </div>
           <span style="font-size: 0.65rem; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: ${isVerified ? '#DEF7EC' : '#FEF3C7'}; color: ${isVerified ? '#03543F' : '#92400E'};">
             ${isVerified ? 'Terverifikasi' : 'Menunggu'}
@@ -553,9 +520,11 @@ function renderTransactionDetailView(app, userCtx) {
         <!-- ACTION BUTTONS IF PENDING -->
         ${!isVerified ? `
           <div style="display: flex; gap: 10px; margin-top: 10px; padding-bottom: 10px;">
-            <button id="btn-tx-return" type="button" style="flex: 1; height: 42px; background: #FFFFFF; border: 1.5px solid #EF4444; color: #DC2626; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
-              Kembalikan
-            </button>
+            ${selectedTxItem.referenceType !== 'TIDAK_HADIR' ? `
+              <button id="btn-tx-return" type="button" style="flex: 1; height: 42px; background: #FFFFFF; border: 1.5px solid #EF4444; color: #DC2626; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+                Kembalikan
+              </button>
+            ` : ''}
             <button id="btn-tx-approve" type="button" style="flex: 1; height: 42px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
               Setujui
             </button>
@@ -722,7 +691,6 @@ function renderTinjauFilterView(app, userCtx) {
 function renderTinjauSummaryView(app, userCtx) {
   const summary10 = get10ModulesSummary(userCtx);
   const canSend = canSubmitFinalVerificationToServer(userCtx);
-  const allVerified = summary10.every(m => m.pendingCount === 0);
 
   const moduleRows = summary10.map(mod => {
     const iconSvg = MODULE_ICONS[VERIFICATION_10_MODULES.find(m => m.id === mod.id)?.iconName] || MODULE_ICONS.sprout;
@@ -864,43 +832,20 @@ function renderTinjauDetailView(app, userCtx) {
     return;
   }
 
-  const raw = selectedTxItem.rawRecord || {};
+  // Gunakan normalizedData yang sudah terlampir pada selectedTxItem (Single Source of Truth)
+  const norm = selectedTxItem.normalizedData || getVerificationDetailData(selectedTxItem.rawRecord, userCtx, selectedTxItem.referenceType);
   const currentMod = VERIFICATION_10_MODULES.find(m => m.id === selectedTxItem.moduleCategory || m.types.includes(selectedTxItem.referenceType)) || VERIFICATION_10_MODULES[0];
   const docNo = selectedTxItem.referenceDocNo || selectedTxItem.docNo || selectedTxItem.id;
   const dateStr = selectedTxItem.date ? String(selectedTxItem.date).substring(0, 10) : tinjauFilter.date;
-  const workerName = selectedTxItem.submittedByName || raw.mantri || raw.actorName || userCtx?.name || 'Wagiman';
+  const workerName = selectedTxItem.submittedByName || selectedTxItem.rawRecord?.mantri || selectedTxItem.rawRecord?.actorName || userCtx?.name || 'Mantri';
 
-  let detailRows = '';
-  if (selectedTxItem.referenceType === 'TOPPING' || currentMod.id === 'KEBUN_ENTRES') {
-    const stikHijau = raw.jumlahStikHijau !== undefined ? raw.jumlahStikHijau : (raw.jumlahStik || raw.jumlahPokok || raw.qty || 500);
-    const perisai = raw.jumlahPerisai !== undefined ? raw.jumlahPerisai : (raw.jumlahMata || raw.jumlahTopping || 120);
-    detailRows = `
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Jumlah Kayu</span>
-        <strong style="color: #0F172A;">${stikHijau}</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Jumlah Perisai</span>
-        <strong style="color: #0F172A;">${perisai}</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
-        <span style="color: #64748B;">Keterangan</span>
-        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
-      </div>
-    `;
-  } else {
-    const qty = raw.qty || raw.quantity || raw.totalDisemai || raw.totalDeder || raw.actualBibitRetainedQty || raw.volumePkk || raw.jumlah || '-';
-    detailRows = `
-      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
-        <span style="color: #64748B;">Volume / Kuantitas</span>
-        <strong style="color: #0F172A;">${qty}</strong>
-      </div>
-      <div style="display: flex; justify-content: space-between; padding: 6px 0;">
-        <span style="color: #64748B;">Keterangan</span>
-        <span style="color: #0F172A;">${esc(raw.keterangan || raw.notes || '-')}</span>
-      </div>
-    `;
-  }
+  // Render Rincian Data dinamis dari normalized fields (Zero hardcoding)
+  const detailRows = (norm.fields || []).map(f => `
+    <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9;">
+      <span style="color: #64748B;">${esc(f.label)}</span>
+      <strong style="color: ${f.highlight ? '#116834' : '#0F172A'}; text-align: right;">${f.value}</strong>
+    </div>
+  `).join('');
 
   app.innerHTML = `
     <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -923,15 +868,10 @@ function renderTinjauDetailView(app, userCtx) {
         
         <!-- CARD HEADER DOKUMEN -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 44px; height: 44px; border-radius: 10px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              ${MODULE_ICONS[currentMod.iconName] || MODULE_ICONS.sprout}
-            </div>
-            <div>
-              <div style="font-size: 0.95rem; font-weight: 800; color: #111827;">${currentMod.label}</div>
-              <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 1px;">${esc(docNo)}</div>
-              <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">${esc(workerName)} &bull; ${esc(dateStr)}</div>
-            </div>
+          <div>
+            <div style="font-size: 0.95rem; font-weight: 800; color: #111827;">${esc(norm.title || currentMod.label)}</div>
+            <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 1px;">${esc(docNo)}</div>
+            <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">${esc(workerName)} &bull; ${esc(dateStr)}</div>
           </div>
           <span style="font-size: 0.65rem; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: #DEF7EC; color: #03543F;">
             Terverifikasi

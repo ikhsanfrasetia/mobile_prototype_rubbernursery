@@ -23,6 +23,7 @@ import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { todayISO } from '../../core/utils.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { attendanceRepository } from '../../db/repositories.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 import { getCfnaByCode, getCfnaByName, getCfnaActivityMappings, getActiveCfnaMaster, getAllCfnaMaster, MAPPING_STATUS, CFNA_STATUS } from '../../data/cfna-master.js';
 import {
   getWorkersForUserContext,
@@ -1005,6 +1006,13 @@ export async function renderNurseryActivityForm() {
 
   // Event Listener: Tombol Simpan
   app.querySelector('#btn-simpan-hasil')?.addEventListener('click', () => {
+    try {
+      assertAttendanceGateOrThrow();
+    } catch (err) {
+      toast(err.message || 'Presensi harian diperlukan sebelum membuat transaksi.', 'error');
+      return;
+    }
+
     // Safety Guard: Block submit jika belum ada pekerja yang presensi
     if (!hasPresentWorkers || activeWorkers.length === 0) {
       toast('Belum ada pekerja yang melakukan presensi hari ini.', 'error');

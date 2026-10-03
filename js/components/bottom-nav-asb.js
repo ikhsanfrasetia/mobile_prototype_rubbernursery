@@ -8,6 +8,12 @@
  */
 
 import { navigate } from '../core/router.js';
+import { storage } from '../core/storage.js';
+import { session } from '../core/session.js';
+import { getCurrentUserContext, resolveUserContext } from '../core/user-context.js';
+import { getVerifikasiSummary, getPemeriksaanSummary } from '../modules/verification/asb-summary-cards.js';
+import { hasActionablePermintaan, hasActionablePenerimaan } from '../modules/dashboard/beranda.js';
+import { getActionableDispatchCount } from '../modules/dispatch/dispatch-landing.js';
 
 export const ASB_NAV_ITEMS = Object.freeze([
   {
@@ -57,10 +63,72 @@ export const ASB_NAV_ITEMS = Object.freeze([
 ]);
 
 /**
+ * Menghitung status notifikasi (red dot) untuk masing-masing item Bottom Navigation ASB
+ * @param {Object} [userCtx]
+ * @returns {{ beranda: boolean, pemeriksaan: boolean, verifikasi: boolean, laporan: false }}
+ */
+export function getAsbBottomNavNotificationState(userCtx = null) {
+  const currentUser = session.getUser ? session.getUser() : (session.get ? session.get() : null);
+  const ctx = userCtx || getCurrentUserContext() || resolveUserContext(currentUser);
+  if (!ctx) {
+    return {
+      beranda: false,
+      pemeriksaan: false,
+      verifikasi: false,
+      laporan: false
+    };
+  }
+
+  // 1. Beranda: Actionable permintaan, penerimaan, atau pengeluaran
+  let beranda = false;
+  try {
+    const allRequests = storage.get('requests_transactions', []);
+    const allReceipts = storage.get('receipt_ksp_transactions', []);
+    const hasReq = hasActionablePermintaan(allRequests, ctx);
+    const hasRec = hasActionablePenerimaan(allReceipts, allRequests, ctx);
+    const hasDisp = getActionableDispatchCount(allRequests, ctx) > 0;
+    beranda = Boolean(hasReq || hasRec || hasDisp);
+  } catch (e) {
+    console.warn('[bottom-nav-asb] Gagal menghitung notifikasi Beranda:', e);
+  }
+
+  // 2. Pemeriksaan: Single source of truth getPemeriksaanSummary(ctx).pendingCount > 0
+  let pemeriksaan = false;
+  try {
+    const inspSummary = getPemeriksaanSummary(ctx);
+    pemeriksaan = Boolean(inspSummary && inspSummary.pendingCount > 0);
+  } catch (e) {
+    console.warn('[bottom-nav-asb] Gagal menghitung notifikasi Pemeriksaan:', e);
+  }
+
+  // 3. Verifikasi: Single source of truth getVerifikasiSummary(ctx).pendingCount > 0
+  let verifikasi = false;
+  try {
+    const verifSummary = getVerifikasiSummary(ctx);
+    verifikasi = Boolean(verifSummary && verifSummary.pendingCount > 0);
+  } catch (e) {
+    console.warn('[bottom-nav-asb] Gagal menghitung notifikasi Verifikasi:', e);
+  }
+
+  // 4. Laporan: Selalu false
+  const laporan = false;
+
+  return {
+    beranda,
+    pemeriksaan,
+    verifikasi,
+    laporan
+  };
+}
+
+/**
  * Render HTML string untuk bottom navigation bar ASB
  * @param {'beranda'|'pemeriksaan'|'verifikasi'|'laporan'} activeId
+ * @param {Object} [userCtx]
  */
-export function renderAsbBottomNav(activeId = 'beranda') {
+export function renderAsbBottomNav(activeId = 'beranda', userCtx = null) {
+  const notifState = getAsbBottomNavNotificationState(userCtx);
+
   return `
     <footer class="asb-bottom-nav" style="display: flex; align-items: center; justify-content: space-around; height: 58px; background: #FFFFFF; border-top: 1px solid #E5E7EB; flex-shrink: 0; padding: 0 4px; box-shadow: 0 -2px 6px rgba(0,0,0,0.03); z-index: 50; position: relative;">
       ${ASB_NAV_ITEMS.map((item) => {
@@ -68,10 +136,13 @@ export function renderAsbBottomNav(activeId = 'beranda') {
         const color = isActive ? '#116834' : '#9CA3AF';
         const fontWeight = isActive ? '800' : '600';
         const bgPill = isActive ? '#E8F5E9' : 'transparent';
+        const hasDot = Boolean(notifState[item.id]);
+
         return `
           <button class="asb-bottom-nav-btn ${isActive ? 'is-active' : ''}" data-nav-id="${item.id}" data-nav-route="${item.route}" type="button" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent; border: none; padding: 4px 12px; border-radius: 8px; cursor: pointer; color: ${color}; gap: 2px; flex: 1; height: 100%; transition: all 0.15s ease;">
-            <div style="display: flex; align-items: center; justify-content: center; width: 34px; height: 26px; border-radius: 12px; background: ${bgPill};">
+            <div style="display: flex; align-items: center; justify-content: center; width: 34px; height: 26px; border-radius: 12px; background: ${bgPill}; position: relative;">
               ${item.icon}
+              ${hasDot ? `<span class="notif-dot asb-nav-dot" style="position: absolute; top: 1px; right: 3px; width: 7px; height: 7px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 1.5px #FFFFFF; pointer-events: none; z-index: 5;"></span>` : ''}
             </div>
             <span style="font-size: 0.68rem; font-weight: ${fontWeight}; letter-spacing: -0.01em; color: ${color};">${item.label}</span>
           </button>

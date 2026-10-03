@@ -308,14 +308,15 @@ console.log('\nTEST SUITE 4: VERIFIKASI DATA');
     divisionId: 'DIV-01'
   };
 
-  // Seed sample requests in storage
-  storage.set('requests_transactions', [
+  // Seed sample operational transaction in storage
+  storage.set('seeding_transactions', [
     {
-      id: 'REQ-VERIF-01',
-      docNo: 'REQ-01',
+      id: 'SEED-VERIF-01',
+      docNo: 'SEED-01',
       estateId: 'EST-TBS',
       divisionId: 'DIV-01',
-      status: 'SUBMITTED'
+      status: 'SUBMITTED',
+      tanggal: new Date().toISOString().split('T')[0]
     }
   ]);
 
@@ -328,8 +329,8 @@ console.log('\nTEST SUITE 4: VERIFIKASI DATA');
   // Set as verified
   storage.set('verification_transactions', [
     {
-      referenceType: 'REQUEST',
-      referenceId: 'REQ-VERIF-01',
+      referenceType: 'SEEDING',
+      referenceId: 'SEED-VERIF-01',
       verificationStatus: 'TERVERIFIKASI',
       createdAt: new Date().toISOString()
     }

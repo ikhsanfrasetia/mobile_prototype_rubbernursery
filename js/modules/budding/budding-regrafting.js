@@ -5,6 +5,7 @@ import { formatBedenganCode } from './budding-grafting.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
+import { renderStatusDots } from '../../core/status-dot-renderer.js';
 
 export function renderBuddingRegrafting() {
   const app = document.getElementById('app');
@@ -138,24 +139,17 @@ export function renderBuddingRegrafting() {
 
     // Status badge
     let statusBadgeText = 'Perlu Okulasi Ulang';
-    let statusBadgeBg = '#E53935';
-    let statusBadgeColor = '#FFFFFF';
-    let statusBadgeBorder = 'none';
+    let statusFlagKey = 'REGRAFT_PERLU';
 
     if (totalRealisasi === 0) {
       statusBadgeText = 'Perlu Okulasi Ulang';
-      statusBadgeBg = '#E53935';
-      statusBadgeColor = '#FFFFFF';
+      statusFlagKey = 'REGRAFT_PERLU';
     } else if (sisaBelumRegraft <= 0) {
       statusBadgeText = 'Selesai Regrafting';
-      statusBadgeBg = '#E8F5E9';
-      statusBadgeColor = '#116834';
-      statusBadgeBorder = '1px solid #116834';
+      statusFlagKey = 'REGRAFT_SELESAI';
     } else {
       statusBadgeText = `Sisa ${sisaBelumRegraft} Pkk`;
-      statusBadgeBg = '#FFF8E1';
-      statusBadgeColor = '#F57F17';
-      statusBadgeBorder = '1px solid #FFE082';
+      statusFlagKey = 'REGRAFT_PROGRESS';
     }
 
     return {
@@ -171,10 +165,8 @@ export function renderBuddingRegrafting() {
       totalRealisasi,
       sisaBelumRegraft,
       persenSelesai,
-      statusBadgeText,
-      statusBadgeBg,
-      statusBadgeColor,
-      statusBadgeBorder
+      statusFlagKey,
+      statusBadgeText
     };
   });
 
@@ -218,20 +210,18 @@ export function renderBuddingRegrafting() {
         ${processedRegraftPool.length > 0 ? `
           <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
             ${processedRegraftPool.map((item) => {
-              const { poolItem, originalIndex, batchNo, docNo, populasiGagal, relatedRegrafts, ttlRegrafted, ttlDitolak, ttlKayu, totalRealisasi, sisaBelumRegraft, persenSelesai, statusBadgeText, statusBadgeBg, statusBadgeColor, statusBadgeBorder } = item;
+              const { poolItem, originalIndex, batchNo, docNo, populasiGagal, relatedRegrafts, ttlRegrafted, ttlDitolak, ttlKayu, totalRealisasi, sisaBelumRegraft, persenSelesai, statusFlagKey, statusBadgeText } = item;
               const idx = originalIndex;
 
               return `
                 <div class="card-regraft-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
                   
                   <!-- CARD HEADER: NOMOR BATCH & BADGE STATUS -->
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px;">
+                  <div style="display: flex; align-items: center; margin-bottom: 4px; gap: 6px;">
+                    ${renderStatusDots([{ key: statusFlagKey, label: statusBadgeText }])}
                     <div style="font-size: 0.95rem; font-weight: 800; color: #116834; white-space: nowrap; letter-spacing: -0.01em;">
                       ${batchNo}
                     </div>
-                    <span style="background: ${statusBadgeBg}; color: ${statusBadgeColor}; font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; border: ${statusBadgeBorder}; flex-shrink: 0;">
-                      ${statusBadgeText}
-                    </span>
                   </div>
 
                   <!-- CARD INFO: DOKUMEN & ASAL -->

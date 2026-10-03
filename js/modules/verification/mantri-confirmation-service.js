@@ -13,8 +13,14 @@ import { storage } from '../../core/storage.js';
 import { todayISO, todayDDMMYYYY } from '../../core/utils.js';
 import { getCurrentUserContext, resolveUserContext, ROLES } from '../../core/user-context.js';
 import { VERIFICATION_STORAGE_KEY, VERIFICATION_STATUS } from './verification-manager.js';
-import { submitPreGraftingSelectionDocumentToAsisten } from '../selection/selection-manager.js';
+import { 
+  submitPreGraftingSelectionDocumentToAsisten,
+  getSeleksi1ExecutionsByDocument,
+  getSeleksi2ExecutionsByDocument,
+  getSeleksi3ExecutionsByDocument
+} from '../selection/selection-manager.js';
 import { getWorkersForUserContext } from '../../data/worker-master.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 export const MANTRI_TRANSACTION_STATUS = Object.freeze({
   READY_TO_CONFIRM: 'READY_TO_CONFIRM',
@@ -159,6 +165,81 @@ function extractBusinessDate(item) {
 }
 
 /**
+ * Helper: Menghitung batas waktu submission (submission deadline) untuk tanggal bisnis tertentu.
+ * Rule Global:
+ * Untuk transaction business date D (format DD/MM/YYYY, ISO, atau Date):
+ * Allowed window: D 00:00:00 s.d. D+1 12:00:00 (inklusif).
+ * Expired: > D+1 12:00:00.
+ *
+ * @param {string|Date} rawBusinessDate - Tanggal bisnis transaksi
+ * @returns {Date|null} Date object batas akhir cutoff D+1 12:00:00.000
+ */
+export function calculateSubmissionDeadline(rawBusinessDate) {
+  const norm = normalizeDateStr(rawBusinessDate);
+  if (!norm) return null;
+  const parts = norm.split('/').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+  const [day, month, year] = parts;
+  return new Date(year, month - 1, day + 1, 12, 0, 0, 0);
+}
+
+/**
+ * Single Source of Truth: Menghitung window informasi dan status kelayakan submission.
+ * Mengembalikan derived state tanpa mengubah persistensi status di storage.
+ *
+ * @param {object|string} transactionOrDate - Record transaksi atau string tanggal bisnis
+ * @param {Date|string|number} [currentTime=null] - Waktu saat ini (opsional, default new Date())
+ * @returns {object} { businessDate, submissionDeadline, submissionDeadlineDate, isSubmissionExpired, canSubmit, submissionWindowStatus }
+ */
+export function getSubmissionWindowInfo(transactionOrDate, currentTime = null) {
+  let bDate = '';
+  let lifecycleStatus = MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM;
+
+  if (transactionOrDate && typeof transactionOrDate === 'object') {
+    bDate = extractBusinessDate(transactionOrDate) || transactionOrDate.date || '';
+    lifecycleStatus = transactionOrDate.status || MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM;
+  } else if (typeof transactionOrDate === 'string') {
+    bDate = transactionOrDate;
+  }
+
+  const normBDate = normalizeDateStr(bDate);
+  const deadline = calculateSubmissionDeadline(normBDate);
+  const now = currentTime instanceof Date
+    ? currentTime
+    : (currentTime ? new Date(currentTime) : new Date());
+
+  // Boundary exact: > D+1 12:00:00.000 adalah EXPIRED
+  const isExpired = deadline ? (now.getTime() > deadline.getTime()) : false;
+  const submissionWindowStatus = isExpired ? 'EXPIRED' : 'OPEN';
+
+  // canSubmit hanya true jika:
+  // 1. Belum expired (submissionWindowStatus === 'OPEN')
+  // 2. Status lifecycle masih memerlukan konfirmasi (READY_TO_CONFIRM atau REVISION)
+  const isPendingSubmission = (
+    lifecycleStatus === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM ||
+    lifecycleStatus === MANTRI_TRANSACTION_STATUS.REVISION
+  );
+  const canSubmit = !isExpired && isPendingSubmission;
+
+  return {
+    businessDate: normBDate,
+    submissionDeadline: deadline ? deadline.toISOString() : null,
+    submissionDeadlineDate: deadline,
+    isSubmissionExpired: isExpired,
+    canSubmit,
+    submissionWindowStatus
+  };
+}
+
+export function isSubmissionExpired(transactionOrDate, currentTime = null) {
+  return getSubmissionWindowInfo(transactionOrDate, currentTime).isSubmissionExpired;
+}
+
+export function canSubmitTransaction(transaction, currentTime = null) {
+  return getSubmissionWindowInfo(transaction, currentTime).canSubmit;
+}
+
+/**
  * Helper: Cek apakah item milik logged-in Mantri berdasarkan identity adapter
  */
 function matchActor(item, userCtx) {
@@ -292,11 +373,15 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
   const itemId = String(item.id || item.docNo || '');
   const itemDocNo = String(item.docNo || item.id || '');
 
-  // 1. Cek dari verification_transactions
-  const verifRecord = verifMap.get(itemId) || verifMap.get(itemDocNo);
+  // 1. Cek dari verification_transactions dengan composite key (moduleType:id) atau direct id
+  const modKey = String(moduleType || '').toUpperCase();
+  const verifRecord = (modKey ? (verifMap.get(`${modKey}:${itemId}`) || verifMap.get(`${modKey}:${itemDocNo}`)) : null) ||
+    verifMap.get(itemId) ||
+    verifMap.get(itemDocNo);
+
   if (verifRecord) {
     const vStat = (verifRecord.verificationStatus || '').toUpperCase();
-    if (vStat === VERIFICATION_STATUS.TERVERIFIKASI || vStat === 'VERIFIED' || vStat === 'APPROVED') {
+    if (vStat === VERIFICATION_STATUS.TERVERIFIKASI || vStat === 'VERIFIED' || vStat === 'APPROVED' || vStat === 'DISETUJUI') {
       return {
         status: MANTRI_TRANSACTION_STATUS.VERIFIED,
         verificationStatus: VERIFICATION_STATUS.TERVERIFIKASI,
@@ -319,8 +404,15 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
     }
   }
 
-  // 2. Cek dari internal status item itu sendiri
-  const rawStat = (item.status || item.verificationStatus || item.submissionStatus || '').toUpperCase();
+  // 2. Cek dari internal status item itu sendiri (dengan support materialSubmissionStatus untuk SOW Material)
+  const isMaterialModule = modKey === 'MATERIAL';
+  const rawStat = (
+    (isMaterialModule && item.materialSubmissionStatus ? item.materialSubmissionStatus : null) ||
+    item.status ||
+    item.verificationStatus ||
+    item.submissionStatus ||
+    ''
+  ).toUpperCase();
   const isFinal = Boolean(item.isFinal);
 
   if (rawStat === 'DISETUJUI' || rawStat === 'VERIFIED' || rawStat === 'APPROVED' || (rawStat === 'DISETUJUI' && isFinal)) {
@@ -344,7 +436,8 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
     rawStat === 'DIAJUKAN' ||
     rawStat === 'DIAJUKAN_PEMERIKSAAN' ||
     rawStat === 'SUBMITTED_TO_ASB' ||
-    rawStat === 'PENDING_ASB'
+    rawStat === 'PENDING_ASB' ||
+    rawStat === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN'
   ) {
     return {
       status: MANTRI_TRANSACTION_STATUS.SUBMITTED_TO_ASB,
@@ -363,7 +456,7 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
 /**
  * Service Utama: Mengambil daftar seluruh transaksi Mantri login hari ini dalam bentuk ternormalisasi
  */
-export function getMantriTodayTransactions(userContext = null, targetDate = null) {
+export function getMantriTodayTransactions(userContext = null, targetDate = null, currentTime = null) {
   const user = userContext || getCurrentUserContext() || resolveUserContext();
   const todayStr = targetDate ? normalizeDateStr(targetDate) : todayDDMMYYYY();
 
@@ -371,64 +464,104 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
   const allVerifications = storage.get(VERIFICATION_STORAGE_KEY, []);
   const verifMap = new Map();
   allVerifications.forEach(v => {
-    if (v.referenceId) verifMap.set(String(v.referenceId), v);
-    if (v.referenceDocNo) verifMap.set(String(v.referenceDocNo), v);
+    const type = (v.referenceType || v.moduleType || '').toUpperCase();
+    if (v.referenceId) {
+      verifMap.set(String(v.referenceId), v);
+      if (type) verifMap.set(`${type}:${String(v.referenceId)}`, v);
+    }
+    if (v.referenceDocNo) {
+      verifMap.set(String(v.referenceDocNo), v);
+      if (type) verifMap.set(`${type}:${String(v.referenceDocNo)}`, v);
+    }
   });
 
   const normalizedList = [];
 
   // 1. Tidak Hadir (Exception Workflow)
-  // Normal presensi sengaja tidak dimasukkan ke Central Hub sesuai PRS-AUD-001
-  const allWorkers = getWorkersForUserContext(user, { activeOnly: false });
-  const absentWorkers = allWorkers.filter(w => w.status !== 'ACTIVE' || w.active === false || !!w.absentType);
+  // Normal presensi sengaja tidak dimasukkan ke Central Hub sesuai PRS-AUD-001.
+  // PRE-CONDITION: Hanya dievaluasi jika Mantri sudah melakukan "Simpan Presensi Datang" hari ini.
+  const storedAtts = storage.get('attendance_transactions', []);
+  const todayWorkerAtts = storedAtts.filter(a => {
+    if (a.type !== 'WORKER' && a.attendanceType !== 'DATANG') return false;
+    if (a.attendanceType && a.attendanceType !== 'DATANG') return false;
 
-  if (absentWorkers.length > 0) {
-    const docNo = `ABSEN-${todayStr.replace(/\//g, '')}`;
-    const virtualItem = {
-      id: docNo,
-      docNo,
-      date: todayStr,
-      type: 'TIDAK_HADIR',
-      status: 'READY_TO_CONFIRM', // default sebelum konfirmasi
-      submittedByUserId: user?.id || user?.userId,
-      submittedByName: user?.name || 'Mantri Bibitan',
-      estateId: user?.estateId,
-      divisionId: user?.divisionId,
-      detailPekerja: absentWorkers.map(w => ({
-        workerId: w.id,
-        name: w.name,
-        code: w.code,
-        absentType: w.absentType || 'C'
-      }))
-    };
+    const bDate = extractBusinessDate(a);
+    if (bDate !== todayStr) return false;
 
-    const stat = resolveTransactionStatus(virtualItem, MODULE_TYPES.TIDAK_HADIR, verifMap);
-    const summary = `${absentWorkers.length} Pekerja Tidak Hadir`;
-    const infoText = absentWorkers.map(w => w.name || w.code).join(', ');
+    // Match Mantri / User Scope
+    const mantriIds = [user?.id, user?.userId].filter(Boolean).map(String);
+    const isOwner = [a.createdByUserId, a.userId, a.supervisorId].filter(Boolean).some(id => mantriIds.includes(String(id)));
+    if (!isOwner && mantriIds.length > 0) return false;
 
-    normalizedList.push({
-      id: docNo,
-      docNo,
-      moduleType: MODULE_TYPES.TIDAK_HADIR,
-      moduleLabel: MODULE_LABELS[MODULE_TYPES.TIDAK_HADIR],
-      date: todayStr,
-      actor: user?.name || 'Mantri Bibitan',
-      summary,
-      status: stat.status,
-      verificationStatus: stat.verificationStatus,
-      rawRecord: virtualItem,
-      storageKey: 'virtual_tidak_hadir',
-      display: {
-        title: 'Tidak Hadir',
-        info: infoText || '-',
-        mainQty: `${absentWorkers.length} Pekerja Tidak Hadir`,
-        unit: 'Orang',
-        fields: [
-          { label: 'Total Tidak Hadir', value: `${absentWorkers.length} Orang`, highlight: true },
-          { label: 'Rincian Pekerja', value: absentWorkers.map(w => `${w.name || '-'} (${w.code || '-'}) · Izin: ${w.absentType || 'C'}`).join('<br>') }
-        ]
-      }
+    if (user?.estateId && a.estateId && a.estateId !== user.estateId) return false;
+    if (user?.divisionId && a.divisionId && a.divisionId !== user.divisionId) return false;
+
+    return true;
+  });
+
+  // Jika belum ada Presensi Datang yang tersimpan hari ini, Tidak Hadir = 0 (jangan buat item)
+  if (todayWorkerAtts.length > 0) {
+    const activePool = getWorkersForUserContext(user, { activeOnly: true });
+    const presentWorkerKeys = new Set();
+    todayWorkerAtts.forEach(a => {
+      if (a.workerId) presentWorkerKeys.add(String(a.workerId));
+      if (a.code) presentWorkerKeys.add(String(a.code));
+      if (a.workerCode) presentWorkerKeys.add(String(a.workerCode));
     });
+
+    const absentWorkers = activePool.filter(w =>
+      !presentWorkerKeys.has(String(w.id)) &&
+      !presentWorkerKeys.has(String(w.code))
+    );
+
+    if (absentWorkers.length > 0) {
+      const docNo = `ABSEN-${todayStr.replace(/\//g, '')}`;
+      const virtualItem = {
+        id: docNo,
+        docNo,
+        date: todayStr,
+        type: 'TIDAK_HADIR',
+        status: 'READY_TO_CONFIRM', // default sebelum konfirmasi
+        submittedByUserId: user?.id || user?.userId,
+        submittedByName: user?.name || 'Mantri Bibitan',
+        estateId: user?.estateId,
+        divisionId: user?.divisionId,
+        detailPekerja: absentWorkers.map(w => ({
+          workerId: w.id,
+          name: w.name,
+          code: w.code,
+          absentType: w.absentType || 'C'
+        }))
+      };
+
+      const stat = resolveTransactionStatus(virtualItem, MODULE_TYPES.TIDAK_HADIR, verifMap);
+      const summary = `${absentWorkers.length} Pekerja Tidak Hadir`;
+      const infoText = absentWorkers.map(w => w.name || w.code).join(', ');
+
+      normalizedList.push({
+        id: docNo,
+        docNo,
+        moduleType: MODULE_TYPES.TIDAK_HADIR,
+        moduleLabel: MODULE_LABELS[MODULE_TYPES.TIDAK_HADIR],
+        date: todayStr,
+        actor: user?.name || 'Mantri Bibitan',
+        summary,
+        status: stat.status,
+        verificationStatus: stat.verificationStatus,
+        rawRecord: virtualItem,
+        storageKey: 'virtual_tidak_hadir',
+        display: {
+          title: 'Tidak Hadir',
+          info: infoText || '-',
+          mainQty: `${absentWorkers.length} Pekerja Tidak Hadir`,
+          unit: 'Orang',
+          fields: [
+            { label: 'Total Tidak Hadir', value: `${absentWorkers.length} Orang`, highlight: true },
+            { label: 'Rincian Pekerja', value: absentWorkers.map(w => `${w.name || '-'} (${w.code || '-'}) · Izin: ${w.absentType || 'C'}`).join('<br>') }
+          ]
+        }
+      });
+    }
   }
 
 
@@ -445,10 +578,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenReceiptIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.PENERIMAAN, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.PENERIMAAN, verifMap);
     const docNo = item.docNo || item.receiptDocNo || item.id || `RCV-${id}`;
     const actor = item.penerima || item.actorName || item.createdByName || user?.name || 'Mantri Bibitan';
     const rawQty = item.qty !== undefined ? item.qty : (item.quantity !== undefined ? item.quantity : (item.receivedQty !== undefined ? item.receivedQty : (item.acceptedQty !== undefined ? item.acceptedQty : '-')));
@@ -497,10 +632,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenSeedingIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.PENYEMAIAN, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.PENYEMAIAN, verifMap);
     const docNo = item.docNo || item.nomorDokumen || item.id || `SEED-${id}`;
     const actor = item.mantri || item.actorName || item.createdByName || user?.name || 'Mantri Bibitan';
     const qty = item.totalDisemai !== undefined ? item.totalDisemai : (item.qty || 0);
@@ -547,10 +684,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenDederIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.DEDERAN, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.DEDERAN, verifMap);
     const docNo = item.docNo || item.id || `DED-${id}`;
     const actor = item.mantri || item.actorName || item.recordedBy || user?.name || 'Mantri Bibitan';
     const qty = item.jumlahDeder !== undefined ? item.jumlahDeder : (item.totalDeder || item.qty || 0);
@@ -597,10 +736,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenMenunasIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.KEBUN_ENTRES, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.KEBUN_ENTRES, verifMap);
     const docNo = item.docNo || item.id || `TUNAS-${id}`;
     const actor = item.mantri || item.actorName || item.mandor || user?.name || 'Mantri Bibitan';
     const qty = item.jumlahPohonDitunas !== undefined ? item.jumlahPohonDitunas : (item.jumlahPokok || item.jumlahTunas || item.qty || 0);
@@ -650,10 +791,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenToppingIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.KEBUN_ENTRES, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.KEBUN_ENTRES, verifMap);
     const docNo = item.docNo || item.id || `TOP-${id}`;
     const actor = item.mantri || item.actorName || item.mandor || user?.name || 'Mantri Bibitan';
     const stik = item.jumlahKayu !== undefined ? item.jumlahKayu : (item.jumlahStik || 0);
@@ -703,10 +846,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenBuddingIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.OKULASI, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.OKULASI, verifMap);
     const docNo = item.docNo || item.nomorDokumen || item.id || `OKL-${id}`;
     const actor = item.mantri || item.actorName || item.okulator || user?.name || 'Mantri Bibitan';
     const qty = item.jumlah !== undefined ? item.jumlah : (item.qty || 0);
@@ -753,10 +898,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenInspIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.PEMERIKSAAN, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.PEMERIKSAAN, verifMap);
     const docNo = item.docNo || item.id || `INSP-${id}`;
     const actor = item.mantri || item.actorName || item.inspektur || user?.name || 'Mantri Bibitan';
     const checked = Number(item.totalDiperiksa !== undefined ? item.totalDiperiksa : (item.qty || 0));
@@ -809,10 +956,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenDederInspIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.PEMERIKSAAN_DEDERAN, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.PEMERIKSAAN_DEDERAN, verifMap);
     const docNo = item.docNo || item.id || `DINSP-${id}`;
     const actor = item.mantri || item.actorName || item.inspektur || item.inspectorName || user?.name || 'Mantri Bibitan';
     const diperiksa = item.jumlahDiperiksa !== undefined ? item.jumlahDiperiksa : (item.totalDiperiksa || item.jumlahDeder || 0);
@@ -863,10 +1012,41 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenPreGraftIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.SELEKSI_PRA_OKULASI, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.SELEKSI_PRA_OKULASI, verifMap);
+    // 1. UNIVERSAL EXECUTION GATE:
+    // Seluruh dokumen Seleksi Pra-Okulasi I-III (apapun status lifecyclenya: READY_TO_CONFIRM,
+    // SUBMITTED_TO_ASB, REVISION, maupun VERIFIED) WAJIB memiliki minimal 1 child execution transaction yang valid.
+    const stageNorm = String(item.selectionStage || item.stage || '').trim().toUpperCase();
+    const isStage3 = stageNorm === 'SELEKSI_III' || stageNorm === 'SELEKSI_3';
+    const isStage2 = stageNorm === 'SELEKSI_II' || stageNorm === 'SELEKSI_2';
+    const childTxs = isStage3
+      ? getSeleksi3ExecutionsByDocument(item.id || item.docNo)
+      : (isStage2
+          ? getSeleksi2ExecutionsByDocument(item.id || item.docNo)
+          : getSeleksi1ExecutionsByDocument(item.id || item.docNo));
+
+    const hasValidExecutions = Array.isArray(childTxs) && childTxs.length >= 1;
+    if (!hasValidExecutions) {
+      return;
+    }
+
+    // 2. READINESS GATE (Khusus status READY_TO_CONFIRM):
+    // Dokumen baru hanya boleh masuk Central Hub sebagai READY_TO_CONFIRM jika
+    // benar-benar sudah dinyatakan selesai (isCompleted === true AND status === 'COMPLETED').
+    // Status non-READY_TO_CONFIRM (SUBMITTED_TO_ASB, REVISION, VERIFIED) tetap mengikuti flow existing.
+    if (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM) {
+      const isCompleted = item.isCompleted === true;
+      const isCompletedStatus = String(item.status || '').trim().toUpperCase() === 'COMPLETED';
+      if (!isCompleted || !isCompletedStatus) {
+        return;
+      }
+    }
+
     const docNo = item.docNo || item.selectionDocNo || item.id || `PRE-${id}`;
     const actor = item.submittedByName || item.createdByName || item.mantri || user?.name || 'Mantri Bibitan';
     const stage = item.selectionStage || 'Seleksi I';
@@ -918,10 +1098,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenSelectionIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.PENYELEKSIAN, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.PENYELEKSIAN, verifMap);
     const docNo = item.docNo || item.selectionNo || item.id || `SEL-${id}`;
     const actor = item.mantri || item.createdByName || item.actorName || user?.name || 'Mantri Bibitan';
     const layak = item.actualBibitRetainedQty !== undefined ? item.actualBibitRetainedQty : (item.bibitDipertahankan !== undefined ? item.bibitDipertahankan : (item.jumlahLayak || 0));
@@ -972,10 +1154,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenActivityIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.PEMELIHARAAN, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.PEMELIHARAAN, verifMap);
     const docNo = item.docNo || item.id || `ACT-${id}`;
     const actor = item.mantri || item.actorName || item.mandor || user?.name || 'Mantri Bibitan';
     const actName = item.aktivitas?.nama || item.activityType || 'Pemeliharaan';
@@ -1019,10 +1203,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenDispatchIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.PENGELUARAN, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.PENGELUARAN, verifMap);
     const docNo = item.docNo || item.dispatchNo || item.id || `DSP-${id}`;
     const actor = item.mantri || item.dispatcher || item.actorName || item.issuedByName || user?.name || 'Mantri Bibitan';
     const qty = item.issuedQty !== undefined ? item.issuedQty : (item.qtyDispatched || item.quantity || item.qty || item.totalBatang || 0);
@@ -1058,22 +1244,99 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     });
   });
 
-  // 14. Material: material_usage_transactions & materials_transactions
-  const materials = [
-    ...storage.get('material_usage_transactions', []),
-    ...storage.get('materials_transactions', [])
+  // 14. Material: seeding_transactions (Canonical Pindah Semai / SOW usage) & material_usage_transactions
+  const seedingMaterialTxs = storage.get('seeding_transactions', []).filter(item => {
+    const hasIssueDoc = Boolean(String(item.issueDocNo || item.noIssue || '').trim());
+    const polyQty = Number(item.totalPolybag !== undefined ? item.totalPolybag : (item.rows?.[0]?.polybag || 0));
+    return hasIssueDoc && polyQty > 0;
+  });
+
+  const legacyMaterials = [
+    ...storage.get('material_usage_transactions', [])
   ];
+
   const seenMaterialIds = new Set();
-  materials.forEach(item => {
+
+  // 14.A Canonical SOW Material Usages
+  seedingMaterialTxs.forEach(item => {
+    const id = item.docNo || item.id;
+    if (!id || seenMaterialIds.has(id)) return;
+    seenMaterialIds.add(id);
+
+    const bDate = extractBusinessDate(item);
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.MATERIAL, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
+    if (!matchActor(item, user)) return;
+
+    const docNo = item.docNo || item.id || `MAT-${id}`;
+    const actor = item.mantri || item.actorName || item.createdByName || user?.name || 'Mantri Bibitan';
+    const qty = Number(item.totalPolybag !== undefined ? item.totalPolybag : (item.rows?.[0]?.polybag || 0));
+    const formattedQty = formatSafeNumber(qty);
+    const unit = item.uom || item.satuan || 'LBR';
+    const matName = item.itemName || item.materialName || 'Biaya Polybag';
+    const issueDoc = item.issueDocNo || item.noIssue || '-';
+    const batch = item.batchCode || item.batchNo || '-';
+    const bedengan = item.bedenganCode || item.bedengan || '-';
+    const summary = `${matName}: ${formattedQty} ${unit} (SOW: ${docNo}, Issue: ${issueDoc})`;
+
+    normalizedList.push({
+      id: String(id),
+      docNo,
+      moduleType: MODULE_TYPES.MATERIAL,
+      sourceModule: 'material',
+      sourceTransactionType: 'PINDAH_SEMAI_MATERIAL',
+      referenceType: 'MATERIAL',
+      referenceId: docNo,
+      referenceDocNo: docNo,
+      issueDocNo: issueDoc,
+      itemCode: item.itemCode || item.kodeItem || '',
+      itemName: matName,
+      quantityUsed: qty,
+      uom: unit,
+      batchId: item.batchId || null,
+      batchCode: batch,
+      bedenganId: item.bedenganId || null,
+      bedenganCode: bedengan,
+      moduleLabel: MODULE_LABELS[MODULE_TYPES.MATERIAL],
+      date: bDate,
+      actor,
+      summary,
+      status: stat.status,
+      verificationStatus: stat.verificationStatus,
+      rawRecord: item,
+      storageKey: 'seeding_transactions',
+      display: {
+        title: 'Material & Bahan (Pindah Semai)',
+        info: `${matName} · Dok. Issue: ${issueDoc}`,
+        mainQty: `${formattedQty} ${unit}`,
+        unit,
+        fields: [
+          { label: 'Nama Material', value: matName },
+          { label: 'No. Dokumen Issue', value: issueDoc },
+          { label: 'Dokumen SOW', value: docNo },
+          { label: 'Batch', value: batch },
+          { label: 'Bedengan', value: bedengan },
+          { label: 'Jumlah Digunakan', value: `${formattedQty} ${unit}`, highlight: true }
+        ]
+      }
+    });
+  });
+
+  // 14.B Standalone Legacy Materials
+  legacyMaterials.forEach(item => {
     const id = item.id || item.docNo;
     if (!id || seenMaterialIds.has(id)) return;
     seenMaterialIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.MATERIAL, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.MATERIAL, verifMap);
     const docNo = item.docNo || item.id || `MAT-${id}`;
     const actor = item.mantri || item.actorName || user?.name || 'Mantri Bibitan';
     const qty = item.qty !== undefined ? item.qty : (item.quantity !== undefined ? item.quantity : (item.qtyOut !== undefined ? item.qtyOut : (item.currentStock || 0)));
@@ -1087,6 +1350,11 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       id: String(id),
       docNo,
       moduleType: MODULE_TYPES.MATERIAL,
+      sourceModule: 'material',
+      sourceTransactionType: item.sourceTransactionType || 'MATERIAL_USAGE',
+      referenceType: 'MATERIAL',
+      referenceId: docNo,
+      referenceDocNo: docNo,
       moduleLabel: MODULE_LABELS[MODULE_TYPES.MATERIAL],
       date: bDate,
       actor,
@@ -1118,10 +1386,12 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     seenWarehouseIds.add(id);
 
     const bDate = extractBusinessDate(item);
-    if (bDate !== todayStr) return;
+    const isToday = (bDate === todayStr);
+    const stat = resolveTransactionStatus(item, MODULE_TYPES.SIMULASI_GUDANG, verifMap);
+    const isOutstanding = (stat.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || stat.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    const stat = resolveTransactionStatus(item, MODULE_TYPES.SIMULASI_GUDANG, verifMap);
     const docNo = item.docNo || item.issueDocNo || item.id || `WHS-${id}`;
     const actor = item.mantri || item.actorName || user?.name || 'Mantri Bibitan';
     const qty = item.qty !== undefined ? item.qty : (item.quantity || 0);
@@ -1157,7 +1427,8 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     });
   });
 
-  // Enrich all normalized items with latestVerification & submittedAt from verifMap and rawRecord
+  // Enrich all normalized items with latestVerification & submittedAt from verifMap and rawRecord,
+  // serta derived submission window metadata (Global Submission Cutoff Engine)
   normalizedList.forEach(tx => {
     const v = verifMap.get(String(tx.id)) || verifMap.get(String(tx.docNo));
     if (v) {
@@ -1169,6 +1440,14 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     if (!tx.submittedAt) {
       tx.submittedAt = tx.rawRecord?.submittedAt || tx.rawRecord?.confirmedAt || tx.rawRecord?.updatedAt || null;
     }
+
+    const windowInfo = getSubmissionWindowInfo(tx, currentTime);
+    tx.businessDate = windowInfo.businessDate || tx.date;
+    tx.submissionDeadline = windowInfo.submissionDeadline;
+    tx.submissionDeadlineDate = windowInfo.submissionDeadlineDate;
+    tx.isSubmissionExpired = windowInfo.isSubmissionExpired;
+    tx.canSubmit = windowInfo.canSubmit;
+    tx.submissionWindowStatus = windowInfo.submissionWindowStatus;
   });
 
   return normalizedList;
@@ -1177,15 +1456,27 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
 /**
  * Service Submission: Mengirim satu atau beberapa transaksi Mantri ke Asisten Bibitan
  * Menghasilkan data audit di `verification_transactions` secara idempotent (mencegah duplicate).
+ * Action Gate: Menolak transaksi yang expired / canSubmit === false.
  */
-export function submitMantriTransactions(transactionIds = [], userContext = null) {
+export function submitMantriTransactions(transactionIds = [], userContext = null, moduleTypeFilter = null, currentTime = null) {
   const user = userContext || getCurrentUserContext() || resolveUserContext();
-  const allToday = getMantriTodayTransactions(user);
+  // GLOBAL ATTENDANCE GATE
+  assertAttendanceGateOrThrow(user);
+
+  const allToday = getMantriTodayTransactions(user, null, currentTime);
 
   const targetItems = (transactionIds.length > 0
-    ? allToday.filter(tx => transactionIds.includes(tx.id) || transactionIds.includes(tx.docNo))
-    : allToday
-  ).filter(tx => tx.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || tx.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    ? allToday.filter(tx => {
+        const idMatches = transactionIds.includes(tx.id) || transactionIds.includes(tx.docNo);
+        const modMatches = !moduleTypeFilter || tx.moduleType === moduleTypeFilter;
+        return idMatches && modMatches;
+      })
+    : allToday.filter(tx => !moduleTypeFilter || tx.moduleType === moduleTypeFilter)
+  ).filter(tx => {
+    const isPendingStatus = (tx.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || tx.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    const windowInfo = getSubmissionWindowInfo(tx, currentTime);
+    return isPendingStatus && windowInfo.canSubmit;
+  });
 
   if (targetItems.length === 0) {
     return {
@@ -1196,7 +1487,7 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
     };
   }
 
-  const nowIso = new Date().toISOString();
+  const nowIso = (currentTime instanceof Date ? currentTime : (currentTime ? new Date(currentTime) : new Date())).toISOString();
   const allVerifs = storage.get(VERIFICATION_STORAGE_KEY, []);
   const submittedItems = [];
 
@@ -1222,9 +1513,14 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
       const records = storage.get(tx.storageKey, []);
       const rIdx = records.findIndex(r => String(r.id || r.docNo || '') === String(tx.id));
       if (rIdx !== -1) {
-        records[rIdx].status = 'MENUNGGU_VERIFIKASI';
-        records[rIdx].submissionStatus = 'SUBMITTED_TO_ASB';
-        records[rIdx].submittedAt = nowIso;
+        if (tx.moduleType === MODULE_TYPES.MATERIAL) {
+          records[rIdx].materialSubmissionStatus = 'SUBMITTED_TO_ASB';
+          records[rIdx].materialSubmittedAt = nowIso;
+        } else {
+          records[rIdx].status = 'MENUNGGU_VERIFIKASI';
+          records[rIdx].submissionStatus = 'SUBMITTED_TO_ASB';
+          records[rIdx].submittedAt = nowIso;
+        }
         records[rIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
         records[rIdx].submittedByName = user?.name || 'Mantri Bibitan';
         storage.set(tx.storageKey, records);
@@ -1233,8 +1529,9 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
 
     // 2. Buat / perbarui catatan di verification_transactions secara IDEMPOTENT
     const existingIdx = allVerifs.findIndex(v =>
-      (v.referenceId && String(v.referenceId) === String(tx.id)) ||
-      (v.referenceDocNo && String(v.referenceDocNo) === String(tx.docNo))
+      ((v.referenceId && String(v.referenceId) === String(tx.id)) ||
+       (v.referenceDocNo && String(v.referenceDocNo) === String(tx.docNo))) &&
+      ((v.referenceType || v.moduleType || '').toUpperCase() === (tx.referenceType || tx.moduleType || '').toUpperCase())
     );
 
     if (existingIdx !== -1) {
@@ -1251,6 +1548,16 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
         referenceType: tx.referenceType || tx.activityType || tx.moduleType,
         referenceId: tx.id,
         referenceDocNo: tx.docNo,
+        moduleType: tx.moduleType,
+        sourceModule: tx.sourceModule || (tx.moduleType === MODULE_TYPES.MATERIAL ? 'material' : undefined),
+        sourceTransactionType: tx.sourceTransactionType || (tx.moduleType === MODULE_TYPES.MATERIAL ? 'PINDAH_SEMAI_MATERIAL' : undefined),
+        issueDocNo: tx.issueDocNo || tx.rawRecord?.issueDocNo || null,
+        itemCode: tx.itemCode || tx.rawRecord?.itemCode || null,
+        itemName: tx.itemName || tx.rawRecord?.itemName || null,
+        quantityUsed: tx.quantityUsed !== undefined ? tx.quantityUsed : (tx.rawRecord?.totalPolybag || null),
+        uom: tx.uom || tx.rawRecord?.uom || null,
+        batchCode: tx.batchCode || tx.rawRecord?.batchCode || tx.rawRecord?.batchNo || null,
+        bedenganCode: tx.bedenganCode || tx.rawRecord?.bedenganCode || tx.rawRecord?.bedengan || null,
         estateId: tx.rawRecord?.targetEstateId || tx.rawRecord?.estateId || tx.rawRecord?.sourceEstateId || user?.estateId || 'EST-01',
         divisionId: tx.rawRecord?.targetDivisionId || tx.rawRecord?.divisionId || tx.rawRecord?.sourceDivisionId || user?.divisionId || 'DIV-01',
         verificationStatus: VERIFICATION_STATUS.MENUNGGU_VERIFIKASI,
@@ -1280,11 +1587,13 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
 /**
  * Service Submission per Modul: Mengirim seluruh transaksi eligible dalam 1 modul ke Asisten Bibitan.
  * Memastikan pengiriman atomik di level modul tanpa menghilangkan identitas transaksi individual.
+ * Action Gate: Menolak pengiriman bila seluruh transaksi pada modul expired.
  * 
  * @param {string} moduleType - Kode modul (e.g. 'PENERIMAAN', 'PENYEMAIAN', etc.)
  * @param {object|null} userContext - Logged-in user context
+ * @param {Date|string|number} [currentTime=null] - Waktu evaluasi (opsional)
  */
-export function submitModuleTransactions(moduleType, userContext = null) {
+export function submitModuleTransactions(moduleType, userContext = null, currentTime = null) {
   if (!moduleType) {
     return {
       success: false,
@@ -1295,11 +1604,12 @@ export function submitModuleTransactions(moduleType, userContext = null) {
   }
 
   const user = userContext || getCurrentUserContext() || resolveUserContext();
-  const allToday = getMantriTodayTransactions(user);
+  const allToday = getMantriTodayTransactions(user, null, currentTime);
 
   const targetModuleTxs = allToday.filter(tx => 
     String(tx.moduleType).toUpperCase() === String(moduleType).toUpperCase() &&
-    (tx.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || tx.status === MANTRI_TRANSACTION_STATUS.REVISION)
+    (tx.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || tx.status === MANTRI_TRANSACTION_STATUS.REVISION) &&
+    getSubmissionWindowInfo(tx, currentTime).canSubmit
   );
 
   if (targetModuleTxs.length === 0) {
@@ -1308,12 +1618,12 @@ export function submitModuleTransactions(moduleType, userContext = null) {
       success: true,
       submittedCount: 0,
       submittedItems: [],
-      message: `Tidak ada transaksi baru pada modul ${modLabel} yang perlu dikirim ke Asisten.`
+      message: `Tidak ada transaksi baru pada modul ${modLabel} yang memenuhi syarat untuk dikirim ke Asisten.`
     };
   }
 
   const txIds = targetModuleTxs.map(tx => tx.id);
-  const result = submitMantriTransactions(txIds, user);
+  const result = submitMantriTransactions(txIds, user, null, currentTime);
   const modLabel = MODULE_LABELS[moduleType] || moduleType;
 
   return {

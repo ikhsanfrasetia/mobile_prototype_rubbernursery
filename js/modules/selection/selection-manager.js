@@ -21,9 +21,12 @@ import { applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction
 import { 
   deductBatchStock as deductInventoryStock, 
   getAvailableQty as getInventoryAvailableQty, 
+  getBatchInventory,
+  syncBatchPopulationFromSeeding,
   INVENTORY_TX_TYPE 
 } from '../../core/batch-inventory-service.js';
 import { getBatchContext } from '../../core/master-context-service.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 export const SELECTION_STATUS = Object.freeze({
   MENUNGGU_VERIFIKASI: 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN',
@@ -80,15 +83,65 @@ export function isPostGraftingSelection(item) {
 }
 
 /**
- * Format label tahap seleksi (Pra-Okulasi I-III vs Pasca-Okulasi)
+ * Format label tahap seleksi / origin CULL (Canonical Resolver)
  */
 export function getSelectionStageLabel(item) {
   if (!item) return 'Seleksi';
+
   const stage = String(item.selectionStage || item.stage || '').toUpperCase();
-  if (stage === SELECTION_STAGES.SELEKSI_1 || stage === 'SELEKSI_1' || stage === 'SELEKSI_I') return 'Seleksi I (Pra-Okulasi)';
-  if (stage === SELECTION_STAGES.SELEKSI_2 || stage === 'SELEKSI_2' || stage === 'SELEKSI_II') return 'Seleksi II (Pra-Okulasi)';
-  if (stage === SELECTION_STAGES.SELEKSI_3 || stage === 'SELEKSI_3' || stage === 'SELEKSI_III') return 'Seleksi III (Pra-Okulasi)';
-  if (stage === SELECTION_STAGES.PASCA_OKULASI) return 'Seleksi Pasca-Okulasi';
+
+  // 1. Pra-Okulasi I-III Document / Execution Stage
+  if (stage === SELECTION_STAGES.SELEKSI_1 || stage === 'SELEKSI_1' || stage === 'SELEKSI_I') {
+    return 'Seleksi I (Pra-Okulasi)';
+  }
+  if (stage === SELECTION_STAGES.SELEKSI_2 || stage === 'SELEKSI_2' || stage === 'SELEKSI_II') {
+    return 'Seleksi II (Pra-Okulasi)';
+  }
+  if (stage === SELECTION_STAGES.SELEKSI_3 || stage === 'SELEKSI_3' || stage === 'SELEKSI_III') {
+    return 'Seleksi III (Pra-Okulasi)';
+  }
+
+  // 2. Canonical Origin Type check (Overrides default PASCA_OKULASI fallback)
+  if (item.originType === 'REJECT_PENYEMAIAN') {
+    return 'SELEKSI PINDAH SEMAI';
+  }
+  if (item.originType === 'REJECT_DEDERAN') {
+    return 'PASCA-SEMAI (DEDERAN)';
+  }
+  if (
+    item.originType === 'REJECT_OKULASI' ||
+    item.originType === 'REJECT_REGRAFTING' ||
+    item.originType === 'REJECT_PEMERIKSAAN'
+  ) {
+    return 'PASCA-OKULASI';
+  }
+
+  // 3. Fallback to sourceModule / sourceTransactionType
+  if (item.sourceModule === 'PENYEMAIAN' || item.sourceTransactionType === 'SEEDING') {
+    return 'SELEKSI PINDAH SEMAI';
+  }
+  if (item.sourceModule === 'DEDERAN' || item.sourceTransactionType === 'DEDER_INSPECTION') {
+    return 'PASCA-SEMAI (DEDERAN)';
+  }
+  if (
+    item.sourceModule === 'BUDDING' ||
+    item.sourceModule === 'OKULASI' ||
+    item.sourceTransactionType === 'GRAFTING' ||
+    item.sourceTransactionType === 'REGRAFTING'
+  ) {
+    return 'PASCA-OKULASI';
+  }
+
+  // 4. Fallback to selectionStage / selectionType / generic source
+  if (
+    stage === SELECTION_STAGES.PASCA_OKULASI ||
+    item.selectionType === SELECTION_TYPES.PASCA_OKULASI ||
+    item.selectionType === 'PASCA-OKULASI' ||
+    item.selectionType === 'PASCA_OKULASI'
+  ) {
+    return 'PASCA-OKULASI';
+  }
+
   return getSelectionSourceLabel(item);
 }
 
@@ -321,6 +374,12 @@ export function formatBedenganDisplayCode(item) {
     return parts.length > 0 ? Array.from(new Set(parts)).join(', ') : '-';
   }
 
+  // If item.rows exists (e.g. from Seeding or Selection Parent Doc)
+  if (Array.isArray(item.rows) && item.rows.length > 0) {
+    const parts = item.rows.map(r => formatSingleBedenganCode(r.bedenganCode || r.bedenganId || r.bedengan)).filter(Boolean);
+    if (parts.length > 0) return Array.from(new Set(parts)).join(', ');
+  }
+
   // If bedenganCode exists
   if (item.bedenganCode && typeof item.bedenganCode === 'string') {
     const parts = item.bedenganCode.split(',').map(s => formatSingleBedenganCode(s.trim())).filter(Boolean);
@@ -416,6 +475,7 @@ export function findExistingSelectionTransaction(item) {
 
     // 2. Direct match by selectionPoolDocNo or docNo
     if (itemDocNo && (tx.selectionPoolDocNo === itemDocNo || tx.docNo === itemDocNo)) {
+      if ((item.originType === 'REJECT_PENYEMAIAN' || item.sourceModule === 'PENYEMAIAN') && (tx.originType === 'REJECT_PENYEMAIAN' || tx.sourceModule === 'PENYEMAIAN')) return true;
       if (itemCat && normCat(tx.category) !== itemCat && itemCat !== 'PENDING_DECLARATION' && normCat(tx.category) !== 'PENDING_DECLARATION') return false;
       return true;
     }
@@ -440,6 +500,7 @@ export function findExistingSelectionTransaction(item) {
     if (sourceMatches) {
       if (itemCat === txCat) return true;
       if (item.originType === tx.originType && (item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN')) return true;
+      if ((item.originType === 'REJECT_PENYEMAIAN' || item.sourceModule === 'PENYEMAIAN') && (tx.originType === 'REJECT_PENYEMAIAN' || tx.sourceModule === 'PENYEMAIAN')) return true;
     }
 
     return false;
@@ -573,13 +634,59 @@ export function approveSelectionRecord(recordIdOrDocNo, notes = '', currentUser,
   }
 
   const isDederan = target.originType === 'REJECT_DEDERAN' || target.sourceModule === 'DEDERAN';
+  const mutationQty = parseInt(target.jumlahAfkir || target.quantity || 0, 10);
   const nowIso = new Date().toISOString();
 
+  let stockMutationStatusResult = STOCK_MUTATION_STATUS.NOT_REQUIRED;
+
+  // ATOMIC VALIDATION & STOCK DEDUCTION SEBELUM COMMIT STATUS
+  if (!isDederan && mutationQty > 0 && autoMutateStock) {
+    if (target.stockMutationStatus !== STOCK_MUTATION_STATUS.APPLIED) {
+      // 1. Resolve Batch Target
+      const batchKey = target.batchId || target.batchCode || target.batchNo;
+      if (!batchKey) {
+        throw new Error(`Dokumen seleksi ${target.docNo || target.id} tidak memiliki referensi batch.`);
+      }
+
+      // 2. Sync / resolve available inventory
+      syncBatchPopulationFromSeeding(batchKey);
+      const currentAvailable = getInventoryAvailableQty(batchKey);
+
+      // 3. Validate stock adequacy
+      if (currentAvailable < mutationQty) {
+        throw new Error(`Stok batch ${batchKey} tidak mencukupi (Tersedia: ${currentAvailable.toLocaleString('id-ID')} Pkk < Afkir: ${mutationQty.toLocaleString('id-ID')} Pkk).`);
+      }
+
+      // 4. Perform stock deduction in inventory ledger
+      try {
+        deductInventoryStock(
+          batchKey,
+          mutationQty,
+          INVENTORY_TX_TYPE.SELECTION,
+          target.docNo || target.id,
+          currentUser,
+          `Pengurangan stok seleksi afkir ${target.docNo || target.id}`
+        );
+        stockMutationStatusResult = STOCK_MUTATION_STATUS.APPLIED;
+      } catch (err) {
+        throw new Error(`Gagal melakukan mutasi stok batch: ${err.message}`);
+      }
+    } else {
+      stockMutationStatusResult = STOCK_MUTATION_STATUS.APPLIED;
+    }
+  }
+
+  // 5. COMMIT STATUS & AUDIT TRAIL HANYA SETELAH STOCK MUTATION BERHASIL
   const updatedRecord = applyTransactionActor(
     {
       ...target,
       status: SELECTION_STATUS.DISETUJUI,
       approvalNotes: notes || 'Disetujui oleh Asisten Bibitan',
+      stockMutationStatus: stockMutationStatusResult,
+      stockMutationAt: stockMutationStatusResult === STOCK_MUTATION_STATUS.APPLIED ? nowIso : (target.stockMutationAt || null),
+      stockMutationBy: stockMutationStatusResult === STOCK_MUTATION_STATUS.APPLIED ? (currentUser.userId || currentUser.code || currentUser.id || 'ASISTEN') : (target.stockMutationBy || null),
+      stockMutationQty: stockMutationStatusResult === STOCK_MUTATION_STATUS.APPLIED ? mutationQty : (target.stockMutationQty || 0),
+      stockMutationError: null,
       verifiedByUserId: currentUser.userId || currentUser.code || currentUser.id,
       verifiedByName: currentUser.name || 'Asisten Bibitan',
       verifiedByRole: ROLES.ASISTEN_BIBITAN,
@@ -590,13 +697,13 @@ export function approveSelectionRecord(recordIdOrDocNo, notes = '', currentUser,
     currentUser,
     isDederan
       ? `Persetujuan hasil seleksi Dederan ${target.docNo} (${target.bedengan || target.bedenganCode || '-'}, ${target.jumlahAfkir} Afkir)`
-      : `Persetujuan hasil seleksi untuk batch ${target.batchCode} (${target.jumlahLayak} Layak, ${target.jumlahAfkir} Afkir)`
+      : `Persetujuan hasil seleksi untuk batch ${target.batchCode || target.batchNo || '-'} (${target.jumlahLayak || 0} Layak, ${target.jumlahAfkir || target.quantity || 0} Afkir)`
   );
 
   allRecords[idx] = updatedRecord;
   storage.set(SELECTION_STORAGE_KEY, allRecords);
 
-  // Sync corresponding entry in selection_pool
+  // 6. Sync corresponding entry in selection_pool
   let fullPool = storage.get('selection_pool', []);
   const poolIdx = fullPool.findIndex(p => 
     p.selectionTransactionId === target.id ||
@@ -610,11 +717,6 @@ export function approveSelectionRecord(recordIdOrDocNo, notes = '', currentUser,
     fullPool[poolIdx].verifiedAt = nowIso;
     fullPool[poolIdx].verifiedByName = currentUser.name || 'Asisten Bibitan';
     storage.set('selection_pool', fullPool);
-  }
-
-  if (autoMutateStock) {
-    const mutationResult = mutateStockFromSelection(updatedRecord.id, currentUser);
-    return mutationResult.selection;
   }
 
   return updatedRecord;
@@ -651,7 +753,7 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
   }
 
   // 3. Formula: stockMutationQty = jumlahAfkir
-  const mutationQty = parseInt(target.jumlahAfkir || 0, 10);
+  const mutationQty = parseInt(target.jumlahAfkir || target.quantity || 0, 10);
 
   // 4. Zero-Afkir Handling: Jika afkir = 0, stok tidak berubah
   if (mutationQty === 0) {
@@ -699,52 +801,16 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
     };
   }
 
-  // 6. Muat nursery_batches & Validasi Batch untuk Pasca-Okulasi / Main Nursery
-  const allBatches = storage.get('nursery_batches', []);
-  const bIdx = allBatches.findIndex(b => b.id === target.batchId || b.batchCode === target.batchCode || b.batchNo === target.batchCode);
-  
-  if (bIdx === -1) {
-    const failedRecord = {
-      ...target,
-      stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Batch ${target.batchCode || target.batchId} tidak ditemukan di nursery_batches.`,
-      updatedAt: new Date().toISOString()
-    };
-    allRecords[idx] = failedRecord;
-    storage.set(SELECTION_STORAGE_KEY, allRecords);
-    throw new Error(`Batch ${target.batchCode || target.batchId} tidak ditemukan di nursery_batches.`);
+  // 6. Muat / Sync Batch untuk Pasca-Okulasi / Main Nursery
+  const batchKey = target.batchId || target.batchCode || target.batchNo;
+  if (!batchKey) {
+    throw new Error(`Batch ${target.batchCode || target.batchId} tidak ditemukan.`);
   }
 
-  const batchObj = allBatches[bIdx];
-  const batchCtx = getBatchContext(batchObj.id || batchObj.batchId || target.batchId || target.batchCode) || batchObj;
+  syncBatchPopulationFromSeeding(batchKey);
 
-  // 7. Validasi Program / Estate / Division Alignment via Context Relation Layer
-  if (target.estateId && batchCtx.estateId && target.estateId.toUpperCase() !== batchCtx.estateId.toUpperCase()) {
-    const failedRecord = {
-      ...target,
-      stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Inkonsistensi estate: Selection (${target.estateId}) vs Batch (${batchCtx.estateId})`,
-      updatedAt: new Date().toISOString()
-    };
-    allRecords[idx] = failedRecord;
-    storage.set(SELECTION_STORAGE_KEY, allRecords);
-    throw new Error(`Inkonsistensi estate: Selection (${target.estateId}) vs Batch (${batchCtx.estateId}).`);
-  }
-
-  if (target.divisionId && batchCtx.divisionId && target.divisionId.toUpperCase() !== batchCtx.divisionId.toUpperCase()) {
-    const failedRecord = {
-      ...target,
-      stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Inkonsistensi divisi: Selection (${target.divisionId}) vs Batch (${batchCtx.divisionId})`,
-      updatedAt: new Date().toISOString()
-    };
-    allRecords[idx] = failedRecord;
-    storage.set(SELECTION_STORAGE_KEY, allRecords);
-    throw new Error(`Inkonsistensi divisi: Selection (${target.divisionId}) vs Batch (${batchCtx.divisionId}).`);
-  }
-
-  // 8. Validasi Kecukupan Stok via Inventory Service
-  const currentAvailable = getInventoryAvailableQty(batchObj.id || batchObj.batchCode || batchObj.batchNo);
+  // 7. Validasi Kecukupan Stok via Inventory Service
+  const currentAvailable = getInventoryAvailableQty(batchKey);
   if (currentAvailable < mutationQty) {
     const failedRecord = {
       ...target,
@@ -754,12 +820,12 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
     };
     allRecords[idx] = failedRecord;
     storage.set(SELECTION_STORAGE_KEY, allRecords);
-    throw new Error(`Stok batch ${batchObj.batchCode || batchObj.batchNo} tidak mencukupi (Tersedia: ${currentAvailable} < Afkir: ${mutationQty}).`);
+    throw new Error(`Stok batch ${batchKey} tidak mencukupi (Tersedia: ${currentAvailable.toLocaleString('id-ID')} Pkk < Afkir: ${mutationQty.toLocaleString('id-ID')} Pkk).`);
   }
 
-  // 9. Atomic Stock Mutation Commit via Inventory Service
+  // 8. Atomic Stock Mutation Commit via Inventory Service
   const updatedInvState = deductInventoryStock(
-    batchObj.id || batchObj.batchCode || batchObj.batchNo,
+    batchKey,
     mutationQty,
     INVENTORY_TX_TYPE.SELECTION,
     target.docNo || target.id,
@@ -767,15 +833,7 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
     `Pengurangan stok seleksi afkir ${target.docNo || target.id}`
   );
 
-  const updatedBatch = {
-    ...batchObj,
-    availableQty: updatedInvState.availableQty,
-    currentQty: updatedInvState.availableQty,
-    status: updatedInvState.status,
-    updatedAt: updatedInvState.updatedAt
-  };
-
-  // 10. Update Transaction Metadata
+  // 9. Update Transaction Metadata
   const updatedSelection = {
     ...target,
     stockMutationStatus: STOCK_MUTATION_STATUS.APPLIED,
@@ -792,7 +850,7 @@ export function mutateStockFromSelection(recordIdOrDocNo, currentUser) {
   return {
     status: STOCK_MUTATION_STATUS.APPLIED,
     success: true,
-    batch: updatedBatch,
+    batch: updatedInvState,
     selection: updatedSelection
   };
 }
@@ -919,7 +977,7 @@ export function integrateSeedingToSelectionPool(seedingTx, options = {}) {
       rusakQty = ditolakQty;
     } else if (alasan.includes('mati')) {
       matiQty = ditolakQty;
-    } else if (alasan !== 'tidak ada') {
+    } else {
       lainnyaQty = ditolakQty;
     }
   }
@@ -948,19 +1006,23 @@ export function integrateSeedingToSelectionPool(seedingTx, options = {}) {
     ));
   }
 
+  const existingTxs = storage.get(SELECTION_STORAGE_KEY, []);
   const newEntries = [];
 
   categories.forEach(({ category, qty, label }) => {
-    // Idempotency check: Jangan buat duplikasi jika sudah ada di pool
-    const alreadyExists = selectionPool.some(s => 
-      (s.sourceDocNo === sourceDocNo || s.seedingDocNo === sourceDocNo || s.sourceTransactionId === (seedingTx.id || sourceDocNo)) &&
-      (s.category === category || s.alasanDitolakCategory === category) &&
-      s.sourceModule === 'PENYEMAIAN'
+    // Idempotency check: Jangan buat duplikasi jika sudah ada di pool atau sudah ada selection_transactions (CULL) untuk source SOW ini
+    const alreadyInSelectionTxs = existingTxs.some(tx => 
+      (tx.sourceDocNo === sourceDocNo || tx.seedingDocNo === sourceDocNo || tx.sourceTransactionId === (seedingTx.id || sourceDocNo)) &&
+      (tx.sourceModule === 'PENYEMAIAN' || tx.originType === 'REJECT_PENYEMAIAN')
     );
 
-    if (!alreadyExists) {
+    const alreadyInPool = selectionPool.some(s => 
+      (s.sourceDocNo === sourceDocNo || s.seedingDocNo === sourceDocNo || s.sourceTransactionId === (seedingTx.id || sourceDocNo)) &&
+      (s.sourceModule === 'PENYEMAIAN' || s.originType === 'REJECT_PENYEMAIAN')
+    );
+
+    if (!alreadyInSelectionTxs && !alreadyInPool) {
       // Hitung max sequence dari selection_pool dan selection_transactions agar tidak terjadi duplikasi nomor
-      const existingTxs = storage.get(SELECTION_STORAGE_KEY, []);
       let maxSeq = 0;
       [...selectionPool, ...existingTxs].forEach(item => {
         const d = String(item.docNo || item.selectionDocNo || item.selectionPoolDocNo || item.selectionNo || '');
@@ -1051,6 +1113,44 @@ export function syncAllSeedingsToSelectionPool() {
   return totalCreated;
 }
 
+/**
+ * Memeriksa apakah transaksi Pindah Semai (SOW) sudah pernah dideklarasikan sebagai bibit afkir (CULL)
+ * Digunakan untuk mengunci transaksi sumber Pindah Semai dari aksi Edit dan Hapus.
+ * @param {object|string} seedingTx - Record transaksi penyemaian atau docNo / id
+ * @returns {boolean} true jika transaksi SOW sudah memiliki deklarasi CULL
+ */
+export function hasExistingCullDeclarationForSeeding(seedingTx) {
+  if (!seedingTx) return false;
+  const docNo = String(typeof seedingTx === 'string' ? seedingTx : (seedingTx.docNo || seedingTx.seedingDocNo || seedingTx.id || '')).trim();
+  const txId = String(typeof seedingTx === 'object' && seedingTx ? (seedingTx.id || docNo) : docNo).trim();
+  if (!docNo && !txId) return false;
+
+  // 1. Check in selection_transactions (CULL records)
+  const selTxs = storage.get(SELECTION_STORAGE_KEY, []);
+  const hasInSelTxs = selTxs.some(tx => {
+    const isPenyemaian = tx.sourceModule === 'PENYEMAIAN' || tx.originType === 'REJECT_PENYEMAIAN';
+    if (!isPenyemaian) return false;
+    const matchDoc = docNo && (tx.sourceDocNo === docNo || tx.seedingDocNo === docNo || tx.sourceTransactionId === docNo);
+    const matchId = txId && (tx.sourceTransactionId === txId || tx.sourceDocNo === txId);
+    return Boolean(matchDoc || matchId);
+  });
+  if (hasInSelTxs) return true;
+
+  // 2. Check in selection_pool with active/declared status
+  const pool = storage.get('selection_pool', []);
+  const hasInPool = pool.some(p => {
+    const isPenyemaian = p.sourceModule === 'PENYEMAIAN' || p.originType === 'REJECT_PENYEMAIAN';
+    if (!isPenyemaian) return false;
+    const matchDoc = docNo && (p.sourceDocNo === docNo || p.seedingDocNo === docNo || p.sourceTransactionId === docNo);
+    const matchId = txId && (p.sourceTransactionId === txId || p.sourceDocNo === txId);
+    if (!matchDoc && !matchId) return false;
+    const stat = String(p.status || '').toUpperCase().trim();
+    return stat === 'MENUNGGU_VERIFIKASI' || stat === 'DECLARED_CULLED' || stat === 'DISETUJUI' || stat === 'DIKEMBALIKAN' || stat === 'SUBMITTED_TO_ASB' || stat === 'REVISION';
+  });
+
+  return Boolean(hasInPool);
+}
+
 export const SELECTION_PHOTO_STORAGE_KEY = 'selection_photos';
 
 /**
@@ -1104,6 +1204,9 @@ export function getSelectionPhotosByDocNo(selectionDocNo) {
  * Mencegah duplikasi transaksi dan duplikasi Dok. Seleksi
  */
 export function declareSelectionItem(targetPoolItem, photoResult, user, customOptions = {}) {
+  // GLOBAL ATTENDANCE GATE
+  assertAttendanceGateOrThrow(user);
+
   if (!targetPoolItem) {
     throw new Error('Data bibit afkir tidak valid.');
   }
@@ -1313,7 +1416,6 @@ export function createPreGraftingSelectionDocument(seedingTx, currentUser = null
   }
 
   // Identifikasi nomor transaksi penyemaian sumber secara spesifik (cth: '2026/SOW/001')
-  // JANGAN mendahulukan seedingTx.sourceDocNo karena itu merupakan nomor Dokumen Penerimaan (cth: '2026/APR/001')
   const seedingDocNo = String(
     (seedingTx.docNo && !options.docNo && !seedingTx.docNo.includes('SEL') && !seedingTx.docNo.includes('CULL') ? seedingTx.docNo : '') ||
     seedingTx.seedingDocNo ||
@@ -1330,143 +1432,222 @@ export function createPreGraftingSelectionDocument(seedingTx, currentUser = null
   const receiptDocNo = String(seedingTx.sourceDocNo || seedingTx.receiptDocNo || seedingTx.nomorPenerimaan || '').trim();
   const seedingTxId = String(seedingTx.id || seedingDocNo).trim();
 
-  const allDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
-  
-  // Idempotency: Jika dokumen Seleksi I untuk source transaksi penyemaian ini sudah ada, kembalikan dokumen yang ada
-  const existing = allDocs.find(d => 
-    (d.selectionStage === 'SELEKSI_I' || d.selectionStage === 'SELEKSI_1' || !d.selectionStage) &&
-    (
-      (d.sourceSeedingDocNo && d.sourceSeedingDocNo === seedingDocNo) ||
-      (d.seedingDocNo && d.seedingDocNo === seedingDocNo) ||
-      (d.sourceDocNo && d.sourceDocNo === seedingDocNo) ||
-      (d.sourceTransactionId && (d.sourceTransactionId === seedingTxId || d.sourceTransactionId === seedingDocNo))
-    )
-  );
-  if (existing) {
-    return existing;
+  // Master contexts / Batch identification
+  const bObj = seedingTx.batchId ? getBatchById(seedingTx.batchId) : getBatchByCode(seedingTx.batchCode || seedingTx.batchNo);
+  const batchId = bObj ? bObj.id : (seedingTx.batchId || (seedingTx.batchCode ? `BATCH-${seedingTx.batchCode}` : `BATCH-${Date.now()}`));
+  const batchCode = bObj ? (bObj.batchCode || bObj.batchNo) : (seedingTx.batchCode || seedingTx.batchNo || 'Batch-01');
+
+  // Gate Check: Validasi apakah SOW memenuhi syarat CULL Approval Gate
+  const gateCheck = canCreatePreGraftingSelection1Document(seedingTx);
+  if (!gateCheck.canCreate && !options.skipGateCheck) {
+    throw new Error(`Gagal membuat Dokumen Seleksi I: ${gateCheck.reason}`);
   }
 
-  // Generate Dokumen Seleksi No (Format: 2026/SEL/001 atau 2026/CULL/001)
+  // Canonical Batch Population from batch-inventory-service
+  const inv = syncBatchPopulationFromSeeding(batchId) || syncBatchPopulationFromSeeding(batchCode);
+  let canonicalBatchBibit = inv ? Number(inv.availableQty || 0) : 0;
+  if (canonicalBatchBibit === 0) {
+    canonicalBatchBibit = parseInt(seedingTx.sourceBibitQty !== undefined ? seedingTx.sourceBibitQty : (seedingTx.totalDisemai || seedingTx.disemai || 0), 10);
+  }
+
+  // Resolve Bedengan list from seedingTx
+  let rawBedRows = seedingTx.rows 
+    ? JSON.parse(JSON.stringify(seedingTx.rows)) 
+    : (seedingTx.bedenganBreakdown 
+        ? seedingTx.bedenganBreakdown.map(b => ({ bedenganId: b.bedenganCode || b.bedenganId, bedenganCode: b.bedenganCode || b.bedenganId, polybag: b.polybagQuantity || b.polybag || 0, disemai: b.seedsQuantity || b.disemai || 0 }))
+        : (seedingTx.bedenganId ? [{ bedenganId: seedingTx.bedenganId, bedenganCode: formatBedenganDisplayCode(seedingTx.bedenganCode || seedingTx.bedenganId), polybag: seedingTx.totalPolybag || 0, disemai: seedingTx.totalDisemai || 0 }] : []));
+
+  if (rawBedRows.length === 0) {
+    rawBedRows = [{
+      bedenganId: seedingTx.bedenganId || 'BED-001',
+      bedenganCode: formatBedenganDisplayCode(seedingTx.bedenganCode || seedingTx.bedenganId || 'BED-001'),
+      polybag: seedingTx.totalPolybag || (seedingTx.totalDisemai ? Math.ceil(seedingTx.totalDisemai / 2) : 0),
+      disemai: seedingTx.totalDisemai || 0
+    }];
+  }
+
+  if (options.bedenganCode) {
+    const targetNorm = formatBedenganDisplayCode(options.bedenganCode).toUpperCase();
+    rawBedRows = rawBedRows.filter(r => formatBedenganDisplayCode(r.bedenganCode || r.bedenganId).toUpperCase() === targetNorm);
+    if (rawBedRows.length === 0) {
+      rawBedRows = [{
+        bedenganId: options.bedenganId || options.bedenganCode,
+        bedenganCode: formatBedenganDisplayCode(options.bedenganCode),
+        polybag: seedingTx.totalPolybag || 0,
+        disemai: seedingTx.totalDisemai || 0
+      }];
+    }
+  }
+
+  const allDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
   let maxSeq = 0;
   allDocs.forEach(d => {
     const docStr = String(d.docNo || d.selectionDocNo || '');
-    const match = docStr.match(/SEL(?:-DOC)?\/(\d+)/i) || docStr.match(/CULL\/(\d+)/i) || docStr.match(/(\d+)$/);
+    const match = docStr.match(/SEL(?:-DOC)?\/(\d+)/i) || docStr.match(/^(\d+)$/);
     if (match) {
       const n = parseInt(match[1], 10);
       if (!isNaN(n) && n > maxSeq) maxSeq = n;
     }
   });
 
-  const nextSeq = maxSeq + 1;
-  const docNo = options.docNo || formatStandardDocNo(2026, 'SEL', nextSeq);
+  const createdDocs = [];
 
-  // Quantities: Bibit dan Polybag diperlakukan sebagai 2 kuantitas berbeda dari Penyemaian
-  const sourceBibitQty = parseInt(
-    seedingTx.sourceBibitQty !== undefined
-      ? seedingTx.sourceBibitQty
-      : (seedingTx.totalDisemai !== undefined
-        ? seedingTx.totalDisemai
-        : (seedingTx.disemai !== undefined ? seedingTx.disemai : (seedingTx.seedsQuantity !== undefined ? seedingTx.seedsQuantity : 0))),
-    10
-  );
-  const sourcePolybagQty = parseInt(
-    seedingTx.sourcePolybagQty !== undefined
-      ? seedingTx.sourcePolybagQty
-      : (seedingTx.totalPolybag !== undefined 
-        ? seedingTx.totalPolybag 
-        : (seedingTx.polybag !== undefined ? seedingTx.polybag : (seedingTx.polybagQuantity !== undefined ? seedingTx.polybagQuantity : Math.ceil(sourceBibitQty / 2)))),
-    10
-  );
+  rawBedRows.forEach(row => {
+    const bedCode = formatBedenganDisplayCode(row.bedenganCode || row.bedenganId || row.bedengan || 'BED-001');
+    const bedId = row.bedenganId || row.bedenganCode || bedCode;
+    let bedPoly = parseInt(row.polybag !== undefined ? row.polybag : (row.polybagQuantity !== undefined ? row.polybagQuantity : (seedingTx.totalPolybag || 0)), 10);
+    if (isNaN(bedPoly) || bedPoly <= 0) {
+      bedPoly = Math.ceil(parseInt(row.disemai || seedingTx.totalDisemai || 0, 10) / 2);
+    }
+    const bedDisemai = parseInt(row.disemai !== undefined ? row.disemai : (row.seedsQuantity !== undefined ? row.seedsQuantity : (seedingTx.totalDisemai || 0)), 10);
 
-  // Master contexts
-  const bObj = seedingTx.batchId ? getBatchById(seedingTx.batchId) : getBatchByCode(seedingTx.batchCode || seedingTx.batchNo);
-  const batchId = bObj ? bObj.id : (seedingTx.batchId || `BATCH-${Date.now()}`);
-  const batchCode = bObj ? (bObj.batchCode || bObj.batchNo) : (seedingTx.batchCode || seedingTx.batchNo || 'Batch-01');
+    const normBed = bedCode.toUpperCase();
+    const normBatchId = String(batchId).trim().toUpperCase();
+    const normBatchCode = String(batchCode).trim().toUpperCase();
+    const bedBibit = (bedDisemai > 0 && row.disemai !== undefined) ? bedDisemai : (bedDisemai > 0 && rawBedRows.length === 1 ? bedDisemai : bedPoly * 2);
 
-  const bedenganIds = seedingTx.bedenganIds || 
-    (seedingTx.rows ? seedingTx.rows.map(r => r.bedenganId || r.bedenganCode).filter(Boolean) : 
-    (seedingTx.bedenganBreakdown ? seedingTx.bedenganBreakdown.map(b => b.bedenganCode || b.bedenganId).filter(Boolean) : 
-    (seedingTx.bedenganId ? [seedingTx.bedenganId] : (seedingTx.bedenganCode ? [seedingTx.bedenganCode] : []))));
+    // IDEMPOTENCY KEY: Batch + Bedengan
+    const existing = allDocs.find(d => {
+      const isStage1 = (d.selectionStage === 'SELEKSI_I' || d.selectionStage === 'SELEKSI_1' || !d.selectionStage);
+      if (!isStage1) return false;
+      if (d.isSplit || d.isLegacyAggregateSplit) return false;
 
-  const rows = seedingTx.rows 
-    ? JSON.parse(JSON.stringify(seedingTx.rows)) 
-    : (seedingTx.bedenganBreakdown 
-        ? seedingTx.bedenganBreakdown.map(b => ({ bedenganId: b.bedenganCode || b.bedenganId, bedenganCode: b.bedenganCode || b.bedenganId, polybag: b.polybagQuantity || b.polybag || 0, disemai: b.seedsQuantity || b.disemai || 0 }))
-        : (bedenganIds.length > 0 ? bedenganIds.map(bId => ({ bedenganId: bId, bedenganCode: formatBedenganDisplayCode(bId), polybag: sourcePolybagQty, disemai: sourceBibitQty })) : []));
+      const dBatchId = String(d.batchId || '').trim().toUpperCase();
+      const dBatchCode = String(d.batchCode || d.batchNo || '').trim().toUpperCase();
+      const batchMatches = (
+        (normBatchId && (dBatchId === normBatchId || dBatchCode === normBatchId)) ||
+        (normBatchCode && (dBatchId === normBatchCode || dBatchCode === normBatchCode))
+      );
+      if (!batchMatches) return false;
 
-  const baseDoc = {
-    id: `SEL-DOC-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    docNo: docNo,
-    selectionDocNo: docNo,
-    selectionType: SELECTION_TYPES.PRA_OKULASI,
-    selectionStage: options.selectionStage || SELECTION_STAGES.SELEKSI_1,
-    
-    // Source Document Relation
-    sourceModule: 'PENYEMAIAN',
-    sourceTransactionType: 'SEEDING',
-    sourceTransactionId: seedingTxId,
-    sourceDocNo: seedingDocNo,
-    seedingDocNo: seedingDocNo,
-    sourceSeedingDocNo: seedingDocNo,
-    receiptDocNo: receiptDocNo,
-    sourceReceiptDocNo: receiptDocNo,
-    rows: rows,
-    
-    // Scope & Master references
-    programId: seedingTx.programId || bObj?.programId || 'PRG-2026-001',
-    programCode: seedingTx.programCode || seedingTx.program || bObj?.programCode || 'PRG/NUR/01/2026',
-    programName: seedingTx.programName || bObj?.programName || '-',
-    batchId: batchId,
-    batchCode: batchCode,
-    batchNo: batchCode,
-    bedenganId: bedenganIds.length > 0 ? bedenganIds[0] : (seedingTx.bedenganId || null),
-    bedenganCode: seedingTx.bedenganCode || null,
-    bedenganIds: bedenganIds,
-    bedengan: seedingTx.bedengan || (bedenganIds.length > 0 ? bedenganIds.join(', ') : '-'),
-    estateId: seedingTx.estateId || bObj?.estateId || currentUser?.estateId || null,
-    estateName: seedingTx.estateName || bObj?.estateName || currentUser?.estateName || '-',
-    divisionId: seedingTx.divisionId || bObj?.divisionId || currentUser?.divisionId || null,
-    divisionName: seedingTx.divisionName || bObj?.divisionName || currentUser?.divisionName || '-',
-    
-    klon: seedingTx.klonAwal || seedingTx.klon || 'GT 1',
-    clone: seedingTx.klonAwal || seedingTx.klon || 'GT 1',
-    tahapan: seedingTx.tahapan || 'Rubber Main Nursery',
-    growthStage: seedingTx.growthStage || seedingTx.tahapan || 'Rubber Main Nursery',
-    
-    // Population Quantities (Dua quantity independen dari Penyemaian)
-    sourceBibitQty: sourceBibitQty,
-    sourcePolybagQty: sourcePolybagQty,
-    currentBibitQty: sourceBibitQty,
-    currentPolybagQty: sourcePolybagQty,
-    activePolybagQty: 0,
-    emptyPolybagQty: 0,
-    
-    // Execution Progress & Child Transaction Tracking
-    executionTransactionIds: [],
-    executionCount: 0,
-    totalDiperiksa: 0,
-    totalLayak: 0,
-    totalAfkir: 0,
-    
-    // Completion State (Manual by Mantri, default false)
-    isCompleted: false,
-    isFinal: false,
-    completedAt: null,
-    completedByUserId: null,
-    completedByName: null,
-    
-    // Lifecycle Status
-    status: 'DRAFT',
-    createdAt: new Date().toISOString()
-  };
+      const dBed = formatBedenganDisplayCode(d.bedenganCode || d.bedenganId || d.bedengan || (d.rows && d.rows[0] ? (d.rows[0].bedenganCode || d.rows[0].bedenganId) : '')).toUpperCase();
+      return dBed === normBed;
+    });
 
-  const newDoc = currentUser 
-    ? applyTransactionActor(baseDoc, AUDIT_EVENT_TYPES.CREATE, currentUser, `Pembuatan Dokumen Seleksi Pra-Okulasi ${docNo} untuk batch ${batchCode}`)
-    : baseDoc;
+    if (existing) {
+      let modified = false;
+      // Ensure isolated bedengan polybag & bibit scope (Bedengan population semantics)
+      if (bedPoly > 0 && (!existing.sourcePolybagQty || existing.sourcePolybagQty === 0 || existing.sourcePolybagQty !== bedPoly)) {
+        existing.sourcePolybagQty = bedPoly;
+        existing.currentPolybagQty = bedPoly;
+        modified = true;
+      }
+      if (bedBibit > 0 && (!existing.sourceBibitQty || existing.sourceBibitQty === canonicalBatchBibit || existing.sourceBibitQty === 0)) {
+        existing.sourceBibitQty = bedBibit;
+        existing.currentBibitQty = Math.max(0, bedBibit - (existing.totalAfkir || 0));
+        modified = true;
+      }
+      if (canonicalBatchBibit > 0 && existing.batchTotalBibit !== canonicalBatchBibit) {
+        existing.batchTotalBibit = canonicalBatchBibit;
+        modified = true;
+      }
+      if (modified) {
+        storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+      }
+      createdDocs.push(existing);
+      return;
+    }
 
-  allDocs.push(newDoc);
+    // Create New Selection I Document for this Batch + Bedengan Scope
+    maxSeq++;
+    const docNo = (options.docNo && rawBedRows.length === 1) ? options.docNo : `2026/SEL/${String(maxSeq).padStart(3, '0')}`;
+
+    const singleRow = [{
+      bedenganId: bedId,
+      bedenganCode: bedCode,
+      polybag: bedPoly,
+      disemai: bedDisemai,
+      sourceSeedingDocNo: seedingDocNo,
+      sourceTransactionId: seedingTxId,
+      batchId: batchId,
+      batchCode: batchCode
+    }];
+
+    const baseDoc = {
+      id: `SEL-DOC-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      docNo: docNo,
+      selectionDocNo: docNo,
+      selectionType: SELECTION_TYPES.PRA_OKULASI,
+      selectionStage: options.selectionStage || SELECTION_STAGES.SELEKSI_1,
+      
+      // Source Document Provenance (Single specific SOW)
+      sourceModule: 'PENYEMAIAN',
+      sourceTransactionType: 'SEEDING',
+      sourceTransactionId: seedingTxId,
+      sourceDocNo: seedingDocNo,
+      seedingDocNo: seedingDocNo,
+      sourceSeedingDocNo: seedingDocNo,
+      receiptDocNo: receiptDocNo,
+      sourceReceiptDocNo: receiptDocNo,
+      rows: singleRow,
+      
+      // Scope & Master references
+      programId: seedingTx.programId || bObj?.programId || 'PRG-2026-001',
+      programCode: seedingTx.programCode || seedingTx.program || bObj?.programCode || 'PRG/NUR/01/2026',
+      programName: seedingTx.programName || bObj?.programName || '-',
+      batchId: batchId,
+      batchCode: batchCode,
+      batchNo: batchCode,
+      batchTotalBibit: canonicalBatchBibit,
+      
+      // Fixed Operational Scope: Single Bedengan
+      bedenganId: bedId,
+      bedenganCode: bedCode,
+      bedengan: bedCode,
+      bedenganIds: [bedId],
+      
+      estateId: seedingTx.estateId || bObj?.estateId || currentUser?.estateId || null,
+      estateName: seedingTx.estateName || bObj?.estateName || currentUser?.estateName || '-',
+      divisionId: seedingTx.divisionId || bObj?.divisionId || currentUser?.divisionId || null,
+      divisionName: seedingTx.divisionName || bObj?.divisionName || currentUser?.divisionName || '-',
+      
+      klon: seedingTx.klonAwal || seedingTx.klon || 'GT 1',
+      clone: seedingTx.klonAwal || seedingTx.klon || 'GT 1',
+      tahapan: seedingTx.tahapan || 'Rubber Main Nursery',
+      growthStage: seedingTx.growthStage || seedingTx.tahapan || 'Rubber Main Nursery',
+      
+      // Population Quantities: Isolated Bedengan Scope
+      sourceBibitQty: bedBibit,
+      sourcePolybagQty: bedPoly,
+      currentBibitQty: bedBibit,
+      currentPolybagQty: bedPoly,
+      activePolybagQty: 0,
+      emptyPolybagQty: 0,
+      
+      // Execution Progress & Child Transaction Tracking
+      executionTransactionIds: [],
+      executionCount: 0,
+      totalDiperiksa: 0,
+      totalLayak: 0,
+      totalAfkir: 0,
+      
+      // Completion State
+      isCompleted: false,
+      isFinal: false,
+      completedAt: null,
+      completedByUserId: null,
+      completedByName: null,
+      
+      // Lifecycle Status
+      status: 'DRAFT',
+      createdAt: new Date().toISOString(),
+      isNewlyCreated: true
+    };
+
+    const newDoc = currentUser 
+      ? applyTransactionActor(baseDoc, AUDIT_EVENT_TYPES.CREATE, currentUser, `Pembuatan Dokumen Seleksi Pra-Okulasi ${docNo} untuk batch ${batchCode} bedengan ${bedCode}`)
+      : baseDoc;
+
+    allDocs.push(newDoc);
+    createdDocs.push(newDoc);
+  });
+
   storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
-  return newDoc;
+  const primaryDoc = createdDocs[0] || null;
+  if (primaryDoc) {
+    primaryDoc.allCreatedDocuments = createdDocs;
+  }
+  return primaryDoc;
 }
 
 /**
@@ -1489,6 +1670,230 @@ export function getPreGraftingSelectionDocuments(filter = {}, currentUser = null
     scoped = scoped.filter(d => d.sourceDocNo === filter.sourceDocNo);
   }
   return scoped;
+}
+
+/**
+ * Mengambil daftar seluruh transaksi CULL yang terkait dengan Dokumen Penyemaian (SOW) tertentu
+ */
+export function getRelatedCullRecordsForSeeding(seedingTxOrDocNo) {
+  if (!seedingTxOrDocNo) return [];
+  const seedingDocNo = typeof seedingTxOrDocNo === 'object'
+    ? String(seedingTxOrDocNo.docNo || seedingTxOrDocNo.seedingDocNo || seedingTxOrDocNo.sourceDocNo || seedingTxOrDocNo.id || '').trim()
+    : String(seedingTxOrDocNo).trim();
+  const seedingTxId = typeof seedingTxOrDocNo === 'object'
+    ? String(seedingTxOrDocNo.id || seedingDocNo).trim()
+    : seedingDocNo;
+
+  const allTxs = storage.get(SELECTION_STORAGE_KEY, []);
+  return allTxs.filter(tx => {
+    // Exclude execution transactions of Pra-Okulasi
+    if (
+      tx.selectionType === SELECTION_TYPES.PRA_OKULASI ||
+      tx.selectionDocumentId ||
+      tx.parentSelectionDocumentId ||
+      (tx.transactionType && String(tx.transactionType).startsWith('PELAKSANAAN_SELEKSI'))
+    ) {
+      return false;
+    }
+
+    const isPindahSemaiCull = (
+      tx.originType === 'REJECT_PENYEMAIAN' ||
+      tx.sourceModule === 'PENYEMAIAN' ||
+      tx.sourceTransactionType === 'SEEDING'
+    );
+    if (!isPindahSemaiCull) return false;
+
+    const txSourceDoc = String(tx.sourceDocNo || tx.seedingDocNo || '').trim();
+    const txSourceTxId = String(tx.sourceTransactionId || '').trim();
+
+    return (
+      (seedingDocNo && (txSourceDoc === seedingDocNo || txSourceTxId === seedingDocNo)) ||
+      (seedingTxId && (txSourceDoc === seedingTxId || txSourceTxId === seedingTxId))
+    );
+  });
+}
+
+/**
+ * Mengambil daftar seluruh entri pool CULL yang terkait dengan Dokumen Penyemaian (SOW) tertentu
+ */
+export function getRelatedCullPoolEntriesForSeeding(seedingTxOrDocNo) {
+  if (!seedingTxOrDocNo) return [];
+  const seedingDocNo = typeof seedingTxOrDocNo === 'object'
+    ? String(seedingTxOrDocNo.docNo || seedingTxOrDocNo.seedingDocNo || seedingTxOrDocNo.sourceDocNo || seedingTxOrDocNo.id || '').trim()
+    : String(seedingTxOrDocNo).trim();
+  const seedingTxId = typeof seedingTxOrDocNo === 'object'
+    ? String(seedingTxOrDocNo.id || seedingDocNo).trim()
+    : seedingDocNo;
+
+  const pool = storage.get('selection_pool', []);
+  return pool.filter(item => {
+    const isPindahSemaiCull = (
+      item.originType === 'REJECT_PENYEMAIAN' ||
+      item.sourceModule === 'PENYEMAIAN' ||
+      item.sourceTransactionType === 'SEEDING'
+    );
+    if (!isPindahSemaiCull) return false;
+
+    const itemSourceDoc = String(item.sourceDocNo || item.seedingDocNo || '').trim();
+    const itemSourceTxId = String(item.sourceTransactionId || '').trim();
+
+    return (
+      (seedingDocNo && (itemSourceDoc === seedingDocNo || itemSourceTxId === seedingDocNo)) ||
+      (seedingTxId && (itemSourceDoc === seedingTxId || itemSourceTxId === seedingTxId))
+    );
+  });
+}
+
+/**
+ * Memeriksa apakah Dokumen Seleksi Pra-Okulasi I dapat dibuat/dieksekusi dari Dokumen Penyemaian (SOW)
+ * Gate Baseline: 
+ * - SOW tanpa afkir / CULL: ALLOW
+ * - SOW dengan afkir: SELURUH CULL terkait WAJIB berstatus final approved ('DISETUJUI' atau 'VERIFIED')
+ */
+export function canCreatePreGraftingSelection1Document(seedingTxOrDocNo) {
+  if (!seedingTxOrDocNo) {
+    return { canCreate: false, reason: 'Data transaksi penyemaian tidak valid.', seedingTx: null, relatedCulls: [] };
+  }
+
+  // 1. Resolve SOW & Multi-SOW Batch Support
+  if (typeof seedingTxOrDocNo === 'object' && seedingTxOrDocNo !== null && Array.isArray(seedingTxOrDocNo.sourceSeedingDocNos) && seedingTxOrDocNo.sourceSeedingDocNos.length > 1) {
+    for (const sowNo of seedingTxOrDocNo.sourceSeedingDocNos) {
+      const subCheck = canCreatePreGraftingSelection1Document(sowNo);
+      if (!subCheck.canCreate) {
+        return subCheck;
+      }
+    }
+    return {
+      canCreate: true,
+      reason: 'Seluruh Dokumen CULL terkait pada Batch telah disetujui Asisten Bibitan.',
+      seedingTx: seedingTxOrDocNo,
+      relatedCulls: []
+    };
+  }
+
+  let seedingTx = typeof seedingTxOrDocNo === 'object' && seedingTxOrDocNo !== null
+    ? seedingTxOrDocNo
+    : null;
+
+  const searchKey = String(
+    (typeof seedingTxOrDocNo === 'object' && seedingTxOrDocNo !== null)
+      ? (seedingTxOrDocNo.docNo || seedingTxOrDocNo.seedingDocNo || seedingTxOrDocNo.sourceDocNo || seedingTxOrDocNo.id || '')
+      : seedingTxOrDocNo
+  ).trim();
+
+  const allSeedings = storage.get('seeding_transactions', []);
+  if (!seedingTx || (!seedingTx.totalDisemai && !seedingTx.seedsQuantity && !seedingTx.disemai && seedingTx.rusak === undefined && seedingTx.rusakQty === undefined && seedingTx.ditolak === undefined)) {
+    const found = allSeedings.find(s => 
+      s.docNo === searchKey || 
+      s.id === searchKey || 
+      s.seedingDocNo === searchKey
+    );
+    if (found) {
+      seedingTx = found;
+    } else {
+      // Cek apakah searchKey adalah ID Dokumen Seleksi I
+      const preDoc = getPreGraftingSelectionDocumentById(searchKey);
+      if (preDoc) {
+        if (Array.isArray(preDoc.sourceSeedingDocNos) && preDoc.sourceSeedingDocNos.length > 1) {
+          for (const sowNo of preDoc.sourceSeedingDocNos) {
+            const subCheck = canCreatePreGraftingSelection1Document(sowNo);
+            if (!subCheck.canCreate) {
+              return subCheck;
+            }
+          }
+          return {
+            canCreate: true,
+            reason: 'Seluruh Dokumen CULL terkait pada Batch telah disetujui Asisten Bibitan.',
+            seedingTx: preDoc,
+            relatedCulls: []
+          };
+        }
+        const sowRef = preDoc.sourceDocNo || preDoc.seedingDocNo || preDoc.sourceTransactionId;
+        const foundSow = allSeedings.find(s => s.docNo === sowRef || s.id === sowRef || s.seedingDocNo === sowRef);
+        if (foundSow) seedingTx = foundSow;
+      }
+    }
+  }
+
+  // 2. Cek apakah SOW memiliki bibit afkir / ditolak
+  const rusakQty = Number(seedingTx?.rusakQty ?? seedingTx?.rusak ?? 0);
+  const matiQty = Number(seedingTx?.matiQty ?? seedingTx?.mati ?? 0);
+  const lainnyaQty = Number(seedingTx?.lainnyaQty ?? seedingTx?.lainnya ?? 0);
+  const ditolakQty = Number(seedingTx?.ditolak ?? seedingTx?.jumlahDitolak ?? 0);
+  const hasAfkirInSow = (rusakQty > 0 || matiQty > 0 || lainnyaQty > 0 || ditolakQty > 0);
+
+  const poolEntries = getRelatedCullPoolEntriesForSeeding(seedingTx || searchKey);
+  const cullTxs = getRelatedCullRecordsForSeeding(seedingTx || searchKey);
+
+  // CASE A: SOW TIDAK memiliki afkir dan tidak ada entri CULL di pool maupun transaksi CULL
+  if (!hasAfkirInSow && poolEntries.length === 0 && cullTxs.length === 0) {
+    return {
+      canCreate: true,
+      reason: 'Dokumen Pindah Semai tidak memiliki bibit afkir (Eligible).',
+      seedingTx,
+      relatedCulls: []
+    };
+  }
+
+  // CASE B: SOW memiliki afkir
+  // 1. Jika belum ada deklarasi CULL sama sekali
+  if (cullTxs.length === 0) {
+    return {
+      canCreate: false,
+      reason: 'Dokumen Pindah Semai memiliki bibit afkir yang belum dideklarasikan ke CULL.',
+      seedingTx,
+      relatedCulls: []
+    };
+  }
+
+  // Helper status final approved
+  const isApprovedStatus = (st) => {
+    const s = String(st || '').toUpperCase().trim();
+    return s === 'DISETUJUI' || s === 'VERIFIED' || s === 'TERVERIFIKASI' || s === SELECTION_STATUS.DISETUJUI;
+  };
+
+  // 2. Cek apakah masih ada entri pool yang belum dideklarasikan (partial declaration)
+  const pendingPool = poolEntries.filter(p => p.status === 'PENDING_DECLARATION' || p.status === 'DIKEMBALIKAN');
+  if (pendingPool.length > 0) {
+    const unsubmittedPool = pendingPool.filter(p => !cullTxs.some(c => c.selectionPoolDocNo === p.docNo || c.id === p.selectionTransactionId || c.docNo === p.docNo));
+    if (unsubmittedPool.length > 0) {
+      return {
+        canCreate: false,
+        reason: 'Masih terdapat bibit afkir Pindah Semai yang belum dideklarasikan ke CULL.',
+        seedingTx,
+        relatedCulls: cullTxs
+      };
+    }
+  }
+
+  // 3. Cek seluruh dokumen CULL: WAJIB ALL APPROVED
+  const unapprovedCulls = cullTxs.filter(c => !isApprovedStatus(c.status));
+  if (unapprovedCulls.length > 0) {
+    const unapprovedNames = unapprovedCulls.map(c => c.docNo || c.selectionNo || c.id).join(', ');
+    const hasRevision = unapprovedCulls.some(c => {
+      const st = String(c.status || '').toUpperCase();
+      return st.includes('KEMBALI') || st.includes('REVISI');
+    });
+    const reasonText = hasRevision
+      ? `Dokumen CULL (${unapprovedNames}) dikembalikan/revisi dan belum disetujui Asisten Bibitan.`
+      : `Dokumen CULL (${unapprovedNames}) masih menunggu persetujuan Asisten Bibitan.`;
+
+    return {
+      canCreate: false,
+      reason: reasonText,
+      seedingTx,
+      relatedCulls: cullTxs,
+      unapprovedCulls
+    };
+  }
+
+  // Seluruh CULL telah disetujui!
+  return {
+    canCreate: true,
+    reason: 'Seluruh Dokumen CULL terkait telah disetujui Asisten Bibitan.',
+    seedingTx,
+    relatedCulls: cullTxs
+  };
 }
 
 /**
@@ -1932,6 +2337,9 @@ export function getPreGraftingSelectionDocumentById(idOrDocNo) {
   );
   if (exact) return exact;
   return allDocs.find(d => 
+    (d.batchId && (String(d.batchId).trim() === searchStr || String(d.batchCode).trim() === searchStr)) ||
+    (d.batchCode && (String(d.batchCode).trim() === searchStr || String(d.batchNo).trim() === searchStr)) ||
+    (Array.isArray(d.sourceSeedingDocNos) && d.sourceSeedingDocNos.includes(searchStr)) ||
     d.sourceSeedingDocNo === searchStr ||
     d.seedingDocNo === searchStr ||
     d.sourceDocNo === searchStr || 
@@ -2482,17 +2890,209 @@ export function returnPreGraftingSelectionDocument(idOrDocNo, returnReason, curr
 }
 
 /**
+ * Migrasi Dokumen Seleksi I Legacy Agregat menjadi Batch + Bedengan Scope
+ * Memecah dokumen agregat tanpa menghapus history dan me-reassign child transactions
+ */
+export function migrateLegacyAggregateSelection1Documents() {
+  const allDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
+  const allTxs = storage.get(SELECTION_STORAGE_KEY, []);
+  let migratedCount = 0;
+
+  // Temukan dokumen Seleksi I agregat (memiliki multi-bedengan atau multi-SOW)
+  const legacyDocs = allDocs.filter(d => {
+    const isStage1 = (d.selectionStage === 'SELEKSI_I' || d.selectionStage === 'SELEKSI_1' || !d.selectionStage);
+    if (!isStage1) return false;
+    if (d.isSplit || d.isLegacyAggregateSplit) return false;
+
+    const hasMultiBedRows = Array.isArray(d.rows) && d.rows.length > 1;
+    const hasMultiBedIds = Array.isArray(d.bedenganIds) && d.bedenganIds.length > 1;
+    const hasCommaBed = typeof d.bedengan === 'string' && d.bedengan.includes(',');
+    const hasMultiSow = Array.isArray(d.sourceSeedingDocNos) && d.sourceSeedingDocNos.length > 1;
+
+    return hasMultiBedRows || hasMultiBedIds || hasCommaBed || hasMultiSow;
+  });
+
+  if (legacyDocs.length === 0) {
+    return { migratedCount: 0, legacyDocsCount: 0 };
+  }
+
+  // Hitung nomor urut tertinggi untuk dokumen baru (Format: 2026/SEL/xxx)
+  let maxSeq = 0;
+  allDocs.forEach(d => {
+    const docStr = String(d.docNo || d.selectionDocNo || '');
+    const match = docStr.match(/SEL(?:-DOC)?\/(\d+)/i) || docStr.match(/^(\d+)$/);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (!isNaN(n) && n > maxSeq) maxSeq = n;
+    }
+  });
+
+  legacyDocs.forEach(legDoc => {
+    let bedengans = [];
+    if (Array.isArray(legDoc.rows) && legDoc.rows.length > 0) {
+      bedengans = legDoc.rows.map(r => ({
+        bedenganId: r.bedenganId || r.bedenganCode || r.bedengan,
+        bedenganCode: formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId),
+        polybag: parseInt(r.polybag !== undefined ? r.polybag : Math.ceil((r.disemai || 0) / 2), 10),
+        disemai: parseInt(r.disemai || 0, 10),
+        sourceSeedingDocNo: r.seedingDocNo || r.sourceSeedingDocNo || r.sourceDocNo || legDoc.sourceSeedingDocNo || legDoc.sourceDocNo,
+        sourceTransactionId: r.sourceTransactionId || legDoc.sourceTransactionId
+      }));
+    } else if (Array.isArray(legDoc.bedenganIds) && legDoc.bedenganIds.length > 0) {
+      const polyPerBed = Math.floor((legDoc.sourcePolybagQty || 0) / legDoc.bedenganIds.length);
+      bedengans = legDoc.bedenganIds.map((bId, idx) => ({
+        bedenganId: bId,
+        bedenganCode: formatBedenganDisplayCode(bId),
+        polybag: polyPerBed,
+        disemai: polyPerBed * 2,
+        sourceSeedingDocNo: (Array.isArray(legDoc.sourceSeedingDocNos) && legDoc.sourceSeedingDocNos[idx]) || legDoc.sourceSeedingDocNo || legDoc.sourceDocNo,
+        sourceTransactionId: legDoc.sourceTransactionId
+      }));
+    }
+
+    const createdTargetIds = [];
+
+    bedengans.forEach(bed => {
+      maxSeq++;
+      const newDocNo = `2026/SEL/${String(maxSeq).padStart(3, '0')}`;
+      const splitDocId = `SEL-DOC-SPLIT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+      const splitDoc = {
+        ...legDoc,
+        id: splitDocId,
+        docNo: newDocNo,
+        selectionDocNo: newDocNo,
+        selectionStage: SELECTION_STAGES.SELEKSI_1,
+        legacyParentDocNo: legDoc.docNo,
+        legacyParentDocId: legDoc.id,
+        bedenganId: bed.bedenganId,
+        bedenganCode: bed.bedenganCode,
+        bedengan: bed.bedenganCode,
+        bedenganIds: [bed.bedenganId],
+        sourceSeedingDocNo: bed.sourceSeedingDocNo || legDoc.sourceDocNo,
+        sourceDocNo: bed.sourceSeedingDocNo || legDoc.sourceDocNo,
+        seedingDocNo: bed.sourceSeedingDocNo || legDoc.sourceDocNo,
+        sourceSeedingDocNos: [bed.sourceSeedingDocNo || legDoc.sourceDocNo],
+        sourceTransactionId: bed.sourceTransactionId || legDoc.sourceTransactionId,
+        rows: [{
+          bedenganId: bed.bedenganId,
+          bedenganCode: bed.bedenganCode,
+          polybag: bed.polybag,
+          disemai: bed.disemai,
+          sourceSeedingDocNo: bed.sourceSeedingDocNo || legDoc.sourceDocNo,
+          sourceTransactionId: bed.sourceTransactionId || legDoc.sourceTransactionId,
+          batchId: legDoc.batchId,
+          batchCode: legDoc.batchCode
+        }],
+        sourcePolybagQty: bed.polybag,
+        currentPolybagQty: bed.polybag,
+        sourceBibitQty: bed.disemai || (bed.polybag * 2),
+        currentBibitQty: bed.disemai || (bed.polybag * 2),
+        batchTotalBibit: legDoc.sourceBibitQty || legDoc.batchTotalBibit,
+        executionTransactionIds: [],
+        executionCount: 0,
+        totalDiperiksa: 0,
+        totalLayak: 0,
+        totalAfkir: 0,
+        isCompleted: false,
+        status: 'DRAFT',
+        createdAt: legDoc.createdAt || new Date().toISOString()
+      };
+
+      // Re-assign child execution transactions matching this bedengan
+      const normBedCode = formatBedenganDisplayCode(bed.bedenganCode).toUpperCase();
+      const matchingTxs = allTxs.filter(tx => {
+        const isChildOfLegacy = (
+          tx.parentSelectionDocumentId === legDoc.id ||
+          tx.selectionDocumentId === legDoc.id ||
+          tx.parentSelectionDocNo === legDoc.docNo ||
+          tx.selectionDocNo === legDoc.docNo
+        );
+        if (!isChildOfLegacy) return false;
+        const txBed = formatBedenganDisplayCode(tx.bedenganCode || tx.bedengan || tx.bedenganId || '').toUpperCase();
+        return txBed === normBedCode;
+      });
+
+      matchingTxs.forEach(tx => {
+        tx.parentSelectionDocumentId = splitDoc.id;
+        tx.parentSelectionDocNo = splitDoc.docNo;
+        tx.selectionDocumentId = splitDoc.id;
+        tx.selectionDocNo = splitDoc.docNo;
+        tx.bedenganId = bed.bedenganId;
+        tx.bedenganCode = bed.bedenganCode;
+        tx.sourceSeedingDocNo = bed.sourceSeedingDocNo || tx.sourceSeedingDocNo || legDoc.sourceDocNo;
+      });
+
+      // Recalculate metrics from re-assigned executions
+      if (matchingTxs.length > 0) {
+        const polyDone = matchingTxs.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope || 0), 10), 0);
+        const bibitAfkir = matchingTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahDiperiksa || 0), 10), 0);
+        splitDoc.executionTransactionIds = matchingTxs.map(t => t.id);
+        splitDoc.executionCount = matchingTxs.length;
+        splitDoc.totalDiperiksa = polyDone;
+        splitDoc.totalAfkir = bibitAfkir;
+        splitDoc.totalLayak = Math.max(0, splitDoc.sourceBibitQty - bibitAfkir);
+        splitDoc.remainingPolybag = Math.max(0, splitDoc.sourcePolybagQty - polyDone);
+        splitDoc.isCompleted = splitDoc.sourcePolybagQty > 0 && polyDone >= splitDoc.sourcePolybagQty;
+        splitDoc.status = splitDoc.isCompleted ? 'COMPLETED' : 'IN_PROGRESS';
+      }
+
+      // Re-link downstream Selection II documents if matching
+      allDocs.forEach(d2 => {
+        if (d2.selectionStage === 'SELEKSI_II' || d2.selectionStage === 'SELEKSI_2') {
+          if (d2.sourceSelectionDocumentId === legDoc.id || d2.sourceSelectionDocNo === legDoc.docNo) {
+            const d2Bed = formatBedenganDisplayCode(d2.bedenganCode || d2.bedengan || '').toUpperCase();
+            if (d2Bed === normBedCode) {
+              d2.sourceSelectionDocumentId = splitDoc.id;
+              d2.sourceSelectionDocNo = splitDoc.docNo;
+            }
+          }
+        }
+      });
+
+      allDocs.push(splitDoc);
+      createdTargetIds.push(splitDoc.id);
+      migratedCount++;
+    });
+
+    // Mark legacy document as split / migrated without deleting history
+    legDoc.isLegacyAggregate = true;
+    legDoc.isSplit = true;
+    legDoc.isLegacyAggregateSplit = true;
+    legDoc.splitTargetDocIds = createdTargetIds;
+    legDoc.migratedAt = new Date().toISOString();
+  });
+
+  storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+  storage.set(SELECTION_STORAGE_KEY, allTxs);
+
+  return { migratedCount, legacyDocsCount: legacyDocs.length };
+}
+
+/**
  * Sinkronisasi seluruh transaksi penyemaian ke Dokumen Seleksi Pra-Okulasi secara idempoten
  */
 export function syncAllSeedingsToPreGraftingSelectionDocuments(currentUser = null) {
+  // Lakukan auto-migrasi dokumen legacy agregat jika ada
+  try {
+    migrateLegacyAggregateSelection1Documents();
+  } catch (mErr) {
+    console.warn('[syncAllSeedingsToPreGraftingSelectionDocuments] Migrasi legacy note:', mErr.message);
+  }
+
   const seedingTxs = storage.get('seeding_transactions', []);
   let createdCount = 0;
 
   seedingTxs.forEach(tx => {
     try {
-      const existing = getPreGraftingSelectionDocumentById(tx.docNo || tx.id);
-      if (!existing) {
-        createPreGraftingSelectionDocument(tx, currentUser);
+      // Cek gate sebelum membuat dokumen Seleksi I
+      const gateCheck = canCreatePreGraftingSelection1Document(tx);
+      if (!gateCheck.canCreate) {
+        return; // Skip SOW with pending/unapproved CULL
+      }
+
+      const res = createPreGraftingSelectionDocument(tx, currentUser);
+      if (res && res.isNewlyCreated) {
         createdCount++;
       }
     } catch (err) {
@@ -2572,8 +3172,11 @@ export function getBedenganScopeStatusForSeleksi1(parentDoc, txsOverride = null)
 
   // Calculate inspected polybag per bedengan from executions
   return bedenganList.map(bed => {
+    const parentBatch = String(parentDoc.batchCode || parentDoc.batchNo || '').trim().toUpperCase();
     const bedNorm = String(bed.bedenganCode || bed.bedenganId).trim().toUpperCase();
     const bedTxs = executions.filter(tx => {
+      const txBatch = String(tx.batchCode || tx.batchNo || tx.sourceBatchCode || '').trim().toUpperCase();
+      if (parentBatch && txBatch && txBatch !== parentBatch) return false;
       const txBed = String(tx.bedenganCode || tx.bedengan || tx.bedenganId || '').trim().toUpperCase();
       return txBed === bedNorm || txBed === String(bed.bedenganId).toUpperCase();
     });
@@ -2611,25 +3214,33 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = []) 
     return { isValid: false, errors: ['Dokumen Seleksi Pra-Okulasi (parent) tidak ditemukan.'] };
   }
 
-  // 1. Bedengan validation
-  const bedenganCode = String(payload.bedenganCode || payload.bedengan || payload.bedenganId || '').trim();
-  if (!bedenganCode) {
-    errors.push('Bedengan yang diperiksa wajib dipilih.');
-  }
-
+  // 1. Bedengan validation / operational metadata resolution
   const bedScopeList = getBedenganScopeStatusForSeleksi1(parentDoc, existingTxs);
-  const bedNorm = formatBedenganDisplayCode(bedenganCode).toUpperCase();
-  const matchedBed = bedScopeList.find(b => 
-    formatBedenganDisplayCode(b.bedenganCode).toUpperCase() === bedNorm ||
-    String(b.bedenganId).toUpperCase() === String(payload.bedenganId || '').toUpperCase() ||
-    String(b.bedenganCode).toUpperCase() === bedNorm
-  );
 
-  if (!matchedBed) {
-    errors.push(`Bedengan ${bedenganCode} tidak termasuk dalam scope Dokumen Seleksi ${parentDoc.docNo}.`);
+  const bedenganCode = String(payload.bedenganCode || payload.bedengan || payload.bedenganId || '').trim();
+  let matchedBed = null;
+  if (bedenganCode) {
+    const bedNorm = formatBedenganDisplayCode(bedenganCode).toUpperCase();
+    matchedBed = bedScopeList.find(b => 
+      formatBedenganDisplayCode(b.bedenganCode).toUpperCase() === bedNorm ||
+      String(b.bedenganId).toUpperCase() === String(payload.bedenganId || '').toUpperCase() ||
+      String(b.bedenganCode).toUpperCase() === bedNorm
+    );
+  }
+  if (!matchedBed && bedScopeList.length > 0) {
+    matchedBed = bedScopeList[0];
   }
 
-  const maxPolybagScope = matchedBed ? matchedBed.remainingPolybag : parseInt(parentDoc.sourcePolybagQty || 0, 10);
+  const resolvedBedId = matchedBed ? matchedBed.bedenganId : (payload.bedenganId || parentDoc.bedenganId || 'BED-001');
+  const resolvedBedCode = matchedBed ? matchedBed.bedenganCode : (payload.bedenganCode || parentDoc.bedenganCode || 'BED-001');
+
+  // SCOPE-ISOLATED: Use per-bedengan remainingPolybag, NOT aggregate total
+  const maxPolybagScope = matchedBed
+    ? (matchedBed.remainingPolybag > 0 ? matchedBed.remainingPolybag : 0)
+    : (bedScopeList.length > 0
+        ? bedScopeList.reduce((sum, b) => sum + (b.remainingPolybag || 0), 0)
+        : parseInt(parentDoc.sourcePolybagQty || 0, 10));
+
   const sourceBibit = parseInt(parentDoc.sourceBibitQty !== undefined ? parentDoc.sourceBibitQty : ((parentDoc.sourcePolybagQty || 0) * 2), 10);
 
   // Parse 2 canonical inputs: Jlh Polybag Diperiksa & Jlh Bibit Diseleksi
@@ -2654,27 +3265,42 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = []) 
   if (isNaN(actualPolyInspected) || actualPolyInspected <= 0) {
     errors.push('Jumlah polybag diperiksa harus lebih besar dari 0.');
   }
-  if (actualPolyInspected > maxPolybagScope) {
-    errors.push(`Jumlah polybag diperiksa (${actualPolyInspected}) melebihi sisa scope polybag yang tersedia (${maxPolybagScope}).`);
+  if (matchedBed && matchedBed.isFullyInspected) {
+    errors.push(`Bedengan ${resolvedBedCode} telah selesai diperiksa seluruhnya.`);
+  } else if (actualPolyInspected > maxPolybagScope) {
+    errors.push(`Jumlah polybag diperiksa (${actualPolyInspected}) melebihi sisa scope polybag bedengan ${resolvedBedCode} (${maxPolybagScope}).`);
   }
 
   if (isNaN(actualBibitSelected) || actualBibitSelected < 0) {
     errors.push('Jumlah bibit diseleksi tidak boleh negatif.');
   }
 
-  // Hitung otomatis Bibit Dipertahankan secara kumulatif
-  const existingBibitSelectedSum = existingTxs.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
-    0
-  );
-  const totalBibitDiseleksiAfter = existingBibitSelectedSum + (isNaN(actualBibitSelected) ? 0 : actualBibitSelected);
-  const cumulativeBibitRetained = Math.max(0, sourceBibit - totalBibitDiseleksiAfter);
+  // Sesi Seleksi 1: 1 Polybag = 2 Bibit
+  const inspectedBibit = !isNaN(actualPolyInspected) && actualPolyInspected > 0 ? (actualPolyInspected * 2) : 0;
+  const sessionBibitRetained = Math.max(0, inspectedBibit - (isNaN(actualBibitSelected) ? 0 : actualBibitSelected));
 
   const polyScope = actualPolyInspected;
   const inactivePolybagQty = 0;
   const selectedBibitScopeQty = actualBibitSelected;
   const bibitReject = actualBibitSelected;
-  const bibitAwal = actualBibitSelected;
+  const jumlahAfkir = actualBibitSelected;
+  const bibitAwal = inspectedBibit;
+  const jumlahDiperiksa = inspectedBibit;
+
+  // Resolve source SOW doc number for bedengan-level traceability
+  let resolvedSowDocNo = payload.sourceSeedingDocNo || '';
+  if (!resolvedSowDocNo && matchedBed && Array.isArray(parentDoc.rows)) {
+    const matchRow = parentDoc.rows.find(r => {
+      const rBedCode = formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId);
+      return rBedCode.toUpperCase() === resolvedBedCode.toUpperCase();
+    });
+    if (matchRow) {
+      resolvedSowDocNo = matchRow.seedingDocNo || matchRow.sourceSeedingDocNo || matchRow.sourceDocNo || '';
+    }
+  }
+  if (!resolvedSowDocNo) {
+    resolvedSowDocNo = parentDoc.sourceDocNo || '';
+  }
 
   return {
     isValid: errors.length === 0,
@@ -2682,19 +3308,22 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = []) 
     parsed: {
       bedenganId: matchedBed ? matchedBed.bedenganId : (payload.bedenganId || bedenganCode),
       bedenganCode: matchedBed ? matchedBed.bedenganCode : bedenganCode,
+      sourceSeedingDocNo: resolvedSowDocNo,
       polybagScope: polyScope,
       actualPolybagInspectedQty: actualPolyInspected,
       actualPolybagActiveQty: actualPolyInspected,
       actualBibitSelectedQty: actualBibitSelected,
-      actualBibitRetainedQty: cumulativeBibitRetained,
+      actualBibitRetainedQty: sessionBibitRetained,
       inactivePolybagQty,
       selectedBibitScopeQty,
       activePolybagQty: actualPolyInspected,
-      totalLayak: cumulativeBibitRetained,
+      totalLayak: sessionBibitRetained,
       bibitAwal,
-      jumlahDiperiksa: actualBibitSelected,
-      bibitDipertahankan: cumulativeBibitRetained,
-      bibitReject
+      jumlahDiperiksa,
+      bibitDipertahankan: sessionBibitRetained,
+      bibitReject,
+      jumlahAfkir,
+      jumlahLayak: sessionBibitRetained
     }
   };
 }
@@ -2703,10 +3332,20 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = []) 
  * Membuat transaksi pelaksanaan Seleksi I baru oleh Mantri Bibitan
  */
 export function createSeleksi1ExecutionTransaction(payload, currentUser) {
+  // GLOBAL ATTENDANCE GATE
+  assertAttendanceGateOrThrow(currentUser);
+
   const parentDocId = payload.selectionDocumentId || payload.selectionDocNo || payload.docNo;
   const parentDoc = getPreGraftingSelectionDocumentById(parentDocId);
   if (!parentDoc) {
     throw new Error(`Dokumen Seleksi Pra-Okulasi dengan identitas "${parentDocId}" tidak ditemukan.`);
+  }
+
+  // DEFENSE GATE: Validasi apakah SOW sumber Dokumen Seleksi I ini eligible (CULL approved)
+  const sowDocNo = parentDoc.sourceDocNo || parentDoc.seedingDocNo || parentDoc.sourceTransactionId;
+  const gateCheck = canCreatePreGraftingSelection1Document(sowDocNo);
+  if (!gateCheck.canCreate) {
+    throw new Error(`Pelaksanaan Seleksi I tidak dapat dilakukan: ${gateCheck.reason}`);
   }
 
   const existingExecutions = getSeleksi1ExecutionsByDocument(parentDoc.id);
@@ -2771,14 +3410,15 @@ export function createSeleksi1ExecutionTransaction(payload, currentUser) {
     bedenganId: val.parsed.bedenganId,
     bedenganCode: val.parsed.bedenganCode,
     bedengan: val.parsed.bedenganCode,
+    sourceSeedingDocNo: val.parsed.sourceSeedingDocNo || parentDoc.sourceDocNo,
     
     // Population Breakdown & Quantities
     polybagScope: val.parsed.actualPolybagInspectedQty,
     initialPolybagCount: val.parsed.actualPolybagInspectedQty,
     sourcePolybagQty: parentDoc.sourcePolybagQty,
     sourceBibitQty: parentDoc.sourceBibitQty,
-    bibitAwal: val.parsed.actualBibitSelectedQty,
-    jumlahDiperiksa: val.parsed.actualBibitSelectedQty,
+    bibitAwal: val.parsed.bibitAwal,
+    jumlahDiperiksa: val.parsed.jumlahDiperiksa,
     
     // Canonical Quantities
     actualPolybagInspectedQty: val.parsed.actualPolybagInspectedQty,
@@ -3060,8 +3700,11 @@ export function getBedenganScopeStatusForSeleksi2(parentDoc, txsOverride = null)
   }
 
   return bedenganList.map(bed => {
+    const parentBatch = String(parentDoc.batchCode || parentDoc.batchNo || '').trim().toUpperCase();
     const bedNorm = String(bed.bedenganCode || bed.bedenganId).trim().toUpperCase();
     const bedTxs = executions.filter(tx => {
+      const txBatch = String(tx.batchCode || tx.batchNo || tx.sourceBatchCode || '').trim().toUpperCase();
+      if (parentBatch && txBatch && txBatch !== parentBatch) return false;
       const txBed = String(tx.bedenganCode || tx.bedengan || tx.bedenganId || '').trim().toUpperCase();
       return txBed === bedNorm || txBed === String(bed.bedenganId).toUpperCase();
     });
@@ -3196,6 +3839,9 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = []) 
  * Membuat transaksi pelaksanaan Seleksi II baru oleh Mantri Bibitan
  */
 export function createSeleksi2ExecutionTransaction(payload, currentUser) {
+  // GLOBAL ATTENDANCE GATE
+  assertAttendanceGateOrThrow(currentUser);
+
   const parentDocId = payload.selectionDocumentId || payload.selectionDocNo || payload.docNo;
   const parentDoc = getPreGraftingSelectionDocumentById(parentDocId);
   if (!parentDoc) {
@@ -3554,8 +4200,11 @@ export function getBedenganScopeStatusForSeleksi3(parentDoc, txsOverride = null)
   }
 
   return bedenganList.map(bed => {
+    const parentBatch = String(parentDoc.batchCode || parentDoc.batchNo || '').trim().toUpperCase();
     const bedNorm = String(bed.bedenganCode || bed.bedenganId).trim().toUpperCase();
     const bedTxs = executions.filter(tx => {
+      const txBatch = String(tx.batchCode || tx.batchNo || tx.sourceBatchCode || '').trim().toUpperCase();
+      if (parentBatch && txBatch && txBatch !== parentBatch) return false;
       const txBed = String(tx.bedenganCode || tx.bedengan || tx.bedenganId || '').trim().toUpperCase();
       return txBed === bedNorm || txBed === String(bed.bedenganId).toUpperCase();
     });
@@ -3694,6 +4343,9 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
  * Membuat transaksi pelaksanaan Seleksi III baru oleh Mantri Bibitan
  */
 export function createSeleksi3ExecutionTransaction(payload, currentUser) {
+  // GLOBAL ATTENDANCE GATE
+  assertAttendanceGateOrThrow(currentUser);
+
   const parentDocId = payload.parentDocId || payload.selectionDocumentId || payload.selectionDocNo || payload.parentSelectionDocumentId || payload.docNo;
   const parentDoc = getPreGraftingSelectionDocumentById(parentDocId);
   if (!parentDoc) {

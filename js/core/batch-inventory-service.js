@@ -114,12 +114,187 @@ function _syncLegacyBatchStorage(batchIdOrCode, availableQty, receivedQty = null
 }
 
 /**
+ * Sinkronisasi populasi Batch Pokok dari transaksi Pindah Semai (seeding_transactions)
+ * Menghitung SUM(totalDisemai) dari seluruh transaksi SOW yang valid untuk batch tersebut.
+ * Idempoten: Tidak akan melakukan double counting saat dipanggil berulang kali.
+ * @param {string} batchIdOrCode
+ * @returns {Object|null} State inventory yang telah disinkronkan
+ */
+export function syncBatchPopulationFromSeeding(batchIdOrCode) {
+  if (!batchIdOrCode) return null;
+
+  const targetCode = String(batchIdOrCode).trim();
+  const masterBatch = _findBatchInMaster(targetCode);
+  const possibleCodes = new Set([targetCode]);
+  if (masterBatch) {
+    if (masterBatch.id) possibleCodes.add(String(masterBatch.id).trim());
+    if (masterBatch.batchId) possibleCodes.add(String(masterBatch.batchId).trim());
+    if (masterBatch.batchCode) possibleCodes.add(String(masterBatch.batchCode).trim());
+    if (masterBatch.batchNo) possibleCodes.add(String(masterBatch.batchNo).trim());
+    if (masterBatch.kode) possibleCodes.add(String(masterBatch.kode).trim());
+  }
+
+  const seedings = storage.get('seeding_transactions', []);
+  if (!Array.isArray(seedings) || seedings.length === 0) return null;
+
+  // 1. Filter transaksi SOW (Pindah Semai) yang menunjuk ke batch ini
+  const matchingSeedings = seedings.filter(tx => {
+    if (tx.isDeleted || tx.deleted || tx.status === 'DELETED') return false;
+    
+    const rootIdMatch = tx.batchId && possibleCodes.has(String(tx.batchId).trim());
+    const rootCodeMatch = (tx.batchCode && possibleCodes.has(String(tx.batchCode).trim())) || 
+                          (tx.batchNo && possibleCodes.has(String(tx.batchNo).trim())) ||
+                          (tx.batch_code && possibleCodes.has(String(tx.batch_code).trim()));
+    
+    let rowMatch = false;
+    if (Array.isArray(tx.rows)) {
+      rowMatch = tx.rows.some(r => 
+        (r.batchId && possibleCodes.has(String(r.batchId).trim())) ||
+        (r.batchNo && possibleCodes.has(String(r.batchNo).trim())) ||
+        (r.batchCode && possibleCodes.has(String(r.batchCode).trim()))
+      );
+    }
+
+    return rootIdMatch || rootCodeMatch || rowMatch;
+  });
+
+  if (matchingSeedings.length === 0) {
+    return null;
+  }
+
+  // 2. Hitung total populasi pokok yang berhasil disemai (SUM totalDisemai)
+  let totalDisemaiSum = 0;
+  matchingSeedings.forEach(tx => {
+    const qty = Number(
+      tx.totalDisemai !== undefined ? tx.totalDisemai :
+      (tx.disemai !== undefined ? tx.disemai :
+      (tx.rows && tx.rows.length > 0 ? tx.rows.reduce((acc, r) => acc + Number(r.disemai || 0), 0) : 0))
+    );
+    if (!isNaN(qty) && qty > 0) {
+      totalDisemaiSum += qty;
+    }
+  });
+
+  // 3. Hitung total pengurang CULL yang sudah DISETUJUI / VERIFIED dengan mutasi APPLIED
+  const selections = storage.get('selection_transactions', []);
+  let totalApprovedCull = 0;
+  if (Array.isArray(selections)) {
+    selections.forEach(sel => {
+      const isMatch = (
+        (sel.batchId && possibleCodes.has(String(sel.batchId).trim())) ||
+        (sel.batchCode && possibleCodes.has(String(sel.batchCode).trim())) ||
+        (sel.batchNo && possibleCodes.has(String(sel.batchNo).trim())) ||
+        (sel.sourceBatchCode && possibleCodes.has(String(sel.sourceBatchCode).trim()))
+      );
+      const s = String(sel.status || '').toUpperCase();
+      const isApproved = s === 'DISETUJUI' || s === 'VERIFIED' || s === 'TERVERIFIKASI';
+      if (isMatch && isApproved && sel.stockMutationStatus === 'APPLIED') {
+        const cullQty = Number(sel.jumlahAfkir || sel.quantity || 0);
+        if (!isNaN(cullQty) && cullQty > 0) {
+          totalApprovedCull += cullQty;
+        }
+      }
+    });
+  }
+
+  // Juga periksa jurnal mutasi jika ada pengurang selain CULL (misal dispatch/destruction)
+  const journal = _loadInventoryJournal();
+  let journalDeductions = 0;
+  if (Array.isArray(journal)) {
+    journal.forEach(j => {
+      if ((possibleCodes.has(j.batchId) || possibleCodes.has(j.batchCode)) && Number(j.qtyOut || 0) > 0) {
+        journalDeductions += Number(j.qtyOut || 0);
+      }
+    });
+  }
+
+  const effectiveDeductions = Math.max(totalApprovedCull, journalDeductions);
+  const newAvailable = Math.max(0, totalDisemaiSum - effectiveDeductions);
+  const now = new Date().toISOString();
+
+  // 4. Update / init inventory state
+  const states = _loadInventoryStates();
+  let state = states.find(s => possibleCodes.has(s.batchId) || possibleCodes.has(s.batchCode));
+  
+  let bId = targetCode;
+  let bCode = targetCode;
+  if (masterBatch) {
+    bId = masterBatch.id || masterBatch.batchId || targetCode;
+    bCode = masterBatch.batchCode || masterBatch.batchNo || masterBatch.kode || bId;
+  }
+
+  if (!state) {
+    state = {
+      batchId: bId,
+      batchCode: bCode,
+      initialQty: totalDisemaiSum,
+      receivedQty: totalDisemaiSum,
+      availableQty: newAvailable,
+      status: newAvailable > 0 ? INVENTORY_STATUS.AVAILABLE : INVENTORY_STATUS.EMPTY,
+      createdAt: masterBatch?.createdAt || now,
+      updatedAt: now
+    };
+    states.push(state);
+  } else {
+    state.initialQty = totalDisemaiSum;
+    state.receivedQty = totalDisemaiSum;
+    state.availableQty = newAvailable;
+    state.status = newAvailable > 0 ? INVENTORY_STATUS.AVAILABLE : INVENTORY_STATUS.EMPTY;
+    state.updatedAt = now;
+  }
+
+  _saveInventoryStates(states);
+  _syncLegacyBatchStorage(bId, newAvailable, totalDisemaiSum, state.status);
+
+  return { ...state };
+}
+
+/**
+ * Sinkronisasi seluruh batch populasi dari seeding_transactions
+ * @returns {Array<Object>}
+ */
+export function syncAllBatchPopulationsFromSeeding() {
+  const seedings = storage.get('seeding_transactions', []);
+  if (!Array.isArray(seedings) || seedings.length === 0) return [];
+
+  const batchCodes = new Set();
+  seedings.forEach(tx => {
+    if (tx.isDeleted || tx.deleted || tx.status === 'DELETED') return;
+    if (tx.batchId) batchCodes.add(String(tx.batchId).trim());
+    if (tx.batchCode) batchCodes.add(String(tx.batchCode).trim());
+    if (tx.batchNo) batchCodes.add(String(tx.batchNo).trim());
+    if (Array.isArray(tx.rows)) {
+      tx.rows.forEach(r => {
+        if (r.batchId) batchCodes.add(String(r.batchId).trim());
+        if (r.batchNo) batchCodes.add(String(r.batchNo).trim());
+        if (r.batchCode) batchCodes.add(String(r.batchCode).trim());
+      });
+    }
+  });
+
+  const results = [];
+  batchCodes.forEach(code => {
+    if (code) {
+      const res = syncBatchPopulationFromSeeding(code);
+      if (res) results.push(res);
+    }
+  });
+  return results;
+}
+
+/**
  * Mengambil state inventory dari sebuah batch
  * @param {string} batchIdOrCode - ID atau Kode Batch
  * @returns {Object|null}
  */
 export function getBatchInventory(batchIdOrCode) {
   if (!batchIdOrCode) return null;
+
+  // 1. Sync dari seeding transactions jika batch memiliki record SOW
+  const syncedFromSeeding = syncBatchPopulationFromSeeding(batchIdOrCode);
+  if (syncedFromSeeding) {
+    return syncedFromSeeding;
+  }
 
   const states = _loadInventoryStates();
   let state = states.find(s => s.batchId === batchIdOrCode || s.batchCode === batchIdOrCode);

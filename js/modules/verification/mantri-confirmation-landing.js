@@ -11,6 +11,7 @@ import { toast } from '../../components/toast.js';
 import { esc, todayDDMMYYYY } from '../../core/utils.js';
 import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import { VERIFICATION_STORAGE_KEY } from './verification-manager.js';
 import {
   getMantriTodayTransactions,
@@ -18,7 +19,8 @@ import {
   MANTRI_TRANSACTION_STATUS,
   MODULE_TYPES,
   MODULE_LABELS,
-  normalizeDateStr
+  normalizeDateStr,
+  formatSafeNumber
 } from './mantri-confirmation-service.js';
 
 let activeTabFilter = null; // Menyimpan modul aktif (e.g. 'TIDAK_HADIR', 'PENERIMAAN', etc.)
@@ -84,10 +86,12 @@ export function renderMantriConfirmationLanding() {
     ? allTodayTxs.filter(tx => tx.moduleType === currentModuleType)
     : [];
 
-  // Hitung status eligibilitas modul
+  // Hitung status eligibilitas modul (hanya item yang belum expired & canSubmit !== false)
   const moduleEligibleTxs = visibleTxs.filter(tx =>
-    tx.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM ||
-    tx.status === MANTRI_TRANSACTION_STATUS.REVISION
+    (tx.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM ||
+     tx.status === MANTRI_TRANSACTION_STATUS.REVISION) &&
+    tx.canSubmit !== false &&
+    !tx.isSubmissionExpired
   );
   const hasEligibleTxs = moduleEligibleTxs.length > 0;
   const isStatementChecked = Boolean(moduleCheckedStates.get(currentModuleType));
@@ -161,7 +165,7 @@ export function renderMantriConfirmationLanding() {
       ? renderKebunEntresGroupedList(visibleTxs)
       : `
               <div style="display: flex; flex-direction: column; gap: 10px;">
-                ${visibleTxs.map(tx => renderCompactTransactionCard(tx)).join('')}
+                ${visibleTxs.map(tx => renderUniversalCard(tx)).join('')}
               </div>
             `
     }
@@ -303,7 +307,7 @@ function renderKebunEntresGroupedList(txs) {
             MENUNAS
           </div>
           <div style="display: flex; flex-direction: column; gap: 10px;">
-            ${menunasTxs.map(tx => renderCompactTransactionCard(tx)).join('')}
+            ${menunasTxs.map(tx => renderUniversalCard(tx)).join('')}
           </div>
         </div>
       ` : ''}
@@ -314,7 +318,7 @@ function renderKebunEntresGroupedList(txs) {
             TOPPING
           </div>
           <div style="display: flex; flex-direction: column; gap: 10px;">
-            ${toppingTxs.map(tx => renderCompactTransactionCard(tx)).join('')}
+            ${toppingTxs.map(tx => renderUniversalCard(tx)).join('')}
           </div>
         </div>
       ` : ''}
@@ -323,85 +327,378 @@ function renderKebunEntresGroupedList(txs) {
 }
 
 /**
- * Helper: Merender Compact Card per Transaksi sesuai Screens 2-10
+ * Mapper Konfigurasi Card Universal per Modul
  */
-function renderCompactTransactionCard(tx) {
+export function getUniversalCardConfig(tx) {
+  const raw = tx.rawRecord || {};
+  const disp = tx.display || {};
+  const dateFormatted = normalizeDateStr(tx.date);
+
+  switch (tx.moduleType) {
+    case MODULE_TYPES.MATERIAL: {
+      const itemName = tx.itemName || raw.itemName || raw.materialName || 'Material & Bahan';
+      const issueDoc = tx.issueDocNo || raw.issueDocNo || raw.noIssue || '-';
+      const rawQty = tx.quantityUsed !== undefined ? tx.quantityUsed : (raw.totalPolybag !== undefined ? raw.totalPolybag : (raw.rows?.[0]?.polybag || 0));
+      const formattedQty = formatSafeNumber(rawQty);
+      const uom = tx.uom || raw.uom || raw.satuan || 'LBR';
+      const refSow = tx.referenceDocNo || tx.docNo || raw.docNo || '-';
+      const batch = tx.batchCode || raw.batchCode || raw.batchNo || '-';
+      const bedengan = tx.bedenganCode || raw.bedenganCode || raw.bedengan || '-';
+
+      return {
+        moduleLabel: 'MATERIAL & BAHAN',
+        primaryEntity: itemName,
+        primaryDoc: issueDoc,
+        quantityText: `${formattedQty} ${uom}`,
+        breakdownText: '',
+        referenceText: `Referensi: ${refSow}`,
+        contextText: `Batch: ${batch} · Bedengan: ${bedengan}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.PENYEMAIAN: {
+      const primaryEntity = disp.title || 'Penyemaian Benih';
+      const primaryDoc = tx.docNo;
+      const mainQty = disp.mainQty || `${formatSafeNumber(raw.totalDisemai || raw.qty || 0)} Bibit`;
+      const batch = raw.batchNo || '-';
+      const bedengan = raw.bedengan || raw.bedenganCode || '-';
+      const klon = raw.klonAwal || raw.klon || '';
+
+      let contextParts = [];
+      if (batch && batch !== '-') contextParts.push(`Batch: ${batch}`);
+      if (bedengan && bedengan !== '-') contextParts.push(`Bedengan: ${bedengan}`);
+      if (klon && klon !== '-') contextParts.push(`Klon: ${klon}`);
+      const contextText = contextParts.join(' · ') || disp.info || '-';
+
+      return {
+        moduleLabel: 'PENYEMAIAN',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: disp.breakdown || '',
+        referenceText: raw.program ? `Program: ${raw.program}` : '',
+        contextText,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.PENERIMAAN: {
+      const primaryEntity = disp.title || 'Penerimaan Benih';
+      const primaryDoc = tx.docNo;
+      const mainQty = disp.mainQty || `${formatSafeNumber(raw.qty || raw.quantity || 0)} Butir`;
+      const klon = raw.klon || raw.clone || '-';
+      const tipeAsal = raw.tipeAsal || raw.asal || raw.sumber || raw.sourceType || 'Kebun Induk';
+      const sir = raw.sir || '';
+
+      return {
+        moduleLabel: 'PENERIMAAN',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: disp.breakdown || '',
+        referenceText: sir ? `No. SIR: ${sir}` : (raw.sumber ? `Sumber: ${raw.sumber}` : ''),
+        contextText: `Klon: ${klon} · ${tipeAsal}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.DEDERAN: {
+      const primaryEntity = disp.title || 'Germinasi / Dederan';
+      const primaryDoc = tx.docNo;
+      const mainQty = disp.mainQty || `${formatSafeNumber(raw.jumlahDeder || raw.totalDeder || raw.qty || 0)} Butir Deder`;
+      const bedengan = raw.bedenganCode || raw.bedengan || '-';
+      const klon = raw.klon || raw.varietas || '-';
+
+      return {
+        moduleLabel: 'DEDERAN',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: disp.breakdown || '',
+        referenceText: '',
+        contextText: `Bedengan: ${bedengan} · Klon: ${klon}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.KEBUN_ENTRES: {
+      const actType = (tx.activityType || raw.type || '').toUpperCase();
+      const isTopping = actType === 'TOPPING';
+      const primaryEntity = isTopping ? 'Entres Topping' : 'Entres Menunas';
+      const primaryDoc = tx.docNo;
+      const mainQty = disp.mainQty || (isTopping ? `${formatSafeNumber(raw.jumlahKayu || 0)} Btg · ${formatSafeNumber(raw.jumlahPerisai || 0)} Perisai` : `${formatSafeNumber(raw.jumlahPohonDitunas || raw.jumlahPokok || 0)} Pokok Ditunas`);
+      const plot = raw.kodePlot || raw.plotId || raw.plotNo || '-';
+      const klon = raw.namaKlon || raw.klon || '-';
+      const budwood = raw.budwoodCode ? `Kebun: ${raw.budwoodCode}` : '';
+
+      return {
+        moduleLabel: isTopping ? 'ENTRES TOPPING' : 'ENTRES MENUNAS',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: disp.breakdown || '',
+        referenceText: budwood,
+        contextText: `Plot: ${plot} · Klon: ${klon}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.OKULASI: {
+      const primaryEntity = disp.title || 'Okulasi Bibitan';
+      const primaryDoc = tx.docNo;
+      const mainQty = disp.mainQty || `${formatSafeNumber(raw.jumlah || raw.qty || 0)} Pkk`;
+      const typeLabel = raw.type === 'REGRAFTING' ? 'Regrafting' : 'Grafting';
+      const bedengan = raw.bedengan || '-';
+      const klon = raw.klonEntres || raw.klon || '-';
+
+      return {
+        moduleLabel: 'OKULASI',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: disp.breakdown || '',
+        referenceText: `Tipe: ${typeLabel}`,
+        contextText: `Bedengan: ${bedengan} · Klon: ${klon}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.PEMERIKSAAN: {
+      const primaryEntity = disp.title || 'Pemeriksaan Okulasi';
+      const primaryDoc = tx.docNo;
+      const mainQty = disp.mainQty || `${formatSafeNumber(raw.totalDiperiksa || raw.qty || 0)} Diperiksa`;
+      const breakdown = disp.breakdown || '';
+      const bedengan = raw.bedengan || '-';
+      const klon = raw.klonEntres || '-';
+
+      return {
+        moduleLabel: 'PEMERIKSAAN OKULASI',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: breakdown,
+        referenceText: '',
+        contextText: `Bedengan: ${bedengan} · Klon: ${klon}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.PEMERIKSAAN_DEDERAN: {
+      const primaryEntity = disp.title || 'Pemeriksaan Dederan';
+      const primaryDoc = tx.docNo;
+      const mainQty = disp.mainQty || `${formatSafeNumber(raw.jumlahDiperiksa || raw.totalDiperiksa || 0)} Diperiksa`;
+      const breakdown = disp.breakdown || '';
+      const bedengan = raw.bedenganCode || raw.bedengan || '-';
+      const klon = raw.klon || '-';
+
+      return {
+        moduleLabel: 'PEMERIKSAAN DEDERAN',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: breakdown,
+        referenceText: '',
+        contextText: `Bedengan: ${bedengan} · Klon: ${klon}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.SELEKSI_PRA_OKULASI: {
+      const stage = raw.selectionStage || 'Seleksi I';
+      const primaryEntity = disp.title || `Seleksi Pra-Okulasi (${stage})`;
+      const primaryDoc = tx.docNo;
+      const mainQty = disp.mainQty || `${formatSafeNumber(raw.totalLayak || raw.finalBibitQty || 0)} Layak`;
+      const batch = raw.batchCode || '-';
+      const bedengan = raw.bedengan || '-';
+      const afkir = formatSafeNumber(raw.totalAfkir || raw.rejectedBibitQty || 0);
+
+      return {
+        moduleLabel: 'SELEKSI PRA-OKULASI',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: `${afkir} Afkir`,
+        referenceText: `Tahap: ${stage}`,
+        contextText: `Batch: ${batch} · Bedengan: ${bedengan}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.PENYELEKSIAN: {
+      const primaryEntity = disp.title || 'Penyeleksian Bibit';
+      const primaryDoc = tx.docNo;
+      const mainQty = disp.mainQty || `${formatSafeNumber(raw.actualBibitSelectedQty || raw.bibitReject || 0)} Bibit Afkir`;
+      const stage = raw.stage || raw.selectionStage || 'Bibit';
+      const reason = raw.reason || raw.kategoriAfkir || '';
+      const bedengan = raw.bedengan || raw.lokasi || '-';
+
+      return {
+        moduleLabel: 'PENYELEKSIAN',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: disp.breakdown || '',
+        referenceText: reason ? `Kategori: ${reason}` : `Tahap: ${stage}`,
+        contextText: `Bedengan: ${bedengan}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.PEMELIHARAAN: {
+      const actName = raw.aktivitas?.nama || raw.activityType || 'Pemeliharaan';
+      const primaryEntity = disp.title || `Rekam Pemeliharaan`;
+      const primaryDoc = tx.docNo;
+      const vol = raw.volumePkk !== undefined ? raw.volumePkk : (raw.aktivitas?.volume !== undefined ? raw.aktivitas?.volume : (raw.volume || raw.qty || 0));
+      const mainQty = `${formatSafeNumber(vol)} Pkk`;
+      const loc = raw.bedengan || raw.location || raw.lokasiBlok || raw.blok || '-';
+
+      return {
+        moduleLabel: 'PEMELIHARAAN',
+        primaryEntity: actName || primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: disp.breakdown || '',
+        referenceText: actName !== primaryEntity ? `Aktivitas: ${actName}` : '',
+        contextText: `Lokasi: ${loc}`,
+        dateText: dateFormatted
+      };
+    }
+
+    case MODULE_TYPES.PENGELUARAN: {
+      const primaryEntity = disp.title || 'Pengeluaran Bibit';
+      const primaryDoc = tx.docNo;
+      const qty = raw.issuedQty !== undefined ? raw.issuedQty : (raw.qtyDispatched || raw.quantity || raw.qty || 0);
+      const mainQty = `${formatSafeNumber(qty)} Pkk`;
+      const clone = raw.clone || raw.klon || '-';
+      const destination = raw.targetDivisionName || raw.targetEstateId || raw.destination || raw.targetDivision || '-';
+      const vehicle = raw.vehiclePlate ? `Kendaraan: ${raw.vehiclePlate}` : '';
+
+      return {
+        moduleLabel: 'PENGELUARAN',
+        primaryEntity,
+        primaryDoc,
+        quantityText: mainQty,
+        breakdownText: disp.breakdown || '',
+        referenceText: vehicle,
+        contextText: `Tujuan: ${destination} · Klon: ${clone}`,
+        dateText: dateFormatted
+      };
+    }
+
+    default: {
+      return {
+        moduleLabel: (tx.moduleLabel || 'TRANSAKSI').toUpperCase(),
+        primaryEntity: disp.title || tx.moduleLabel || 'Transaksi Operasional',
+        primaryDoc: tx.docNo || '-',
+        quantityText: disp.mainQty || tx.summary || '1 Transaksi',
+        breakdownText: disp.breakdown || '',
+        referenceText: '',
+        contextText: disp.info && disp.info !== '-' ? disp.info : '-',
+        dateText: dateFormatted
+      };
+    }
+  }
+}
+
+/**
+ * Helper: Merender Card Universal Transaksi (Design System Universal Acuan Material)
+ */
+export function renderUniversalCard(tx) {
   const isRevision = tx.status === MANTRI_TRANSACTION_STATUS.REVISION;
   const isSubmitted = tx.status === MANTRI_TRANSACTION_STATUS.SUBMITTED_TO_ASB || tx.status === MANTRI_TRANSACTION_STATUS.PENDING_ASB;
   const isVerified = tx.status === MANTRI_TRANSACTION_STATUS.VERIFIED || tx.status === MANTRI_TRANSACTION_STATUS.APPROVED;
+  const isExpired = Boolean(tx.isSubmissionExpired) && (tx.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || isRevision);
 
-  let badgeHtml = '';
+  let centralFlags = [{ key: 'CENTRAL_SIAP_KIRIM', label: 'Siap Dikirim' }];
   if (isVerified) {
-    badgeHtml = `<span style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.65rem; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: #DEF7EC; color: #03543F; white-space: nowrap; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #0E9F6E; flex-shrink: 0;"></span>Terverifikasi</span>`;
-  } else if (isRevision) {
-    badgeHtml = `<span style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.65rem; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: #FEECDC; color: #B43403; white-space: nowrap; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #F97316; flex-shrink: 0;"></span>Perlu Revisi</span>`;
+    centralFlags = [{ key: 'CENTRAL_TERVERIFIKASI', label: 'Terverifikasi' }];
+  } else if (isRevision && !isExpired) {
+    centralFlags = [{ key: 'CENTRAL_DIKEMBALIKAN', label: 'Perlu Revisi' }];
   } else if (isSubmitted) {
-    badgeHtml = `<span style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.65rem; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: #E1EFFE; color: #1E429F; white-space: nowrap; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #3F83F8; flex-shrink: 0;"></span>Menunggu Verifikasi</span>`;
-  } else {
-    badgeHtml = `<span style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.65rem; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: #DEF7EC; color: #03543F; white-space: nowrap; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #0E9F6E; flex-shrink: 0;"></span>Siap Dikirim</span>`;
+    centralFlags = [{ key: 'CENTRAL_SUDAH_DIAJUKAN', label: 'Menunggu Verifikasi' }];
+  } else if (isExpired) {
+    centralFlags = [{ key: 'CENTRAL_LEWAT_WAKTU', label: 'Lewat Waktu' }];
   }
 
-  const disp = tx.display || {};
-  const title = disp.title || tx.moduleLabel || 'Transaksi';
-  const info = disp.info || tx.summary || '-';
-  const mainQty = disp.mainQty || tx.summary || '1 Transaksi';
-  const breakdown = disp.breakdown || '';
-  const dateFormatted = normalizeDateStr(tx.date);
-
-  // Deteksi apakah title modul redundan dengan info lokasi/klon (seperti Pemeriksaan Dederan, Okulasi, Penyeleksian, Entres)
-  const isLocationBasedModule = [
-    'Pemeriksaan Dederan', 'Germinasi', 'Dederan', 'Okulasi', 'Pemeriksaan Okulasi',
-    'Penyeleksian', 'Penyeleksian Bibit', 'Entres Menunas', 'Entres Topping', 'Menunas', 'Topping'
-  ].some(m => title.toLowerCase().includes(m.toLowerCase()));
+  const config = getUniversalCardConfig(tx);
+  const extraCardClass = tx.moduleType === MODULE_TYPES.MATERIAL ? ' card-material-item' : '';
 
   return `
-    <div class="card-compact-item" data-tx-id="${esc(tx.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 11px 13px; display: flex; flex-direction: column; gap: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); cursor: pointer; transition: all 0.15s ease;">
+    <div class="card-compact-item card-universal-item${extraCardClass}" data-tx-id="${esc(tx.id)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 11px 13px; display: flex; flex-direction: column; gap: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); cursor: pointer; transition: all 0.15s ease;">
       
-      <!-- Baris 1: Doc No & Date -->
+      <!-- Baris 1: Header Tag & Status Dot + Lewat Waktu Badge -->
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-        <span style="font-size: 0.82rem; font-weight: 800; color: #057A55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-          ${esc(tx.docNo)}
-        </span>
-        <span style="font-size: 0.70rem; color: #64748B; flex-shrink: 0;">
-          ${esc(dateFormatted)}
-        </span>
-      </div>
-
-      <!-- Baris 2 & 3: Deskripsi Operasional / Metadata Lokasi -->
-      ${isLocationBasedModule && info && info !== '-' ? `
-        <div style="font-size: 0.74rem; color: #475569; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-          ${esc(info)}
+        <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+          ${renderStatusDots(centralFlags)}
+          <span style="font-size: 0.72rem; font-weight: 800; color: #116834; letter-spacing: 0.4px; text-transform: uppercase; overflow-wrap: anywhere; word-break: normal;">
+            ${esc(config.moduleLabel)}
+          </span>
         </div>
-      ` : `
-        <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-          ${esc(title)}
-        </div>
-        ${info && info !== '-' && info !== title ? `
-          <div style="font-size: 0.72rem; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            ${esc(info)}
+        ${isExpired ? `
+          <div style="display: inline-flex; align-items: center; gap: 4px; background: #FEF2F2; border: 1px solid #FECACA; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;">
+            <span style="font-size: 0.65rem; font-weight: 800; color: #DC2626; letter-spacing: 0.3px;">LEWAT WAKTU</span>
+            <button type="button" class="btn-expired-info" data-tx-id="${esc(tx.id)}" aria-label="Informasi Lewat Waktu" style="background: #DC2626; color: #FFFFFF; border: none; border-radius: 50%; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800; cursor: pointer; line-height: 1; padding: 0;">i</button>
           </div>
         ` : ''}
-      `}
+      </div>
 
-      <!-- Baris Bawah: Quantity + Sub-breakdown (Kiri) & Status Badge (Kanan) -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; margin-top: 5px;">
-        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1;">
-          <span style="font-size: 0.82rem; font-weight: 800; color: #0F172A; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            ${esc(mainQty)}
-          </span>
-          ${breakdown ? `
-            <span style="font-size: 0.68rem; color: #64748B; font-weight: 500; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              ${esc(breakdown)}
-            </span>
-          ` : ''}
+      <!-- Baris 2: Primary Entity -->
+      <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.35; margin-top: 2px; overflow-wrap: anywhere; word-break: normal;">
+        ${esc(config.primaryEntity)}
+      </div>
+
+      <!-- Baris 3: Primary Document -->
+      <div style="font-size: 0.78rem; font-weight: 700; color: #0284C7; line-height: 1.3; overflow-wrap: anywhere; word-break: normal;">
+        ${esc(config.primaryDoc)}
+      </div>
+
+      <!-- Baris 4: Quantity + UOM (+ Optional Breakdown) -->
+      <div style="font-size: 0.84rem; font-weight: 800; color: #0F172A; line-height: 1.3; margin-top: 1px; overflow-wrap: anywhere; word-break: normal;">
+        ${esc(config.quantityText)}
+      </div>
+      ${config.breakdownText ? `
+        <div style="font-size: 0.70rem; color: #64748B; font-weight: 600; line-height: 1.3; margin-top: 1px; overflow-wrap: anywhere; word-break: normal;">
+          ${esc(config.breakdownText)}
         </div>
-        <div style="flex-shrink: 0;">
-          ${badgeHtml}
+      ` : ''}
+
+      <!-- Baris 5: Separator Horizontal -->
+      <div style="border-top: 1px solid #E2E8F0; margin: 4px 0 3px 0;"></div>
+
+      <!-- Baris 6: Reference Information (Optional) -->
+      ${config.referenceText ? `
+        <div style="font-size: 0.74rem; font-weight: 600; color: #475569; line-height: 1.3; overflow-wrap: anywhere; word-break: normal;">
+          ${esc(config.referenceText)}
+        </div>
+      ` : ''}
+
+      <!-- Baris 7: Context Information (Left) + Tanggal (Bottom-Right) -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; margin-top: 1px;">
+        <div style="font-size: 0.72rem; color: #64748B; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; word-break: normal; flex: 1; min-width: 0;">
+          ${esc(config.contextText)}
+        </div>
+        <div style="font-size: 0.72rem; font-weight: 600; color: #64748B; flex-shrink: 0; text-align: right; white-space: nowrap;">
+          ${esc(config.dateText)}
         </div>
       </div>
 
     </div>
   `;
+}
+
+/**
+ * Helper: Merender Card Khusus Modul Material & Bahan (Alias ke renderUniversalCard)
+ */
+function renderMaterialCard(tx) {
+  return renderUniversalCard(tx);
+}
+
+/**
+ * Helper: Merender Compact Card per Transaksi (Alias ke renderUniversalCard)
+ */
+function renderCompactTransactionCard(tx) {
+  return renderUniversalCard(tx);
 }
 
 /**
@@ -418,6 +715,136 @@ function renderDetailModal(tx, user) {
   const actorCode = raw.actorCode || raw.userCode || user?.code || '1405482';
   const rawNotes = raw.notes || raw.catatan || raw.keterangan || raw.remarks;
   const notes = (rawNotes !== undefined && rawNotes !== null && String(rawNotes).trim() !== '') ? String(rawNotes).trim() : '-';
+
+  // Khusus Modul MATERIAL: Tampilkan struktur dua section (DOKUMEN MATERIAL + REFERENSI TRANSAKSI)
+  if (tx.moduleType === MODULE_TYPES.MATERIAL) {
+    const itemName = tx.itemName || raw.itemName || raw.materialName || 'Material & Bahan';
+    const issueDoc = tx.issueDocNo || raw.issueDocNo || raw.noIssue || '-';
+    const rawQty = tx.quantityUsed !== undefined ? tx.quantityUsed : (raw.totalPolybag !== undefined ? raw.totalPolybag : (raw.rows?.[0]?.polybag || 0));
+    const formattedQty = formatSafeNumber(rawQty);
+    const uom = tx.uom || raw.uom || raw.satuan || 'LBR';
+    const refSow = tx.referenceDocNo || tx.docNo || raw.docNo || '-';
+    const batch = tx.batchCode || raw.batchCode || raw.batchNo || '-';
+    const bedengan = tx.bedenganCode || raw.bedenganCode || raw.bedengan || '-';
+    const rawCategory = raw.category || raw.kategori;
+
+    return `
+      <div id="modal-tx-detail-backdrop" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(2px); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+        
+        <div style="background: #FFFFFF; border-radius: 12px; width: 100%; max-width: 380px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25); display: flex; flex-direction: column; animation: modalFadeIn 0.2s ease-out;">
+          
+          <!-- Modal Header -->
+          <div style="background: #FFFFFF; color: #0F172A; padding: 14px 16px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #F1F5F9;">
+            <h3 style="margin: 0; font-size: 0.94rem; font-weight: 800; color: #0F172A;">
+              Material &amp; Bahan
+            </h3>
+            <button id="btn-close-modal-x" type="button" aria-label="Tutup" style="background: transparent; border: none; color: #64748B; font-size: 1.15rem; cursor: pointer; padding: 2px 6px; display: flex; align-items: center; justify-content: center;">
+              ✕
+            </button>
+          </div>
+
+          <!-- Modal Body (Two Sections: DOKUMEN MATERIAL + REFERENSI TRANSAKSI) -->
+          <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 0.76rem; color: #334155; max-height: 70vh; overflow-y: auto;">
+            
+            <!-- SECTION 1: DOKUMEN MATERIAL -->
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div style="font-size: 0.72rem; font-weight: 800; color: #116834; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 1.5px solid #E2E8F0; padding-bottom: 3px;">
+                DOKUMEN MATERIAL
+              </div>
+
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">No. Dokumen Material</span>
+                <span style="color: #64748B;">:</span>
+                <span style="font-weight: 800; color: #0284C7; overflow-wrap: anywhere; word-break: normal;">${esc(issueDoc)}</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">Tanggal</span>
+                <span style="color: #64748B;">:</span>
+                <span style="color: #0F172A; font-weight: 600;">${esc(fullDateTime)}</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">Material</span>
+                <span style="color: #64748B;">:</span>
+                <span style="color: #0F172A; font-weight: 700; overflow-wrap: anywhere; word-break: normal;">${esc(itemName)}</span>
+              </div>
+
+              ${rawCategory ? `
+                <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                  <span style="color: #64748B; font-weight: 600;">Kategori</span>
+                  <span style="color: #64748B;">:</span>
+                  <span style="color: #0F172A; font-weight: 600;">${esc(rawCategory)}</span>
+                </div>
+              ` : ''}
+
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">Jumlah Digunakan</span>
+                <span style="color: #64748B;">:</span>
+                <span style="font-weight: 800; color: #057A55;">${esc(formattedQty)}</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">Satuan</span>
+                <span style="color: #64748B;">:</span>
+                <span style="color: #0F172A; font-weight: 600;">${esc(uom)}</span>
+              </div>
+            </div>
+
+            <!-- SECTION 2: REFERENSI TRANSAKSI -->
+            <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+              <div style="font-size: 0.72rem; font-weight: 800; color: #64748B; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 1.5px solid #E2E8F0; padding-bottom: 3px;">
+                REFERENSI TRANSAKSI
+              </div>
+
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">Dokumen SOW</span>
+                <span style="color: #64748B;">:</span>
+                <span style="font-weight: 700; color: #0F172A; overflow-wrap: anywhere; word-break: normal;">${esc(refSow)}</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">Batch</span>
+                <span style="color: #64748B;">:</span>
+                <span style="color: #0F172A; font-weight: 600; overflow-wrap: anywhere; word-break: normal;">${esc(batch)}</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">Bedengan</span>
+                <span style="color: #64748B;">:</span>
+                <span style="color: #0F172A; font-weight: 600; overflow-wrap: anywhere; word-break: normal;">${esc(bedengan)}</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">Dicatat Oleh</span>
+                <span style="color: #64748B;">:</span>
+                <span style="color: #0F172A; font-weight: 600; overflow-wrap: anywhere; word-break: normal;">${esc(actorName)} (${esc(actorCode)})</span>
+              </div>
+            </div>
+
+            <!-- Catatan Section with Shaded Box -->
+            <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+              <span style="color: #64748B; font-weight: 600;">Catatan</span>
+              <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; color: #475569; font-size: 0.74rem; line-height: 1.45; overflow-wrap: anywhere; word-break: normal;">
+                ${esc(notes)}
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Modal Footer: Full width Tutup button -->
+          <div style="padding: 12px 16px; border-top: 1px solid #F1F5F9; background: #FFFFFF;">
+            <button id="btn-close-modal-footer" type="button" style="width: 100%; height: 38px; background: #FFFFFF; border: 1.5px solid #057A55; color: #057A55; font-size: 0.82rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
+              Tutup
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+    `;
+  }
+
   const fields = disp.fields || [];
 
   return `
@@ -427,7 +854,7 @@ function renderDetailModal(tx, user) {
         
         <!-- Modal Header (Clean White with Title & Close Icon X) -->
         <div style="background: #FFFFFF; color: #0F172A; padding: 14px 16px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #F1F5F9;">
-          <h3 style="margin: 0; font-size: 0.94rem; font-weight: 800; color: #0F172A;">
+          <h3 style="margin: 0; font-size: 0.94rem; font-weight: 800; color: #0F172A; overflow-wrap: anywhere; word-break: normal;">
             ${esc(disp.title || tx.moduleLabel)}
           </h3>
           <button id="btn-close-modal-x" type="button" aria-label="Tutup" style="background: transparent; border: none; color: #64748B; font-size: 1.15rem; cursor: pointer; padding: 2px 6px; display: flex; align-items: center; justify-content: center;">
@@ -435,42 +862,56 @@ function renderDetailModal(tx, user) {
           </button>
         </div>
 
-        <!-- Modal Body (Two-column colon layout matching Screen 11) -->
-        <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 0.76rem; color: #334155; max-height: 70vh; overflow-y: auto;">
+        <!-- Modal Body (Two-Section Standard Hierarchy) -->
+        <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 0.76rem; color: #334155; max-height: 70vh; overflow-y: auto;">
           
-          <div style="display: grid; grid-template-columns: 110px 10px 1fr; align-items: baseline; gap: 2px;">
-            <span style="color: #64748B; font-weight: 600;">No. Dokumen</span>
-            <span style="color: #64748B;">:</span>
-            <span style="font-weight: 700; color: #0F172A;">${esc(tx.docNo)}</span>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 110px 10px 1fr; align-items: baseline; gap: 2px;">
-            <span style="color: #64748B; font-weight: 600;">Tanggal</span>
-            <span style="color: #64748B;">:</span>
-            <span style="color: #0F172A; font-weight: 600;">${esc(fullDateTime)}</span>
-          </div>
-
-          <!-- Dynamic Canonical Display Fields -->
-          ${fields.map(f => `
-            <div style="display: grid; grid-template-columns: 110px 10px 1fr; align-items: baseline; gap: 2px;">
-              <span style="color: #64748B; font-weight: 600;">${esc(f.label)}</span>
-              <span style="color: #64748B;">:</span>
-              <span style="font-weight: ${f.highlight ? '800' : '600'}; color: ${f.highlight ? '#057A55' : '#0F172A'};">
-                ${f.value}
-              </span>
+          <!-- SECTION 1: DOKUMEN / TRANSAKSI UTAMA -->
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 0.72rem; font-weight: 800; color: #116834; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 1.5px solid #E2E8F0; padding-bottom: 3px;">
+              DOKUMEN TRANSAKSI
             </div>
-          `).join('')}
 
-          <div style="display: grid; grid-template-columns: 110px 10px 1fr; align-items: baseline; gap: 2px;">
-            <span style="color: #64748B; font-weight: 600;">Dicatat Oleh</span>
-            <span style="color: #64748B;">:</span>
-            <span style="color: #0F172A; font-weight: 600;">${esc(actorName)} (${esc(actorCode)})</span>
+            <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+              <span style="color: #64748B; font-weight: 600;">No. Dokumen</span>
+              <span style="color: #64748B;">:</span>
+              <span style="font-weight: 800; color: #0284C7; overflow-wrap: anywhere; word-break: normal;">${esc(tx.docNo)}</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+              <span style="color: #64748B; font-weight: 600;">Tanggal</span>
+              <span style="color: #64748B;">:</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(fullDateTime)}</span>
+            </div>
+
+            <!-- Dynamic Canonical Display Fields -->
+            ${fields.map(f => `
+              <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+                <span style="color: #64748B; font-weight: 600;">${esc(f.label)}</span>
+                <span style="color: #64748B;">:</span>
+                <span style="font-weight: ${f.highlight ? '800' : '600'}; color: ${f.highlight ? '#057A55' : '#0F172A'}; overflow-wrap: anywhere; word-break: normal;">
+                  ${f.value}
+                </span>
+              </div>
+            `).join('')}
+          </div>
+
+          <!-- SECTION 2: INFORMASI PENCATATAN & REFERENSI -->
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+            <div style="font-size: 0.72rem; font-weight: 800; color: #64748B; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 1.5px solid #E2E8F0; padding-bottom: 3px;">
+              INFORMASI PENCATATAN
+            </div>
+
+            <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
+              <span style="color: #64748B; font-weight: 600;">Dicatat Oleh</span>
+              <span style="color: #64748B;">:</span>
+              <span style="color: #0F172A; font-weight: 600; overflow-wrap: anywhere; word-break: normal;">${esc(actorName)} (${esc(actorCode)})</span>
+            </div>
           </div>
 
           <!-- Catatan Section with Shaded Box -->
           <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
             <span style="color: #64748B; font-weight: 600;">Catatan</span>
-            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; color: #475569; font-size: 0.74rem; line-height: 1.45;">
+            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; color: #475569; font-size: 0.74rem; line-height: 1.45; overflow-wrap: anywhere; word-break: normal;">
               ${esc(notes)}
             </div>
           </div>
@@ -662,6 +1103,14 @@ function attachEvents(allTxs, user, currentSectionTitle) {
   // Info Icon (i) Click
   document.getElementById('btn-section-info')?.addEventListener('click', () => {
     toast(`Informasi Modul: ${currentSectionTitle} - Periksa rincian sebelum konfirmasi dan kirim data ke Asisten.`, 'info');
+  });
+
+  // Lewat Waktu Info Icon (i) Click
+  document.querySelectorAll('.btn-expired-info').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toast('Lewat Waktu, Silahkan hubungi KTU untuk dapat di proses selanjutnya', 'warning');
+    });
   });
 
   // Klik Transaction Card -> Buka Detail Modal

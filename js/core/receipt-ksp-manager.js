@@ -106,18 +106,19 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
 
   const allReceipts = storage.get(RECEIPT_KSP_STORAGE_KEY, []);
   
-  // Cek idempoten: jika receipt untuk dispatchId ini atau parentRequestId (domain sama) sudah ada, kembalikan record existing
-  const isMataEntres = parentRequest.type === 'MATA_ENTRES' || dispatchRecord.transactionType === 'PENGELUARAN_MATA_ENTRES';
+  // Cek idempoten: jika receipt untuk dispatchId atau dispatchDocNo ini sudah ada, kembalikan record existing
+  const isMataEntres = parentRequest.type === 'MATA_ENTRES' || dispatchRecord.transactionType === 'PENGELUARAN_MATA_ENTRES' || dispatchRecord.type === 'MATA_ENTRES';
   const existing = allReceipts.find(r => 
     (r.dispatchId && r.dispatchId === dispatchRecord.id) ||
-    (r.parentRequestId && r.parentRequestId === parentRequest.id && (isMataEntres ? (r.type === 'MATA_ENTRES') : (r.type === 'KEBUN_SEPUPU' || !r.type)))
+    (r.dispatchDocNo && (r.dispatchDocNo === dispatchRecord.docNo || r.dispatchDocNo === dispatchRecord.dispatchNo))
   );
   if (existing) {
     return existing;
   }
   const receiptDocNo = generateReceiptDocNo(allReceipts, 2026);
-  const shippedQty = parseInt(dispatchRecord.issuedQty || dispatchRecord.jumlahBatangDikeluarkan || dispatchRecord.qty || parentRequest.jumlahBatang || 0, 10);
-  const shippedMata = parseInt(dispatchRecord.jumlahMataEntresDikeluarkan || parentRequest.jumlahMataEntres || 0, 10);
+  const shippedBatang = parseInt(dispatchRecord.jumlahBatangDikeluarkan !== undefined && dispatchRecord.jumlahBatangDikeluarkan !== null ? dispatchRecord.jumlahBatangDikeluarkan : (dispatchRecord.issuedQty || 0), 10) || 0;
+  const shippedMata = parseInt(dispatchRecord.jumlahMataEntresDikeluarkan !== undefined && dispatchRecord.jumlahMataEntresDikeluarkan !== null ? dispatchRecord.jumlahMataEntresDikeluarkan : (dispatchRecord.details?.[0]?.mataQty || 0), 10) || 0;
+  const shippedQty = isMataEntres ? (shippedMata > 0 ? shippedMata : shippedBatang) : parseInt(dispatchRecord.issuedQty || dispatchRecord.qty || parentRequest.jumlahBatang || 0, 10);
 
   // Buat detail penerimaan per batch sumber dari dispatchRecord.details
   const rawDetails = Array.isArray(dispatchRecord.details) ? dispatchRecord.details : [];
@@ -128,7 +129,9 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
     cloneId: b.clone || b.klon || parentRequest.approvedClone || parentRequest.requestedClone || parentRequest.klon || '-',
     growthStage: parentRequest.growthStage || (isMataEntres ? 'Kayu Entres' : 'Rubber Advance Planting Material'),
     category: parentRequest.category || (isMataEntres ? 'Mata Entres' : 'Polibag Besar'),
-    qtyShipped: parseInt(b.qty || (isMataEntres ? shippedQty : 0), 10),
+    qtyShipped: parseInt(b.qty || (isMataEntres ? (shippedMata > 0 ? shippedMata : shippedBatang) : 0), 10),
+    mataQty: isMataEntres ? shippedMata : null,
+    batangQty: isMataEntres ? shippedBatang : null,
     qtyAccepted: 0,
     qtyRejected: 0,
     rejectReason: null,
@@ -146,6 +149,8 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
       growthStage: parentRequest.growthStage || (isMataEntres ? 'Kayu Entres' : 'Rubber Advance Planting Material'),
       category: parentRequest.category || (isMataEntres ? 'Mata Entres' : 'Polibag Besar'),
       qtyShipped: shippedQty,
+      mataQty: isMataEntres ? shippedMata : null,
+      batangQty: isMataEntres ? shippedBatang : null,
       qtyAccepted: 0,
       qtyRejected: 0,
       rejectReason: null,
@@ -167,10 +172,10 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
     dispatchNo: dispatchRecord.dispatchNo || dispatchRecord.docNo,
     
     // Asal & Tujuan
-    sourceEstateId: dispatchRecord.estateId || currentUser?.estateId,
+    sourceEstateId: dispatchRecord.estateId || dispatchRecord.dispatchedFromEstateId || currentUser?.estateId,
     sourceEstateName: dispatchRecord.estateName || currentUser?.estateName || '-',
-    targetEstateId: parentRequest.estateId || parentRequest.sourceEstateId, // Kebun Pemohon
-    targetEstateName: parentRequest.estateName || parentRequest.sourceEstateName || '-',
+    targetEstateId: parentRequest.sourceEstateId || parentRequest.estateId, // Kebun Pemohon
+    targetEstateName: parentRequest.sourceEstateName || parentRequest.estateName || '-',
     
     sourceDivisionId: dispatchRecord.divisionId || dispatchRecord.targetDivisionId || null,
     targetDivisionId: parentRequest.divisionId || null,
@@ -179,7 +184,7 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
 
     // Kuantitas
     totalShippedQty: shippedQty,
-    totalShippedBatang: isMataEntres ? shippedQty : null,
+    totalShippedBatang: isMataEntres ? shippedBatang : null,
     totalShippedMata: isMataEntres ? shippedMata : null,
     totalAcceptedQty: 0,
     totalRejectedQty: 0,
@@ -191,7 +196,7 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
     statusLabel: RECEIPT_KSP_STATUS_LABELS[RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS],
 
     targetNextRole: 'PENGURUS',
-    targetNextEstateId: parentRequest.estateId || parentRequest.sourceEstateId, // Ditujukan ke Pengurus Kebun Pemohon
+    targetNextEstateId: parentRequest.sourceEstateId || parentRequest.estateId, // Ditujukan ke Pengurus Kebun Pemohon
     targetNextDivisionId: null,
 
     // Child Data

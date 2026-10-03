@@ -3,9 +3,11 @@ import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, generateUniqueDocNo } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
+import { isReceiptLocked } from '../../core/dependency-guard.js';
 import { getActiveKlons } from '../../data/klon-master.js';
 import { getOpenPrograms, getActivePrograms, getProgramById } from '../../data/program-master.js';
 import { getActiveBatches, getBatchById, getBatchByCode } from '../../data/batch-master.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 export function getRestrictedPihakIIIKlons() {
   const active = getActiveKlons();
@@ -51,11 +53,13 @@ export function renderReceiptBenih() {
   const currentEstateId = user.estateId || (user.divisionId && user.divisionId.includes('APM') ? 'EST-APM' : 'EST-TBS');
   const today = formatDate(new Date().toISOString());
 
-  // Guard against editing locked document that already has seeding transactions
+  // Guard against editing locked document (Verification Lock or Referential Lock)
   const editingIdx = storage.get('editing_transaction_index', null);
   if (editingIdx !== null) {
-    const seedingTxs = storage.get('seeding_transactions', []);
-    if (seedingTxs.some(s => s.sourceIndex == editingIdx)) {
+    const txs = storage.get('receipt_transactions', []);
+    const existingTx = txs[editingIdx];
+    const lock = isReceiptLocked(existingTx, editingIdx);
+    if (lock.locked) {
       storage.remove('editing_transaction_index');
       navigate('/reception');
       return;
@@ -1042,6 +1046,14 @@ export function renderReceiptBenih() {
   btnKonfirmBatal.addEventListener('click', closeModals);
 
   btnKonfirmSimpan.addEventListener('click', () => {
+    try {
+      assertAttendanceGateOrThrow();
+    } catch (err) {
+      closeModals();
+      toast(err.message || 'Presensi harian diperlukan sebelum membuat transaksi.', 'error');
+      return;
+    }
+
     // Simpan dummy data ke storage untuk ditampilkan di landing page
     const today = new Date();
     const formattedDate = today.getDate().toString().padStart(2, '0') + '/' + (today.getMonth() + 1).toString().padStart(2, '0') + '/' + today.getFullYear();

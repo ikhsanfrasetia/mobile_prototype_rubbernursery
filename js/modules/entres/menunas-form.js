@@ -19,6 +19,7 @@ import { session } from '../../core/session.js';
 import { toast } from '../../components/toast.js';
 import { todayISO, formatDate, generateUniqueDocNo } from '../../core/utils.js';
 import { resolvePlot, getAllBudwoodPlots } from '../../data/budwood-plot-master.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 function formatDateDDMMYYYY(val) {
   if (!val) return '-';
@@ -247,6 +248,13 @@ export function renderMenunasForm() {
 
   // Save Menunas Transaction
   app.querySelector('#btn-simpan-menunas')?.addEventListener('click', () => {
+    try {
+      assertAttendanceGateOrThrow();
+    } catch (err) {
+      showValidationErrors([err.message || 'Presensi harian diperlukan sebelum membuat transaksi.']);
+      return;
+    }
+
     const tgl = app.querySelector('#inp-tanggal')?.dataset.iso || initialTgl || todayISO();
     const pohonDitunasVal = (app.querySelector('#inp-pohon-ditunas')?.value || '').trim();
 

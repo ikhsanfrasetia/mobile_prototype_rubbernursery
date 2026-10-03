@@ -23,6 +23,7 @@ import { navigate } from '../../core/router.js';
 import { session } from '../../core/session.js';
 import { getCurrentUserContext, normalizeRole } from '../../core/user-context.js';
 import { storage } from '../../core/storage.js';
+import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { requestRepository, batchRepository } from '../../db/repositories.js';
@@ -46,6 +47,11 @@ import {
   openMantriDispatchModal,
   openMataEntresDetailModal
 } from '../request/request-mata-entres-landing.js';
+import {
+  getGlobalAttendanceGateStatus,
+  showAttendanceRequirementModal,
+  assertAttendanceGateOrThrow
+} from '../../core/attendance-gate-service.js';
 
 let activeStatusFilter = 'SEMUA'; // 'SEMUA' | 'TERVERIFIKASI' | 'PENGELUARAN_BERJALAN' | 'SELESAI'
 let expandedCardIndex = -1;
@@ -558,6 +564,8 @@ export function validateShipmentForm(req, formValues, availableBatches = null) {
  * Eksekusi Simpan Transaksi Pengeluaran oleh Mantri Bibitan
  */
 export async function processDispatchShipment(parentRequest, formValues, currentUser) {
+  assertAttendanceGateOrThrow(currentUser);
+
   // Re-fetch request terbaru untuk multi-user safety
   const allRequests = storage.get('requests_transactions', []);
   const req = allRequests.find(r => r.id === parentRequest.id) || parentRequest;
@@ -741,6 +749,16 @@ export async function processDispatchShipment(parentRequest, formValues, current
 export function openDispatchModal(item, currentUser) {
   if (item?.type === 'MATA_ENTRES') {
     return openMantriDispatchModal(item, currentUser, () => renderDispatchLanding());
+  }
+
+  // Attendance Gate Check for MANTRI_TANAMAN
+  const role = normalizeRole(currentUser?.role || currentUser?.rawRole || session.getRole());
+  if (role === 'MANTRI_TANAMAN') {
+    const gate = getGlobalAttendanceGateStatus(currentUser);
+    if (!gate.isGateUnlocked) {
+      showAttendanceRequirementModal({ targetModuleName: 'Pengeluaran Bibit', gateStatus: gate });
+      return;
+    }
   }
 
   if (!canPerformMantriDispatchAction(item, currentUser)) {
@@ -1430,22 +1448,16 @@ export async function renderDispatchLanding() {
 
       // Status badge styling
       const statusRaw = (item.status || 'TERVERIFIKASI').toUpperCase();
-      let badgeBg = '#FEF3C7';
-      let badgeColor = '#92400E';
-      let badgeBorder = '#FDE68A';
-      let badgeText = 'Siap Keluar';
-
-      if (isBerjalanStatus(statusRaw)) {
-        badgeBg = '#E0F2FE';
-        badgeColor = '#0369A1';
-        badgeBorder = '#BAE6FD';
-        badgeText = isMataEntres ? (statusRaw === 'DIKELUARKAN' ? 'Dikeluarkan' : 'Dalam Perjalanan') : 'Berjalan';
-      } else if (isSelesaiStatus(statusRaw)) {
-        badgeBg = '#DCFCE7';
-        badgeColor = '#166534';
-        badgeBorder = '#BBF7D0';
-        badgeText = statusRaw === 'DITERIMA_DENGAN_SELISIH' ? 'Diterima (Selisih)' : 'Selesai';
+      let dispatchFlags = [];
+      if (isSelesaiStatus(statusRaw)) {
+        dispatchFlags.push({ key: 'DISPATCH_COMPLETED', label: statusRaw === 'DITERIMA_DENGAN_SELISIH' ? 'Diterima (Selisih)' : 'Selesai' });
+      } else if (isBerjalanStatus(statusRaw)) {
+        dispatchFlags.push({ key: 'IN_PROGRESS', label: isMataEntres ? (statusRaw === 'DIKELUARKAN' ? 'Dikeluarkan' : 'Dalam Perjalanan') : 'Berjalan' });
+      } else {
+        dispatchFlags.push({ key: 'CENTRAL_SIAP_KIRIM', label: 'Siap Keluar' });
       }
+
+      let badgeText = isSelesaiStatus(statusRaw) ? (statusRaw === 'DITERIMA_DENGAN_SELISIH' ? 'Diterima (Selisih)' : 'Selesai') : (isBerjalanStatus(statusRaw) ? (isMataEntres ? (statusRaw === 'DIKELUARKAN' ? 'Dikeluarkan' : 'Dalam Perjalanan') : 'Berjalan') : 'Siap Keluar');
 
       // Metrics & Summary
       let summaryHtml = '';
@@ -1511,17 +1523,13 @@ export async function renderDispatchLanding() {
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px;">
             <div style="min-width: 0; flex: 1;">
               <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                ${renderStatusDots(dispatchFlags)}
                 <span style="font-weight: 800; color: #1E293B; font-size: 0.84rem; line-height: 1.25;">${esc(docNo)}</span>
                 ${isMataEntres ? `<span style="font-size: 0.60rem; font-weight: 800; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 1px 6px; border-radius: 4px; white-space: nowrap; line-height: 1.2;">MATA ENTRES</span>` : ''}
               </div>
               <div style="font-size: 0.72rem; color: #64748B; margin-top: 3px;">
                 Tujuan: <strong style="color: #334155;">${esc(sourceEstateName)}</strong>
               </div>
-            </div>
-            <div style="flex-shrink: 0;">
-              <span style="display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 800; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;">
-                ${badgeText}
-              </span>
             </div>
           </div>
 

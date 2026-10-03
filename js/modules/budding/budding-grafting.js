@@ -5,6 +5,7 @@ import { normalizeKlonName } from '../../data/klon-master.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
+import { renderStatusDots } from '../../core/status-dot-renderer.js';
 
 /**
  * Format string atau kode Bedengan agar seragam menjadi Kode Bedengan (misal: BED-001, BED-002)
@@ -76,24 +77,17 @@ export function renderBuddingGrafting() {
 
     // Status badge
     let statusBadgeText = 'Perlu Diokulasi';
-    let statusBadgeBg = '#E53935';
-    let statusBadgeColor = '#FFFFFF';
-    let statusBadgeBorder = 'none';
+    let statusFlagKey = 'OKULASI_PERLU';
 
     if (totalRealisasi === 0) {
       statusBadgeText = 'Perlu Diokulasi';
-      statusBadgeBg = '#E53935';
-      statusBadgeColor = '#FFFFFF';
+      statusFlagKey = 'OKULASI_PERLU';
     } else if (sisaBelumOkulasi <= 0) {
       statusBadgeText = 'Selesai Diokulasi';
-      statusBadgeBg = '#E8F5E9';
-      statusBadgeColor = '#116834';
-      statusBadgeBorder = '1px solid #116834';
+      statusFlagKey = 'OKULASI_SELESAI';
     } else {
       statusBadgeText = 'Okulasi Belum Selesai';
-      statusBadgeBg = '#FFF8E1';
-      statusBadgeColor = '#F57F17';
-      statusBadgeBorder = '1px solid #FFE082';
+      statusFlagKey = 'OKULASI_BELUM_SELESAI';
     }
 
     // Extract bedengan rows (Tampilkan Kode Bedengan: BED-001, BED-002, dst)
@@ -115,10 +109,8 @@ export function renderBuddingGrafting() {
       sisaBelumOkulasi,
       persenSelesai,
       isCompleted,
+      statusFlagKey,
       statusBadgeText,
-      statusBadgeBg,
-      statusBadgeColor,
-      statusBadgeBorder,
       bedenganDisplay
     };
   });
@@ -168,10 +160,8 @@ export function renderBuddingGrafting() {
                 totalRealisasi,
                 sisaBelumOkulasi,
                 persenSelesai,
+                statusFlagKey,
                 statusBadgeText,
-                statusBadgeBg,
-                statusBadgeColor,
-                statusBadgeBorder,
                 bedenganDisplay
               } = item;
               const rows = s3Doc.rows || [];
@@ -180,13 +170,11 @@ export function renderBuddingGrafting() {
                 <div class="card-batch-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
                   
                   <!-- HEADER BARIS 1: NOMOR BATCH & BADGE STATUS -->
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px;">
+                  <div style="display: flex; align-items: center; margin-bottom: 4px; gap: 6px;">
+                    ${renderStatusDots([{ key: statusFlagKey, label: statusBadgeText }])}
                     <div style="font-size: 0.95rem; font-weight: 800; color: #116834; white-space: nowrap; letter-spacing: -0.01em;">
                       ${batchNo}
                     </div>
-                    <span style="background: ${statusBadgeBg}; color: ${statusBadgeColor}; font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; border: ${statusBadgeBorder}; flex-shrink: 0;">
-                      ${statusBadgeText}
-                    </span>
                   </div>
 
                   <!-- HEADER BARIS 2: DOKUMEN ASAL & TANGGAL -->

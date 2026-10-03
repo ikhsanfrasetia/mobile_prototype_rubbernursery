@@ -77,6 +77,7 @@ const MENU_ITEMS = [
   { id: 'kebun-entres', title: 'Kebun<br>Entres', icon: ICONS.entres, route: '/entres' },
   { id: 'material', title: 'Material &<br>Bahan', icon: ICONS.sprout, route: '/material' },
   { id: 'pemeliharaan', title: 'Rekam<br>Pemeliharaan', icon: ICONS.documentPlus, route: '/nursery-activity' },
+  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' },
   { id: 'pengeluaran', title: 'Pengeluaran', icon: ICONS.sprout, route: '/dispatch' }
 ];
 
@@ -99,7 +100,7 @@ import { getActionableConsolidationCount } from '../consolidation/consolidation-
 import { hasActionableInspection } from '../inspection/inspection-landing.js';
 import { ASISTEN_BIBITAN_MAIN_MENUS } from '../../core/menu-registry.js';
 
-function hasActionablePermintaan(requests, userCtx) {
+export function hasActionablePermintaan(requests, userCtx) {
   if (!requests || !userCtx) return false;
   const kspIncoming = filterIncomingKspRequests(requests, userCtx);
   const kspCount = getActionableIncomingKspCount(kspIncoming, userCtx);
@@ -461,9 +462,9 @@ function renderRoleDevelopmentHome(user) {
 }
 
 export const ASISTEN_BIBITAN_BERANDA_MENUS = Object.freeze([
-  { id: 'penerimaan', title: 'Penerimaan<br>Bibit', label: 'Penerimaan Bibit', iconName: 'documentPlus', route: '/reception/kebun-sepupu' },
-  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', label: 'Permintaan Bibit', iconName: 'documentPlus', route: '/request' },
-  { id: 'pengeluaran-bibit', title: 'Pengeluaran<br>Bibit', label: 'Pengeluaran Bibit', iconName: 'sprout', route: '/dispatch' }
+  { id: 'penerimaan', title: 'Penerimaan', label: 'Penerimaan', iconName: 'documentPlus', route: '/reception/kebun-sepupu' },
+  { id: 'permintaan-bibit', title: 'Permintaan', label: 'Permintaan', iconName: 'documentPlus', route: '/request' },
+  { id: 'pengeluaran-bibit', title: 'Pengeluaran', label: 'Pengeluaran', iconName: 'sprout', route: '/dispatch' }
 ]);
 
 function renderBerandaAsistenBibitan() {
@@ -724,12 +725,21 @@ export function renderBeranda() {
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const hasPendingPenerimaan = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
 
+  // Hitung pending permintaan untuk Mantri Bibitan
+  const hasPendingPermintaan = hasActionablePermintaan(allRequests, userCtx);
+
   // Hitung pending konsolidasi untuk Mantri
   const hasPendingKonsolidasi = getActionableConsolidationCount(userCtx) > 0;
 
   // Hitung transaksi Mantri hari ini untuk tombol Konfirmasi untuk Verifikasi
   const mantriTodayTxs = getMantriTodayTransactions(userCtx);
-  const hasTodayMantriTxs = mantriTodayTxs.length > 0;
+  const actionableMantriTxs = mantriTodayTxs.filter(tx =>
+    (tx.status === 'READY_TO_CONFIRM' || tx.status === 'REVISION') &&
+    tx.canSubmit !== false &&
+    !tx.isSubmissionExpired
+  );
+  const hasActionableMantriTxs = actionableMantriTxs.length > 0;
+  const hasAnyMantriTxs = mantriTodayTxs.length > 0;
 
   const menuCards = MENU_ITEMS.map((item) => {
     let badgeHtml = '';
@@ -739,7 +749,8 @@ export function renderBeranda() {
       (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting)) ||
       (item.id === 'pemeriksaan' && hasPendingPemeriksaan) ||
       (item.id === 'pengeluaran' && hasPendingPengeluaran) ||
-      (item.id === 'penerimaan' && hasPendingPenerimaan)
+      (item.id === 'penerimaan' && hasPendingPenerimaan) ||
+      (item.id === 'permintaan-bibit' && hasPendingPermintaan)
     );
 
     if (hasNotification) {
@@ -782,12 +793,12 @@ export function renderBeranda() {
           ${hasPendingKonsolidasi ? `<span class="notif-dot" style="display: inline-block; width: 8px; height: 8px; background-color: #D32F2F; border-radius: 50%; margin-left: 6px;"></span>` : ''}
           <span class="action-arrow">›</span>
         </button>
-        <button class="beranda-action-btn ${hasTodayMantriTxs ? 'beranda-btn-active-green' : ''}" id="btn-verifikasi" type="button" style="position: relative; ${hasTodayMantriTxs ? 'background: #116834; border-color: #0D5229; cursor: pointer;' : 'opacity: 0.65; cursor: not-allowed;'}">
+        <button class="beranda-action-btn ${hasAnyMantriTxs ? 'beranda-btn-active-green' : ''}" id="btn-verifikasi" type="button" style="position: relative; ${hasAnyMantriTxs ? 'background: #116834; border-color: #0D5229; cursor: pointer;' : 'opacity: 0.65; cursor: not-allowed;'}">
           <div style="display: flex; align-items: center;">
-            <span class="action-text" style="${hasTodayMantriTxs ? 'color: #FFFFFF; font-weight: 700;' : ''}">Konfirmasi untuk Verifikasi</span>
-            ${hasTodayMantriTxs ? `<span class="badge-count" style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; background-color: #FFFFFF; color: #116834; font-size: 0.72rem; font-weight: 800; border-radius: 999px; margin-left: 8px;">${mantriTodayTxs.length}</span>` : ''}
+            <span class="action-text" style="${hasAnyMantriTxs ? 'color: #FFFFFF; font-weight: 700;' : ''}">Konfirmasi untuk Verifikasi</span>
+            ${hasActionableMantriTxs ? `<span class="badge-count" style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; background-color: #FFFFFF; color: #116834; font-size: 0.72rem; font-weight: 800; border-radius: 999px; margin-left: 8px;">${actionableMantriTxs.length}</span>` : ''}
           </div>
-          <span class="action-arrow" style="${hasTodayMantriTxs ? 'color: #FFFFFF;' : ''}">›</span>
+          <span class="action-arrow" style="${hasAnyMantriTxs ? 'color: #FFFFFF;' : ''}">›</span>
         </button>
       </footer>
     </div>
@@ -815,10 +826,10 @@ export function renderBeranda() {
   });
 
   app.querySelector('#btn-verifikasi').addEventListener('click', () => {
-    if (hasTodayMantriTxs) {
+    if (hasAnyMantriTxs) {
       navigate('/mantri-confirmation');
     } else {
-      toast('Belum ada transaksi hari ini untuk diverifikasi', 'info');
+      toast('Belum ada transaksi untuk diverifikasi', 'info');
     }
   });
 }

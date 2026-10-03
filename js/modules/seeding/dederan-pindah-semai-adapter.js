@@ -203,7 +203,8 @@ export function getEligiblePindahSemaiSources() {
     if (!approval.isApproved) return;
 
     // 3. Calculate how much has already been processed by existing Pindah Semai (seeding_transactions)
-    let processedQty = 0;
+    let processedDisemaiQty = 0;
+    let processedDitolakQty = 0;
     seedingTxs.forEach(stx => {
       if (
         (stx.sourceDederTxId && (stx.sourceDederTxId === dtx.id || stx.sourceDederTxId === dtx.docNo)) ||
@@ -213,11 +214,13 @@ export function getEligiblePindahSemaiSources() {
         (stx.dederanDocNo && (stx.dederanDocNo === dtx.docNo || stx.dederanDocNo === dtx.id)) ||
         (stx.bedenganId && dtx.bedenganId && stx.bedenganId === dtx.bedenganId && stx.parentDederIndukDocNo && dtx.parentDederIndukDocNo && stx.parentDederIndukDocNo === dtx.parentDederIndukDocNo)
       ) {
-        processedQty += parseInt(stx.totalDisemai || stx.disemai || 0, 10);
+        processedDisemaiQty += parseInt(stx.totalDisemai || stx.disemai || 0, 10);
+        processedDitolakQty += parseInt(stx.ditolak || stx.jumlahDitolak || 0, 10);
       }
     });
 
-    const remainingQty = Math.max(0, summary.totalBerhasil - processedQty);
+    const totalConsumedQty = processedDisemaiQty + processedDitolakQty;
+    const remainingQty = Math.max(0, summary.totalBerhasil - totalConsumedQty);
 
     // Get primary inspection record reference
     const primaryInsp = allInspections.find(i => i.dederanTxDocNo === dtx.docNo) || {};
@@ -247,7 +250,10 @@ export function getEligiblePindahSemaiSources() {
       bedengan: dtx.bedenganCode,
       qty: summary.totalBerhasil,
       totalBerhasil: summary.totalBerhasil,
-      processedQty,
+      processedQty: processedDisemaiQty,
+      processedDisemaiQty,
+      processedDitolakQty,
+      totalConsumedQty,
       remainingQty,
       isFullyProcessed: remainingQty === 0,
       isFromDederan: true,
@@ -279,7 +285,8 @@ export function getAllInspectedDederanSources() {
 
     const approval = getDederanSelectionApprovalStatus(dtx);
 
-    let processedQty = 0;
+    let processedDisemaiQty = 0;
+    let processedDitolakQty = 0;
     seedingTxs.forEach(stx => {
       if (
         (stx.sourceDederTxId && (stx.sourceDederTxId === dtx.id || stx.sourceDederTxId === dtx.docNo)) ||
@@ -289,11 +296,13 @@ export function getAllInspectedDederanSources() {
         (stx.dederanDocNo && (stx.dederanDocNo === dtx.docNo || stx.dederanDocNo === dtx.id)) ||
         (stx.bedenganId && dtx.bedenganId && stx.bedenganId === dtx.bedenganId && stx.parentDederIndukDocNo && dtx.parentDederIndukDocNo && stx.parentDederIndukDocNo === dtx.parentDederIndukDocNo)
       ) {
-        processedQty += parseInt(stx.totalDisemai || stx.disemai || 0, 10);
+        processedDisemaiQty += parseInt(stx.totalDisemai || stx.disemai || 0, 10);
+        processedDitolakQty += parseInt(stx.ditolak || stx.jumlahDitolak || 0, 10);
       }
     });
 
-    const remainingQty = Math.max(0, summary.totalBerhasil - processedQty);
+    const totalConsumedQty = processedDisemaiQty + processedDitolakQty;
+    const remainingQty = Math.max(0, summary.totalBerhasil - totalConsumedQty);
     const primaryInsp = allInspections.find(i => i.dederanTxDocNo === dtx.docNo) || {};
 
     sources.push({
@@ -321,7 +330,10 @@ export function getAllInspectedDederanSources() {
       qty: summary.totalBerhasil,
       totalBerhasil: summary.totalBerhasil,
       totalTidakBerhasil: summary.totalTidakBerhasil,
-      processedQty,
+      processedQty: processedDisemaiQty,
+      processedDisemaiQty,
+      processedDitolakQty,
+      totalConsumedQty,
       remainingQty,
       isFullyProcessed: remainingQty === 0,
       isFromDederan: true,

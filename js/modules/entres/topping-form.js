@@ -23,6 +23,7 @@ import { toast } from '../../components/toast.js';
 import { todayISO, formatDate, generateUniqueDocNo } from '../../core/utils.js';
 import { resolvePlot, getAllBudwoodPlots } from '../../data/budwood-plot-master.js';
 import { validateToppingUpdate } from '../../core/entres-inventory-service.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 function formatDateDDMMYYYY(val) {
   if (!val) return '-';
@@ -313,6 +314,13 @@ export function renderToppingForm() {
 
   // Save Topping Transaction
   app.querySelector('#btn-simpan-topping')?.addEventListener('click', () => {
+    try {
+      assertAttendanceGateOrThrow();
+    } catch (err) {
+      showValidationErrors([err.message || 'Presensi harian diperlukan sebelum membuat transaksi.']);
+      return;
+    }
+
     const tgl = app.querySelector('#inp-tanggal')?.dataset.iso || initialTgl || todayISO();
     const kayuVal = (inpKayu?.value || '').trim();
     const perisaiVal = (inpPerisai?.value || '').trim();

@@ -295,6 +295,9 @@ export async function renderRequestLanding() {
       const title = item ? item.rawTitle : 'Sub-menu';
 
       if (targetRoute) {
+        if (targetRoute === '/request/mata-entres') {
+          storage.set('mata_entres_origin_route', '/request');
+        }
         navigate(targetRoute);
       } else {
         toast(`Modul ${title} sedang disiapkan`, 'info');

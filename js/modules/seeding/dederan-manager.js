@@ -16,6 +16,7 @@
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo, formatDate, generateUniqueDocNo, todayISO } from '../../core/utils.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 export const DEDERAN_STORAGE_KEYS = Object.freeze({
   INDUK: 'dederan_induk_documents',
@@ -239,6 +240,7 @@ export function validateDederanTransaction(txPayload) {
  * - No Over-Deder (jumlahDeder <= sisaBelumDeder)
  */
 export function saveDederanTransaction(txPayload) {
+  assertAttendanceGateOrThrow();
   if (!txPayload) throw new Error('Data transaksi dederan tidak valid.');
 
   const parentDocNo = txPayload.parentDederIndukDocNo;
@@ -410,6 +412,7 @@ export function validateDederanInspection(payload) {
  * Creates a new Pemeriksaan Dederan record and updates the selection pool
  */
 export function createDederanInspection(payload) {
+  assertAttendanceGateOrThrow();
   const validation = validateDederanInspection(payload);
   if (!validation.isValid) {
     throw new Error(validation.error);

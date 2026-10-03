@@ -3,8 +3,8 @@ import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
 import { formatStandardDocNo, formatDate } from '../../core/utils.js';
-import { guardDependency } from '../../core/dependency-guard.js';
-import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { guardDependency, isReceiptLocked, isReceiptUsedAsReference } from '../../core/dependency-guard.js';
+import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import { filterReceiptKspRequests, getActionableReceiptCount } from './receipt-kebun-sepupu-landing.js';
 import { getActionableMataEntresReceiptCount } from '../request/request-mata-entres-landing.js';
 
@@ -124,28 +124,31 @@ export function renderReceiptLanding() {
         <!-- RINGKASAN PENERIMAAN (DATA TRANSAKSI MASUK) -->
         ${(() => {
           const txs = storage.get('receipt_transactions', []);
-          const seedingTxs = storage.get('seeding_transactions', []);
           if (txs.length === 0) return '';
 
           return `
             <div style="margin-top: 8px;">
               <h2 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Ringkasan Penerimaan (${txs.length})</h2>
               ${txs.map((tx, idx) => {
-                const hasSeeding = seedingTxs.some(s => s.sourceIndex == idx || s.receiptDocNo == tx.docNo || (tx.docNo && s.sourceDocNo == tx.docNo));
-                const isLocked = hasSeeding || isTransactionLockedForMantri(tx);
+                const lock = isReceiptLocked(tx, idx);
+                const isLocked = lock.locked;
+                const isUsedRef = isReceiptUsedAsReference(tx, idx);
                 const docNo = tx.docNo || tx.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
+
+                const activeFlags = [];
+                if (isUsedRef) activeFlags.push({ key: 'RECEIPT_REF_USED', label: 'Sudah Digunakan' });
+                if (tx.qtyDiterima && tx.qtyKirim && tx.qtyDiterima !== tx.qtyKirim) {
+                  activeFlags.push({ key: 'RECEIPT_DIFF', label: 'Diterima dengan Selisih' });
+                } else if (tx.qtyDiterima) {
+                  activeFlags.push({ key: 'RECEIPT_OK', label: 'Diterima' });
+                }
 
                 return `
                 <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; position: relative; box-shadow: 0 1px 4px rgba(0,0,0,0.04); margin-bottom: 12px;">
                   <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px;">
                     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      ${renderStatusDots(activeFlags)}
                       <div style="font-weight: 700; font-size: 0.95rem; color: #111111;">${docNo}</div>
-                      ${hasSeeding ? `
-                        <span style="font-size: 0.68rem; font-weight: 700; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9; padding: 2px 6px; border-radius: 12px; display: inline-flex; align-items: center; gap: 3px;">
-                          <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                          Sudah Disemai
-                        </span>
-                      ` : ''}
                     </div>
                     <div style="position: relative;">
                       <button class="btn-card-menu" data-index="${idx}" type="button" aria-label="Menu" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; color: #116834;">
@@ -161,10 +164,10 @@ export function renderReceiptLanding() {
                           Lihat Data
                         </button>
                         ${isLocked ? `
-                          <button class="btn-popover-locked" data-index="${idx}" data-doc="${docNo}" type="button" style="padding: 10px 16px; border: none; background: #FAFAFA; text-align: left; font-size: 0.85rem; color: #9CA3AF; cursor: not-allowed; border-bottom: 1px solid #F0F0F0;">
+                          <button class="btn-popover-locked" data-index="${idx}" data-doc="${docNo}" data-reason="${lock.reason || ''}" type="button" style="padding: 10px 16px; border: none; background: #FAFAFA; text-align: left; font-size: 0.85rem; color: #9CA3AF; cursor: not-allowed; border-bottom: 1px solid #F0F0F0;">
                             Edit (Terkunci)
                           </button>
-                          <button class="btn-popover-locked" data-index="${idx}" data-doc="${docNo}" type="button" style="padding: 10px 16px; border: none; background: #FAFAFA; text-align: left; font-size: 0.85rem; color: #9CA3AF; cursor: not-allowed;">
+                          <button class="btn-popover-locked" data-index="${idx}" data-doc="${docNo}" data-reason="${lock.reason || ''}" type="button" style="padding: 10px 16px; border: none; background: #FAFAFA; text-align: left; font-size: 0.85rem; color: #9CA3AF; cursor: not-allowed;">
                             Hapus (Terkunci)
                           </button>
                         ` : `
@@ -249,6 +252,7 @@ export function renderReceiptLanding() {
 
   // --- MENU 3: PENERIMAAN MATA ENTRES ---
   app.querySelector('#btn-entres').addEventListener('click', () => {
+    storage.set('mata_entres_origin_route', '/reception');
     navigate('/request/mata-entres');
   });
 
@@ -281,12 +285,18 @@ export function renderReceiptLanding() {
 
     app.querySelectorAll('.btn-popover-edit').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const idx = e.currentTarget.dataset.index;
+        const idx = Number(e.currentTarget.dataset.index);
         const txs = storage.get('receipt_transactions', []);
         const tx = txs[idx];
         
-        if (isTransactionLockedForMantri(tx)) {
-          alert('Transaksi ini sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui, sehingga tidak dapat diedit.');
+        const lock = isReceiptLocked(tx, idx);
+        if (lock.locked) {
+          if (lock.reason === 'VERIFICATION_LOCK') {
+            alert('Transaksi ini sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui, sehingga tidak dapat diedit.');
+          } else {
+            const docNo = tx?.docNo || tx?.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
+            guardDependency(docNo, 'Penerimaan', 'Diubah');
+          }
           return;
         }
 
@@ -315,20 +325,31 @@ export function renderReceiptLanding() {
     app.querySelectorAll('.btn-popover-locked').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const docNo = e.currentTarget.dataset.doc || 'Dokumen ini';
+        const reason = e.currentTarget.dataset.reason;
         cardPopovers.forEach(p => p.style.display = 'none');
         
-        guardDependency(docNo, 'Penerimaan', 'Diubah/Dihapus');
+        if (reason === 'VERIFICATION_LOCK') {
+          alert('Transaksi ini sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui, sehingga tidak dapat diubah/dihapus.');
+        } else {
+          guardDependency(docNo, 'Penerimaan', 'Diubah/Dihapus');
+        }
       });
     });
 
     app.querySelectorAll('.btn-popover-hapus').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const idx = e.currentTarget.dataset.index;
+        const idx = Number(e.currentTarget.dataset.index);
         const txs = storage.get('receipt_transactions', []);
         const tx = txs[idx];
 
-        if (isTransactionLockedForMantri(tx)) {
-          alert('Transaksi ini sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui, sehingga tidak dapat dihapus.');
+        const lock = isReceiptLocked(tx, idx);
+        if (lock.locked) {
+          if (lock.reason === 'VERIFICATION_LOCK') {
+            alert('Transaksi ini sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui, sehingga tidak dapat dihapus.');
+          } else {
+            const docNo = tx?.docNo || tx?.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
+            guardDependency(docNo, 'Penerimaan', 'Dihapus');
+          }
           return;
         }
 

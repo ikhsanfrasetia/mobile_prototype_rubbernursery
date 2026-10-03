@@ -3,6 +3,7 @@ import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 export function renderInspectionForm() {
   const app = document.getElementById('app');
@@ -913,6 +914,13 @@ export function renderInspectionForm() {
 
   // Save button with validation and routing
   app.querySelector('#btn-simpan-pemeriksaan').addEventListener('click', () => {
+    try {
+      assertAttendanceGateOrThrow();
+    } catch (err) {
+      showValidationErrorDialog([err.message || 'Presensi harian diperlukan sebelum membuat transaksi.']);
+      return;
+    }
+
     const { grandDiperiksa, grandBerhasil, grandGagal, totalToRegrafting, totalToSelection } = updateWorkerCalculations();
     const catatan = app.querySelector('#inp-catatan')?.value || '';
 

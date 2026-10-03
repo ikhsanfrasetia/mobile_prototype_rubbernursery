@@ -8,6 +8,7 @@ import { getCurrentUserContext, resolveUserContext, ROLES } from '../../core/use
 import { hasActionableSelection } from '../selection/selection-manager.js';
 import { getActionableDestructionCount } from '../destruction/destruction-manager.js';
 import { renderAsbBottomNav, attachAsbBottomNavEvents } from '../../components/bottom-nav-asb.js';
+import { renderPemeriksaanSummaryCardHtml } from '../verification/asb-summary-cards.js';
 import {
   syncDederanIndukDocuments,
   getDederanIndukDocuments,
@@ -18,6 +19,7 @@ import {
 } from '../seeding/dederan-manager.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { renderStatusDots } from '../../core/status-dot-renderer.js';
 
 let activeInspectionModuleTab = 'DEDERAN'; // 'DEDERAN' | 'OKULASI'
 
@@ -118,8 +120,10 @@ function renderInspectionLandingAsistenBibitan() {
         </div>
       </header>
 
-      <!-- BODY / CARDS GRID -->
-      <main class="beranda-body" style="flex: 1; min-height: 0; overflow-y: auto; padding: 18px 16px;">
+      <!-- BODY / PEMERIKSAAN SUMMARY CARD + CARDS GRID -->
+      <main class="beranda-body" style="flex: 1; min-height: 0; overflow-y: auto; padding: 12px 10px 14px; display: flex; flex-direction: column; gap: 10px;">
+        ${renderPemeriksaanSummaryCardHtml(userCtx)}
+
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           ${menuCards}
         </div>
@@ -539,7 +543,11 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
               
               <!-- BARIS 1: JUDUL DOKUMEN & TANGGAL & 3-DOTS ACTION -->
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  ${isDederLocked ? renderStatusDots([{
+                    key: insp.status === 'DISETUJUI' || insp.verificationStatus === 'TERVERIFIKASI' ? 'CENTRAL_TERVERIFIKASI' : 'TX_LOCKED_VERIF',
+                    label: insp.status === 'DISETUJUI' || insp.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi (Terkunci)'
+                  }]) : ''}
                   <strong style="color: #116834; font-size: 0.90rem; font-weight: 800;">${insp.docNo}</strong>
                   <span style="color: #6B7280; font-size: 0.70rem;">${insp.tanggalPemeriksaan || '-'}</span>
                 </div>
@@ -567,11 +575,7 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
                       </button>
                     </div>
                   </div>
-                ` : `
-                  <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 7px; border-radius: 4px;">
-                    ${insp.status === 'DISETUJUI' || insp.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi'}
-                  </span>
-                `}
+                ` : ''}
               </div>
 
               <!-- BARIS 2: BEDENGAN & SUMBER DEDER -->
@@ -642,13 +646,14 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
             <div class="card-inspection-wrapper" data-type="${item.isRegrafting ? 'REGRAFTING' : 'GRAFTING'}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); box-sizing: border-box;">
               
               <!-- HEADER BARIS 1: NOMOR BATCH & STATUS BADGE -->
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px;">
+              <div style="display: flex; align-items: center; margin-bottom: 4px; gap: 6px;">
+                ${renderStatusDots([{
+                  key: item.totalDiperiksa === 0 ? 'INSP_PERLU' : (item.sisaBelumDiperiksa <= 0 ? 'INSP_DONE_PCT' : 'INSP_SISA'),
+                  label: item.statusText
+                }])}
                 <div style="font-size: 0.95rem; font-weight: 800; color: #116834; white-space: nowrap; letter-spacing: -0.01em;">
                   ${item.batchNo || 'Batch-01'}
                 </div>
-                <span style="background: ${item.statusBg}; color: ${item.statusColor}; font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; border: ${item.statusBorder}; flex-shrink: 0;">
-                  ${item.statusText}
-                </span>
               </div>
 
               <!-- HEADER BARIS 2: BADGE SUMBER & DOKUMEN -->

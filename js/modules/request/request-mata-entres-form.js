@@ -197,26 +197,26 @@ export async function renderRequestMataEntresForm() {
             </select>
           </div>
 
-          <!-- FIELD 5: JLH BATANG -->
+          <!-- FIELD 5: JLH MATA ENTRES -->
           <div style="margin-bottom: 10px;">
-            <label for="input-jumlah-batang" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
-              Jlh Batang <span style="color: #DC2626;">*</span>
+            <label for="input-jumlah-mata-entres" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
+              Jumlah Mata Entres <span style="color: #DC2626;">*</span>
             </label>
             <div style="position: relative; display: flex; align-items: center;">
               <input 
                 type="number" 
-                id="input-jumlah-batang" 
-                name="jumlahBatang" 
+                id="input-jumlah-mata-entres" 
+                name="jumlahMataEntres" 
                 min="1" 
                 step="1"
-                placeholder="Masukkan jumlah batang entres" 
+                placeholder="Masukkan jumlah mata entres" 
                 style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 50px 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.88rem; font-family: inherit; font-weight: 700; color: #0F172A;"
                 required 
               />
-              <span style="position: absolute; right: 12px; font-size: 0.78rem; font-weight: 700; color: #64748B;">Batang</span>
+              <span style="position: absolute; right: 12px; font-size: 0.78rem; font-weight: 700; color: #64748B;">Mata</span>
             </div>
             <div style="font-size: 0.68rem; color: #64748B; margin-top: 3px;">
-              Jumlah batang kayu entres yang diminta.
+              Jumlah mata entres yang diminta.
             </div>
           </div>
 
@@ -229,7 +229,7 @@ export async function renderRequestMataEntresForm() {
               id="input-catatan" 
               name="catatan" 
               rows="2" 
-              placeholder="Contoh: Kebutuhan okulasi baru batch 2 nursery..."
+              placeholder="Contoh: Kebutuhan okulasi baru batch 2 nursery..." 
               style="width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem; font-family: inherit; resize: vertical; color: #0F172A;"
             ></textarea>
           </div>
@@ -272,7 +272,7 @@ export async function renderRequestMataEntresForm() {
     const requiredDate = app.querySelector('#input-required-date')?.value;
     const allocationCode = app.querySelector('#select-allocation')?.value;
     const klon = app.querySelector('#select-klon')?.value;
-    const jumlahBatang = parseInt(app.querySelector('#input-jumlah-batang')?.value, 10);
+    const jumlahMataEntres = parseInt(app.querySelector('#input-jumlah-mata-entres')?.value, 10);
     const catatan = app.querySelector('#input-catatan')?.value || '';
 
     // Validasi
@@ -296,8 +296,8 @@ export async function renderRequestMataEntresForm() {
       toast('Jenis Klon wajib dipilih', 'error');
       return;
     }
-    if (isNaN(jumlahBatang) || jumlahBatang <= 0) {
-      toast('Jumlah Batang harus berupa angka lebih dari 0', 'error');
+    if (isNaN(jumlahMataEntres) || jumlahMataEntres <= 0) {
+      toast('Jumlah Mata Entres harus berupa angka lebih dari 0', 'error');
       return;
     }
 
@@ -332,8 +332,8 @@ export async function renderRequestMataEntresForm() {
               <span style="color: #64748B;">Jenis Klon:</span>
               <span style="font-weight: 700; color: #1E293B;">${esc(klon)}</span>
 
-              <span style="color: #64748B;">Permintaan Batang:</span>
-              <span style="font-weight: 800; color: #116834;">${jumlahBatang.toLocaleString('id-ID')} Batang</span>
+              <span style="color: #64748B;">Permintaan Mata Entres:</span>
+              <span style="font-weight: 800; color: #116834;">${jumlahMataEntres.toLocaleString('id-ID')} Mata</span>
 
               ${catatan ? `
                 <span style="color: #64748B;">Catatan:</span>
@@ -370,7 +370,7 @@ export async function renderRequestMataEntresForm() {
         requiredDate,
         allocationCode,
         klon,
-        jumlahBatang,
+        jumlahMataEntres,
         catatan
       });
     });
@@ -421,12 +421,12 @@ export async function submitMataEntresRequest(data) {
     targetNextEstateId: data.targetEstateId,
     targetNextRole: 'PENGURUS',
 
-    // Data Permintaan Awal
+    // Data Permintaan Awal (Kanonikal: Mata Entres)
     allocationCode: canonicalAllocation,
     klon: canonicalKlon,
-    jumlahBatang: Number(data.jumlahBatang),
-    jumlahMataEntres: null, // Dihapus dari input pengajuan, dihitung/diisi saat dispatch downstream
-    qty: Number(data.jumlahBatang),
+    jumlahMataEntres: Number(data.jumlahMataEntres),
+    qty: Number(data.jumlahMataEntres),
+    jumlahBatang: data.jumlahBatang ? Number(data.jumlahBatang) : null,
     catatan: data.catatan ? data.catatan.trim() : null,
     notes: data.catatan ? data.catatan.trim() : null,
 

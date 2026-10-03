@@ -21,8 +21,10 @@ import {
 } from './dederan-manager.js';
 import { getEligiblePindahSemaiSources, getAllInspectedDederanSources } from './dederan-pindah-semai-adapter.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { hasExistingCullDeclarationForSeeding } from '../selection/selection-manager.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { toast } from '../../components/toast.js';
+import { renderStatusDots } from '../../core/status-dot-renderer.js';
 
 let activeTab = 'DEDERAN'; // 'DEDERAN' | 'PINDAH_SEMAI'
 
@@ -125,21 +127,13 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
     const sisa = induk.sisaBelumDeder || 0;
     const isComplete = sisa === 0 && totalPenerimaan > 0;
 
-    let badgeBg = '#FEF3C7';
-    let badgeColor = '#B45309';
-    let badgeBorder = '#FDE68A';
-    let badgeText = `Sisa ${sisa.toLocaleString('id-ID')} Butir`;
-
+    const activeFlags = [];
     if (isComplete) {
-      badgeBg = '#F0FDF4';
-      badgeColor = '#15803D';
-      badgeBorder = '#BBF7D0';
-      badgeText = 'Selesai Dideder (100%)';
+      activeFlags.push({ key: 'DEDER_SELESAI', label: 'Selesai Dideder (100%)' });
     } else if (totalDideder === 0) {
-      badgeBg = '#FEE2E2';
-      badgeColor = '#B91C1C';
-      badgeBorder = '#FECACA';
-      badgeText = 'Belum Dideder';
+      activeFlags.push({ key: 'DEDER_BELUM', label: 'Belum Dideder' });
+    } else {
+      activeFlags.push({ key: 'DEDER_SISA', label: `Sisa ${sisa.toLocaleString('id-ID')} Butir` });
     }
 
     return `
@@ -147,13 +141,9 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
               
               <!-- HEADER: DOC NO & STATUS BADGE -->
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <div style="min-width: 0; flex: 1;">
+                <div style="min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  ${renderStatusDots(activeFlags)}
                   <strong style="font-size: 1.02rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em; word-break: break-word;">${induk.docNo}</strong>
-                </div>
-                <div style="flex-shrink: 0;">
-                  <span style="font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;">
-                    ${badgeText}
-                  </span>
                 </div>
               </div>
 
@@ -219,6 +209,13 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
     const inspSummary = getBedenganInspectionSummary(tx);
     const hasInspection = inspSummary.totalDiperiksa > 0;
 
+    const activeDederFlags = [];
+    if (inspSummary.isComplete) {
+      activeDederFlags.push({ key: 'INSP_DEDER_DONE', label: 'Selesai Periksa' });
+    } else if (inspSummary.totalDiperiksa > 0) {
+      activeDederFlags.push({ key: 'INSP_DEDER_PARTIAL', label: `${inspSummary.totalDiperiksa}/${tx.jumlahDeder} Diperiksa` });
+    }
+
     return `
                 <div class="card-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
                   
@@ -226,15 +223,8 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
                   <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
                     <div style="flex: 1; min-width: 0;">
                       <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        ${renderStatusDots(activeDederFlags)}
                         <span style="font-weight: 800; font-size: 0.92rem; color: #0F172A; letter-spacing: -0.01em;">${tx.docNo}</span>
-                        <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9;">
-                          Dederan
-                        </span>
-                        ${inspSummary.isComplete ? `
-                          <span style="font-size: 0.62rem; font-weight: 700; background: #DCFCE7; color: #15803D; padding: 2px 6px; border-radius: 4px; border: 1px solid #BBF7D0;">✓ Selesai Periksa</span>
-                        ` : (inspSummary.totalDiperiksa > 0 ? `
-                          <span style="font-size: 0.62rem; font-weight: 700; background: #FEF3C7; color: #B45309; padding: 2px 6px; border-radius: 4px; border: 1px solid #FDE68A;">${inspSummary.totalDiperiksa}/${tx.jumlahDeder} Diperiksa</span>
-                        ` : '')}
                       </div>
                       
                       <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.3;">
@@ -301,7 +291,7 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
 /**
  * Render Content for Tab 2: Pindah Semai (Source strictly from Dederan Inspection Berhasil + Seleksi DISETUJUI)
  */
-function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingApprovalSources = []) {
+export function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingApprovalSources = []) {
   return `
     <div style="display: flex; flex-direction: column; gap: 20px;">
       
@@ -395,7 +385,11 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem;">
                           <span style="color: #64748B;">Jlh Pindah Semai</span>
-                          <strong style="color: #475569; font-size: 0.82rem;">${(src.processedQty || 0).toLocaleString('id-ID')} Butir</strong>
+                          <strong style="color: #475569; font-size: 0.82rem;">${(src.processedDisemaiQty !== undefined ? src.processedDisemaiQty : (src.processedQty || 0)).toLocaleString('id-ID')} Butir</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem;">
+                          <span style="color: #64748B;">Banyaknya Ditolak/Seleksi</span>
+                          <strong style="color: #475569; font-size: 0.82rem;">${(src.processedDitolakQty || 0).toLocaleString('id-ID')} Butir</strong>
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem; border-top: 1px dashed #CBD5E1; padding-top: 6px;">
                           <span style="color: #0F172A; font-weight: 700;">Jlh Belum Pindah Semai</span>
@@ -446,21 +440,17 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
             ${pendingApprovalSources.map(psrc => `
               <div class="card-waiting-approval" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 10px; width: 100%; min-width: 0; box-sizing: border-box;">
                 
-                <!-- ROW 1 & 2: BED CODE & DOCUMENT NUMBER -->
-                <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
-                  <div style="font-size: 0.92rem; font-weight: 800; color: #0F172A; line-height: 1.2; white-space: nowrap;">
-                    ${esc(psrc.bedenganCode || psrc.bedengan || '-')}
+                <!-- ROW 1 & 2: BED CODE, DOCUMENT NUMBER, & DOT STATUS -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                  <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 6px; font-size: 0.92rem; font-weight: 800; color: #0F172A; line-height: 1.2; white-space: nowrap;">
+                      ${renderStatusDots([{ key: 'PINDAH_SEMAI_WAIT', label: psrc.selectionStatusLabel || 'Menunggu Persetujuan Pemeriksaan' }])}
+                      <span>${esc(psrc.bedenganCode || psrc.bedengan || '-')}</span>
+                    </div>
+                    <div style="font-size: 0.72rem; color: #64748B; word-break: break-all;">
+                      ${esc(psrc.dederanTxDocNo || psrc.docNo || '-')}
+                    </div>
                   </div>
-                  <div style="font-size: 0.72rem; color: #64748B; word-break: break-all;">
-                    ${esc(psrc.dederanTxDocNo || psrc.docNo || '-')}
-                  </div>
-                </div>
-
-                <!-- ROW 3: STATUS BADGE (STACKED BELOW IDENTITY, FIT-CONTENT) -->
-                <div>
-                  <span style="display: inline-block; font-size: 0.65rem; font-weight: 600; color: #475569; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 3px 8px; border-radius: 6px; line-height: 1.35; max-width: 100%; box-sizing: border-box;">
-                    ${esc(psrc.selectionStatusLabel || 'Menunggu Persetujuan Pemeriksaan')}
-                  </span>
                 </div>
                 
                 <!-- ROW 4: QUANTITY SUMMARY (2-COLUMN EQUAL GRID) -->
@@ -501,20 +491,30 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
   }) : `
           <div style="display: flex; flex-direction: column; gap: 10px;">
             ${seedingTxs.map((stx, idx) => {
-              const isPindahLocked = isTransactionLockedForMantri(stx);
+              const isPindahLocked = isTransactionLockedForMantri(stx) || hasExistingCullDeclarationForSeeding(stx);
+              const rawDitolak = (stx.ditolak !== undefined && stx.ditolak !== null && stx.ditolak !== '')
+                ? stx.ditolak
+                : (stx.jumlahDitolak !== undefined && stx.jumlahDitolak !== null && stx.jumlahDitolak !== '')
+                  ? stx.jumlahDitolak
+                  : 0;
+              const ditolakQty = parseInt(rawDitolak, 10) || 0;
               return `
               <div class="card-summary-wrapper card-pindah-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); position: relative; display: flex; flex-direction: column; gap: 10px;">
                 
                 <!-- HEADER BARIS 1: NO DOKUMEN & 3-DOTS -->
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    ${isPindahLocked ? renderStatusDots([{
+                      key: stx.status === 'DISETUJUI' || stx.verificationStatus === 'TERVERIFIKASI' ? 'CENTRAL_TERVERIFIKASI' : 'TX_LOCKED_VERIF',
+                      label: stx.status === 'DISETUJUI' || stx.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi (Terkunci)'
+                    }]) : ''}
                     <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(stx.docNo || `2026/SOW/0${idx + 1}`)}</span>
                     <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #E8F5E9; color: #116834; border: 1px solid #C8E6C9;">
                       Pindah Semai
                     </span>
                   </div>
 
-                  <!-- 3-DOTS ACTION TRIGGER / STATUS BADGE -->
+                  <!-- 3-DOTS ACTION TRIGGER -->
                   ${!isPindahLocked ? `
                     <div style="position: relative; flex-shrink: 0;">
                       <button type="button" class="btn-pindah-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569; padding: 0; transition: background 0.15s ease;">
@@ -543,11 +543,7 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
                         </button>
                       </div>
                     </div>
-                  ` : `
-                    <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 7px; border-radius: 4px;">
-                      ${stx.status === 'DISETUJUI' || stx.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi'}
-                    </span>
-                  `}
+                  ` : ''}
                 </div>
 
                 <!-- HARMONIZED STRUCTURED METADATA (2-COLUMN GRID) -->
@@ -598,19 +594,30 @@ function renderPindahSemaiTabContent(eligibleSources, seedingTxs = [], pendingAp
                 </div>
 
                 <!-- METRICS CONTAINER -->
-                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
-                  <div>
-                    <span style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Bibit Disemai</span>
-                    <div style="font-size: 0.88rem; font-weight: 800; color: #116834; margin-top: 2px;">
-                      ${(stx.totalDisemai || 0).toLocaleString('id-ID')} Pkk
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                      <span style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Bibit Disemai</span>
+                      <div style="font-size: 0.88rem; font-weight: 800; color: #116834; margin-top: 2px;">
+                        ${(stx.totalDisemai || 0).toLocaleString('id-ID')} Pkk
+                      </div>
+                    </div>
+                    <div style="text-align: right;">
+                      <span style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Polybag Terisi</span>
+                      <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 2px;">
+                        ${(stx.totalPolybag || 0).toLocaleString('id-ID')} Ply
+                      </div>
                     </div>
                   </div>
-                  <div style="text-align: right;">
-                    <span style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Polybag Terisi</span>
-                    <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 2px;">
-                      ${(stx.totalPolybag || 0).toLocaleString('id-ID')} Ply
+
+                  ${ditolakQty > 0 ? `
+                    <div style="border-top: 1px dashed #CBD5E1; padding-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+                      <span style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Jumlah Ditolak/Seleksi</span>
+                      <div style="font-size: 0.82rem; font-weight: 800; color: #DC2626;">
+                        ${ditolakQty.toLocaleString('id-ID')} Pkk
+                      </div>
                     </div>
-                  </div>
+                  ` : ''}
                 </div>
 
               </div>
@@ -761,7 +768,7 @@ function attachPindahSemaiEvents(app) {
         return;
       }
 
-      if (isTransactionLockedForMantri(stx)) {
+      if (isTransactionLockedForMantri(stx) || hasExistingCullDeclarationForSeeding(stx)) {
         toast('Transaksi tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');
         return;
       }
@@ -795,7 +802,7 @@ function attachPindahSemaiEvents(app) {
       const txs = storage.get('seeding_transactions', []);
       const stx = txs[idx];
 
-      if (isTransactionLockedForMantri(stx)) {
+      if (isTransactionLockedForMantri(stx) || hasExistingCullDeclarationForSeeding(stx)) {
         toast('Transaksi tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');
         return;
       }

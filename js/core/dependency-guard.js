@@ -1,6 +1,205 @@
 import { storage } from './storage.js';
 import { openModal, closeModal } from '../components/modal.js';
 import { navigate } from './router.js';
+import { formatStandardDocNo } from './utils.js';
+import { isTransactionLockedForMantri, normalizeDateStr } from '../modules/verification/mantri-confirmation-service.js';
+
+/**
+ * Helper: Mengekstrak tahun dari konteks tanggal transaksi penerimaan.
+ * Menggunakan prioritas field tanggal transaksi bisnis.
+ */
+function getReceiptContextYear(receiptTx) {
+  if (!receiptTx || typeof receiptTx !== 'object') {
+    return new Date().getFullYear();
+  }
+
+  const dateCandidates = [
+    receiptTx.tanggal,
+    receiptTx.date,
+    receiptTx.tanggalPenerimaan,
+    receiptTx.receiptDate,
+    receiptTx.createdAt
+  ];
+
+  for (const rawDate of dateCandidates) {
+    if (rawDate) {
+      const norm = normalizeDateStr(rawDate);
+      if (norm) {
+        const parts = norm.split('/');
+        if (parts.length === 3 && parts[2]) {
+          const y = parseInt(parts[2], 10);
+          if (!Number.isNaN(y) && y > 1900 && y < 2100) {
+            return y;
+          }
+        }
+      }
+    }
+  }
+
+  return new Date().getFullYear();
+}
+
+/**
+ * Memeriksa apakah Penerimaan (receiptTx) sudah digunakan sebagai dokumen referensi oleh modul hilir (downstream).
+ * Menggunakan prioritas identity kanonikal:
+ * 1. receipt transaction ID (id / receiptId)
+ * 2. canonical docNo / nomorDokumen
+ * 3. sourceDocNo / receiptDocNo / sourceReceiptDocNo
+ * 4. sourceReceiptId
+ * 5. sourceIndex / sourceReceiptIndex (hanya sebagai fallback)
+ * 
+ * @param {object} receiptTx - Record transaksi penerimaan
+ * @param {number} [receiptIndex=-1] - Indeks array penerimaan (fallback)
+ * @returns {boolean} true jika telah digunakan oleh transaksi downstream
+ */
+export function isReceiptUsedAsReference(receiptTx, receiptIndex = -1) {
+  if (!receiptTx && receiptIndex < 0) return false;
+
+  const tx = receiptTx || {};
+  const txId = tx.id || tx.receiptId || null;
+  
+  // 1. Jika docNo / nomorDokumen tersedia: gunakan langsung dan JANGAN masuk fallback
+  let docNo = tx.docNo || tx.nomorDokumen || null;
+  
+  // 2. Fallback hanya jika docNo belum ada dan receiptIndex valid (>= 0)
+  if (!docNo && receiptIndex !== undefined && receiptIndex !== null && Number(receiptIndex) >= 0) {
+    const year = getReceiptContextYear(tx);
+    docNo = formatStandardDocNo(year, 'APR', Number(receiptIndex) + 1);
+  }
+
+  const canonicalDocNo = docNo ? String(docNo).trim() : null;
+  const canonicalId = txId ? String(txId).trim() : null;
+  const hasValidIndex = (receiptIndex !== undefined && receiptIndex !== null && Number(receiptIndex) >= 0);
+  const targetIndex = hasValidIndex ? Number(receiptIndex) : (tx.originalIndex !== undefined ? Number(tx.originalIndex) : -1);
+
+  // 1. Cek Seeding (seeding_transactions)
+  const seedingTxs = storage.get('seeding_transactions', []);
+  const usedInSeeding = seedingTxs.some(s => {
+    if (!s) return false;
+    // Priority 1: ID
+    if (canonicalId && (
+      (s.sourceReceiptId && String(s.sourceReceiptId).trim() === canonicalId) ||
+      (s.receiptId && String(s.receiptId).trim() === canonicalId) ||
+      (s.sourceTxId && String(s.sourceTxId).trim() === canonicalId)
+    )) {
+      return true;
+    }
+    // Priority 2: docNo / sourceDocNo / receiptDocNo / sourceReceiptDocNo
+    if (canonicalDocNo) {
+      if (s.sourceDocNo && String(s.sourceDocNo).trim() === canonicalDocNo) return true;
+      if (s.receiptDocNo && String(s.receiptDocNo).trim() === canonicalDocNo) return true;
+      if (s.sourceReceiptDocNo && String(s.sourceReceiptDocNo).trim() === canonicalDocNo) return true;
+    }
+    // Priority 5: sourceIndex fallback
+    if (targetIndex >= 0 && s.sourceIndex !== undefined && s.sourceIndex !== null && String(s.sourceIndex) !== '') {
+      if (Number(s.sourceIndex) === targetIndex) return true;
+    }
+    return false;
+  });
+  if (usedInSeeding) return true;
+
+  // 2. Cek Dederan (dederan_transactions)
+  const dederTxs = storage.get('dederan_transactions', []);
+  const usedInDederan = dederTxs.some(d => {
+    if (!d) return false;
+    // Priority 1: ID
+    if (canonicalId && (
+      (d.sourceReceiptId && String(d.sourceReceiptId).trim() === canonicalId) ||
+      (d.receiptId && String(d.receiptId).trim() === canonicalId)
+    )) {
+      return true;
+    }
+    // Priority 2: docNo
+    if (canonicalDocNo) {
+      if (d.sourceReceiptDocNo && String(d.sourceReceiptDocNo).trim() === canonicalDocNo) return true;
+      if (d.receiptDocNo && String(d.receiptDocNo).trim() === canonicalDocNo) return true;
+      if (d.sourceDocNo && String(d.sourceDocNo).trim() === canonicalDocNo) return true;
+    }
+    // Priority 5: fallback sourceReceiptIndex / sourceIndex
+    if (targetIndex >= 0) {
+      if (d.sourceReceiptIndex !== undefined && d.sourceReceiptIndex !== null && String(d.sourceReceiptIndex) !== '') {
+        if (Number(d.sourceReceiptIndex) === targetIndex) return true;
+      }
+      if (d.sourceIndex !== undefined && d.sourceIndex !== null && String(d.sourceIndex) !== '') {
+        if (Number(d.sourceIndex) === targetIndex) return true;
+      }
+    }
+    return false;
+  });
+  if (usedInDederan) return true;
+
+  // 3. Cek Dokumen Induk Deder (dederan_induk_documents) yang AKTIF mengikat kuota (totalDidederSDHI > 0 atau child txs)
+  const indukDocs = storage.get('dederan_induk_documents', []);
+  const activeInduk = indukDocs.find(induk => {
+    if (!induk) return false;
+    let isMatch = false;
+    if (canonicalDocNo && (
+      (induk.sourceReceiptDocNo && String(induk.sourceReceiptDocNo).trim() === canonicalDocNo) ||
+      (induk.receiptDocNo && String(induk.receiptDocNo).trim() === canonicalDocNo)
+    )) {
+      isMatch = true;
+    }
+    if (!isMatch && targetIndex >= 0 && induk.sourceReceiptIndex !== undefined && Number(induk.sourceReceiptIndex) === targetIndex) {
+      isMatch = true;
+    }
+    if (isMatch) {
+      const totalDideder = parseInt(induk.totalDidederSDHI || 0, 10);
+      if (totalDideder > 0) return true;
+      const hasChildDeder = dederTxs.some(t => t.parentDederIndukDocNo === induk.docNo);
+      if (hasChildDeder) return true;
+    }
+    return false;
+  });
+  if (activeInduk) return true;
+
+  // 4. Cek Seleksi Pra-Okulasi (pre_grafting_selection_documents) yang direct referensi ke Penerimaan
+  const selectionDocs = storage.get('pre_grafting_selection_documents', []);
+  const usedInSelection = selectionDocs.some(d => {
+    if (!d) return false;
+    if (canonicalDocNo && (
+      (d.receiptDocNo && String(d.receiptDocNo).trim() === canonicalDocNo) ||
+      (d.sourceReceiptDocNo && String(d.sourceReceiptDocNo).trim() === canonicalDocNo) ||
+      (d.sourceDocNo && String(d.sourceDocNo).trim() === canonicalDocNo)
+    )) {
+      return true;
+    }
+    return false;
+  });
+  if (usedInSelection) return true;
+
+  return false;
+}
+
+/**
+ * Canonical Lock Helper untuk Dokumen Penerimaan:
+ * Persistent Lifecycle Lock berdasarkan:
+ * Condition A: Verification Lock (sedang dalam proses verifikasi atau disetujui)
+ * Condition B: Referential Lock (sudah digunakan sebagai referensi transaksi hilir)
+ * 
+ * @param {object} receiptTx - Record transaksi penerimaan
+ * @param {number} [receiptIndex=-1] - Indeks transaksi dalam list
+ * @returns {{ locked: boolean, reason: 'VERIFICATION_LOCK' | 'REFERENTIAL_LOCK' | null }}
+ */
+export function isReceiptLocked(receiptTx, receiptIndex = -1) {
+  if (isTransactionLockedForMantri(receiptTx)) {
+    return {
+      locked: true,
+      reason: 'VERIFICATION_LOCK'
+    };
+  }
+
+  if (isReceiptUsedAsReference(receiptTx, receiptIndex)) {
+    return {
+      locked: true,
+      reason: 'REFERENTIAL_LOCK'
+    };
+  }
+
+  return {
+    locked: false,
+    reason: null
+  };
+}
 
 /**
  * Memeriksa apakah suatu dokumen/transaksi telah digunakan sebagai referensi oleh modul hilir (downstream).
@@ -13,8 +212,10 @@ export function findDownstreamDependency(docNo) {
   // 0. Cek Penyemaian yang mungkin menggunakan Penerimaan ini
   const seedingTxs = storage.get('seeding_transactions', []);
   const dependentSeeding = seedingTxs.find(d => 
-    d.sourceDocNo === docNo || 
-    d.docNo === docNo || 
+    (d.sourceDocNo && d.sourceDocNo === docNo) || 
+    (d.receiptDocNo && d.receiptDocNo === docNo) ||
+    (d.sourceReceiptDocNo && d.sourceReceiptDocNo === docNo) ||
+    (d.docNo && d.docNo === docNo) || 
     (d.nomorDokumen && d.nomorDokumen === docNo)
   );
   if (dependentSeeding) {
@@ -25,12 +226,46 @@ export function findDownstreamDependency(docNo) {
     };
   }
 
-  // 1. Cek Seleksi (I, II, III) yang mungkin menggunakan docNo ini (bisa dari Seeding atau Seleksi sebelumnya)
+  // 0b. Cek Dederan yang menggunakan Penerimaan ini
+  const dederTxs = storage.get('dederan_transactions', []);
+  const dependentDeder = dederTxs.find(d => 
+    (d.sourceReceiptDocNo && d.sourceReceiptDocNo === docNo) || 
+    (d.receiptDocNo && d.receiptDocNo === docNo) || 
+    (d.sourceDocNo && d.sourceDocNo === docNo) ||
+    (d.docNo && d.docNo === docNo)
+  );
+  if (dependentDeder) {
+    return {
+      docNo: dependentDeder.docNo || 'Transaksi Dederan',
+      moduleName: 'Dederan (Germinasi)',
+      url: '/dederan'
+    };
+  }
+
+  // 0c. Cek Dokumen Induk Deder yang aktif
+  const indukDocs = storage.get('dederan_induk_documents', []);
+  const dependentInduk = indukDocs.find(induk => 
+    ((induk.sourceReceiptDocNo && induk.sourceReceiptDocNo === docNo) || 
+     (induk.receiptDocNo && induk.receiptDocNo === docNo) || 
+     (induk.docNo && induk.docNo === docNo)) &&
+    (parseInt(induk.totalDidederSDHI || 0, 10) > 0 || dederTxs.some(t => t.parentDederIndukDocNo === induk.docNo))
+  );
+  if (dependentInduk) {
+    return {
+      docNo: dependentInduk.docNo || 'Dokumen Induk Deder',
+      moduleName: 'Dederan (Germinasi)',
+      url: '/dederan'
+    };
+  }
+
+  // 1. Cek Seleksi (I, II, III) yang mungkin menggunakan docNo ini (bisa dari Seeding, Penerimaan, atau Seleksi sebelumnya)
   const selectionDocs = storage.get('pre_grafting_selection_documents', []);
   const dependentSelection = selectionDocs.find(d => 
     d.sourceSeedingDocNo === docNo || 
     d.sourceDocNo === docNo || 
     d.seedingDocNo === docNo ||
+    d.receiptDocNo === docNo ||
+    d.sourceReceiptDocNo === docNo ||
     d.sourceSelection1DocNo === docNo ||
     d.sourceSelection2DocNo === docNo ||
     d.sourceSelectionDocNo === docNo
@@ -137,3 +372,4 @@ export function guardDependency(docNo, moduleName, action = 'Diubah') {
 
   return false; // Safe
 }
+

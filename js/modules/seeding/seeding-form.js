@@ -9,6 +9,7 @@ import { getCurrentUserContext } from '../../core/user-context.js';
 import { integrateSeedingToSelectionPool } from '../selection/selection-manager.js';
 import { getEligiblePindahSemaiSources, calculateRemainingIssueBalance } from './dederan-pindah-semai-adapter.js';
 import { toast } from '../../components/toast.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 export function renderSeedingForm() {
   const app = document.getElementById('app');
@@ -765,6 +766,14 @@ export function renderSeedingForm() {
 
     // STALE-BALANCE REVALIDATION
     const freshBalance = calculateRemainingIssueBalance(issueDocNo, issueItemId, issueItemCode, editTx ? editTx.docNo : null);
+
+    // GLOBAL ATTENDANCE GATE
+    try {
+      assertAttendanceGateOrThrow(userCtx || user);
+    } catch (gateErr) {
+      toast(gateErr.message, 'error');
+      return;
+    }
 
     if (totalPolybag > freshBalance.remainingQuantity) {
       toast(`Gagal simpan! Sisa Material Gudang (${issueDocNo}) saat ini hanya ${freshBalance.remainingQuantity.toLocaleString('id-ID')} ${issueUom}, sedangkan kebutuhan Anda ${totalPolybag.toLocaleString('id-ID')} ${issueUom}. Silakan pilih item lain.`, 'error');

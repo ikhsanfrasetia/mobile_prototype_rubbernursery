@@ -12,6 +12,7 @@ import {
   getKlonMataEntresBalance,
   validateOkulasiPerisaiUsage
 } from '../../core/entres-inventory-service.js';
+import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 const MASTER_WORKERS = [
   { id: 'W001', name: 'Ahmad Rifai', code: '104521' },
@@ -793,6 +794,13 @@ export async function renderBuddingForm() {
 
     // Save button with comprehensive null/empty validation dialog
     app.querySelector('#btn-simpan').addEventListener('click', () => {
+      try {
+        assertAttendanceGateOrThrow();
+      } catch (err) {
+        showValidationErrorDialog([err.message || 'Presensi harian diperlukan sebelum membuat transaksi.']);
+        return;
+      }
+
       const totalDiokulasi = updateTotal();
       const kayuVal = (app.querySelector('#inp-kayu')?.value || '').trim();
       const mataEntres = totalDiokulasi;

@@ -4,13 +4,43 @@
  */
 
 import { session } from './session.js';
-import { permissions } from './permissions.js';
+import { permissions, ROLES } from './permissions.js';
+import { getGlobalAttendanceGateStatus, showAttendanceRequirementModal } from './attendance-gate-service.js';
+import { toast } from '../components/toast.js';
 
 const routes = new Map();
 let notFoundHandler = null;
 let guard = null;
 let currentRoute = null;
 let currentParams = null;
+
+const TRANSACTION_CREATION_ROUTES = [
+  '/seeding/form',
+  '/seeding/scan',
+  '/seeding/issue-select',
+  '/seeding/dederan/scan',
+  '/seeding/dederan/form',
+  '/seeding/dederan/inspection',
+  '/budding/grafting',
+  '/budding/grafting/scan',
+  '/budding/grafting/form',
+  '/budding/regrafting',
+  '/inspection/scan',
+  '/inspection/form',
+  '/inspection/dederan/form',
+  '/entres/menunas',
+  '/entres/menunas/form',
+  '/entres/topping',
+  '/entres/topping/form',
+  '/nursery-activity/form',
+  '/request/kebun-sepupu/form',
+  '/request/kebun-sendiri/form',
+  '/request/mata-entres/form',
+  '/dispatch/report',
+  '/reception/benih',
+  '/reception/benih/sir',
+  '/reception/benih/camera'
+];
 
 function parseHash() {
   const raw = location.hash || '#/login';
@@ -95,6 +125,35 @@ function defaultGuard(path) {
   const PUBLIC = ['/login'];
   if (PUBLIC.some((p) => path.startsWith(p))) return true;
   if (!session.isAuthenticated()) return { redirect: '/login' };
+
+  // GLOBAL ATTENDANCE GATE FOR TRANSACTION CREATION ROUTES
+  const role = session.getRole();
+  if (role === ROLES.MANTRI_TANAMAN) {
+    const isCreationRoute = TRANSACTION_CREATION_ROUTES.some((cr) => path === cr || path.startsWith(`${cr}/`) || path.startsWith(cr));
+    if (isCreationRoute) {
+      const gate = getGlobalAttendanceGateStatus();
+      if (!gate.isGateUnlocked) {
+        // Tentukan fallback redirect route (landing halaman modul)
+        const pathSegments = path.split('/').filter(Boolean);
+        const parentModule = pathSegments[0] ? `/${pathSegments[0]}` : '/home';
+        
+        // Show informative notification
+        if (typeof toast !== 'undefined' && toast.warning) {
+          toast.warning(gate.errorMessage || 'Presensi harian diperlukan sebelum membuat transaksi.');
+        }
+
+        // Tampilkan modal jika di browser
+        if (typeof document !== 'undefined' && document.body) {
+          setTimeout(() => {
+            showAttendanceRequirementModal({ targetModuleName: pathSegments[0] || 'Transaksi' });
+          }, 150);
+        }
+
+        return { redirect: parentModule };
+      }
+    }
+  }
+
   return true;
 }
 
