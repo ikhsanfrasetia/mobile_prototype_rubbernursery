@@ -176,13 +176,15 @@ export function showAttendanceRequirementModal(options = {}) {
   const targetModule = options.targetModuleName || 'Transaksi';
   const message = gate.errorMessage || 'Presensi harian belum lengkap.';
 
+  const infoIconRedSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="att-info-icon" style="color: var(--danger, #e53935);"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
+
   const supStatusBadge = gate.isSupervisorDone
     ? `<span class="att-badge att-badge--success">Selesai ✓</span>`
-    : `<span class="att-badge att-badge--error">Belum ✗</span>`;
+    : `<span class="att-badge att-badge--error" title="Belum Presensi">${infoIconRedSvg}</span>`;
 
   const wrkStatusBadge = gate.isWorkerDone
     ? `<span class="att-badge att-badge--success">Selesai (${gate.workerCount} Hadir) ✓</span>`
-    : `<span class="att-badge att-badge--error">Belum ✗</span>`;
+    : `<span class="att-badge att-badge--error" title="Belum Presensi">${infoIconRedSvg}</span>`;
 
   const modalBodyHtml = `
     <div class="att-content">

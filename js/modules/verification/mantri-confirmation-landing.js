@@ -22,6 +22,7 @@ import {
   normalizeDateStr,
   formatSafeNumber
 } from './mantri-confirmation-service.js';
+import { getSelectionStageLabel } from '../selection/selection-manager.js';
 
 let activeTabFilter = null; // Menyimpan modul aktif (e.g. 'TIDAK_HADIR', 'PENERIMAAN', etc.)
 const moduleCheckedStates = new Map(); // Menyimpan state centang per modul
@@ -505,8 +506,8 @@ export function getUniversalCardConfig(tx) {
     }
 
     case MODULE_TYPES.SELEKSI_PRA_OKULASI: {
-      const stage = raw.selectionStage || 'Seleksi I';
-      const primaryEntity = disp.title || `Seleksi Pra-Okulasi (${stage})`;
+      const stageLabel = getSelectionStageLabel(raw);
+      const primaryEntity = disp.title || `Seleksi Pra-Okulasi (${stageLabel})`;
       const primaryDoc = tx.docNo;
       const mainQty = disp.mainQty || `${formatSafeNumber(raw.totalLayak || raw.finalBibitQty || 0)} Layak`;
       const batch = raw.batchCode || '-';
@@ -519,19 +520,18 @@ export function getUniversalCardConfig(tx) {
         primaryDoc,
         quantityText: mainQty,
         breakdownText: `${afkir} Afkir`,
-        referenceText: `Tahap: ${stage}`,
+        referenceText: `Tahap: ${stageLabel}`,
         contextText: `Batch: ${batch} · Bedengan: ${bedengan}`,
         dateText: dateFormatted
       };
     }
 
     case MODULE_TYPES.PENYELEKSIAN: {
+      const stageLabel = getSelectionStageLabel(raw);
       const primaryEntity = disp.title || 'Penyeleksian Bibit';
       const primaryDoc = tx.docNo;
-      const mainQty = disp.mainQty || `${formatSafeNumber(raw.actualBibitSelectedQty || raw.bibitReject || 0)} Bibit Afkir`;
-      const stage = raw.stage || raw.selectionStage || 'Bibit';
-      const reason = raw.reason || raw.kategoriAfkir || '';
-      const bedengan = raw.bedengan || raw.lokasi || '-';
+      const mainQty = disp.mainQty || `${formatSafeNumber(raw.actualBibitSelectedQty || raw.bibitReject || raw.jumlahAfkir || 0)} Bibit Afkir`;
+      const bedengan = raw.bedengan || raw.bedenganCode || raw.lokasi || '-';
 
       return {
         moduleLabel: 'PENYELEKSIAN',
@@ -539,7 +539,7 @@ export function getUniversalCardConfig(tx) {
         primaryDoc,
         quantityText: mainQty,
         breakdownText: disp.breakdown || '',
-        referenceText: reason ? `Kategori: ${reason}` : `Tahap: ${stage}`,
+        referenceText: `Tahap: ${stageLabel}`,
         contextText: `Bedengan: ${bedengan}`,
         dateText: dateFormatted
       };

@@ -278,6 +278,7 @@ export function getUomNormalizationLog() {
 export function getMaterialSummaryStats() {
   const materials = getAllMaterials();
   const issues = getAllIssueDocuments();
+  const unifiedRecords = getUnifiedMaterialRecords();
   
   let totalAvailableIssues = 0;
   let totalItemsCount = 0;
@@ -292,6 +293,7 @@ export function getMaterialSummaryStats() {
     totalIssueDocuments: issues.length,
     totalIssueDetails: totalItemsCount,
     totalAvailableIssues,
+    totalMaterialRecords: unifiedRecords.length,
     sourceRecordsCount: RAW_MATERIAL_ISSUE_RECORDS.length
   };
 }
@@ -324,5 +326,186 @@ export function getIssueUsageTransactions(noIssueOrId) {
   });
 
   return matchingTxs;
+}
+
+/**
+ * Mengambil transaksi penggunaan material dari transaksi operasional (seeding_transactions / SOW).
+ * 1 SOW Material Usage = 1 logical usage record.
+ * @returns {Array<Object>}
+ */
+export function getOperationalMaterialRecords() {
+  const seedingTxs = storage.get('seeding_transactions', []) || [];
+  const results = [];
+  const seenIds = new Set();
+
+  seedingTxs.forEach(tx => {
+    if (!tx || typeof tx !== 'object') return;
+    const hasIssueDoc = Boolean(String(tx.issueDocNo || tx.noIssue || '').trim());
+    const polyQty = Number(tx.totalPolybag !== undefined ? tx.totalPolybag : (tx.rows?.[0]?.polybag || 0));
+    if (!hasIssueDoc || polyQty <= 0) return;
+
+    const uniqueId = String(tx.id || tx.docNo || tx.nomorDokumen || '').trim();
+    if (!uniqueId || seenIds.has(uniqueId)) return;
+    seenIds.add(uniqueId);
+
+    const docNo = tx.docNo || tx.nomorDokumen || tx.id || '-';
+    const rawDate = tx.date || tx.tanggal || '-';
+    const tanggalFormatted = (rawDate && rawDate !== '-') ? formatDate(rawDate) : '-';
+
+    results.push({
+      id: uniqueId,
+      docNo,
+      sourceType: 'OPERASIONAL',
+      sourceLabel: 'Operasional · Penyemaian',
+      sourceModule: 'PENYEMAIAN',
+      itemCode: tx.itemCode || tx.kodeItem || '7065168',
+      itemName: tx.itemName || tx.materialName || 'POLYBAG 25X50CMX0,20MM',
+      quantity: polyQty,
+      uom: tx.uom || tx.satuan || 'LBR',
+      tanggal: tanggalFormatted,
+      date: rawDate,
+      issueDocNo: tx.issueDocNo || tx.noIssue || '-',
+      issueItemId: tx.issueItemId || null,
+      batchId: tx.batchId || null,
+      batchCode: tx.batchCode || tx.batchNo || tx.batch_code || '-',
+      bedenganId: tx.bedenganId || null,
+      bedenganCode: tx.bedenganCode || tx.bedengan || '-',
+      actor: tx.mantri || tx.actorName || tx.createdByName || 'Mantri Bibitan',
+      notes: tx.keterangan || tx.notes || `Penyemaian SOW ${docNo}`,
+      rawRecord: tx
+    });
+  });
+
+  return results;
+}
+
+/**
+ * Mengambil transaksi pencatatan material manual dari material_usage_transactions.
+ * @returns {Array<Object>}
+ */
+export function getManualMaterialRecords() {
+  const manualTxs = storage.get('material_usage_transactions', []) || [];
+  const results = [];
+  const seenIds = new Set();
+
+  manualTxs.forEach(tx => {
+    if (!tx || typeof tx !== 'object') return;
+    const uniqueId = String(tx.id || tx.docNo || '').trim();
+    if (!uniqueId || seenIds.has(uniqueId)) return;
+    seenIds.add(uniqueId);
+
+    const docNo = tx.docNo || tx.id || '-';
+    const rawDate = tx.date || tx.tanggal || '-';
+    const tanggalFormatted = (rawDate && rawDate !== '-') ? formatDate(rawDate) : '-';
+    const qty = Number(tx.quantity !== undefined ? tx.quantity : (tx.qty !== undefined ? tx.qty : 0));
+
+    results.push({
+      id: uniqueId,
+      docNo,
+      sourceType: 'MANUAL',
+      sourceLabel: 'Manual',
+      sourceModule: 'MATERIAL_MANUAL',
+      itemCode: tx.itemCode || tx.kodeItem || '',
+      itemName: tx.itemName || tx.materialName || tx.name || 'Material',
+      quantity: qty,
+      uom: tx.uom || tx.satuan || tx.unit || 'Unit',
+      tanggal: tanggalFormatted,
+      date: rawDate,
+      issueDocNo: tx.issueDocNo || tx.noIssue || '-',
+      issueItemId: tx.issueItemId || null,
+      batchId: tx.batchId || null,
+      batchCode: tx.batchCode || tx.batchNo || '-',
+      bedenganId: tx.bedenganId || null,
+      bedenganCode: tx.bedenganCode || tx.bedengan || '-',
+      actor: tx.mantri || tx.actorName || tx.createdByName || 'Mantri Bibitan',
+      notes: tx.notes || tx.keterangan || tx.keteranganAlokasi || '-',
+      rawRecord: tx
+    });
+  });
+
+  return results;
+}
+
+/**
+ * Mengambil seluruh rekam pencatatan material (Unified View: Operasional SOW + Manual).
+ * Zero duplicate projection.
+ * @returns {Array<Object>}
+ */
+export function getUnifiedMaterialRecords() {
+  const opRecords = getOperationalMaterialRecords();
+  const manRecords = getManualMaterialRecords();
+  return [...opRecords, ...manRecords];
+}
+
+/**
+ * Menyimpan pencatatan material manual baru ke storage canonical `material_usage_transactions`.
+ * Tunduk pada validasi integritas schema.
+ * @param {Object} payload
+ * @param {Object} [userContext]
+ * @returns {Object} Record yang berhasil disimpan
+ */
+export function createManualMaterialRecord(payload = {}, userContext = null) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Payload pencatatan material tidak valid.');
+  }
+
+  const itemCode = String(payload.itemCode || '').trim();
+  const itemName = String(payload.itemName || '').trim();
+  const qty = Number(payload.quantity !== undefined ? payload.quantity : payload.qty);
+  const uom = String(payload.uom || payload.satuan || 'Unit').trim();
+  const date = String(payload.date || payload.tanggal || '').trim();
+  const notes = String(payload.notes || payload.keterangan || '').trim();
+
+  if (!itemCode && !itemName) {
+    throw new Error('Material wajib dipilih dari Master Material.');
+  }
+  if (isNaN(qty) || qty <= 0) {
+    throw new Error('Jumlah kuantiti penggunaan material harus lebih besar dari 0.');
+  }
+
+  const existingList = storage.get('material_usage_transactions', []) || [];
+  
+  // Format docNo standar MAT/YYYY/XXX
+  let docNo = payload.docNo;
+  if (!docNo) {
+    const year = date ? parseInt(date.slice(0, 4), 10) || 2026 : 2026;
+    const count = existingList.length + 1;
+    docNo = `MAT/${year}/${String(count).padStart(3, '0')}`;
+  }
+
+  const id = payload.id || `MAT-REC-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
+  const actorName = payload.createdByName || userContext?.name || 'Mantri Bibitan';
+  const actorId = payload.createdByUserId || userContext?.id || userContext?.userId || 'USR-MTR-001';
+
+  const newRecord = {
+    id,
+    docNo,
+    sourceType: 'MANUAL',
+    itemCode,
+    itemName,
+    quantity: qty,
+    qty,
+    uom,
+    date: date || new Date().toISOString().slice(0, 10),
+    tanggal: date || new Date().toISOString().slice(0, 10),
+    issueDocNo: payload.issueDocNo || '-',
+    notes: notes || '-',
+    keterangan: notes || '-',
+    batchId: payload.batchId || null,
+    batchCode: payload.batchCode || '-',
+    bedenganId: payload.bedenganId || null,
+    bedenganCode: payload.bedenganCode || '-',
+    estateId: payload.estateId || userContext?.estateId || 'EST-TB',
+    divisionId: payload.divisionId || userContext?.divisionId || 'DIV-01',
+    createdByUserId: actorId,
+    createdByName: actorName,
+    createdAt: new Date().toISOString()
+  };
+
+  existingList.push(newRecord);
+  storage.set('material_usage_transactions', existingList);
+
+  return newRecord;
 }
 

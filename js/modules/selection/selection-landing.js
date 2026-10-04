@@ -1609,19 +1609,21 @@ export function renderStandardizedRejectList(poolItems = [], culledTxs = [], emp
                 </div>
               </div>
 
-              <!-- MIDDLE ROW: SOURCE DOC -->
-              <div style="font-size: 0.72rem; color: #64748B;">
-                Dok. Asal: <strong style="color: #334155;">${esc(sourceDoc)}</strong>
-              </div>
-
-              <!-- BOTTOM ROW: ACTION & DATE AT BOTTOM-RIGHT -->
-              <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 4px; padding-top: 6px; border-top: 1px solid #F1F5F9;">
-                <button type="button" class="btn-deklarasi-afkir" data-pool-id="${esc(item.id || item.docNo)}" style="padding: 6px 12px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.75rem; cursor: pointer;">
-                  Deklarasi Bibit Afkir
-                </button>
+              <!-- MIDDLE ROW: SOURCE DOC & TANGGAL (SEJAJAR) -->
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: #64748B;">
+                <div>
+                  Dok. Asal: <strong style="color: #334155;">${esc(sourceDoc)}</strong>
+                </div>
                 <div style="font-size: 0.70rem; color: #64748B;">
                   ${esc(itemDate)}
                 </div>
+              </div>
+
+              <!-- BOTTOM ROW: TOMBOL DEKLARASI FULL-WIDTH -->
+              <div style="margin-top: 4px; padding-top: 6px; border-top: 1px solid #F1F5F9;">
+                <button type="button" class="btn-deklarasi-afkir" data-pool-id="${esc(item.id || item.docNo)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2); transition: background 0.15s ease;">
+                  Deklarasi Bibit Afkir
+                </button>
               </div>
 
             </div>

@@ -19,6 +19,7 @@ import { getAllBedengan } from '../../data/bedengan-master.js';
 import { getProgramById } from '../../data/program-master.js';
 import { getEstateById } from '../../data/estate-master.js';
 import { getWorkersForUserContext } from '../../data/worker-master.js';
+import { getSelectionStageLabel } from '../selection/selection-manager.js';
 
 export const VERIFICATION_STORAGE_KEY = 'verification_transactions';
 
@@ -642,7 +643,7 @@ export function getVerificationDetailData(sourceRecord, userCtx = null, referenc
 
     case 'PENYELEKSIAN':
     case 'SELECTION': {
-      const stage = raw.stage || raw.selectionStage || 'Bibit';
+      const stage = getSelectionStageLabel(raw);
       const layak = raw.actualBibitRetainedQty !== undefined
         ? raw.actualBibitRetainedQty
         : (raw.bibitDipertahankan !== undefined ? raw.bibitDipertahankan : (raw.jumlahLayak !== undefined ? raw.jumlahLayak : '-'));
@@ -653,7 +654,7 @@ export function getVerificationDetailData(sourceRecord, userCtx = null, referenc
       const formattedAfkir = formatSafeNumber(afkir);
       const reason = raw.reason || raw.kategoriAfkir || stage;
       const bedengan = raw.bedengan || raw.lokasi || '-';
-      const summary = `Seleksi ${stage}: ${formattedLayak} Layak, ${formattedAfkir} Afkir`;
+      const summary = `${stage}: ${formattedLayak} Layak, ${formattedAfkir} Afkir`;
 
       return {
         title: 'Penyeleksian Bibit',

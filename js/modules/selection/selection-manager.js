@@ -29,6 +29,7 @@ import { getBatchContext } from '../../core/master-context-service.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 export const SELECTION_STATUS = Object.freeze({
+  READY_TO_CONFIRM: 'READY_TO_CONFIRM',
   MENUNGGU_VERIFIKASI: 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN',
   DIAJUKAN: 'DIAJUKAN_PEMERIKSAAN',
   DISETUJUI: 'DISETUJUI',
@@ -36,6 +37,8 @@ export const SELECTION_STATUS = Object.freeze({
 });
 
 export const SELECTION_STAGES = Object.freeze({
+  PRA_SEMAI: 'SELEKSI_PRA_SEMAI',
+  PINDAH_SEMAI: 'SELEKSI_PINDAH_SEMAI',
   SELEKSI_1: 'SELEKSI_I',
   SELEKSI_2: 'SELEKSI_II',
   SELEKSI_3: 'SELEKSI_III',
@@ -43,6 +46,8 @@ export const SELECTION_STAGES = Object.freeze({
 });
 
 export const SELECTION_TYPES = Object.freeze({
+  PRA_SEMAI: 'PRA_SEMAI',
+  PINDAH_SEMAI: 'PINDAH_SEMAI',
   PRA_OKULASI: 'PRA_OKULASI',
   PASCA_OKULASI: 'PASCA_OKULASI'
 });
@@ -89,8 +94,35 @@ export function getSelectionStageLabel(item) {
   if (!item) return 'Seleksi';
 
   const stage = String(item.selectionStage || item.stage || '').toUpperCase();
+  const origType = String(item.originType || '').toUpperCase();
+  const srcMod = String(item.sourceModule || '').toUpperCase();
+  const srcTxType = String(item.sourceTransactionType || '').toUpperCase();
 
-  // 1. Pra-Okulasi I-III Document / Execution Stage
+  // 1. Pra-Semai (Dederan)
+  if (
+    stage === SELECTION_STAGES.PRA_SEMAI ||
+    stage === 'SELEKSI_PRA_SEMAI' ||
+    stage === 'PRA_SEMAI' ||
+    origType === 'REJECT_DEDERAN' ||
+    srcMod === 'DEDERAN' ||
+    srcTxType === 'DEDER_INSPECTION'
+  ) {
+    return 'Seleksi Pra-Semai (Dederan)';
+  }
+
+  // 2. Pindah Semai
+  if (
+    stage === SELECTION_STAGES.PINDAH_SEMAI ||
+    stage === 'SELEKSI_PINDAH_SEMAI' ||
+    stage === 'PINDAH_SEMAI' ||
+    origType === 'REJECT_PENYEMAIAN' ||
+    srcMod === 'PENYEMAIAN' ||
+    srcTxType === 'SEEDING'
+  ) {
+    return 'Seleksi Pindah Semai';
+  }
+
+  // 3. Pra-Okulasi I-III Document / Execution Stage
   if (stage === SELECTION_STAGES.SELEKSI_1 || stage === 'SELEKSI_1' || stage === 'SELEKSI_I') {
     return 'Seleksi I (Pra-Okulasi)';
   }
@@ -101,45 +133,23 @@ export function getSelectionStageLabel(item) {
     return 'Seleksi III (Pra-Okulasi)';
   }
 
-  // 2. Canonical Origin Type check (Overrides default PASCA_OKULASI fallback)
-  if (item.originType === 'REJECT_PENYEMAIAN') {
-    return 'SELEKSI PINDAH SEMAI';
-  }
-  if (item.originType === 'REJECT_DEDERAN') {
-    return 'PASCA-SEMAI (DEDERAN)';
-  }
-  if (
-    item.originType === 'REJECT_OKULASI' ||
-    item.originType === 'REJECT_REGRAFTING' ||
-    item.originType === 'REJECT_PEMERIKSAAN'
-  ) {
-    return 'PASCA-OKULASI';
-  }
-
-  // 3. Fallback to sourceModule / sourceTransactionType
-  if (item.sourceModule === 'PENYEMAIAN' || item.sourceTransactionType === 'SEEDING') {
-    return 'SELEKSI PINDAH SEMAI';
-  }
-  if (item.sourceModule === 'DEDERAN' || item.sourceTransactionType === 'DEDER_INSPECTION') {
-    return 'PASCA-SEMAI (DEDERAN)';
-  }
-  if (
-    item.sourceModule === 'BUDDING' ||
-    item.sourceModule === 'OKULASI' ||
-    item.sourceTransactionType === 'GRAFTING' ||
-    item.sourceTransactionType === 'REGRAFTING'
-  ) {
-    return 'PASCA-OKULASI';
-  }
-
-  // 4. Fallback to selectionStage / selectionType / generic source
+  // 4. Pasca-Okulasi
   if (
     stage === SELECTION_STAGES.PASCA_OKULASI ||
+    stage === 'SELEKSI_PASCA_OKULASI' ||
+    stage === 'PASCA_OKULASI' ||
+    origType === 'REJECT_OKULASI' ||
+    origType === 'REJECT_REGRAFTING' ||
+    origType === 'REJECT_PEMERIKSAAN' ||
+    srcMod === 'BUDDING' ||
+    srcMod === 'OKULASI' ||
+    srcTxType === 'GRAFTING' ||
+    srcTxType === 'REGRAFTING' ||
     item.selectionType === SELECTION_TYPES.PASCA_OKULASI ||
     item.selectionType === 'PASCA-OKULASI' ||
     item.selectionType === 'PASCA_OKULASI'
   ) {
-    return 'PASCA-OKULASI';
+    return 'Seleksi Pasca-Okulasi';
   }
 
   return getSelectionSourceLabel(item);
@@ -164,13 +174,56 @@ export function canPerformAsistenSelectionAction(item, currentUser) {
   }
 
   const s = (item.status || '').toUpperCase();
-  return (
-    s === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
-    s === 'MENUNGGU_VERIFIKASI' ||
-    s === SELECTION_STATUS.DIAJUKAN ||
-    s === 'DIAJUKAN' ||
-    s === 'PENDING_DECLARATION'
+  const subStatus = (item.submissionStatus || '').toUpperCase();
+
+  // Pre-grafting selection documents (Seleksi I/II/III)
+  const isPreGraftingDoc = Boolean(
+    item.batchCode &&
+    Array.isArray(item.bedenganIds) &&
+    !item.originType &&
+    (item.selectionStage === 'SELEKSI_I' || item.selectionStage === 'SELEKSI_II' || item.selectionStage === 'SELEKSI_III' ||
+     item.selectionStage === 'SELEKSI_1' || item.selectionStage === 'SELEKSI_2' || item.selectionStage === 'SELEKSI_3')
   );
+
+  if (isPreGraftingDoc) {
+    return (
+      s === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
+      s === 'MENUNGGU_VERIFIKASI' ||
+      s === SELECTION_STATUS.DIAJUKAN ||
+      s === 'DIAJUKAN' ||
+      subStatus === 'SUBMITTED_TO_ASB'
+    );
+  }
+
+  // For standalone selection individual items:
+  // MUST NOT be actionable if only in local READY_TO_CONFIRM state without submission
+  if (s === 'READY_TO_CONFIRM' && subStatus !== 'SUBMITTED_TO_ASB') {
+    return false;
+  }
+
+  // Must be submitted to ASB via submissionStatus
+  if (subStatus === 'SUBMITTED_TO_ASB') {
+    return (
+      s === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
+      s === 'MENUNGGU_VERIFIKASI' ||
+      s === SELECTION_STATUS.DIAJUKAN ||
+      s === 'DIAJUKAN' ||
+      s === 'SUBMITTED_TO_ASB' ||
+      s === 'READY_TO_CONFIRM'
+    );
+  }
+
+  // Check active verification_transactions storage
+  try {
+    const allVerifs = storage.get('verification_transactions', []);
+    const hasVerif = allVerifs.some(v =>
+      (String(v.referenceId) === String(item.id) || String(v.referenceDocNo) === String(item.docNo)) &&
+      (v.verificationStatus === 'MENUNGGU_VERIFIKASI' || v.verificationStatus === 'PENDING_ASB')
+    );
+    if (hasVerif) return true;
+  } catch (_) {}
+
+  return false;
 }
 
 /**
@@ -546,6 +599,26 @@ export function createSelectionRecord(payload, currentUser) {
   // Resolve bedengan
   const bedenganIds = payload.bedenganIds || (payload.bedenganId ? [payload.bedenganId] : (bObj?.bedenganIds || []));
 
+  // Resolve stage and type semantically based on originType and sourceModule
+  let determinedStage = payload.selectionStage;
+  let determinedType = payload.selectionType;
+
+  if (!determinedStage || determinedStage === SELECTION_STAGES.PASCA_OKULASI) {
+    if (payload.originType === 'REJECT_DEDERAN' || payload.sourceModule === 'DEDERAN') {
+      determinedStage = SELECTION_STAGES.PRA_SEMAI;
+      determinedType = SELECTION_TYPES.PRA_SEMAI;
+    } else if (payload.originType === 'REJECT_PENYEMAIAN' || payload.sourceModule === 'PENYEMAIAN') {
+      determinedStage = SELECTION_STAGES.PINDAH_SEMAI;
+      determinedType = SELECTION_TYPES.PINDAH_SEMAI;
+    } else if (payload.isPreGrafting) {
+      determinedStage = SELECTION_STAGES.SELEKSI_1;
+      determinedType = SELECTION_TYPES.PRA_OKULASI;
+    } else {
+      determinedStage = SELECTION_STAGES.PASCA_OKULASI;
+      determinedType = SELECTION_TYPES.PASCA_OKULASI;
+    }
+  }
+
   const newRecord = applyTransactionActor(
     {
       id: payload.id || `SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -586,15 +659,17 @@ export function createSelectionRecord(payload, currentUser) {
       jumlahLayak: val.pass,
       jumlahAfkir: val.cull,
       
-      selectionStage: payload.selectionStage || (payload.isPreGrafting ? SELECTION_STAGES.SELEKSI_1 : SELECTION_STAGES.PASCA_OKULASI),
-      selectionType: payload.selectionType || (payload.isPreGrafting ? SELECTION_TYPES.PRA_OKULASI : SELECTION_TYPES.PASCA_OKULASI),
+      selectionStage: determinedStage,
+      selectionType: determinedType,
       isCompleted: payload.isCompleted !== undefined ? Boolean(payload.isCompleted) : false,
       polybagCount: payload.polybagCount !== undefined ? parseInt(payload.polybagCount, 10) : Math.ceil(val.checked / 2),
       
       tanggalSeleksi: payload.tanggalSeleksi || payload.selectionDate || formatDate(new Date().toISOString()),
       catatan: payload.catatan || payload.remarks || payload.alasan || '-',
       
-      status: SELECTION_STATUS.MENUNGGU_VERIFIKASI,
+      status: payload.status || 'READY_TO_CONFIRM',
+      submissionStatus: payload.submissionStatus || null,
+      submittedAt: payload.submittedAt || null,
       stockMutationStatus: STOCK_MUTATION_STATUS.PENDING,
       
       createdByUserId: currentUser.userId || currentUser.code || currentUser.id,
@@ -1242,7 +1317,9 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
     finalTx = existingTx;
     finalTx.category = selectedCat;
     finalTx.alasanDitolakCategory = selectedCat;
-    finalTx.status = SELECTION_STATUS.MENUNGGU_VERIFIKASI;
+    finalTx.status = SELECTION_STATUS.READY_TO_CONFIRM;
+    finalTx.submissionStatus = null;
+    finalTx.submittedAt = null;
     finalTx.returnReason = null;
     finalTx.stockMutationStatus = STOCK_MUTATION_STATUS.PENDING;
     finalTx.updatedAt = new Date().toISOString();
@@ -1271,6 +1348,22 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
     const newTxId = `SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const isDederan = targetPoolItem.originType === 'REJECT_DEDERAN' || targetPoolItem.sourceModule === 'DEDERAN';
     const validPhotoId = photoResult?.id || `PHOTO-SEL-${Date.now()}`;
+
+    let determinedStage = targetPoolItem.selectionStage;
+    let determinedType = targetPoolItem.selectionType;
+
+    if (!determinedStage || determinedStage === SELECTION_STAGES.PASCA_OKULASI) {
+      if (targetPoolItem.originType === 'REJECT_DEDERAN' || targetPoolItem.sourceModule === 'DEDERAN' || targetPoolItem.sourceTransactionType === 'DEDER_INSPECTION') {
+        determinedStage = SELECTION_STAGES.PRA_SEMAI;
+        determinedType = SELECTION_TYPES.PRA_SEMAI;
+      } else if (targetPoolItem.originType === 'REJECT_PENYEMAIAN' || targetPoolItem.sourceModule === 'PENYEMAIAN') {
+        determinedStage = SELECTION_STAGES.PINDAH_SEMAI;
+        determinedType = SELECTION_TYPES.PINDAH_SEMAI;
+      } else {
+        determinedStage = targetPoolItem.selectionStage || SELECTION_STAGES.PASCA_OKULASI;
+        determinedType = targetPoolItem.selectionType || SELECTION_TYPES.PASCA_OKULASI;
+      }
+    }
 
     finalTx = {
       id: newTxId,
@@ -1306,8 +1399,8 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
       jumlahAfkir: targetPoolItem.jumlahAfkir || targetPoolItem.quantity || 0,
       quantity: targetPoolItem.jumlahAfkir || targetPoolItem.quantity || 0,
       
-      selectionStage: targetPoolItem.selectionStage || SELECTION_STAGES.PASCA_OKULASI,
-      selectionType: targetPoolItem.selectionType || SELECTION_TYPES.PASCA_OKULASI,
+      selectionStage: determinedStage,
+      selectionType: determinedType,
       isCompleted: targetPoolItem.isCompleted !== undefined ? Boolean(targetPoolItem.isCompleted) : false,
       polybagCount: targetPoolItem.polybagCount !== undefined ? parseInt(targetPoolItem.polybagCount, 10) : Math.ceil((targetPoolItem.jumlahAfkir || targetPoolItem.quantity || 0) / 2),
       
@@ -1319,7 +1412,9 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
       mantri: user.name,
       createdByName: user.name,
       createdByUserId: user.userId || user.code || user.id,
-      status: SELECTION_STATUS.MENUNGGU_VERIFIKASI,
+      status: SELECTION_STATUS.READY_TO_CONFIRM,
+      submissionStatus: null,
+      submittedAt: null,
       stockMutationStatus: STOCK_MUTATION_STATUS.PENDING,
       
       // Photo reference
@@ -1379,7 +1474,9 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
   if (poolMatchIdx !== -1) {
     fullPool[poolMatchIdx] = {
       ...fullPool[poolMatchIdx],
-      status: SELECTION_STATUS.MENUNGGU_VERIFIKASI,
+      status: SELECTION_STATUS.READY_TO_CONFIRM,
+      submissionStatus: null,
+      submittedAt: null,
       category: selectedCat,
       alasanDitolakCategory: selectedCat,
       docNo: finalTx.docNo,

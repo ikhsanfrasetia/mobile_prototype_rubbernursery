@@ -17,7 +17,8 @@ import {
   submitPreGraftingSelectionDocumentToAsisten,
   getSeleksi1ExecutionsByDocument,
   getSeleksi2ExecutionsByDocument,
-  getSeleksi3ExecutionsByDocument
+  getSeleksi3ExecutionsByDocument,
+  getSelectionStageLabel
 } from '../selection/selection-manager.js';
 import { getWorkersForUserContext } from '../../data/worker-master.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
@@ -404,18 +405,13 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
     }
   }
 
-  // 2. Cek dari internal status item itu sendiri (dengan support materialSubmissionStatus untuk SOW Material)
+  // 2. Cek verified / return status jika item sudah final / dikembalikan
   const isMaterialModule = modKey === 'MATERIAL';
-  const rawStat = (
-    (isMaterialModule && item.materialSubmissionStatus ? item.materialSubmissionStatus : null) ||
-    item.status ||
-    item.verificationStatus ||
-    item.submissionStatus ||
-    ''
-  ).toUpperCase();
+  const rawSubStat = String((isMaterialModule && item.materialSubmissionStatus ? item.materialSubmissionStatus : null) || item.submissionStatus || '').toUpperCase().trim();
+  const rawStat = String(item.status || item.verificationStatus || '').toUpperCase().trim();
   const isFinal = Boolean(item.isFinal);
 
-  if (rawStat === 'DISETUJUI' || rawStat === 'VERIFIED' || rawStat === 'APPROVED' || (rawStat === 'DISETUJUI' && isFinal)) {
+  if (rawStat === 'DISETUJUI' || rawStat === 'VERIFIED' || rawStat === 'APPROVED' || (rawStat === 'DISETUJUI' && isFinal) || item.verifiedAt) {
     return {
       status: MANTRI_TRANSACTION_STATUS.VERIFIED,
       verificationStatus: VERIFICATION_STATUS.TERVERIFIKASI,
@@ -423,7 +419,7 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
     };
   }
 
-  if (rawStat === 'DIKEMBALIKAN' || rawStat === 'REVISION') {
+  if (rawStat === 'DIKEMBALIKAN' || rawStat === 'REVISION' || rawSubStat === 'REVISION' || rawSubStat === 'DIKEMBALIKAN') {
     return {
       status: MANTRI_TRANSACTION_STATUS.REVISION,
       verificationStatus: VERIFICATION_STATUS.DIKEMBALIKAN,
@@ -431,14 +427,15 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
     };
   }
 
-  if (
-    rawStat === 'MENUNGGU_VERIFIKASI' ||
-    rawStat === 'DIAJUKAN' ||
-    rawStat === 'DIAJUKAN_PEMERIKSAAN' ||
-    rawStat === 'SUBMITTED_TO_ASB' ||
-    rawStat === 'PENDING_ASB' ||
-    rawStat === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN'
-  ) {
+  // 3. Cek explicit submission metadata
+  const hasValidSubmittedAt = Boolean(item.submittedAt && String(item.submittedAt).trim() !== '' && String(item.submittedAt).trim() !== '-');
+  const isExplicitlySubmitted = (
+    rawSubStat === 'SUBMITTED_TO_ASB' ||
+    (isMaterialModule && String(item.materialSubmissionStatus || '').toUpperCase() === 'SUBMITTED_TO_ASB') ||
+    hasValidSubmittedAt
+  );
+
+  if (isExplicitlySubmitted) {
     return {
       status: MANTRI_TRANSACTION_STATUS.SUBMITTED_TO_ASB,
       verificationStatus: VERIFICATION_STATUS.MENUNGGU_VERIFIKASI,
@@ -446,9 +443,10 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
     };
   }
 
+  // 4. Default: Belum disubmit ke Asisten
   return {
     status: MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM,
-    verificationStatus: MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM,
+    verificationStatus: null,
     latestVerification: null
   };
 }
@@ -1049,7 +1047,7 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
 
     const docNo = item.docNo || item.selectionDocNo || item.id || `PRE-${id}`;
     const actor = item.submittedByName || item.createdByName || item.mantri || user?.name || 'Mantri Bibitan';
-    const stage = item.selectionStage || 'Seleksi I';
+    const stage = getSelectionStageLabel(item);
     const layak = item.totalLayak !== undefined ? item.totalLayak : (item.finalBibitQty || 0);
     const afkir = item.totalAfkir !== undefined ? item.totalAfkir : (item.rejectedBibitQty || 0);
     const diperiksa = item.totalDiperiksa !== undefined ? item.totalDiperiksa : (Number(layak) + Number(afkir));
@@ -1112,7 +1110,8 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const formattedAfkir = formatSafeNumber(afkir);
     const reason = item.reason || item.kategoriAfkir || item.stage || 'Afkir';
     const bedengan = item.bedengan || item.lokasi || '-';
-    const summary = `Seleksi ${item.stage || item.selectionStage || 'Bibit'}: ${formattedLayak} Layak, ${formattedAfkir} Afkir`;
+    const stageLabel = getSelectionStageLabel(item);
+    const summary = `${stageLabel}: ${formattedLayak} Layak, ${formattedAfkir} Afkir`;
 
     normalizedList.push({
       id: String(id),
@@ -1132,7 +1131,7 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
         mainQty: `${formattedAfkir} Bibit Afkir`,
         unit: 'Pkk',
         fields: [
-          { label: 'Tahap Seleksi', value: item.stage || item.selectionStage || 'Bibit' },
+          { label: 'Tahap Seleksi', value: stageLabel },
           { label: 'Kategori / Alasan Afkir', value: reason },
           { label: 'Bedengan / Lokasi', value: bedengan },
           { label: 'Bibit Afkir (Selected)', value: `${formattedAfkir} Pkk`, highlight: true },

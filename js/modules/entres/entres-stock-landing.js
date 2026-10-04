@@ -81,7 +81,7 @@ export function renderEntresStockLanding() {
 
           <!-- BAGIAN 2 — INFORMASI SINGKAT -->
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px; font-size: 0.76rem; color: #64748B; line-height: 1.45;">
-            Saldo berasal dari hasil Topping, setelah dikurangi pemakaian Okulasi dan Regrafting.
+            Saldo berasal dari hasil Topping, setelah dikurangi pemakaian Okulasi dan Okulasi Janda.
           </div>
 
           <!-- BAGIAN 3 — DAFTAR STOK PER KLON -->
@@ -114,9 +114,9 @@ export function renderEntresStockLanding() {
             ` : `
               <div style="display: flex; flex-direction: column; gap: 8px;">
                 ${filteredBalances.map(b => {
-      const saldo = b.saldoMataEntres || 0;
-      const isAvailable = saldo > 0;
-      return `
+                  const saldo = b.saldoMataEntres || 0;
+                  const isAvailable = saldo > 0;
+                  return `
                     <div class="card-klon-item" data-klon="${esc(b.klonName)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
                       <div style="min-width: 0; flex: 1;">
                         <div style="font-size: 0.90rem; font-weight: 800; color: #0F172A; line-height: 1.25;">
@@ -136,7 +136,7 @@ export function renderEntresStockLanding() {
                       </div>
                     </div>
                   `;
-    }).join('')}
+                }).join('')}
               </div>
             `}
 
