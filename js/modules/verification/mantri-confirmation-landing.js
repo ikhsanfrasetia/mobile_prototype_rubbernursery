@@ -54,7 +54,16 @@ export function renderMantriConfirmationLanding() {
   const currentUser = getCurrentUserContext() || resolveUserContext(rawUser);
 
   const todayStr = todayDDMMYYYY();
-  const allTodayTxs = getMantriTodayTransactions(currentUser, todayStr);
+  const allRawTxs = getMantriTodayTransactions(currentUser, todayStr);
+
+  // Hitung jumlah transaksi lewat waktu dari hari-hari sebelumnya
+  const overdueCount = allRawTxs.filter(tx => 
+    (tx.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || tx.status === MANTRI_TRANSACTION_STATUS.REVISION) &&
+    tx.isSubmissionExpired
+  ).length;
+
+  // Halaman Utama Konfirmasi HANYA menampilkan transaksi hari ini yang TIDAK lewat waktu
+  const allTodayTxs = allRawTxs.filter(tx => !tx.isSubmissionExpired);
 
   // Hitung modul-modul yang aktif
   const activeModulesMap = new Map();
@@ -126,6 +135,20 @@ export function renderMantriConfirmationLanding() {
           <div style="min-width: 0; flex: 1;">
             <h1 style="font-size: 0.96rem; font-weight: 800; color: #0F172A; margin: 0; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Konfirmasi untuk Verifikasi</h1>
           </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <button id="btn-open-overdue-history" type="button" aria-label="Data Lewat Waktu" title="Data Lewat Waktu${overdueCount > 0 ? ` (${overdueCount} tertunda)` : ''}" style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; width: 34px; height: 34px; color: #057A55; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; transition: all 0.15s ease;">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            ${overdueCount > 0 ? `
+              <span style="position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; background: #DC2626; border-radius: 50%; border: 2px solid #FFFFFF; box-shadow: 0 1px 2px rgba(220,38,38,0.4);"></span>
+            ` : ''}
+          </button>
         </div>
       </header>
 
@@ -704,7 +727,7 @@ function renderCompactTransactionCard(tx) {
 /**
  * Helper: Merender Detail Modal Popup sesuai Screen 11 (Detail Transaksi)
  */
-function renderDetailModal(tx, user) {
+export function renderDetailModal(tx, user) {
   const raw = tx.rawRecord || {};
   const disp = tx.display || {};
   const dateFormatted = normalizeDateStr(tx.date);
@@ -1087,6 +1110,11 @@ function attachEvents(allTxs, user, currentSectionTitle) {
   // Kembali ke Beranda
   document.getElementById('btn-back-home')?.addEventListener('click', () => {
     navigate('/home');
+  });
+
+  // Navigasi ke Halaman Data Lewat Waktu
+  document.getElementById('btn-open-overdue-history')?.addEventListener('click', () => {
+    navigate('/mantri-confirmation/overdue');
   });
 
   // Dynamic Tab Switching

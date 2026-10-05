@@ -160,44 +160,63 @@ export async function renderAttendanceSummary(contextOrDate = null) {
     });
 
     app.innerHTML = `
-      <div class="page attendance-subpage">
-        <header class="subpage-header">
-          <button class="subpage-back-btn" id="sum-back" type="button" aria-label="Kembali ke Presensi">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="#1f2937" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12"></line>
-              <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>
-          </button>
-          <div class="subpage-title-wrap">
-            <h1 class="subpage-title">Ringkasan Presensi</h1>
-            <span class="subpage-subtitle">${formatDisplayDate(today)}</span>
+      <div class="page attendance-subpage" style="position: relative; display: flex; flex-direction: column; height: 100%; background: #F8FAF9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden;">
+        
+        <!-- HEADER -->
+        <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button id="sum-back" type="button" aria-label="Kembali ke Presensi" style="padding: 6px; margin-left: -6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
+              <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+            </button>
+            <div style="display: flex; flex-direction: column;">
+              <h1 style="font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0; line-height: 1.2; letter-spacing: -0.01em;">
+                Ringkasan Presensi
+              </h1>
+              <span style="font-size: 0.74rem; color: #64748B; font-weight: 500;">
+                ${formatDisplayDate(today)}
+              </span>
+            </div>
           </div>
         </header>
 
-        <main class="subpage-body" style="padding: 14px 16px 80px 16px;">
+        <!-- MAIN BODY -->
+        <main class="subpage-body" style="flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+          
           <!-- Card Rekapitulasi Ringkasan -->
-          <div class="attendance-summary-card" style="margin-bottom: 16px;">
-            <div class="attendance-section-group">
-              <h3 class="attendance-group-title">Rekapitulasi Hari Ini</h3>
-              <div class="attendance-stat-row">
-                <span class="attendance-row-label">Presensi Datang</span>
-                <span class="attendance-row-val">${totalDatang} <small style="color: #64748b; font-weight: normal;">(Spv: ${spvDatangCount}, Pkr: ${pekerjaDatangCount})</small></span>
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+            <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0 0 10px 0;">
+              Rekapitulasi Hari Ini
+            </h2>
+            <div style="display: flex; flex-direction: column; gap: 7px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.80rem; padding-bottom: 6px; border-bottom: 1px solid #F1F5F9;">
+                <span style="color: #475569; font-weight: 500;">Presensi Datang</span>
+                <div style="text-align: right;">
+                  <span style="font-weight: 700; color: #0F172A; font-size: 0.86rem;">${totalDatang}</span>
+                  <span style="color: #64748B; font-size: 0.72rem; margin-left: 4px;">(Spv: ${spvDatangCount}, Pkr: ${pekerjaDatangCount})</span>
+                </div>
               </div>
-              <div class="attendance-stat-row">
-                <span class="attendance-row-label">Presensi Pulang</span>
-                <span class="attendance-row-val">${totalPulang} <small style="color: #64748b; font-weight: normal;">(Spv: ${spvPulangCount}, Pkr: ${pekerjaPulangCount})</small></span>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.80rem; padding-bottom: 6px; border-bottom: 1px solid #F1F5F9;">
+                <span style="color: #475569; font-weight: 500;">Presensi Pulang</span>
+                <div style="text-align: right;">
+                  <span style="font-weight: 700; color: #0F172A; font-size: 0.86rem;">${totalPulang}</span>
+                  <span style="color: #64748B; font-size: 0.72rem; margin-left: 4px;">(Spv: ${spvPulangCount}, Pkr: ${pekerjaPulangCount})</span>
+                </div>
               </div>
-              <div class="attendance-stat-row">
-                <span class="attendance-row-label">Belum Presensi Pulang</span>
-                <span class="attendance-row-val" style="color: ${totalBelumPulang > 0 ? '#b45309' : '#15803d'}; font-weight: 700;">
-                  ${totalBelumPulang} <small style="font-weight: normal;">(Spv: ${spvBelumPulang}, Pkr: ${pekerjaBelumPulang})</small>
-                </span>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.80rem;">
+                <span style="color: #475569; font-weight: 500;">Belum Presensi Pulang</span>
+                <div style="text-align: right;">
+                  <span style="font-weight: 700; color: ${totalBelumPulang > 0 ? '#B45309' : '#15803D'}; font-size: 0.86rem;">${totalBelumPulang}</span>
+                  <span style="color: #64748B; font-size: 0.72rem; margin-left: 4px;">(Spv: ${spvBelumPulang}, Pkr: ${pekerjaBelumPulang})</span>
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Filter Tabs -->
-          <div class="summary-filter-tabs">
+          <div class="summary-filter-tabs" style="display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding: 2px 0;">
             <button class="summary-tab-btn ${currentFilter === 'ALL' ? 'is-active' : ''}" id="tab-all" type="button">
               Semua (${resolvedTxList.length})
             </button>
@@ -211,13 +230,13 @@ export async function renderAttendanceSummary(contextOrDate = null) {
 
           <!-- Section: Daftar Transaksi Presensi -->
           <div class="summary-tx-container">
-            <h2 class="section-card-title" style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin-bottom: 8px;">
+            <div style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin-bottom: 8px;">
               Daftar Transaksi ${currentFilter === 'DATANG' ? 'Datang' : (currentFilter === 'PULANG' ? 'Pulang' : '')} (${filteredTx.length})
-            </h2>
+            </div>
 
             ${filteredTx.length === 0 ? `
-              <div class="card" style="text-align: center; padding: 24px 16px; color: #64748b; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 12px;">
-                <p style="margin: 0; font-size: 0.9rem;">Belum ada transaksi ${currentFilter === 'DATANG' ? 'Presensi Datang' : (currentFilter === 'PULANG' ? 'Presensi Pulang' : '')} untuk tanggal ini.</p>
+              <div style="text-align: center; padding: 24px 16px; color: #64748B; background: #FFFFFF; border: 1px dashed #CBD5E1; border-radius: 10px;">
+                <p style="margin: 0; font-size: 0.84rem;">Belum ada transaksi ${currentFilter === 'DATANG' ? 'Presensi Datang' : (currentFilter === 'PULANG' ? 'Presensi Pulang' : '')} untuk tanggal ini.</p>
               </div>
             ` : `
               <div class="summary-tx-list">
@@ -234,27 +253,32 @@ export async function renderAttendanceSummary(contextOrDate = null) {
                     <div class="summary-tx-card" data-tx-index="${idx}">
                       <div class="summary-tx-left">
                         ${item.resolvedPhoto ? `
-                          <div class="tx-photo-wrap" data-preview-idx="${idx}" role="button" tabindex="0" title="Buka foto ${esc(displayName)}">
-                            <img src="${item.resolvedPhoto}" class="tx-photo-thumbnail" alt="Bukti Foto ${esc(displayName)}" />
-                            <span class="tx-photo-zoom-icon">🔍</span>
+                          <div class="tx-photo-wrap" data-preview-idx="${idx}" role="button" tabindex="0" title="Buka foto ${esc(displayName)}" style="width: 50px; height: 50px; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; flex-shrink: 0; background: #F8FAFC; cursor: pointer; position: relative;">
+                            <img src="${item.resolvedPhoto}" class="tx-photo-thumbnail" alt="Bukti Foto ${esc(displayName)}" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
                           </div>
                         ` : `
-                          <div class="tx-no-photo-badge" title="Foto tidak tersedia">
+                          <div class="tx-no-photo-badge" style="width: 50px; height: 50px; border-radius: 8px; font-size: 0.65rem; color: #94A3B8; background: #F8FAFC; border: 1px dashed #CBD5E1; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.1; padding: 2px; flex-shrink: 0; user-select: none;">
                             Foto tidak tersedia
                           </div>
                         `}
-                        <div class="summary-tx-info">
-                          <strong class="summary-tx-name">${esc(displayName)}</strong>
-                          <span class="summary-tx-meta">${esc(displayCode)} • ${esc(displayRole)}</span>
-                          <span class="summary-tx-meta" style="color: #0f172a; font-weight: 500;">${esc(displayTime)}</span>
-                          <div class="summary-tx-badges">
-                            <span class="att-type-badge ${isDatang ? 'badge-datang' : 'badge-pulang'}">
+                        <div class="summary-tx-info" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                          <div class="summary-tx-name" style="font-size: 0.88rem; font-weight: 700; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25;">
+                            ${esc(displayName)}
+                          </div>
+                          <div class="summary-tx-meta" style="font-size: 0.74rem; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${esc(displayCode)} • ${esc(displayRole)}
+                          </div>
+                          <div style="font-size: 0.74rem; font-weight: 600; color: #334155; margin-top: 1px;">
+                            ${esc(displayTime)}
+                          </div>
+                          <div class="summary-tx-badges" style="display: flex; align-items: center; gap: 5px; margin-top: 4px; flex-wrap: wrap;">
+                            <span class="att-type-badge ${isDatang ? 'badge-datang' : 'badge-pulang'}" style="font-size: 0.66rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${isDatang ? 'background: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0;' : 'background: #DBEAFE; color: #1D4ED8; border: 1px solid #BFDBFE;'}">
                               ${isDatang ? 'DATANG' : 'PULANG'}
                             </span>
-                            <span class="att-method-badge">
+                            <span class="att-method-badge" style="font-size: 0.66rem; font-weight: 500; color: #475569; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px;">
                               ${esc(displayMethod)}
                             </span>
-                            <span class="badge badge-ready" style="font-size: 0.68rem; padding: 2px 6px;">
+                            <span class="badge" style="font-size: 0.66rem; font-weight: 600; color: #166534; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 2px 6px; border-radius: 4px;">
                               ${esc(item.status || 'HADIR')}
                             </span>
                           </div>
@@ -268,8 +292,11 @@ export async function renderAttendanceSummary(contextOrDate = null) {
           </div>
         </main>
 
-        <footer class="subpage-footer" style="position: fixed; bottom: 0; left: 0; right: 0; background: #ffffff; padding: 12px 16px calc(12px + var(--safe-bottom)); border-top: 1px solid #e2e8f0; z-index: 10;">
-          <button class="btn btn-outline btn-block" id="btn-back-landing" type="button">Kembali ke Presensi</button>
+        <!-- FOOTER (STRICTLY INSIDE MOBILE CONTAINER) -->
+        <footer class="subpage-footer" style="flex-shrink: 0; background: #FFFFFF; padding: 12px 16px; border-top: 1px solid #E2E8F0; z-index: 10;">
+          <button id="btn-back-landing" type="button" style="width: 100%; height: 42px; background: #FFFFFF; color: #116834; border: 1.5px solid #116834; border-radius: 8px; font-size: 0.86rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
+            Kembali ke Presensi
+          </button>
         </footer>
       </div>
 

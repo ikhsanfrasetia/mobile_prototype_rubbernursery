@@ -2,11 +2,29 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
-import { formatStandardDocNo, formatDate } from '../../core/utils.js';
+import { formatStandardDocNo, formatDate, todayDDMMYYYY, todayISO, esc } from '../../core/utils.js';
 import { guardDependency, isReceiptLocked, isReceiptUsedAsReference } from '../../core/dependency-guard.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import { filterReceiptKspRequests, getActionableReceiptCount } from './receipt-kebun-sepupu-landing.js';
 import { getActionableMataEntresReceiptCount } from '../request/request-mata-entres-landing.js';
+import {
+  normalizeDateStr,
+  ddmmyyyyToIso,
+  renderCalendarHeaderButton,
+  renderDateFilterBannerHtml,
+  renderDatePickerModalHtml,
+  attachDatePickerModalEvents
+} from '../../components/date-filter-modal.js';
+
+let selectedReceiptDate = todayDDMMYYYY();
+
+export function setSelectedReceiptDate(dateStr) {
+  selectedReceiptDate = normalizeDateStr(dateStr) || todayDDMMYYYY();
+}
+
+export function getSelectedReceiptDate() {
+  return selectedReceiptDate;
+}
 
 export function renderReceiptLanding() {
   const app = document.getElementById('app');
@@ -20,6 +38,18 @@ export function renderReceiptLanding() {
 
   const allRequests = storage.get('requests_transactions', []);
   const hasActionableEntresReceipt = getActionableMataEntresReceiptCount(allRequests, userCtx) > 0;
+
+  const allReceiptTxs = storage.get('receipt_transactions', []);
+  const todayStr = todayDDMMYYYY();
+  const isFiltered = selectedReceiptDate !== todayStr;
+
+  // Filter transactions by selected date while preserving original index
+  const filteredTxsWithIndex = allReceiptTxs
+    .map((tx, originalIndex) => ({ tx, originalIndex }))
+    .filter(({ tx }) => {
+      const txDate = normalizeDateStr(tx.tanggal || tx.date || tx.createdAt);
+      return txDate === selectedReceiptDate;
+    });
 
   app.innerHTML = `
     <div class="page receipt-landing-page" style="display: flex; flex-direction: column; height: 100%; background: #FAFAFA; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; position: relative;">
@@ -42,14 +72,7 @@ export function renderReceiptLanding() {
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
             </svg>
           </button>
-          <button id="btn-calendar" type="button" aria-label="Filter Kalender / Riwayat" style="padding: 6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
-            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
-          </button>
+          ${renderCalendarHeaderButton(selectedReceiptDate, isFiltered, 'btn-calendar')}
         </div>
       </header>
 
@@ -121,19 +144,44 @@ export function renderReceiptLanding() {
 
         </div>
 
-        <!-- RINGKASAN PENERIMAAN (DATA TRANSAKSI MASUK) -->
-        ${(() => {
-          const txs = storage.get('receipt_transactions', []);
-          if (txs.length === 0) return '';
+        <!-- FILTER INDICATOR BANNER IF NOT TODAY -->
+        ${renderDateFilterBannerHtml(selectedReceiptDate, isFiltered, 'btn-reset-date-filter')}
 
-          return `
-            <div style="margin-top: 8px;">
-              <h2 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 12px 0;">Ringkasan Penerimaan (${txs.length})</h2>
-              ${txs.map((tx, idx) => {
-                const lock = isReceiptLocked(tx, idx);
+        <!-- RINGKASAN PENERIMAAN (DATA TRANSAKSI MASUK) -->
+        <div style="margin-top: 8px;">
+          <div style="margin-bottom: 12px;">
+            <h2 style="font-size: 0.95rem; font-weight: 700; color: #111827; margin: 0;">
+              Ringkasan Penerimaan (${filteredTxsWithIndex.length})
+            </h2>
+          </div>
+
+          ${filteredTxsWithIndex.length === 0 ? `
+            <div style="background: #FFFFFF; border: 1px dashed #CBD5E1; border-radius: 10px; padding: 32px 16px; text-align: center; margin-top: 8px;">
+              <div style="width: 44px; height: 44px; border-radius: 50%; background: #F1F5F9; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; color: #64748B;">
+                <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+              </div>
+              <div style="font-size: 0.90rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Tidak Ada Data Penerimaan</div>
+              <div style="font-size: 0.78rem; color: #64748B; margin-bottom: ${isFiltered ? '16px' : '0'};">
+                Tidak ditemukan data transaksi penerimaan untuk tanggal ${esc(selectedReceiptDate)}.
+              </div>
+              ${isFiltered ? `
+                <button id="btn-empty-reset-today" type="button" style="padding: 7px 14px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-size: 0.80rem; font-weight: 600; cursor: pointer;">
+                  Kembali ke Hari Ini
+                </button>
+              ` : ''}
+            </div>
+          ` : `
+            <div>
+              ${filteredTxsWithIndex.map(({ tx, originalIndex }) => {
+                const lock = isReceiptLocked(tx, originalIndex);
                 const isLocked = lock.locked;
-                const isUsedRef = isReceiptUsedAsReference(tx, idx);
-                const docNo = tx.docNo || tx.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
+                const isUsedRef = isReceiptUsedAsReference(tx, originalIndex);
+                const docNo = tx.docNo || tx.nomorDokumen || formatStandardDocNo(2026, 'APR', originalIndex + 1);
 
                 const activeFlags = [];
                 if (isUsedRef) activeFlags.push({ key: 'RECEIPT_REF_USED', label: 'Sudah Digunakan' });
@@ -151,7 +199,7 @@ export function renderReceiptLanding() {
                       <div style="font-weight: 700; font-size: 0.95rem; color: #111111;">${docNo}</div>
                     </div>
                     <div style="position: relative;">
-                      <button class="btn-card-menu" data-index="${idx}" type="button" aria-label="Menu" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; color: #116834;">
+                      <button class="btn-card-menu" data-index="${originalIndex}" type="button" aria-label="Menu" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; color: #116834;">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                           <circle cx="12" cy="5" r="2"></circle>
                           <circle cx="12" cy="12" r="2"></circle>
@@ -159,22 +207,22 @@ export function renderReceiptLanding() {
                         </svg>
                       </button>
                       <!-- CARD POPOVER -->
-                      <div class="card-popover" id="popover-${idx}" style="display: none; position: absolute; right: 0; top: 100%; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 20; flex-direction: column; width: 140px;">
-                        <button class="btn-popover-lihat" data-index="${idx}" type="button" style="padding: 10px 16px; border: none; background: transparent; text-align: left; font-size: 0.9rem; color: #111111; cursor: pointer; border-bottom: 1px solid #F0F0F0;">
+                      <div class="card-popover" id="popover-${originalIndex}" style="display: none; position: absolute; right: 0; top: 100%; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 20; flex-direction: column; width: 140px;">
+                        <button class="btn-popover-lihat" data-index="${originalIndex}" type="button" style="padding: 10px 16px; border: none; background: transparent; text-align: left; font-size: 0.9rem; color: #111111; cursor: pointer; border-bottom: 1px solid #F0F0F0;">
                           Lihat Data
                         </button>
                         ${isLocked ? `
-                          <button class="btn-popover-locked" data-index="${idx}" data-doc="${docNo}" data-reason="${lock.reason || ''}" type="button" style="padding: 10px 16px; border: none; background: #FAFAFA; text-align: left; font-size: 0.85rem; color: #9CA3AF; cursor: not-allowed; border-bottom: 1px solid #F0F0F0;">
+                          <button class="btn-popover-locked" data-index="${originalIndex}" data-doc="${docNo}" data-reason="${lock.reason || ''}" type="button" style="padding: 10px 16px; border: none; background: #FAFAFA; text-align: left; font-size: 0.85rem; color: #9CA3AF; cursor: not-allowed; border-bottom: 1px solid #F0F0F0;">
                             Edit (Terkunci)
                           </button>
-                          <button class="btn-popover-locked" data-index="${idx}" data-doc="${docNo}" data-reason="${lock.reason || ''}" type="button" style="padding: 10px 16px; border: none; background: #FAFAFA; text-align: left; font-size: 0.85rem; color: #9CA3AF; cursor: not-allowed;">
+                          <button class="btn-popover-locked" data-index="${originalIndex}" data-doc="${docNo}" data-reason="${lock.reason || ''}" type="button" style="padding: 10px 16px; border: none; background: #FAFAFA; text-align: left; font-size: 0.85rem; color: #9CA3AF; cursor: not-allowed;">
                             Hapus (Terkunci)
                           </button>
                         ` : `
-                          <button class="btn-popover-edit" data-index="${idx}" type="button" style="padding: 10px 16px; border: none; background: transparent; text-align: left; font-size: 0.9rem; color: #111111; cursor: pointer; border-bottom: 1px solid #F0F0F0;">
+                          <button class="btn-popover-edit" data-index="${originalIndex}" type="button" style="padding: 10px 16px; border: none; background: transparent; text-align: left; font-size: 0.9rem; color: #111111; cursor: pointer; border-bottom: 1px solid #F0F0F0;">
                             Edit
                           </button>
-                          <button class="btn-popover-hapus" data-index="${idx}" type="button" style="padding: 10px 16px; border: none; background: transparent; text-align: left; font-size: 0.9rem; color: #D32F2F; cursor: pointer;">
+                          <button class="btn-popover-hapus" data-index="${originalIndex}" type="button" style="padding: 10px 16px; border: none; background: transparent; text-align: left; font-size: 0.9rem; color: #D32F2F; cursor: pointer;">
                             Hapus
                           </button>
                         `}
@@ -191,9 +239,17 @@ export function renderReceiptLanding() {
                 `;
               }).join('')}
             </div>
-          `;
-        })()}
+          `}
+        </div>
       </main>
+
+      <!-- MODAL DATE PICKER -->
+      ${renderDatePickerModalHtml({
+        modalId: 'modal-date-picker-overlay',
+        inputId: 'input-filter-receipt-date',
+        activeDate: selectedReceiptDate,
+        title: 'Pilih Tanggal Penerimaan'
+      })}
     </div>
   `;
 
@@ -217,12 +273,24 @@ export function renderReceiptLanding() {
     });
   }
 
-  const btnCalendar = app.querySelector('#btn-calendar');
-  if (btnCalendar) {
-    btnCalendar.addEventListener('click', () => {
-      navigate('/history');
-    });
-  }
+  // --- ATTACH STANDARDIZED DATE PICKER MODAL EVENTS ---
+  attachDatePickerModalEvents({
+    app,
+    modalId: 'modal-date-picker-overlay',
+    btnCalendarId: 'btn-calendar',
+    inputId: 'input-filter-receipt-date',
+    resetBtnId: 'btn-reset-date-filter',
+    emptyResetBtnId: 'btn-empty-reset-today',
+    getActiveDate: () => selectedReceiptDate,
+    onDateSelected: (newDate) => {
+      selectedReceiptDate = newDate;
+      renderReceiptLanding();
+    },
+    onResetToday: () => {
+      selectedReceiptDate = todayDDMMYYYY();
+      renderReceiptLanding();
+    }
+  });
 
   // --- MENU 1: PENERIMAAN BENIH / BIJI KELATAK (DIRECT PIHAK KE-III) ---
   app.querySelector('#btn-biji').addEventListener('click', () => {
@@ -267,7 +335,9 @@ export function renderReceiptLanding() {
         const idx = e.currentTarget.dataset.index;
         const popover = app.querySelector(`#popover-${idx}`);
         cardPopovers.forEach(p => p.style.display = 'none');
-        popover.style.display = 'flex';
+        if (popover) {
+          popover.style.display = 'flex';
+        }
       });
     });
 

@@ -1,11 +1,28 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
-import { formatStandardDocNo } from '../../core/utils.js';
+import { formatStandardDocNo, todayDDMMYYYY } from '../../core/utils.js';
 import { formatBedenganCode } from './budding-grafting.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
+import {
+  normalizeDateStr,
+  renderCalendarHeaderButton,
+  renderDateFilterBannerHtml,
+  renderDatePickerModalHtml,
+  attachDatePickerModalEvents
+} from '../../components/date-filter-modal.js';
+
+let selectedRegraftingDate = todayDDMMYYYY();
+
+export function setSelectedRegraftingDate(dateStr) {
+  selectedRegraftingDate = normalizeDateStr(dateStr) || todayDDMMYYYY();
+}
+
+export function getSelectedRegraftingDate() {
+  return selectedRegraftingDate;
+}
 
 export function renderBuddingRegrafting() {
   const app = document.getElementById('app');
@@ -54,7 +71,11 @@ export function renderBuddingRegrafting() {
     storage.set('budding_transactions', allBuddingTxs);
   }
 
-  const regraftTxs = allBuddingTxs.filter(b => b.type === 'REGRAFTING');
+  const allRegraftTxs = allBuddingTxs.filter(b => b.type === 'REGRAFTING');
+  const regraftTxs = allRegraftTxs.filter(b => {
+    const d = normalizeDateStr(b.tanggal || b.date || b.createdAt);
+    return d === selectedRegraftingDate;
+  });
   const rawInspectionTxs = storage.get('inspection_transactions', []);
   const inspectionTxs = rawInspectionTxs.map(insp => {
     if (insp.docNo && (insp.docNo.includes('/PRK/') || insp.docNo.includes('/INSP/'))) {
@@ -88,7 +109,7 @@ export function renderBuddingRegrafting() {
   });
 
   // AUTO-SYNC: Ensure any existing Regrafting transaction has its parent document in regraftPool
-  regraftTxs.forEach((rtx, i) => {
+  allRegraftTxs.forEach((rtx, i) => {
     const exists = regraftPool.some(p => (rtx.regraftPoolDocNo && p.docNo === rtx.regraftPoolDocNo) || (rtx.inspectionDocNo && p.inspectionDocNo === rtx.inspectionDocNo));
     if (!exists) {
       const totalPop = parseInt(rtx.jumlah || 0) + parseInt(rtx.jumlahDitolak || 0);
@@ -117,7 +138,7 @@ export function renderBuddingRegrafting() {
     let ttlRegrafted = 0;
     let ttlDitolak = 0;
     let ttlKayu = 0;
-    const relatedRegrafts = regraftTxs.filter(r => 
+    const relatedRegrafts = allRegraftTxs.filter(r => 
       (r.regraftPoolDocNo && r.regraftPoolDocNo === docNo) || 
       (r.inspectionDocNo && poolItem.inspectionDocNo && r.inspectionDocNo === poolItem.inspectionDocNo)
     );
@@ -197,6 +218,9 @@ export function renderBuddingRegrafting() {
             </svg>
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">Okulasi Janda (Regrafting)</h1>
+        </div>
+        <div>
+          ${renderCalendarHeaderButton('btn-open-date-filter', selectedRegraftingDate)}
         </div>
       </header>
 
@@ -352,6 +376,9 @@ export function renderBuddingRegrafting() {
           description: 'Saat hasil Pemeriksaan Okulasi memiliki bibit tidak berhasil dan opsi "Perlu Okulasi Janda" dicentang, data otomatis akan masuk ke sini.',
           customStyle: 'margin-top: 24px;'
         })}
+
+        <!-- STATUS BANNER FILTER TANGGAL (JIKA MEMILIH TANGGAL LAMPAU) -->
+        ${renderDateFilterBannerHtml(selectedRegraftingDate, 'btn-reset-date-filter')}
 
         <!-- HISTORI / RINGKASAN DATA REGRAFTING DENGAN MENU AKSI 3-DOTS (...) -->
         ${regraftTxs.length > 0 ? `
@@ -518,6 +545,9 @@ export function renderBuddingRegrafting() {
         ` : ''}
 
       </main>
+
+      <!-- MODAL FILTER TANGGAL (HARI INI, KEMARIN, PILIH TANGGAL) -->
+      ${renderDatePickerModalHtml(selectedRegraftingDate)}
 
       <!-- DIALOG MODAL: BATCH SELESAI -->
       <div id="modal-overlay-regraft" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100;"></div>
@@ -721,5 +751,19 @@ export function renderBuddingRegrafting() {
         renderBuddingRegrafting();
       }
     });
+  });
+
+  // Modal Events for Date Filter
+  attachDatePickerModalEvents({
+    container: app,
+    currentDateStr: selectedRegraftingDate,
+    onDateSelect: (newDateStr) => {
+      setSelectedRegraftingDate(newDateStr);
+      renderBuddingRegrafting();
+    },
+    onDateReset: () => {
+      setSelectedRegraftingDate(todayDDMMYYYY());
+      renderBuddingRegrafting();
+    }
   });
 }

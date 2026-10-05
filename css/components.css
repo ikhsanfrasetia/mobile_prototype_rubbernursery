@@ -333,6 +333,8 @@ textarea.field-control {
   animation: scale-in 0.18s var(--ease);
   display: flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 9px;
 }
 
@@ -381,3 +383,27 @@ textarea.field-control {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
+/* ---------- Date Filter Banner & Tabs Utility ---------- */
+.date-filter-status-banner {
+  background: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 12px 0 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+

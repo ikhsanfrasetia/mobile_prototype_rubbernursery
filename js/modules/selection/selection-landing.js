@@ -11,15 +11,32 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate, formatStandardDocNo, esc } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo, esc, todayDDMMYYYY } from '../../core/utils.js';
 import { getCurrentUserContext, resolveUserContext, normalizeRole, ROLES } from '../../core/user-context.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import { getGlobalAttendanceGateStatus, showAttendanceRequirementModal } from '../../core/attendance-gate-service.js';
 import {
+  normalizeDateStr,
+  renderCalendarHeaderButton,
+  renderDateFilterBannerHtml,
+  renderDatePickerModalHtml,
+  attachDatePickerModalEvents
+} from '../../components/date-filter-modal.js';
+import {
   syncAllDederanRejectionsToSelectionPool
 } from '../seeding/dederan-manager.js';
+
+let selectedSelectionDate = todayDDMMYYYY();
+
+export function setSelectedSelectionDate(dateStr) {
+  selectedSelectionDate = normalizeDateStr(dateStr) || todayDDMMYYYY();
+}
+
+export function getSelectedSelectionDate() {
+  return selectedSelectionDate;
+}
 import {
   SELECTION_STATUS,
   SELECTION_STAGES,
@@ -1459,6 +1476,9 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
 
   return `
     <div class="section-global-child-transactions" style="margin-top: 20px; padding-top: 14px; border-top: 2px solid #E2E8F0;">
+      <!-- STATUS BANNER FILTER TANGGAL -->
+      ${renderDateFilterBannerHtml(selectedSelectionDate, 'btn-reset-date-filter')}
+
       <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
         <h2 style="font-size: 0.92rem; font-weight: 800; color: #0F172A; margin: 0;">
           Ringkasan Transaksi (${txs.length})
@@ -1643,6 +1663,9 @@ export function renderStandardizedRejectList(poolItems = [], culledTxs = [], emp
 export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, title = 'Riwayat Deklarasi', today) {
   return `
     <div style="margin-top: 16px; padding-top: 12px; border-top: 2px solid #E2E8F0;">
+      <!-- STATUS BANNER FILTER TANGGAL -->
+      ${renderDateFilterBannerHtml(selectedSelectionDate, 'btn-reset-date-filter')}
+
       <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
         <h2 style="font-size: 0.90rem; font-weight: 800; color: #0F172A; margin: 0;">
           ${esc(title)} (${culledTxs.length})
@@ -1835,6 +1858,15 @@ function renderMantriSelectionLanding(app, user) {
     );
   });
 
+  // Filter child & culled transactions by selectedSelectionDate for Ringkasan displays
+  const filteredSeleksi1Txs = allSeleksi1Txs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
+  const filteredSeleksi2Txs = allSeleksi2Txs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
+  const filteredSeleksi3Txs = allSeleksi3Txs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
+
+  const filteredPreSowingCulledTxs = preSowingCulledTxs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
+  const filteredPindahSemaiCulledTxs = pindahSemaiCulledTxs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
+  const filteredPostGraftingCulledTxs = postGraftingCulledTxs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
+
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
@@ -1849,10 +1881,13 @@ function renderMantriSelectionLanding(app, user) {
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 0 6px; letter-spacing: -0.01em;">Penyeleksian Bibitan</h1>
         </div>
+        <div>
+          ${renderCalendarHeaderButton('btn-open-date-filter', selectedSelectionDate)}
+        </div>
       </header>
 
       <!-- TAB NAVIGATION MANTRI: PRA-SEMAI (DEDERAN) vs DITOLAK PINDAH SEMAI vs PRA-OKULASI vs PASCA-OKULASI -->
-      <div style="display: flex; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 16px; gap: 14px; overflow-x: auto; flex-shrink: 0;">
+      <div class="no-scrollbar" style="display: flex; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 16px; gap: 14px; overflow-x: auto; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none;">
         <button id="tab-mantri-pre-sowing" type="button" style="padding: 12px 2px; font-size: 0.80rem; font-weight: ${activeMantriTab === 'PRE_SOWING' ? '700' : '600'}; color: ${activeMantriTab === 'PRE_SOWING' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeMantriTab === 'PRE_SOWING' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
           <span>Seleksi Pra-Semai (Dederan)</span>
           ${preSowingSelectionPool.length > 0 ? `<span style="background: #DC2626; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${preSowingSelectionPool.length}</span>` : ''}
@@ -1905,7 +1940,7 @@ function renderMantriSelectionLanding(app, user) {
             })}
 
             <!-- SUMMARY TRANSAKSI PELAKSANAAN SELEKSI I -->
-            ${renderGlobalChildTransactionsSection(allSeleksi1Txs, seleksi1Docs, 'SELEKSI_1', user)}
+            ${renderGlobalChildTransactionsSection(filteredSeleksi1Txs, seleksi1Docs, 'SELEKSI_1', user)}
 
           ` : activePreGraftingTab === 'SELEKSI_2' ? `
             <!-- VIEW 2: SELEKSI II PRA-OKULASI (COMPACT PROGRAM/BATCH VIEW) -->
@@ -1921,7 +1956,7 @@ function renderMantriSelectionLanding(app, user) {
             })}
 
             <!-- SUMMARY TRANSAKSI PELAKSANAAN SELEKSI II -->
-            ${renderGlobalChildTransactionsSection(allSeleksi2Txs, seleksi2Docs, 'SELEKSI_2', user)}
+            ${renderGlobalChildTransactionsSection(filteredSeleksi2Txs, seleksi2Docs, 'SELEKSI_2', user)}
 
           ` : `
             <!-- VIEW 3: SELEKSI III PRA-OKULASI (COMPACT PROGRAM/BATCH VIEW) -->
@@ -1937,15 +1972,15 @@ function renderMantriSelectionLanding(app, user) {
             })}
 
             <!-- SUMMARY TRANSAKSI PELAKSANAAN SELEKSI III -->
-            ${renderGlobalChildTransactionsSection(allSeleksi3Txs, seleksi3Docs, 'SELEKSI_3', user)}
+            ${renderGlobalChildTransactionsSection(filteredSeleksi3Txs, seleksi3Docs, 'SELEKSI_3', user)}
           `}
 
         ` : activeMantriTab === 'PRE_SOWING' ? `
           <!-- VIEW: BIBIT AFKIR PRA-SEMAI (DEDERAN) -->
-          ${renderStandardizedRejectList(preSowingSelectionPool, preSowingCulledTxs, 'Belum Ada Data Afkir Dederan', 'Data afkir dederan akan muncul saat terdapat bibit yang tidak berhasil pada pemeriksaan dederan.', 'Daftar Bibit Afkir Pra-Semai (Dederan)', today)}
+          ${renderStandardizedRejectList(preSowingSelectionPool, filteredPreSowingCulledTxs, 'Belum Ada Data Afkir Dederan', 'Data afkir dederan akan muncul saat terdapat bibit yang tidak berhasil pada pemeriksaan dederan.', 'Daftar Bibit Afkir Pra-Semai (Dederan)', today)}
         ` : activeMantriTab === 'PINDAH_SEMAI_REJECT' ? `
           <!-- VIEW: BIBIT DITOLAK PINDAH SEMAI -->
-          ${renderStandardizedRejectList(pindahSemaiSelectionPool, pindahSemaiCulledTxs, 'Belum Ada Data Ditolak Pindah Semai', 'Data bibit ditolak akan muncul saat transaksi Pindah Semai mencatat adanya bibit yang ditolak/afkir.', 'Daftar Hasil Ditolak Pindah Semai', today)}
+          ${renderStandardizedRejectList(pindahSemaiSelectionPool, filteredPindahSemaiCulledTxs, 'Belum Ada Data Ditolak Pindah Semai', 'Data bibit ditolak akan muncul saat transaksi Pindah Semai mencatat adanya bibit yang ditolak/afkir.', 'Daftar Hasil Ditolak Pindah Semai', today)}
         ` : `
           <!-- VIEW: BIBIT AFKIR PASCA-OKULASI (COMPACT PROGRAM/BATCH VIEW) -->
           <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
@@ -1961,10 +1996,13 @@ function renderMantriSelectionLanding(app, user) {
           })}
 
           <!-- RIWAYAT DEKLARASI PASCA-OKULASI -->
-          ${renderCulledHistoryList(postGraftingCulledTxs, 'Belum ada riwayat seleksi pasca-okulasi', 'Riwayat deklarasi seleksi pasca-okulasi akan tercatat di sini.', 'Riwayat Deklarasi Pasca-Okulasi', today)}
+          ${renderCulledHistoryList(filteredPostGraftingCulledTxs, 'Belum ada riwayat seleksi pasca-okulasi', 'Riwayat deklarasi seleksi pasca-okulasi akan tercatat di sini.', 'Riwayat Deklarasi Pasca-Okulasi', today)}
         `}
 
       </main>
+
+      <!-- MODAL FILTER TANGGAL (HARI INI, KEMARIN, PILIH TANGGAL) -->
+      ${renderDatePickerModalHtml(selectedSelectionDate)}
     </div>
   `;
 
@@ -2148,6 +2186,20 @@ function renderMantriSelectionLanding(app, user) {
         }
       });
     });
+  });
+
+  // Modal Events for Date Filter
+  attachDatePickerModalEvents({
+    container: app,
+    currentDateStr: selectedSelectionDate,
+    onDateSelect: (newDateStr) => {
+      setSelectedSelectionDate(newDateStr);
+      renderMantriSelectionLanding(app, user);
+    },
+    onDateReset: () => {
+      setSelectedSelectionDate(todayDDMMYYYY());
+      renderMantriSelectionLanding(app, user);
+    }
   });
 }
 

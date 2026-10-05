@@ -87,7 +87,7 @@ function updateWorkerRowInDOM(workerId, photoData, isChecked) {
   // Update Tombol Simpan
   const saveBtn = document.querySelector('#btn-save-workers');
   if (saveBtn && activeWorkersList) {
-    const checkedInCount = activeWorkersList.filter((w) => workerSessionAttendance.get(w.id)?.checkedIn).length;
+    const checkedInCount = activeWorkersList.filter((w) => !w.isCompleted && workerSessionAttendance.get(w.id)?.checkedIn).length;
     if (checkedInCount > 0) {
       saveBtn.classList.remove('is-disabled');
       saveBtn.classList.add('is-active');
@@ -122,7 +122,23 @@ export async function renderAttendanceWorkers() {
 
   try {
     allMasterWorkers = await workerRepository.list();
-    existingAttendances = await attendanceRepository.list();
+    const dbList = (await attendanceRepository.list()) || [];
+    const storageList = storage.get('attendance_transactions', []) || [];
+
+    const map = new Map();
+    dbList.forEach((it) => {
+      if (it) {
+        const k = getAttendanceUniqueKey(it) || it.id;
+        map.set(k, it);
+      }
+    });
+    storageList.forEach((it) => {
+      if (it) {
+        const k = getAttendanceUniqueKey(it) || it.id;
+        if (!map.has(k)) map.set(k, it);
+      }
+    });
+    existingAttendances = Array.from(map.values());
   } catch (err) {
     console.warn('[attendance-workers] Gagal load data:', err);
   }
@@ -141,46 +157,51 @@ export async function renderAttendanceWorkers() {
     }
   }
 
-  // Filter presensi pekerja yang sudah tersimpan di IndexedDB hari ini
+  // Filter presensi pekerja yang sudah tersimpan di IndexedDB / storage hari ini untuk sesi aktif (DATANG / PULANG)
   const todayWorkerAtts = existingAttendances.filter(
-    (a) => (a.date === today || (a.createdAt && a.createdAt.startsWith(today))) &&
+    (a) => a && (a.date === today || a.tanggal === today || (a.createdAt && String(a.createdAt).startsWith(today))) &&
            a.type === 'WORKER' &&
            (a.attendanceType === attType || (!a.attendanceType && attType === 'DATANG'))
   );
 
+  // Kumpulkan set canonical ID pekerja yang sudah selesai dipresensi untuk sesi aktif
+  const completedWorkerIds = new Set();
+  todayWorkerAtts.forEach((a) => {
+    if (a.workerId) completedWorkerIds.add(String(a.workerId));
+    else if (a.id && String(a.id).startsWith('WRK-')) completedWorkerIds.add(String(a.id));
+  });
+
   // Single Source of Truth dari worker-master.js untuk context aktif
-  const scopedActive = getWorkersForUserContext(userContext, { activeOnly: true });
-  const scopedAll = getWorkersForUserContext(userContext, { activeOnly: false });
-  const scopedAbsent = scopedAll.filter((w) => w.status !== 'ACTIVE' || w.active === false || !!w.absentType);
+  const scopedActive = getWorkersForUserContext(userContext, { activeOnly: true }) || [];
+  const scopedAll = getWorkersForUserContext(userContext, { activeOnly: false }) || [];
+  const scopedAbsent = scopedAll.filter((w) => w.status !== 'ACTIVE' || w.active === false || !!w.absentType) || [];
 
-  // Inisialisasi daftar pekerja aktif jika belum ada
-  if (!activeWorkersList) {
-    activeWorkersList = scopedActive.map((w) => ({ ...w, position: w.position || 'Pekerja Bibitan' }));
-  }
+  // Seluruh pekerja aktif (scopedActive) selalu tampil di list dengan status completed/pending
+  activeWorkersList = scopedActive.map((w) => {
+    const existing = todayWorkerAtts.find((a) => a && a.workerId && String(a.workerId) === String(w.id));
+    return {
+      ...w,
+      position: w.position || 'Pekerja Bibitan',
+      isCompleted: Boolean(existing),
+      completedAttendance: existing || null
+    };
+  });
+  absentWorkersList = scopedAbsent.map((w) => ({ ...w, position: w.position || 'Pekerja Bibitan' }));
 
-  if (!absentWorkersList) {
-    absentWorkersList = scopedAbsent.map((w) => ({ ...w, position: w.position || 'Pekerja Bibitan' }));
-  }
-
-  // Sinkronisasi record IndexedDB ke state sementara jika ada
+  // Bersihkan workerSessionAttendance dari pekerja yang sudah completed
   activeWorkersList.forEach((w) => {
-    w.position = 'Pekerja Bibitan';
-    const existing = todayWorkerAtts.find((a) => a.workerId === w.id);
-    if (existing && !workerSessionAttendance.has(w.id)) {
-      workerSessionAttendance.set(w.id, {
-        checkedIn: true,
-        photo: existing.photo || w.defaultPhoto || 'assets/icons/worker_fadilah.jpg',
-        time: existing.time || nowTimeWithSeconds(),
-        iso: existing.capturedAt || nowISO(),
-        latitude: existing.latitude || '3.1943859',
-        longitude: existing.longitude || '11.2312083'
-      });
+    if (w.isCompleted) {
+      workerSessionAttendance.delete(w.id);
     }
   });
 
-  const totalPekerja = activeWorkersList.length + absentWorkersList.length;
-  const checkedInCount = activeWorkersList.filter((w) => workerSessionAttendance.get(w.id)?.checkedIn).length;
-  const isSaveEnabled = checkedInCount > 0;
+  const totalTerdaftar = activeWorkersList.length;
+  const totalSudahPresensi = activeWorkersList.filter((w) => w.isCompleted).length;
+  const totalBelumPresensi = totalTerdaftar - totalSudahPresensi;
+  const totalPekerja = totalTerdaftar + absentWorkersList.length;
+  const pendingNewWorkers = activeWorkersList.filter((w) => !w.isCompleted && workerSessionAttendance.get(w.id)?.checkedIn);
+  const isSaveEnabled = pendingNewWorkers.length > 0;
+  const isAllCompleted = totalSudahPresensi === totalTerdaftar && totalTerdaftar > 0;
   const pageTitle = attType === 'PULANG' ? 'Presensi Pekerja Pulang' : 'Presensi Pekerja Datang';
   const saveBtnLabel = attType === 'PULANG' ? 'Simpan Presensi Pulang' : 'Simpan Presensi Datang';
 
@@ -218,32 +239,45 @@ export async function renderAttendanceWorkers() {
 
         <!-- Section: Daftar Pekerja Aktif -->
         <div class="workers-section-header">
-          <h3 class="workers-section-title">Daftar Pekerja Aktif (${activeWorkersList.length})</h3>
+          <h3 class="workers-section-title">Daftar Pekerja Aktif (${totalTerdaftar})</h3>
         </div>
 
         <div class="workers-list-container">
+          ${isAllCompleted ? `
+            <div class="all-completed-banner" style="background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; margin-bottom: 12px; text-align: center;">
+              Semua pekerja aktif (${totalTerdaftar} pekerja) telah selesai melakukan presensi ${attType === 'PULANG' ? 'PULANG' : 'DATANG'} hari ini.
+            </div>
+          ` : ''}
+
           <ul class="workers-flat-list" id="active-workers-list">
             ${activeWorkersList.map((w) => {
               w.position = 'Pekerja Bibitan';
-              const state = workerSessionAttendance.get(w.id);
-              const isChecked = state && state.checkedIn === true;
+              const isCompleted = Boolean(w.isCompleted);
+              const completedAtt = w.completedAttendance;
+              const sessionState = workerSessionAttendance.get(w.id);
+              const isChecked = isCompleted || Boolean(sessionState && sessionState.checkedIn === true);
               const hasIndicator = !!w.indicator;
-              const photoSrc = (state && state.photo) ? state.photo : (w.defaultPhoto || 'assets/icons/worker_fadilah.jpg');
+              const photoSrc = isCompleted
+                ? (completedAtt?.photo || w.defaultPhoto || 'assets/icons/worker_fadilah.jpg')
+                : ((sessionState && sessionState.photo) ? sessionState.photo : (w.defaultPhoto || 'assets/icons/worker_fadilah.jpg'));
+              const completedTime = completedAtt?.time ? completedAtt.time.slice(0, 5) : '';
 
               return `
-                <li class="worker-row-item" data-id="${esc(w.id)}">
-                  <div class="worker-row-left" data-swipe-target="true">
+                <li class="worker-row-item ${isCompleted ? 'is-completed-item' : ''}" data-id="${esc(w.id)}">
+                  <div class="worker-row-left" data-swipe-target="${!isCompleted}">
                     <strong class="worker-item-name">${esc(w.name)}</strong>
-                    <span class="worker-item-meta">${esc(w.code || '1405739')} - Pekerja Bibitan</span>
+                    <span class="worker-item-meta">
+                      ${esc(w.code || '1405739')} - Pekerja Bibitan
+                    </span>
                   </div>
                   <div class="worker-row-right">
                     ${hasIndicator ? `<span class="worker-badge-indicator">${esc(w.indicator)}</span>` : ''}
                     ${isChecked ? `
-                      <div class="worker-thumb-wrap" data-thumb-id="${esc(w.id)}" role="button" tabindex="0" title="Foto presensi ${esc(w.name)}">
+                      <div class="worker-thumb-wrap ${isCompleted ? 'is-locked-thumb' : ''}" data-thumb-id="${esc(w.id)}" role="button" tabindex="0" title="${isCompleted ? 'Foto presensi tersimpan' : 'Foto presensi ' + esc(w.name)}">
                         <img src="${photoSrc}" class="worker-photo-thumbnail" alt="Foto ${esc(w.name)}" />
                       </div>
                     ` : ''}
-                    <button class="worker-switch-toggle ${isChecked ? 'is-checked' : ''}" type="button" data-toggle-id="${esc(w.id)}" aria-pressed="${isChecked}" aria-label="Toggle Presensi ${esc(w.name)}">
+                    <button class="worker-switch-toggle ${isChecked ? 'is-checked' : ''} ${isCompleted ? 'is-locked' : ''}" type="button" data-toggle-id="${esc(w.id)}" aria-pressed="${isChecked}" aria-label="${isCompleted ? 'Sudah Presensi ' + esc(w.name) : 'Toggle Presensi ' + esc(w.name)}" ${isCompleted ? 'disabled style="opacity: 0.85; cursor: default;"' : ''}>
                       <span class="toggle-slider"></span>
                     </button>
                   </div>
@@ -290,79 +324,8 @@ export async function renderAttendanceWorkers() {
     <div id="worker-camera-modal" class="worker-camera-overlay" style="display: none;"></div>
   `;
 
-  // Bind Event Listeners
-  app.querySelector('#btn-workers-back').addEventListener('click', () => {
-    navigate('/attendance');
-  });
-
-  app.querySelector('#btn-add-worker').addEventListener('click', () => {
-    const availablePool = getWorkersForUserContext(userContext, { activeOnly: true });
-    openAddWorkerModal(availablePool, userContext);
-  });
-
-  // Toggle Presensi Click Event
-  app.querySelectorAll('.worker-switch-toggle').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const workerId = btn.getAttribute('data-toggle-id');
-      const targetWorker = activeWorkersList.find((w) => w.id === workerId);
-      const currentState = workerSessionAttendance.get(workerId);
-
-      if (!targetWorker) return;
-
-      if (currentState && currentState.checkedIn) {
-        // Toggle OFF jika diklik kembali
-        workerSessionAttendance.set(workerId, {
-          checkedIn: false,
-          photo: null,
-          time: null,
-          iso: null,
-          latitude: '3.1943859',
-          longitude: '11.2312083'
-        });
-        updateWorkerRowInDOM(workerId, null, false);
-        toast.info(`Presensi ${targetWorker.name} dibatalkan.`);
-      } else {
-        // Buka Kamera untuk Worker ini
-        openWorkerCamera(targetWorker);
-      }
-    });
-  });
-
-  // Retake Photo on Thumbnail Click
-  app.querySelectorAll('.worker-thumb-wrap').forEach((thumb) => {
-    thumb.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const workerId = thumb.getAttribute('data-thumb-id');
-      const targetWorker = activeWorkersList.find((w) => w.id === workerId);
-      if (targetWorker) {
-        openWorkerCamera(targetWorker);
-      }
-    });
-  });
-
-  // Swipe to Delete Worker
-  bindSwipeDelete();
-
-  // Simpan Presensi Button
-  app.querySelector('#btn-save-workers').addEventListener('click', async () => {
-    const checkedInList = activeWorkersList.filter((w) => workerSessionAttendance.get(w.id)?.checkedIn);
-    if (checkedInList.length === 0) {
-      toast.warning('Belum ada pekerja yang dipresensi.');
-      return;
-    }
-
-    const confirmed = await confirmDialog({
-      title: 'Simpan Presensi Datang',
-      message: `Simpan data presensi untuk ${checkedInList.length} pekerja?`,
-      confirmText: 'Simpan',
-      cancelText: 'Batal'
-    });
-
-    if (!confirmed) return;
-
+  // Helper Eksekusi Simpan Presensi Pekerja
+  async function executeSaveAttendance(checkedInList) {
     const saveBtn = app.querySelector('#btn-save-workers');
     if (saveBtn) {
       saveBtn.disabled = true;
@@ -415,7 +378,7 @@ export async function renderAttendanceWorkers() {
 
         // Cek apakah pekerja sudah pernah tersimpan sebelumnya hari ini (mencegah duplikasi ID)
         const existingRecord = todayWorkerAtts.find(
-          (a) => (a.workerId && a.workerId === workerId) || (a.code && a.code === workerCode) || (a.workerCode && a.workerCode === workerCode)
+          (a) => a && a.workerId && String(a.workerId) === String(workerId)
         );
 
         const recordId = existingRecord?.id || uid('ATT-WRK-');
@@ -505,8 +468,8 @@ export async function renderAttendanceWorkers() {
       workerSessionAttendance.clear();
       activeWorkersList = null;
 
-      toast.success(`Data presensi ${checkedInList.length} pekerja berhasil disimpan!`);
-      navigate('/attendance', { replace: true });
+      toast.success(`Data presensi ${checkedInList.length} pekerja berhasil disimpan`);
+      navigate('/attendance/summary', { replace: true });
     } catch (err) {
       console.error('[Attendance Workers Save Error]', err);
       toast.danger('Gagal menyimpan data presensi pekerja: ' + (err.message || ''));
@@ -515,6 +478,138 @@ export async function renderAttendanceWorkers() {
         saveBtn.textContent = saveBtnLabel;
       }
     }
+  }
+
+  // Bind Event Listeners
+  app.querySelector('#btn-workers-back').addEventListener('click', () => {
+    const checkedInList = activeWorkersList.filter((w) => !w.isCompleted && workerSessionAttendance.get(w.id)?.checkedIn);
+
+    if (checkedInList.length === 0) {
+      workerSessionAttendance.clear();
+      activeWorkersList = null;
+      navigate('/attendance');
+      return;
+    }
+
+    // Terdapat minimal 1 pekerja yang baru dipresensi: Tampilkan pesan konfirmasi
+    openModal({
+      title: 'Konfirmasi Simpan Presensi',
+      body: `
+        <div style="text-align: center; padding: 4px 0 10px;">
+          <div style="font-size: 0.95rem; font-weight: 700; color: #111827; margin-bottom: 6px;">
+            Ditemukan ${checkedInList.length} Pekerja Telah Dipresensi
+          </div>
+          <div style="font-size: 0.82rem; color: #6B7280; line-height: 1.45;">
+            Apakah Anda ingin menyimpan data presensi ini sebelum kembali ke menu presensi?
+          </div>
+        </div>
+      `,
+      footer: `
+        <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+          <button class="btn btn-primary btn-block btn-sm" id="btn-modal-back-save" type="button">
+            Ya, Simpan Presensi
+          </button>
+          <button class="btn btn-outline btn-block btn-sm" id="btn-modal-back-discard" type="button" style="color: #DC2626; border-color: #FCA5A5;">
+            Keluar Tanpa Simpan
+          </button>
+          <button class="btn btn-ghost btn-block btn-sm" id="btn-modal-back-cancel" type="button">
+            Batal
+          </button>
+        </div>
+      `
+    });
+
+    const modalRoot = document.getElementById('modal-root');
+    const modalSaveBtn = modalRoot?.querySelector('#btn-modal-back-save');
+    const modalDiscardBtn = modalRoot?.querySelector('#btn-modal-back-discard');
+    const modalCancelBtn = modalRoot?.querySelector('#btn-modal-back-cancel');
+
+    modalSaveBtn?.addEventListener('click', async () => {
+      closeModal();
+      await executeSaveAttendance(checkedInList);
+    });
+
+    modalDiscardBtn?.addEventListener('click', () => {
+      closeModal();
+      workerSessionAttendance.clear();
+      activeWorkersList = null;
+      navigate('/attendance');
+    });
+
+    modalCancelBtn?.addEventListener('click', () => {
+      closeModal();
+    });
+  });
+
+  app.querySelector('#btn-add-worker').addEventListener('click', () => {
+    const availablePool = getWorkersForUserContext(userContext, { activeOnly: true });
+    openAddWorkerModal(availablePool, userContext);
+  });
+
+  // Toggle Presensi Click Event
+  app.querySelectorAll('.worker-switch-toggle').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const workerId = btn.getAttribute('data-toggle-id');
+      const targetWorker = activeWorkersList.find((w) => w.id === workerId);
+      const currentState = workerSessionAttendance.get(workerId);
+
+      if (!targetWorker || targetWorker.isCompleted) return;
+
+      if (currentState && currentState.checkedIn) {
+        // Toggle OFF jika diklik kembali
+        workerSessionAttendance.set(workerId, {
+          checkedIn: false,
+          photo: null,
+          time: null,
+          iso: null,
+          latitude: '3.1943859',
+          longitude: '11.2312083'
+        });
+        updateWorkerRowInDOM(workerId, null, false);
+        toast.info(`Presensi ${targetWorker.name} dibatalkan.`);
+      } else {
+        // Buka Kamera untuk Worker ini
+        openWorkerCamera(targetWorker);
+      }
+    });
+  });
+
+  // Retake Photo on Thumbnail Click
+  app.querySelectorAll('.worker-thumb-wrap').forEach((thumb) => {
+    thumb.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const workerId = thumb.getAttribute('data-thumb-id');
+      const targetWorker = activeWorkersList.find((w) => w.id === workerId);
+      if (targetWorker && !targetWorker.isCompleted) {
+        openWorkerCamera(targetWorker);
+      }
+    });
+  });
+
+  // Swipe to Delete Worker
+  bindSwipeDelete();
+
+  // Simpan Presensi Button
+  app.querySelector('#btn-save-workers').addEventListener('click', async () => {
+    const checkedInList = activeWorkersList.filter((w) => !w.isCompleted && workerSessionAttendance.get(w.id)?.checkedIn);
+    if (checkedInList.length === 0) {
+      toast.warning('Belum ada pekerja baru yang dipresensi.');
+      return;
+    }
+
+    const confirmed = await confirmDialog({
+      title: pageTitle,
+      message: `Simpan data presensi untuk ${checkedInList.length} pekerja?`,
+      confirmText: 'Simpan',
+      cancelText: 'Batal'
+    });
+
+    if (!confirmed) return;
+
+    await executeSaveAttendance(checkedInList);
   });
 }
 
@@ -542,7 +637,7 @@ function bindSwipeDelete() {
       if (diffX < -70) {
         const workerId = row.dataset.id;
         const targetWorker = activeWorkersList.find((w) => w.id === workerId);
-        if (!targetWorker) return;
+        if (!targetWorker || targetWorker.isCompleted) return;
 
         const confirmed = await confirmDialog({
           title: 'Hapus Pekerja',
@@ -755,7 +850,7 @@ async function openWorkerCamera(worker) {
 
     // 3. Tutup overlay kamera
     closeCamera();
-    toast.success(`Foto ${worker.name} berhasil diambil ✓`);
+    toast.success(`Foto ${worker.name} berhasil diambil`);
   };
 
   shutterBtn.addEventListener('click', onShutterCapture);

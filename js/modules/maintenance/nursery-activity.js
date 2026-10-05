@@ -20,11 +20,28 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
-import { todayISO } from '../../core/utils.js';
+import { todayISO, todayDDMMYYYY, esc } from '../../core/utils.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { attendanceRepository } from '../../db/repositories.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 import { getCfnaByCode, getCfnaByName, getCfnaActivityMappings, getActiveCfnaMaster, getAllCfnaMaster, MAPPING_STATUS, CFNA_STATUS } from '../../data/cfna-master.js';
+import {
+  normalizeDateStr,
+  renderCalendarHeaderButton,
+  renderDateFilterBannerHtml,
+  renderDatePickerModalHtml,
+  attachDatePickerModalEvents
+} from '../../components/date-filter-modal.js';
+
+let selectedActivityDate = todayDDMMYYYY();
+
+export function setSelectedActivityDate(dateStr) {
+  selectedActivityDate = normalizeDateStr(dateStr) || todayDDMMYYYY();
+}
+
+export function getSelectedActivityDate() {
+  return selectedActivityDate;
+}
 import {
   getWorkersForUserContext,
   getWorkerById,
@@ -426,6 +443,14 @@ export function renderNurseryActivityLanding() {
   const allRecords = storage.get('nursery_activity_records', []);
   const records = getVisibleMaintenanceRecords(allRecords, userCtx);
 
+  const todayStr = todayDDMMYYYY();
+  const isFiltered = selectedActivityDate !== todayStr;
+
+  const filteredRecords = records.filter(rec => {
+    const recDate = normalizeDateStr(rec.createdAt || rec.tanggal || rec.date || rec.activityDate);
+    return recDate === selectedActivityDate;
+  });
+
   app.innerHTML = `
     <div class="page nursery-activity-landing-page" style="position: relative; display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden;">
       
@@ -442,13 +467,16 @@ export function renderNurseryActivityLanding() {
             Rekam Pemeliharaan
           </h1>
         </div>
-        <button id="btn-refresh" type="button" aria-label="Segarkan" style="background: none; border: none; cursor: pointer; padding: 6px; margin-right: -4px; display: flex; align-items: center; justify-content: center; color: #116834;">
-          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"></polyline>
-            <polyline points="1 20 1 14 7 14"></polyline>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-          </svg>
-        </button>
+        <div style="display: flex; align-items: center; gap: 8px; margin-right: -4px;">
+          <button id="btn-refresh" type="button" aria-label="Segarkan" style="background: none; border: none; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </button>
+          ${renderCalendarHeaderButton(selectedActivityDate, isFiltered, 'btn-calendar-activity')}
+        </div>
       </header>
 
       <!-- CONTENT -->
@@ -474,13 +502,18 @@ export function renderNurseryActivityLanding() {
 
         </div>
 
-        <!-- RINGKASAN DATA TRANSAKSI PEMELIHARAAN -->
-        <div style="padding: 24px 0 16px 0;">
-          <h2 style="font-size: 1.1rem; font-weight: 700; color: #111111; margin: 0 0 16px 0;">
-            Ringkasan Data Transaksi (${records.length})
-          </h2>
+        <!-- FILTER INDICATOR BANNER IF NOT TODAY -->
+        ${renderDateFilterBannerHtml(selectedActivityDate, isFiltered, 'btn-reset-date-activity')}
 
-          ${records.length > 0 ? records.map((rec, idx) => {
+        <!-- RINGKASAN DATA TRANSAKSI PEMELIHARAAN -->
+        <div style="padding: 12px 0 16px 0;">
+          <div style="margin-bottom: 12px;">
+            <h2 style="font-size: 0.95rem; font-weight: 700; color: #111827; margin: 0;">
+              Ringkasan Data Transaksi (${filteredRecords.length})
+            </h2>
+          </div>
+
+          ${filteredRecords.length > 0 ? filteredRecords.map((rec, idx) => {
             const actor = resolveTransactionActor(rec);
             return `
             <div style="border: 1px solid #D9D9D9; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #FFFFFF; position: relative;">
@@ -598,11 +631,19 @@ export function renderNurseryActivityLanding() {
 
             </div>
           `;}).join('') : renderEmptyStateCard({
-            title: 'Belum ada Dokumen Pemeliharaan hari ini',
+            title: `Belum ada Dokumen Pemeliharaan pada ${isFiltered ? selectedActivityDate : 'hari ini'}`,
             description: 'Pilih menu Rekam Aktivitas Bibitan untuk memulai pencatatan'
           })}
 
         </div>
+
+        <!-- MODAL DATE PICKER -->
+        ${renderDatePickerModalHtml({
+          modalId: 'modal-activity-date-picker',
+          inputId: 'input-activity-filter-date',
+          activeDate: selectedActivityDate,
+          title: 'Pilih Tanggal Pemeliharaan'
+        })}
 
         <!-- MODAL DIALOG KONFIRMASI HAPUS DATA -->
         <div id="modal-delete-activity-overlay" style="display: none; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1000; backdrop-filter: blur(2px);"></div>
@@ -639,6 +680,25 @@ export function renderNurseryActivityLanding() {
 
   app.querySelector('#btn-refresh')?.addEventListener('click', () => {
     renderNurseryActivityLanding();
+  });
+
+  // Attach Date Picker Events
+  attachDatePickerModalEvents({
+    app,
+    modalId: 'modal-activity-date-picker',
+    btnCalendarId: 'btn-calendar-activity',
+    inputId: 'input-activity-filter-date',
+    resetBtnId: 'btn-reset-date-activity',
+    emptyResetBtnId: 'btn-empty-reset-activity',
+    getActiveDate: () => selectedActivityDate,
+    onDateSelected: (newDate) => {
+      selectedActivityDate = newDate;
+      renderNurseryActivityLanding();
+    },
+    onResetToday: () => {
+      selectedActivityDate = todayDDMMYYYY();
+      renderNurseryActivityLanding();
+    }
   });
 
   // Card Navigation
@@ -768,7 +828,7 @@ export async function renderNurseryActivityForm() {
   if (!app) return;
 
   const userCtx = getCurrentUserContext();
-  const activeWorkers = await attendanceRepository.getFinalPresentWorkers(userCtx, todayISO());
+  const activeWorkers = await attendanceRepository.getWorkersWithDatangAttendance(userCtx, todayISO());
   const hasPresentWorkers = activeWorkers.length > 0;
   const openPrograms = getOpenPrograms({ estateId: userCtx?.estateId });
 
@@ -1046,14 +1106,6 @@ export async function renderNurseryActivityForm() {
     if (selectedWorkersList.length === 0) {
       toast('Pilih minimal 1 pekerja pelaksana aktivitas.', 'error');
       return;
-    }
-
-    // Finalization Guard: Datang + Pulang (PRS-AUD-003)
-    for (const w of selectedWorkersList) {
-      if (!attendanceRepository.hasPulangAttendance(w.id, todayISO())) {
-        toast('Transaksi tidak dapat disimpan. Terdapat pekerja yang belum melakukan Presensi Pulang.', 'error');
-        return;
-      }
     }
 
     // Validasi & Ambil Canonical Worker Data

@@ -8,9 +8,14 @@ export function toast(message, type = 'info', duration = 2600) {
 
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
-  const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
-  el.innerHTML = `<span>${icon}</span><span></span>`;
-  el.querySelector('span:last-child').textContent = message;
+  const icon = type === 'error' ? '✕' : type === 'warning' ? '⚠' : '';
+  if (icon) {
+    el.innerHTML = `<span>${icon}</span><span></span>`;
+    el.querySelector('span:last-child').textContent = message;
+  } else {
+    el.innerHTML = `<span></span>`;
+    el.querySelector('span').textContent = message;
+  }
   root.appendChild(el);
 
   setTimeout(() => {

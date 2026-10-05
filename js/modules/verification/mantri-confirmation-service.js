@@ -1633,3 +1633,141 @@ export function submitModuleTransactions(moduleType, userContext = null, current
   };
 }
 
+/**
+ * Service Submission Data Lewat Waktu: Mengirim seluruh transaksi lewat waktu pada tanggal tertentu ke Asisten Bibitan.
+ * 
+ * @param {string} targetDate - Tanggal bisnis target format DD/MM/YYYY atau YYYY-MM-DD
+ * @param {object|null} [userContext=null] - Logged-in user context
+ * @param {Date|string|number} [currentTime=null] - Waktu eksekusi
+ * @returns {object} Result payload { success, submittedCount, submittedItems, message }
+ */
+export function submitOverdueTransactionsByDate(targetDate, userContext = null, currentTime = null) {
+  if (!targetDate || targetDate === 'ALL') {
+    return {
+      success: false,
+      submittedCount: 0,
+      submittedItems: [],
+      message: 'Silakan pilih tanggal spesifik untuk mengirimkan data lewat waktu.'
+    };
+  }
+
+  const user = userContext || getCurrentUserContext() || resolveUserContext();
+  // Global Attendance Gate (wajib presensi datang hari ini untuk mengirimkan tugas)
+  assertAttendanceGateOrThrow(user);
+
+  const normTarget = normalizeDateStr(targetDate);
+  const allTxs = getMantriTodayTransactions(user, null, currentTime);
+
+  const targetItems = allTxs.filter(tx => {
+    const isPending = (tx.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM || tx.status === MANTRI_TRANSACTION_STATUS.REVISION);
+    const dateMatches = (normalizeDateStr(tx.date) === normTarget);
+    return isPending && tx.isSubmissionExpired && dateMatches;
+  });
+
+  if (targetItems.length === 0) {
+    return {
+      success: true,
+      submittedCount: 0,
+      submittedItems: [],
+      message: `Tidak ada transaksi lewat waktu pada tanggal ${targetDate} yang perlu dikirim ke Asisten.`
+    };
+  }
+
+  const nowIso = (currentTime instanceof Date ? currentTime : (currentTime ? new Date(currentTime) : new Date())).toISOString();
+  const allVerifs = storage.get(VERIFICATION_STORAGE_KEY, []);
+  const submittedItems = [];
+
+  targetItems.forEach(tx => {
+    // 1. Update status pada data raw source
+    if (tx.moduleType === MODULE_TYPES.SELEKSI_PRA_OKULASI) {
+      const preDocs = storage.get('pre_grafting_selection_documents', []);
+      const pIdx = preDocs.findIndex(d => d.id === tx.id || d.docNo === tx.docNo);
+      if (pIdx !== -1) {
+        preDocs[pIdx].status = 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN';
+        preDocs[pIdx].verificationStatus = 'MENUNGGU_VERIFIKASI';
+        preDocs[pIdx].submittedAt = nowIso;
+        preDocs[pIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
+        preDocs[pIdx].submittedByName = user?.name || 'Mantri Bibitan';
+        preDocs[pIdx].isOverdueSubmission = true;
+        storage.set('pre_grafting_selection_documents', preDocs);
+      }
+    } else if (tx.storageKey) {
+      const records = storage.get(tx.storageKey, []);
+      const rIdx = records.findIndex(r => String(r.id || r.docNo || '') === String(tx.id));
+      if (rIdx !== -1) {
+        if (tx.moduleType === MODULE_TYPES.MATERIAL) {
+          records[rIdx].materialSubmissionStatus = 'SUBMITTED_TO_ASB';
+          records[rIdx].materialSubmittedAt = nowIso;
+          records[rIdx].isOverdueSubmission = true;
+        } else {
+          records[rIdx].status = 'MENUNGGU_VERIFIKASI';
+          records[rIdx].submissionStatus = 'SUBMITTED_TO_ASB';
+          records[rIdx].submittedAt = nowIso;
+          records[rIdx].isOverdueSubmission = true;
+        }
+        records[rIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
+        records[rIdx].submittedByName = user?.name || 'Mantri Bibitan';
+        storage.set(tx.storageKey, records);
+      }
+    }
+
+    // 2. Buat / perbarui catatan di verification_transactions secara IDEMPOTENT
+    const existingIdx = allVerifs.findIndex(v =>
+      ((v.referenceId && String(v.referenceId) === String(tx.id)) ||
+       (v.referenceDocNo && String(v.referenceDocNo) === String(tx.docNo))) &&
+      ((v.referenceType || v.moduleType || '').toUpperCase() === (tx.referenceType || tx.moduleType || '').toUpperCase())
+    );
+
+    if (existingIdx !== -1) {
+      allVerifs[existingIdx].verificationStatus = VERIFICATION_STATUS.MENUNGGU_VERIFIKASI;
+      allVerifs[existingIdx].submittedAt = nowIso;
+      allVerifs[existingIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
+      allVerifs[existingIdx].submittedByName = user?.name || 'Mantri Bibitan';
+      allVerifs[existingIdx].updatedAt = nowIso;
+      allVerifs[existingIdx].isOverdueSubmission = true;
+    } else {
+      const vNo = `VRF-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      allVerifs.push({
+        verificationId: `VRF-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        verificationNo: vNo,
+        referenceType: tx.referenceType || tx.activityType || tx.moduleType,
+        referenceId: tx.id,
+        referenceDocNo: tx.docNo,
+        moduleType: tx.moduleType,
+        sourceModule: tx.sourceModule || (tx.moduleType === MODULE_TYPES.MATERIAL ? 'material' : undefined),
+        sourceTransactionType: tx.sourceTransactionType || (tx.moduleType === MODULE_TYPES.MATERIAL ? 'PINDAH_SEMAI_MATERIAL' : undefined),
+        issueDocNo: tx.issueDocNo || tx.rawRecord?.issueDocNo || null,
+        itemCode: tx.itemCode || tx.rawRecord?.itemCode || null,
+        itemName: tx.itemName || tx.rawRecord?.itemName || null,
+        quantityUsed: tx.quantityUsed !== undefined ? tx.quantityUsed : (tx.rawRecord?.totalPolybag || null),
+        uom: tx.uom || tx.rawRecord?.uom || null,
+        batchCode: tx.batchCode || tx.rawRecord?.batchCode || tx.rawRecord?.batchNo || null,
+        bedenganCode: tx.bedenganCode || tx.rawRecord?.bedenganCode || tx.rawRecord?.bedengan || null,
+        estateId: tx.rawRecord?.targetEstateId || tx.rawRecord?.estateId || tx.rawRecord?.sourceEstateId || user?.estateId || 'EST-01',
+        divisionId: tx.rawRecord?.targetDivisionId || tx.rawRecord?.divisionId || tx.rawRecord?.sourceDivisionId || user?.divisionId || 'DIV-01',
+        verificationStatus: VERIFICATION_STATUS.MENUNGGU_VERIFIKASI,
+        isOverdueSubmission: true,
+        findings: [],
+        notes: 'Pengajuan data lewat waktu oleh Mantri',
+        submittedByUserId: user?.id || user?.userId || 'MANTRI',
+        submittedByName: user?.name || 'Mantri Bibitan',
+        submittedAt: nowIso,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      });
+    }
+
+    submittedItems.push(tx);
+  });
+
+  storage.set(VERIFICATION_STORAGE_KEY, allVerifs);
+
+  return {
+    success: true,
+    submittedCount: submittedItems.length,
+    submittedItems,
+    targetDate,
+    message: `${submittedItems.length} transaksi lewat waktu (Tanggal ${targetDate}) berhasil dikirim ke Asisten Bibitan untuk verifikasi.`
+  };
+}
+

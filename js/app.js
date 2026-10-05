@@ -65,6 +65,7 @@ import { renderDestructionLanding } from './modules/destruction/destruction-land
 import { renderConsolidationLanding } from './modules/consolidation/consolidation-landing.js';
 import { renderVerificationLanding } from './modules/verification/verification-landing.js';
 import { renderMantriConfirmationLanding } from './modules/verification/mantri-confirmation-landing.js';
+import { renderMantriOverdueLanding } from './modules/verification/mantri-overdue-landing.js';
 import { renderReportsLanding } from './modules/reports/reports-landing.js';
 import { renderAnalysisPlaceholder } from './modules/placeholder/analysis-placeholder.js';
 import { renderProfile } from './modules/profile/profile.js';
@@ -161,6 +162,7 @@ registerRoute('/selection/culling', renderDestructionLanding);
 registerRoute('/consolidation', renderConsolidationLanding);
 registerRoute('/verification', renderVerificationLanding);
 registerRoute('/mantri-confirmation', renderMantriConfirmationLanding);
+registerRoute('/mantri-confirmation/overdue', renderMantriOverdueLanding);
 registerRoute('/reports', renderReportsLanding);
 registerRoute('/profile', renderProfile);
 

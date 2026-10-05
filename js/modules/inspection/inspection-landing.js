@@ -1,6 +1,6 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
-import { formatStandardDocNo } from '../../core/utils.js';
+import { formatStandardDocNo, todayDDMMYYYY } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
 import { session } from '../../core/session.js';
 import { openDrawer } from '../../components/drawer.js';
@@ -20,8 +20,24 @@ import {
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
+import {
+  normalizeDateStr,
+  renderCalendarHeaderButton,
+  renderDateFilterBannerHtml,
+  renderDatePickerModalHtml,
+  attachDatePickerModalEvents
+} from '../../components/date-filter-modal.js';
 
 let activeInspectionModuleTab = 'DEDERAN'; // 'DEDERAN' | 'OKULASI'
+let selectedInspectionDate = todayDDMMYYYY();
+
+export function setSelectedInspectionDate(dateStr) {
+  selectedInspectionDate = normalizeDateStr(dateStr) || todayDDMMYYYY();
+}
+
+export function getSelectedInspectionDate() {
+  return selectedInspectionDate;
+}
 
 const ASB_INSP_ICONS = {
   sprout: `
@@ -339,6 +355,16 @@ export function renderInspectionLanding() {
     }
   });
 
+  // Filtered lists for Ringkasan Transaksi display based on selectedInspectionDate
+  const filteredDederInspections = dederInspections.filter(insp => {
+    const d = normalizeDateStr(insp.tanggalPemeriksaan || insp.tanggal || insp.date || insp.createdAt);
+    return d === selectedInspectionDate;
+  });
+  const filteredInspectionTxs = inspectionTxs.filter(insp => {
+    const d = normalizeDateStr(insp.tanggal || insp.date || insp.createdAt);
+    return d === selectedInspectionDate;
+  });
+
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; position: relative;">
       
@@ -352,6 +378,9 @@ export function renderInspectionLanding() {
             </svg>
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">Pemeriksaan</h1>
+        </div>
+        <div>
+          ${renderCalendarHeaderButton('btn-open-date-filter', selectedInspectionDate)}
         </div>
       </header>
 
@@ -370,8 +399,8 @@ export function renderInspectionLanding() {
       <!-- MAIN CONTENT -->
       <main style="flex: 1; overflow-y: auto; padding: 16px;">
         ${activeInspectionModuleTab === 'DEDERAN'
-          ? renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDocs)
-          : renderOkulasiInspectionSection(items, graftingCount, regraftingCount, inspectionTxs)}
+          ? renderDederanInspectionSection(dederTxs, filteredDederInspections, dederIndukDocs)
+          : renderOkulasiInspectionSection(items, graftingCount, regraftingCount, filteredInspectionTxs)}
 
         <!-- MODAL DIALOG KONFIRMASI HAPUS -->
         <div id="modal-delete-insp-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.45); z-index: 1000; backdrop-filter: blur(2px);"></div>
@@ -417,6 +446,9 @@ export function renderInspectionLanding() {
         </div>
 
       </main>
+
+      <!-- MODAL FILTER TANGGAL (HARI INI, KEMARIN, PILIH TANGGAL) -->
+      ${renderDatePickerModalHtml(selectedInspectionDate)}
     </div>
   `;
 
@@ -442,6 +474,20 @@ export function renderInspectionLanding() {
   } else {
     attachOkulasiInspectionEvents(app, items, inspectionTxs);
   }
+
+  // Modal Events for Date Filter
+  attachDatePickerModalEvents({
+    container: app,
+    currentDateStr: selectedInspectionDate,
+    onDateSelect: (newDateStr) => {
+      setSelectedInspectionDate(newDateStr);
+      renderInspectionLanding();
+    },
+    onDateReset: () => {
+      setSelectedInspectionDate(todayDDMMYYYY());
+      renderInspectionLanding();
+    }
+  });
 }
 
 /**
@@ -532,6 +578,8 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
     </div>
 
     <!-- HISTORI PEMERIKSAAN DEDERAN -->
+    ${renderDateFilterBannerHtml(selectedInspectionDate, 'btn-reset-date-filter')}
+
     ${dederInspections.length > 0 ? `
       <div style="margin: 20px 0 10px 0;">
         <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Ringkasan Data Pemeriksaan Dederan (${dederInspections.length})</h2>
@@ -798,6 +846,8 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
     ` : ''}
 
     <!-- HISTORI PEMERIKSAAN OKULASI -->
+    ${renderDateFilterBannerHtml(selectedInspectionDate, 'btn-reset-date-filter')}
+
     ${inspectionTxs.length > 0 ? `
       <div id="insp-summary-section" style="margin: 20px 0 10px 0;">
         <div id="insp-summary-header" style="margin-bottom: 10px;">
@@ -841,7 +891,7 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
                         <span class="text-menu-rincian">Rincian</span>
                       </button>
                       ${!isOkulasiInspLocked ? `
-                        <button type="button" class="menu-action-edit" data-index="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
+                        <button type="button" class="menu-action-edit" data-index="${idx}" data-doc="${insp.docNo || ''}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F3F4F6;">
                           <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                           <span>Edit</span>
                         </button>
@@ -1082,14 +1132,16 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const index = e.currentTarget.dataset.index;
+      const docNo = e.currentTarget.dataset.doc;
       const allInsp = storage.get('inspection_transactions', []);
-      const targetInsp = allInsp[index];
+      const foundIdx = allInsp.findIndex(i => i.docNo === docNo);
+      const targetIndex = foundIdx !== -1 ? foundIdx : parseInt(e.currentTarget.dataset.index);
+      const targetInsp = allInsp[targetIndex];
       if (isTransactionLockedForMantri(targetInsp)) {
         toast.error('Data pemeriksaan tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
         return;
       }
-      storage.set('editing_inspection_index', index);
+      storage.set('editing_inspection_index', targetIndex);
       navigate('/inspection/form');
     });
   });

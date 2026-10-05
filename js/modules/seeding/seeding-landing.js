@@ -9,7 +9,7 @@
 
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
-import { formatStandardDocNo, esc } from '../../core/utils.js';
+import { formatStandardDocNo, todayDDMMYYYY, esc } from '../../core/utils.js';
 import { guardDependency } from '../../core/dependency-guard.js';
 import {
   syncDederanIndukDocuments,
@@ -25,8 +25,24 @@ import { hasExistingCullDeclarationForSeeding } from '../selection/selection-man
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { toast } from '../../components/toast.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
+import {
+  normalizeDateStr,
+  renderCalendarHeaderButton,
+  renderDateFilterBannerHtml,
+  renderDatePickerModalHtml,
+  attachDatePickerModalEvents
+} from '../../components/date-filter-modal.js';
 
 let activeTab = 'DEDERAN'; // 'DEDERAN' | 'PINDAH_SEMAI'
+let selectedSeedingDate = todayDDMMYYYY();
+
+export function setSelectedSeedingDate(dateStr) {
+  selectedSeedingDate = normalizeDateStr(dateStr) || todayDDMMYYYY();
+}
+
+export function getSelectedSeedingDate() {
+  return selectedSeedingDate;
+}
 
 export function renderSeedingLanding() {
   const app = document.getElementById('app');
@@ -46,6 +62,9 @@ export function renderSeedingLanding() {
   const pendingDederCount = dederanIndukDocs.filter(d => (d.sisaBelumDeder || 0) > 0).length;
   const pendingPindahCount = eligiblePindahSemai.filter(s => (s.remainingQty || 0) > 0).length;
 
+  const todayStr = todayDDMMYYYY();
+  const isFiltered = selectedSeedingDate !== todayStr;
+
   app.innerHTML = `
     <div class="page seeding-landing-page" style="display: flex; flex-direction: column; height: 100%; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
@@ -59,6 +78,9 @@ export function renderSeedingLanding() {
             </svg>
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 0 6px; letter-spacing: -0.01em;">Penyemaian & Dederan</h1>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-right: -4px;">
+          ${renderCalendarHeaderButton(selectedSeedingDate, isFiltered, 'btn-calendar-seeding')}
         </div>
       </header>
 
@@ -77,8 +99,16 @@ export function renderSeedingLanding() {
 
       <!-- MAIN SCROLLABLE CONTENT -->
       <main style="flex: 1; overflow-y: auto; padding: 16px;">
-        ${activeTab === 'DEDERAN' ? renderDederanTabContent(dederanIndukDocs, dederanTxs) : renderPindahSemaiTabContent(eligiblePindahSemai, seedingTxs, pendingApprovalSources)}
+        ${activeTab === 'DEDERAN' ? renderDederanTabContent(dederanIndukDocs, dederanTxs, isFiltered, selectedSeedingDate) : renderPindahSemaiTabContent(eligiblePindahSemai, seedingTxs, pendingApprovalSources, isFiltered, selectedSeedingDate)}
       </main>
+
+      <!-- MODAL DATE PICKER -->
+      ${renderDatePickerModalHtml({
+        modalId: 'modal-seeding-date-picker',
+        inputId: 'input-seeding-filter-date',
+        activeDate: selectedSeedingDate,
+        title: 'Pilih Tanggal Penyemaian & Dederan'
+      })}
 
     </div>
   `;
@@ -98,6 +128,25 @@ export function renderSeedingLanding() {
     renderSeedingLanding();
   });
 
+  // Attach Date Picker Events
+  attachDatePickerModalEvents({
+    app,
+    modalId: 'modal-seeding-date-picker',
+    btnCalendarId: 'btn-calendar-seeding',
+    inputId: 'input-seeding-filter-date',
+    resetBtnId: 'btn-reset-date-seeding',
+    emptyResetBtnId: 'btn-empty-reset-seeding',
+    getActiveDate: () => selectedSeedingDate,
+    onDateSelected: (newDate) => {
+      selectedSeedingDate = newDate;
+      renderSeedingLanding();
+    },
+    onResetToday: () => {
+      selectedSeedingDate = todayDDMMYYYY();
+      renderSeedingLanding();
+    }
+  });
+
   if (activeTab === 'DEDERAN') {
     attachDederanEvents(app);
   } else {
@@ -108,13 +157,18 @@ export function renderSeedingLanding() {
 /**
  * Render Content for Tab 1: Dederan
  */
-function renderDederanTabContent(indukDocs, dederanTxs = []) {
+function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false, selectedDate = todayDDMMYYYY()) {
   if (indukDocs.length === 0) {
     return renderEmptyStateCard({
       title: 'Belum Ada Penerimaan Benih',
       description: 'Lakukan transaksi <strong>Penerimaan Benih / Biji Kelatak</strong> terlebih dahulu agar Dokumen Induk Deder otomatis terbentuk.'
     });
   }
+
+  const filteredDederanTxs = dederanTxs.filter(tx => {
+    const d = normalizeDateStr(tx.tanggalDeder || tx.tanggal || tx.date || tx.createdAt);
+    return d === selectedDate;
+  });
 
   return `
     <div style="display: flex; flex-direction: column; gap: 16px;">
@@ -195,17 +249,21 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
 
       <!-- SECTION 2: RINGKASAN TRANSAKSI DEDERAN -->
       <div>
-        <h2 style="font-size: 0.90rem; font-weight: 700; color: #0F172A; margin: 0 0 10px 0;">
-          Ringkasan Transaksi Dederan (${dederanTxs.length})
-        </h2>
+        ${renderDateFilterBannerHtml(selectedDate, isFiltered, 'btn-reset-date-seeding')}
 
-        ${dederanTxs.length === 0 ? `
+        <div style="margin-bottom: 10px;">
+          <h2 style="font-size: 0.92rem; font-weight: 700; color: #0F172A; margin: 0;">
+            Ringkasan Transaksi Dederan (${filteredDederanTxs.length})
+          </h2>
+        </div>
+
+        ${filteredDederanTxs.length === 0 ? `
           <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px 16px; text-align: center; font-size: 0.78rem; color: #64748B;">
-            Belum ada transaksi Dederan yang dicatat.
+            Tidak ada transaksi Dederan pada tanggal ${esc(selectedDate)}.
           </div>
         ` : `
           <div style="display: flex; flex-direction: column; gap: 10px;">
-            ${dederanTxs.map((tx, idx) => {
+            ${filteredDederanTxs.map((tx, idx) => {
     const inspSummary = getBedenganInspectionSummary(tx);
     const hasInspection = inspSummary.totalDiperiksa > 0;
 
@@ -291,8 +349,13 @@ function renderDederanTabContent(indukDocs, dederanTxs = []) {
 /**
  * Render Content for Tab 2: Pindah Semai (Source strictly from Dederan Inspection Berhasil + Seleksi DISETUJUI)
  */
-export function renderPindahSemaiTabContent(eligibleSources = [], seedingTxs = [], pendingApprovalSources = []) {
+export function renderPindahSemaiTabContent(eligibleSources = [], seedingTxs = [], pendingApprovalSources = [], isFiltered = false, selectedDate = todayDDMMYYYY()) {
   const totalSourceExistence = (eligibleSources?.length || 0) + (pendingApprovalSources?.length || 0);
+
+  const filteredSeedingTxs = seedingTxs.filter(stx => {
+    const d = normalizeDateStr(stx.date || stx.tanggal || stx.createdAt);
+    return d === selectedDate;
+  });
 
   return `
     <div style="display: flex; flex-direction: column; gap: 20px;">
@@ -474,23 +537,20 @@ export function renderPindahSemaiTabContent(eligibleSources = [], seedingTxs = [
 
       <!-- SECTION 2: RINGKASAN DATA TRANSAKSI -->
       <div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <h2 style="font-size: 0.95rem; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -0.01em;">
-              Ringkasan Data Transaksi
-            </h2>
-            <span style="font-size: 0.68rem; font-weight: 700; background: #E2E8F0; color: #475569; padding: 2px 7px; border-radius: 9999px;">
-              ${seedingTxs.length}
-            </span>
-          </div>
+        ${renderDateFilterBannerHtml(selectedDate, isFiltered, 'btn-reset-date-seeding')}
+
+        <div style="margin-bottom: 12px;">
+          <h2 style="font-size: 0.92rem; font-weight: 700; color: #0F172A; margin: 0; letter-spacing: -0.01em;">
+            Ringkasan Data Transaksi (${filteredSeedingTxs.length})
+          </h2>
         </div>
 
-        ${seedingTxs.length === 0 ? renderEmptyStateCard({
-    title: 'Belum Ada Transaksi Pindah Semai',
+        ${filteredSeedingTxs.length === 0 ? renderEmptyStateCard({
+    title: `Belum Ada Transaksi Pindah Semai pada ${isFiltered ? selectedDate : 'hari ini'}`,
     description: 'Transaksi Pindah Semai yang telah dicatat akan tampil pada daftar ini.'
   }) : `
           <div style="display: flex; flex-direction: column; gap: 10px;">
-            ${seedingTxs.map((stx, idx) => {
+            ${filteredSeedingTxs.map((stx, idx) => {
               const isPindahLocked = isTransactionLockedForMantri(stx) || hasExistingCullDeclarationForSeeding(stx);
               const rawDitolak = (stx.ditolak !== undefined && stx.ditolak !== null && stx.ditolak !== '')
                 ? stx.ditolak

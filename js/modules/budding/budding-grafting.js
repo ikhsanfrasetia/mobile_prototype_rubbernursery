@@ -1,11 +1,28 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
-import { formatStandardDocNo } from '../../core/utils.js';
+import { formatStandardDocNo, todayDDMMYYYY, esc } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
+import {
+  normalizeDateStr,
+  renderCalendarHeaderButton,
+  renderDateFilterBannerHtml,
+  renderDatePickerModalHtml,
+  attachDatePickerModalEvents
+} from '../../components/date-filter-modal.js';
+
+let selectedGraftingDate = todayDDMMYYYY();
+
+export function setSelectedGraftingDate(dateStr) {
+  selectedGraftingDate = normalizeDateStr(dateStr) || todayDDMMYYYY();
+}
+
+export function getSelectedGraftingDate() {
+  return selectedGraftingDate;
+}
 
 /**
  * Format string atau kode Bedengan agar seragam menjadi Kode Bedengan (misal: BED-001, BED-002)
@@ -41,7 +58,11 @@ export function renderBuddingGrafting() {
     d.status === 'DISETUJUI' &&
     Boolean(d.isFinal)
   );
-  const buddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
+  const allBuddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
+  const buddingTxs = allBuddingTxs.filter(b => {
+    const d = normalizeDateStr(b.tanggal || b.date || b.createdAt);
+    return d === selectedGraftingDate;
+  });
 
   // Process and sort batches: yang belum selesai (Perlu Diokulasi) di ATAS, yang sudah selesai (Selesai Diokulasi) di BAWAH
   const processedBatchList = seleksi3FinalDocs.map((s3Doc, idx) => {
@@ -58,7 +79,7 @@ export function renderBuddingGrafting() {
     let ttlDiokulasi = 0;
     let ttlDitolak = 0;
     let ttlKayu = 0;
-    const relatedBuddings = buddingTxs.filter(b => 
+    const relatedBuddings = allBuddingTxs.filter(b => 
       (b.sourceSelection3DocNo && b.sourceSelection3DocNo === docNo) ||
       (b.sourceSelection3DocumentId && s3Doc.id && b.sourceSelection3DocumentId === s3Doc.id) ||
       (b.sourceDocNo && b.sourceDocNo === docNo) ||
@@ -134,6 +155,9 @@ export function renderBuddingGrafting() {
             </svg>
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">Okulasi (Grafting)</h1>
+        </div>
+        <div>
+          ${renderCalendarHeaderButton('btn-open-date-filter', selectedGraftingDate)}
         </div>
       </header>
 
@@ -295,6 +319,9 @@ export function renderBuddingGrafting() {
           customStyle: 'margin-top: 24px;'
         })}
 
+        <!-- STATUS BANNER FILTER TANGGAL (JIKA MEMILIH TANGGAL LAMPAU) -->
+        ${renderDateFilterBannerHtml(selectedGraftingDate, 'btn-reset-date-filter')}
+
         <!-- HISTORI / RINGKASAN DATA OKULASI DENGAN MENU AKSI 3-DOTS (...) -->
         ${buddingTxs.length > 0 ? `
           <div style="margin: 20px 0 10px 0;">
@@ -435,6 +462,9 @@ export function renderBuddingGrafting() {
         ` : ''}
 
       </main>
+
+      <!-- MODAL FILTER TANGGAL (HARI INI, KEMARIN, PILIH TANGGAL) -->
+      ${renderDatePickerModalHtml(selectedGraftingDate)}
     </div>
   `;
 
@@ -609,5 +639,19 @@ export function renderBuddingGrafting() {
         renderBuddingGrafting();
       }
     });
+  });
+
+  // Modal Events for Date Filter
+  attachDatePickerModalEvents({
+    container: app,
+    currentDateStr: selectedGraftingDate,
+    onDateSelect: (newDateStr) => {
+      setSelectedGraftingDate(newDateStr);
+      renderBuddingGrafting();
+    },
+    onDateReset: () => {
+      setSelectedGraftingDate(todayDDMMYYYY());
+      renderBuddingGrafting();
+    }
   });
 }
