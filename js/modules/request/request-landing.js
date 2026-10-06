@@ -89,20 +89,6 @@ export function getSubMenuItemsForRole(userRole) {
         rawTitle: 'Permintaan Bibit Kebun Sendiri',
         icon: ICONS.spbBibit,
         route: '/request/kebun-sendiri'
-      },
-      {
-        id: 'ksp-bibit',
-        title: 'Melanjutkan Permintaan<br>dari Kebun Sepupu',
-        rawTitle: 'Melanjutkan Permintaan dari Kebun Sepupu',
-        icon: ICONS.spbBibit,
-        route: '/request/kebun-sepupu'
-      },
-      {
-        id: 'me-bibit',
-        title: 'Daftar Permintaan<br>Mata Entres',
-        rawTitle: 'Daftar Permintaan Mata Entres',
-        icon: ICONS.spbEntres,
-        route: '/request/mata-entres'
       }
     ];
   }
