@@ -20,7 +20,8 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { ROLE_LABELS } from '../../core/permissions.js';
+import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
+import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
 import { formatDate, formatStandardDocNo } from '../../core/utils.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 
@@ -947,7 +948,12 @@ export function renderNurseryHistory() {
 
   // Event Listeners: Back button
   app.querySelector('#btn-back').addEventListener('click', () => {
-    navigate('/home');
+    const userCtx = getCurrentUserContext() || resolveUserContext(user);
+    if (userCtx?.role === ROLES.ASISTEN_BIBITAN || user?.role === ROLES.ASISTEN_BIBITAN) {
+      navigate('/reports');
+    } else {
+      navigate('/home');
+    }
   });
 
   // Filter Program dropdown

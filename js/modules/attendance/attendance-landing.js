@@ -13,6 +13,13 @@ import { attendanceRepository, workerRepository } from '../../db/repositories.js
 import { todayISO, formatFullDateIndonesian, getAttendanceUniqueKey } from '../../core/utils.js';
 import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
+import { 
+  getEffectiveHour, 
+  getEffectiveDate, 
+  isSimulationActive, 
+  getSimulationState, 
+  openSimulationClockModal 
+} from '../../core/simulation-clock-service.js';
 
 export { getAttendanceUniqueKey };
 
@@ -92,7 +99,7 @@ export function setAttendanceCloudState(userId, stateData) {
 }
 
 export function getAttendanceTypeByHour() {
-  const currentHour = new Date().getHours();
+  const currentHour = getEffectiveHour();
   // < 10:00 -> DATANG, >= 14:00 -> PULANG, 10:00-13:59 -> DATANG
   return currentHour >= 14 ? 'PULANG' : 'DATANG';
 }
@@ -105,7 +112,7 @@ export async function renderAttendanceLanding(contextOrDate = null) {
   const userId = userContext.userId || userContext.id || userContext.code || 'USR-MNT-TBS';
 
   // Resolusi tanggal aktif yang aman dari berbagai tipe input (string ISO, router context object { params, query }, null, dll)
-  let today = todayISO();
+  let today = getEffectiveDate();
   if (typeof contextOrDate === 'string' && contextOrDate.trim().length >= 10) {
     today = contextOrDate.trim().slice(0, 10);
   } else if (contextOrDate && typeof contextOrDate === 'object') {
@@ -391,6 +398,23 @@ export async function renderAttendanceLanding(contextOrDate = null) {
     </div>
   `;
 
+  const isSimActive = isSimulationActive();
+  const simState = getSimulationState();
+  const simBannerHtml = isSimActive ? `
+    <div class="attendance-sim-banner" id="attendance-sim-banner" role="button" tabindex="0" title="Klik untuk mengatur waktu simulasi" style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.1rem;">⚠️</span>
+        <div>
+          <div style="font-size: 0.72rem; font-weight: 800; color: #b45309; letter-spacing: 0.04em;">SIMULASI AKTIF</div>
+          <div style="font-size: 0.82rem; font-weight: 700; color: #92400e;">
+            ${formatDisplayDate(today)}, ${simState.simulatedTime} WIB
+          </div>
+        </div>
+      </div>
+      <span style="font-size: 0.75rem; font-weight: 700; color: #b45309; background: #fef3c7; border: 1px solid #fcd34d; padding: 4px 8px; border-radius: 4px;">Ubah</span>
+    </div>
+  ` : '';
+
   app.innerHTML = `
     <div class="page attendance-landing-page">
       <header class="attendance-topbar">
@@ -415,6 +439,7 @@ export async function renderAttendanceLanding(contextOrDate = null) {
       </header>
 
       <main class="attendance-body">
+        ${simBannerHtml}
         ${summaryCardHtml}
 
         <div class="attendance-cloud-status" id="attendance-cloud-status">
@@ -512,5 +537,9 @@ export async function renderAttendanceLanding(contextOrDate = null) {
 
   app.querySelector('#btn-presensi-pekerja')?.addEventListener('click', () => {
     navigate('/attendance/workers');
+  });
+
+  app.querySelector('#attendance-sim-banner')?.addEventListener('click', () => {
+    openSimulationClockModal(() => renderAttendanceLanding(contextOrDate));
   });
 }

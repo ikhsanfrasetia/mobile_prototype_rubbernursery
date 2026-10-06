@@ -26,6 +26,7 @@ import { requestRepository } from '../../db/repositories.js';
 import { resolveTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 import { resolveEstate, getNurseryDivisionsByEstate, resolveNurseryDivision } from '../../data/estate-master.js';
 import { getActiveKlons } from '../../data/klon-master.js';
+import { getCfnaByCode } from '../../data/cfna-master.js';
 import { formatDate, todayISO, nowISO, esc } from '../../core/utils.js';
 import { createReceiptFromDispatch, getReceiptKspTransactions, updateReceiptKsp } from '../../core/receipt-ksp-manager.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
@@ -36,6 +37,17 @@ import {
   showAttendanceRequirementModal,
   assertAttendanceGateOrThrow
 } from '../../core/attendance-gate-service.js';
+
+export function formatAllocationDisplay(code) {
+  if (!code || code === '-') return '-';
+  const clean = String(code).trim();
+  if (!clean || clean === '-') return '-';
+  const cfna = getCfnaByCode(clean);
+  if (cfna && cfna.name) {
+    return `${clean} - ${cfna.name}`;
+  }
+  return `${clean} - -`;
+}
 
 let activeTab = null; // 'MY_REQUESTS' | 'INCOMING_REQUESTS'
 let activeStatusFilter = 'SEMUA'; // 'SEMUA' | 'DIAJUKAN' | 'DIPROSES' | 'SELESAI' | 'DITOLAK'
@@ -1005,7 +1017,7 @@ export function openPengurusReviewModal(tx, currentUser, onSuccess) {
             <span style="font-weight: 700; color: #1E293B;">${esc(tx.sourceEstateName || tx.estateId)}</span>
             ${tx.allocationCode ? `
               <span style="color: #64748B;">Kode Alokasi:</span>
-              <span style="font-weight: 700; color: #1E293B;">${esc(tx.allocationCode)}</span>
+              <span style="font-weight: 700; color: #1E293B; min-width: 0; overflow-wrap: anywhere;">${esc(formatAllocationDisplay(tx.allocationCode))}</span>
             ` : ''}
             <span style="color: #64748B;">Klon Diminta:</span>
             <span style="font-weight: 700; color: #1E293B;">${esc(tx.klon)}</span>
@@ -2375,141 +2387,201 @@ export function openMantriBibitanReceiptModal(tx, currentUser, onSuccess) {
 }
 
 // MODAL DETAIL READ-ONLY
+// MODAL DETAIL READ-ONLY (HARMONIZED TO MASTER UI PATTERN)
 export function openMataEntresDetailModal(tx) {
   const photo = tx.photoEvidence || tx.pengeluaran?.photoEvidence;
   const vehicle = tx.vehiclePlate || tx.pengeluaran?.vehiclePlate;
   const receiptPhoto = tx.receiptPhotoEvidence || tx.penerimaan?.photoEvidence;
   const agg = getRequestDispatchAggregate(tx.id, tx);
 
+  const docNo = tx.docNo || tx.nomorDokumen || '-';
+  const status = (tx.status || 'DIAJUKAN').toUpperCase();
+  const sourceName = tx.sourceEstateName || tx.estateId || '-';
+  const targetName = tx.targetEstateName || tx.targetEstateId || '-';
+  const requester = tx.requestedBy || tx.createdByName || tx.userName || '-';
+  const allocationCode = tx.allocationCode || '-';
+  const klon = tx.klon || '-';
+  const requiredDate = formatDate(tx.requiredDate);
+  const requestDate = formatDate(tx.requestDate || tx.tanggal || tx.createdAt);
+  const qtyFormatted = tx.jumlahMataEntres !== undefined && tx.jumlahMataEntres !== null
+    ? `${Number(tx.jumlahMataEntres).toLocaleString('id-ID')} Mata`
+    : (tx.jumlahBatang ? `${Number(tx.jumlahBatang).toLocaleString('id-ID')} Batang` : '-');
+
   openModal({
-    title: `Detail Dokumen: ${esc(tx.docNo)}`,
+    title: 'Detail Permintaan Mata Entres',
     body: `
-      <div style="font-size: 0.82rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-        
-        <!-- SECTION 1: PERMINTAAN AWAL -->
-        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
-          <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 6px;">1. Permintaan Awal (Pengurus Pemohon)</div>
-          <div style="display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.78rem;">
-            <span style="color: #64748B;">No. Dokumen:</span>
-            <span style="font-weight: 700; color: #116834;">${esc(tx.docNo)}</span>
-            <span style="color: #64748B;">Kebun Peminta:</span>
-            <span style="font-weight: 600;">${esc(tx.sourceEstateName || tx.estateId)}</span>
-            <span style="color: #64748B;">Kebun Tujuan:</span>
-            <span style="font-weight: 600;">${esc(tx.targetEstateName || tx.targetEstateId)}</span>
-            ${tx.allocationCode ? `
-              <span style="color: #64748B;">Kode Alokasi:</span>
-              <span style="font-weight: 700;">${esc(tx.allocationCode)}</span>
-            ` : ''}
-            <span style="color: #64748B;">Klon Diminta:</span>
-            <span style="font-weight: 600;">${esc(tx.klon)}</span>
-            <span style="color: #64748B;">Permintaan Mata:</span>
-            <span style="font-weight: 700; color: #116834;">${tx.jumlahMataEntres !== undefined && tx.jumlahMataEntres !== null ? tx.jumlahMataEntres.toLocaleString('id-ID') + ' Mata' : '-'}</span>
-            <span style="color: #64748B;">Permintaan Batang:</span>
-            <span style="font-weight: 600;">${(tx.jumlahBatang || 0).toLocaleString('id-ID')} Batang</span>
-            <span style="color: #64748B;">Tgl Dibutuhkan:</span>
-            <span>${esc(tx.requiredDate || '-')}</span>
+      <div style="padding: 4px 0;">
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; font-size: 0.82rem;">
+          
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #E2E8F0;">
+            <span style="color: #64748B;">No. Dokumen</span>
+            <span style="font-weight: 800; color: #116834; text-align: right;">${esc(docNo)}</span>
           </div>
-        </div>
 
-        <!-- SECTION 2: PERSETUJUAN PENGURUS -->
-        ${tx.approval ? `
-          <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
-            <div style="font-size: 0.72rem; font-weight: 700; color: #15803D; text-transform: uppercase; margin-bottom: 6px;">2. Persetujuan Kuota (Pengurus Pengirim)</div>
-            <div style="display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.78rem;">
-              <span style="color: #64748B;">Disetujui Mata:</span>
-              <span style="font-weight: 700; color: #15803D;">${tx.approval.approvedMataEntres ? tx.approval.approvedMataEntres.toLocaleString('id-ID') + ' Mata' : '-'}</span>
-              <span style="color: #64748B;">Disetujui Batang:</span>
-              <span style="font-weight: 600;">${(tx.approval.approvedBatang || 0).toLocaleString('id-ID')} Batang</span>
-              ${tx.approval.approvedKlon ? `
-                <span style="color: #64748B;">Klon Disetujui:</span>
-                <span style="font-weight: 600;">${esc(tx.approval.approvedKlon)}</span>
-              ` : ''}
-              ${tx.approval.estimatedDeliveryDate ? `
-                <span style="color: #64748B;">Estimasi Kirim:</span>
-                <span>${esc(formatDate(tx.approval.estimatedDeliveryDate))}</span>
-              ` : ''}
-              <span style="color: #64748B;">Total Terkirim:</span>
-              <span style="font-weight: 700; color: #6D28D9;">${agg.totalDispatchedMata.toLocaleString('id-ID')} Mata (${agg.totalDispatchedBatang.toLocaleString('id-ID')} Btg)</span>
-              <span style="color: #64748B;">Sisa Belum Kirim:</span>
-              <span style="font-weight: 700; color: #DC2626;">${agg.remainingMata.toLocaleString('id-ID')} Mata (${agg.remainingBatang.toLocaleString('id-ID')} Btg)</span>
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B;">Status</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(status)}</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B;">Kebun Asal</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(sourceName)}</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B;">Kebun Dituju</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(targetName)}</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B;">Pemohon</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(requester)}</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B;">Kode Alokasi</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(formatAllocationDisplay(tx.allocationCode))}</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B;">Klon Diminta</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(klon)}</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B;">Tanggal Dibutuhkan</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(requiredDate)}</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
+            <span style="color: #64748B;">Tanggal Pengajuan</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(requestDate)}</span>
+          </div>
+
+          ${tx.approval ? `
+            <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 7px; padding-top: 7px; border-top: 1px dashed #BBF7D0;">
+              <span style="color: #15803D; font-weight: 700;">Disetujui Mata</span>
+              <span style="font-weight: 800; color: #15803D; text-align: right;">${tx.approval.approvedMataEntres ? tx.approval.approvedMataEntres.toLocaleString('id-ID') + ' Mata' : '-'}</span>
             </div>
-          </div>
-        ` : ''}
+            <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 5px;">
+              <span style="color: #15803D; font-weight: 700;">Disetujui Batang</span>
+              <span style="font-weight: 700; color: #15803D; text-align: right;">${(tx.approval.approvedBatang || 0).toLocaleString('id-ID')} Batang</span>
+            </div>
+            ${tx.approval.approvedKlon ? `
+              <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 5px;">
+                <span style="color: #15803D; font-weight: 700;">Klon Disetujui</span>
+                <span style="font-weight: 700; color: #15803D; text-align: right;">${esc(tx.approval.approvedKlon)}</span>
+              </div>
+            ` : ''}
+            ${tx.approval.estimatedDeliveryDate ? `
+              <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 5px;">
+                <span style="color: #15803D; font-weight: 700;">Estimasi Kirim</span>
+                <span style="font-weight: 700; color: #15803D; text-align: right;">${esc(formatDate(tx.approval.estimatedDeliveryDate))}</span>
+              </div>
+            ` : ''}
+            <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 5px;">
+              <span style="color: #6D28D9; font-weight: 700;">Total Terkirim</span>
+              <span style="font-weight: 700; color: #6D28D9; text-align: right;">${agg.totalDispatchedMata.toLocaleString('id-ID')} Mata (${agg.totalDispatchedBatang.toLocaleString('id-ID')} Btg)</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 5px;">
+              <span style="color: #DC2626; font-weight: 700;">Sisa Belum Kirim</span>
+              <span style="font-weight: 700; color: #DC2626; text-align: right;">${agg.remainingMata.toLocaleString('id-ID')} Mata (${agg.remainingBatang.toLocaleString('id-ID')} Btg)</span>
+            </div>
+          ` : ''}
 
-        <!-- SECTION 3: REALISASI PENGELUARAN -->
-        ${agg.dispatches.length > 0 ? `
-          <div style="background: #F5F3FF; border: 1px solid #DDD6FE; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
-            <div style="font-size: 0.72rem; font-weight: 700; color: #6D28D9; text-transform: uppercase; margin-bottom: 6px;">3. Realisasi Pengeluaran (${agg.dispatches.length} Pengiriman)</div>
-            ${agg.dispatches.map((d, dIdx) => `
-              <div style="padding: 6px 0; ${dIdx > 0 ? 'border-top: 1px dashed #DDD6FE; margin-top: 6px;' : ''}">
-                <div style="display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.78rem;">
-                  <span style="color: #6B7280;">Pengiriman #${dIdx + 1}:</span>
-                  <span style="font-weight: 700; color: #6D28D9;">${(d.jumlahMataEntresDikeluarkan || 0).toLocaleString('id-ID')} Mata (${(d.jumlahBatangDikeluarkan || 0).toLocaleString('id-ID')} Btg)</span>
-                  <span style="color: #6B7280;">Tgl Pengeluaran:</span>
-                  <span>${esc(d.tanggalPengeluaran || d.tanggal || '-')}</span>
+          ${agg.dispatches.length > 0 ? `
+            <div style="margin-top: 7px; padding-top: 7px; border-top: 1px dashed #DDD6FE;">
+              <div style="font-size: 0.74rem; font-weight: 700; color: #6D28D9; text-transform: uppercase; margin-bottom: 6px;">Realisasi Pengeluaran (${agg.dispatches.length} Pengiriman)</div>
+              ${agg.dispatches.map((d, dIdx) => `
+                <div style="padding: 4px 0; ${dIdx > 0 ? 'border-top: 1px dashed #DDD6FE; margin-top: 4px;' : ''}">
+                  <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start;">
+                    <span style="color: #6B7280;">Pengiriman #${dIdx + 1}</span>
+                    <span style="font-weight: 700; color: #6D28D9; text-align: right;">${(d.jumlahMataEntresDikeluarkan || 0).toLocaleString('id-ID')} Mata (${(d.jumlahBatangDikeluarkan || 0).toLocaleString('id-ID')} Btg)</span>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 4px;">
+                    <span style="color: #6B7280;">Tgl Pengeluaran</span>
+                    <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(d.tanggalPengeluaran || d.tanggal || '-')}</span>
+                  </div>
                   ${d.vehiclePlate ? `
-                    <span style="color: #6B7280;">Plat Kendaraan:</span>
-                    <span style="font-weight: 600;">${esc(d.vehiclePlate)}</span>
+                    <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 4px;">
+                      <span style="color: #6B7280;">Plat Kendaraan</span>
+                      <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(d.vehiclePlate)}</span>
+                    </div>
                   ` : ''}
                 </div>
+              `).join('')}
+              ${photo && photo.image ? `
+                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #E9D5FF;">
+                  <span style="color: #6D28D9; font-weight: 700; display: block; margin-bottom: 4px;">Foto Bukti Pengeluaran:</span>
+                  <img src="${photo.image}" alt="Bukti Pengeluaran" style="max-width: 100%; max-height: 150px; border-radius: 6px; border: 1px solid #DDD6FE; object-fit: contain;" />
+                </div>
+              ` : ''}
+            </div>
+          ` : (tx.jumlahBatangDikeluarkan !== null && tx.jumlahBatangDikeluarkan !== undefined ? `
+            <div style="margin-top: 7px; padding-top: 7px; border-top: 1px dashed #DDD6FE;">
+              <div style="font-size: 0.74rem; font-weight: 700; color: #6D28D9; text-transform: uppercase; margin-bottom: 6px;">Realisasi Pengeluaran</div>
+              <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start;">
+                <span style="color: #6B7280;">Mata Dikeluarkan</span>
+                <span style="font-weight: 700; color: #6D28D9; text-align: right;">${(tx.jumlahMataEntresDikeluarkan || 0).toLocaleString('id-ID')} Mata</span>
               </div>
-            `).join('')}
-            ${photo && photo.image ? `
-              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #E9D5FF;">
-                <div style="font-size: 0.70rem; font-weight: 700; color: #6D28D9; margin-bottom: 4px;">Foto Bukti Pengeluaran:</div>
-                <img src="${photo.image}" style="max-width: 100%; max-height: 150px; border-radius: 6px; border: 1px solid #DDD6FE; object-fit: contain;" />
+              <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 4px;">
+                <span style="color: #6B7280;">Batang Dikeluarkan</span>
+                <span style="font-weight: 700; color: #1E293B; text-align: right;">${(tx.jumlahBatangDikeluarkan || 0).toLocaleString('id-ID')} Batang</span>
               </div>
-            ` : ''}
-          </div>
-        ` : (tx.jumlahBatangDikeluarkan !== null && tx.jumlahBatangDikeluarkan !== undefined ? `
-          <div style="background: #F5F3FF; border: 1px solid #DDD6FE; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
-            <div style="font-size: 0.72rem; font-weight: 700; color: #6D28D9; text-transform: uppercase; margin-bottom: 6px;">3. Realisasi Pengeluaran (Kebun Pengirim)</div>
-            <div style="display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.78rem;">
-              <span style="color: #6B7280;">Mata Dikeluarkan:</span>
-              <span style="font-weight: 700; color: #6D28D9;">${(tx.jumlahMataEntresDikeluarkan || 0).toLocaleString('id-ID')} Mata</span>
-              <span style="color: #6B7280;">Batang Dikeluarkan:</span>
-              <span style="font-weight: 600;">${(tx.jumlahBatangDikeluarkan || 0).toLocaleString('id-ID')} Batang</span>
               ${vehicle ? `
-                <span style="color: #6B7280;">Plat Kendaraan:</span>
-                <span style="font-weight: 700; color: #1E293B;">${esc(vehicle)}</span>
+                <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 4px;">
+                  <span style="color: #6B7280;">Plat Kendaraan</span>
+                  <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(vehicle)}</span>
+                </div>
               ` : ''}
-              <span style="color: #6B7280;">Tgl Pengeluaran:</span>
-              <span>${esc(tx.tanggalPengeluaran || '-')}</span>
-            </div>
-          </div>
-        ` : '')}
-
-        <!-- SECTION 4: PENERIMAAN FISIK -->
-        ${tx.jumlahBatangDiterima !== null && tx.jumlahBatangDiterima !== undefined ? `
-          <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
-            <div style="font-size: 0.72rem; font-weight: 700; color: #047857; text-transform: uppercase; margin-bottom: 6px;">4. Realisasi Penerimaan (Kebun Pemohon)</div>
-            <div style="display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.78rem;">
-              <span style="color: #6B7280;">Mata Diterima:</span>
-              <span style="font-weight: 700; color: #047857;">${(tx.jumlahMataEntresDiterima || 0).toLocaleString('id-ID')} Mata</span>
-              <span style="color: #6B7280;">Batang Diterima:</span>
-              <span style="font-weight: 600;">${(tx.jumlahBatangDiterima || 0).toLocaleString('id-ID')} Batang</span>
-              ${tx.rejectBatang ? `
-                <span style="color: #6B7280;">Batang Reject:</span>
-                <span style="font-weight: 700; color: #DC2626;">${tx.rejectBatang} Batang</span>
-              ` : ''}
-              <span style="color: #6B7280;">Tgl Penerimaan:</span>
-              <span>${esc(tx.tanggalPenerimaan || '-')}</span>
-            </div>
-            ${receiptPhoto && receiptPhoto.image ? `
-              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #A7F3D0;">
-                <div style="font-size: 0.70rem; font-weight: 700; color: #047857; margin-bottom: 4px;">Foto Bukti Penerimaan:</div>
-                <img src="${receiptPhoto.image}" style="max-width: 100%; max-height: 150px; border-radius: 6px; border: 1px solid #A7F3D0; object-fit: contain;" />
+              <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 4px;">
+                <span style="color: #6B7280;">Tgl Pengeluaran</span>
+                <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(tx.tanggalPengeluaran || '-')}</span>
               </div>
-            ` : ''}
+            </div>
+          ` : '')}
+
+          ${tx.jumlahBatangDiterima !== null && tx.jumlahBatangDiterima !== undefined ? `
+            <div style="margin-top: 7px; padding-top: 7px; border-top: 1px dashed #A7F3D0;">
+              <div style="font-size: 0.74rem; font-weight: 700; color: #047857; text-transform: uppercase; margin-bottom: 6px;">Realisasi Penerimaan</div>
+              <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start;">
+                <span style="color: #6B7280;">Mata Diterima</span>
+                <span style="font-weight: 700; color: #047857; text-align: right;">${(tx.jumlahMataEntresDiterima || 0).toLocaleString('id-ID')} Mata</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 4px;">
+                <span style="color: #6B7280;">Batang Diterima</span>
+                <span style="font-weight: 700; color: #1E293B; text-align: right;">${(tx.jumlahBatangDiterima || 0).toLocaleString('id-ID')} Batang</span>
+              </div>
+              ${tx.rejectBatang ? `
+                <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 4px;">
+                  <span style="color: #DC2626; font-weight: 700;">Batang Reject</span>
+                  <span style="font-weight: 700; color: #DC2626; text-align: right;">${tx.rejectBatang} Batang</span>
+                </div>
+              ` : ''}
+              <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-top: 4px;">
+                <span style="color: #6B7280;">Tgl Penerimaan</span>
+                <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(tx.tanggalPenerimaan || '-')}</span>
+              </div>
+              ${receiptPhoto && receiptPhoto.image ? `
+                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #A7F3D0;">
+                  <span style="color: #047857; font-weight: 700; display: block; margin-bottom: 4px;">Foto Bukti Penerimaan:</span>
+                  <img src="${receiptPhoto.image}" alt="Bukti Penerimaan" style="max-width: 100%; max-height: 150px; border-radius: 6px; border: 1px solid #A7F3D0; object-fit: contain;" />
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
+          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: baseline; margin-top: 8px; padding-top: 6px; border-top: 1px solid #E2E8F0;">
+            <span style="color: #64748B; font-weight: 600;">Banyaknya Diminta</span>
+            <span style="font-weight: 800; font-size: 0.95rem; color: #116834; text-align: right;">${qtyFormatted}</span>
           </div>
-        ` : ''}
+
+        </div>
       </div>
     `,
     footer: `
-      <div style="display: flex; justify-content: flex-end; width: 100%;">
-        <button type="button" id="btn-close-detail" style="padding: 8px 18px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.82rem; font-weight: 700; color: #FFFFFF; cursor: pointer;">
-          Tutup
-        </button>
+      <div style="width: 100%;">
+        <button class="btn btn-ghost" id="btn-close-detail" style="width: 100%; border: 1px solid #CBD5E1; color: #475569; font-weight: 600;">Tutup</button>
       </div>
     `
   });
@@ -2582,19 +2654,17 @@ export async function renderRequestMataEntresLanding() {
   }) : filteredList.map((tx, idx) => {
     const badge = MATA_ENTRES_STATUS_BADGES[tx.status] || { bg: '#F1F5F9', text: '#475569', border: '#CBD5E1' };
     const label = MATA_ENTRES_STATUS_LABELS[tx.status] || tx.status;
-    const isExpanded = expandedCardIndex === idx;
 
-    const sourceName = esc(tx.sourceEstateName || tx.estateId || 'Tanah Besih');
-    const targetName = esc(tx.targetEstateName || tx.targetEstateId || 'Aek Pamingke');
+    const sourceName = esc(tx.sourceEstateName || tx.estateId || '-');
+    const targetName = esc(tx.targetEstateName || tx.targetEstateId || '-');
     const qtyFormatted = tx.jumlahMataEntres !== undefined && tx.jumlahMataEntres !== null
       ? `${Number(tx.jumlahMataEntres).toLocaleString('id-ID')} Mata`
-      : `${(tx.jumlahBatang || 0).toLocaleString('id-ID')} Batang (Legacy)`;
+      : (tx.jumlahBatang ? `${Number(tx.jumlahBatang).toLocaleString('id-ID')} Batang` : '-');
     const formattedRequiredDate = formatDate(tx.requiredDate);
-    const formattedRequestDate = formatDate(tx.requestDate || tx.tanggal || tx.createdAt);
 
     // Contextual Action Determination
     let actionBtnHtml = '';
-    const btnActionStyle = 'padding: 6px 14px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.74rem; font-weight: 700; color: #FFFFFF; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: background 0.15s ease;';
+    const btnActionStyle = 'padding: 5px 10px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.72rem; font-weight: 700; color: #FFFFFF; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: background 0.15s ease; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box;';
 
     if (canPerformPengurusReceiverReview(tx, currentUser)) {
       actionBtnHtml = `<button class="btn-action-review" data-id="${tx.id}" style="${btnActionStyle}">Review Permintaan</button>`;
@@ -2615,7 +2685,7 @@ export async function renderRequestMataEntresLanding() {
     }
 
     return `
-      <div class="card-mata-entres" data-index="${idx}" style="background: #FFFFFF; border: 1px solid ${isExpanded ? '#116834' : '#E2E8F0'}; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: all 0.15s ease;">
+      <div class="card-mata-entres" data-index="${idx}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: all 0.15s ease;">
         
         <!-- ROW 1: NO DOKUMEN & BADGE STATUS -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px;">
@@ -2644,87 +2714,20 @@ export async function renderRequestMataEntresLanding() {
         </div>
 
         <!-- ROW 4: BANYAKNYA & TANGGAL -->
-        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-bottom: ${isExpanded ? '0' : '4px'};">
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-bottom: 4px;">
           <span style="font-weight: 800; color: #116834; font-size: 0.82rem;">${qtyFormatted}</span>
           <span style="color: #64748B; font-size: 0.72rem;">Dibutuhkan: ${esc(formattedRequiredDate || '-')}</span>
         </div>
 
-        <!-- EXPANDED DETAILS -->
-        ${isExpanded ? `
-          <div style="border-top: 1px dashed #E2E8F0; padding-top: 10px; margin-top: 8px; font-size: 0.75rem;">
-            <div style="display: grid; grid-template-columns: 42% 58%; gap: 6px; font-size: 0.75rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;">
-              <span style="color: #64748B;">Tgl Pengajuan</span>
-              <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(formattedRequestDate)}</span>
-
-              ${tx.approval ? `
-                <span style="color: #15803D; font-weight: 700;">Disetujui Pengurus</span>
-                <span style="font-weight: 800; color: #15803D; text-align: right;">${tx.approval.approvedMataEntres ? tx.approval.approvedMataEntres.toLocaleString('id-ID') + ' Mata' : '-'} ${tx.approval.approvedBatang ? '(' + tx.approval.approvedBatang.toLocaleString('id-ID') + ' Btg)' : ''}</span>
-                
-                ${tx.approval.approvedKlon ? `
-                  <span style="color: #15803D; font-weight: 700;">Klon Disetujui</span>
-                  <span style="font-weight: 700; color: #15803D; text-align: right;">${esc(tx.approval.approvedKlon)}</span>
-                ` : ''}
-
-                ${tx.approval.estimatedDeliveryDate ? `
-                  <span style="color: #15803D; font-weight: 700;">Estimasi Kirim</span>
-                  <span style="font-weight: 700; color: #15803D; text-align: right;">${esc(formatDate(tx.approval.estimatedDeliveryDate))}</span>
-                ` : ''}
-              ` : ''}
-
-              ${tx.sourceDivisionId ? `
-                <span style="color: #64748B;">Divisi Bibitan Sumber</span>
-                <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(resolveNurseryDivision(tx.sourceDivisionId, tx.targetEstateId)?.divisionName || tx.sourceDivisionId)}</span>
-              ` : ''}
-
-              ${tx.targetDivisionId ? `
-                <span style="color: #64748B;">Divisi Bibitan Tujuan</span>
-                <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(resolveNurseryDivision(tx.targetDivisionId, tx.sourceEstateId)?.divisionName || tx.targetDivisionId)}</span>
-              ` : ''}
-
-              ${tx.jumlahBatangDikeluarkan !== null && tx.jumlahBatangDikeluarkan !== undefined ? `
-                <span style="color: #6D28D9; font-weight: 700;">Realisasi Keluar</span>
-                <span style="font-weight: 800; color: #6D28D9; text-align: right;">${tx.jumlahMataEntresDikeluarkan ? tx.jumlahMataEntresDikeluarkan.toLocaleString('id-ID') + ' Mata' : '-'} ${tx.jumlahBatangDikeluarkan ? '(' + tx.jumlahBatangDikeluarkan + ' Btg)' : ''}</span>
-                <span style="color: #6D28D9; font-weight: 700;">Tgl Pengeluaran</span>
-                <span style="font-weight: 700; color: #6D28D9; text-align: right;">${esc(formatDate(tx.tanggalPengeluaran || '-'))}</span>
-              ` : ''}
-
-              ${tx.jumlahBatangDiterima !== null && tx.jumlahBatangDiterima !== undefined ? `
-                <span style="color: #047857; font-weight: 700;">Realisasi Diterima</span>
-                <span style="font-weight: 800; color: #047857; text-align: right;">${tx.jumlahMataEntresDiterima ? tx.jumlahMataEntresDiterima.toLocaleString('id-ID') + ' Mata' : '-'} ${tx.jumlahBatangDiterima ? '(' + tx.jumlahBatangDiterima + ' Btg)' : ''}</span>
-                ${tx.rejectBatang ? `
-                  <span style="color: #DC2626; font-weight: 700;">Afkir / Reject</span>
-                  <span style="font-weight: 700; color: #DC2626; text-align: right;">${tx.rejectBatang} Btg</span>
-                ` : ''}
-                <span style="color: #047857; font-weight: 700;">Tgl Penerimaan</span>
-                <span style="font-weight: 700; color: #047857; text-align: right;">${esc(formatDate(tx.tanggalPenerimaan || '-'))}</span>
-              ` : ''}
-
-              ${tx.catatan ? `
-                <span style="color: #64748B;">Catatan</span>
-                <span style="font-style: italic; color: #334155; text-align: right;">${esc(tx.catatan)}</span>
-              ` : ''}
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 4px;">
-              <button class="btn-view-detail" data-id="${tx.id}" type="button" style="background: transparent; border: none; color: #116834; font-size: 0.74rem; font-weight: 700; cursor: pointer; padding: 4px 0;">
-                Lihat Detail Lengkap ↗
-              </button>
-              <button class="btn-toggle-expand" data-index="${idx}" type="button" style="background: transparent; border: none; color: #64748B; font-size: 0.74rem; font-weight: 600; cursor: pointer; padding: 4px 6px;">
-                Tutup Detail ▲
-              </button>
-            </div>
+        <!-- CARD FOOTER ACTIONS -->
+        <div class="action-footer" style="display: flex; gap: 6px; align-items: center; justify-content: space-between; border-top: 1px dashed #F1F5F9; padding-top: 8px; margin-top: 6px;">
+          <div class="action-group" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            ${actionBtnHtml}
           </div>
-        ` : ''}
-
-        <!-- CARD FOOTER ACTIONS (when not expanded or action buttons present) -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: ${isExpanded ? '6px' : '8px'}; padding-top: 6px; border-top: 1px dashed #F1F5F9;">
-          ${!isExpanded ? `
-            <button class="btn-toggle-expand" data-index="${idx}" style="background: transparent; border: 1px solid #CBD5E1; color: #334155; font-size: 0.72rem; font-weight: 600; padding: 4px 10px; border-radius: 5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+          <div class="detail-action" style="margin-left: auto;">
+            <button class="btn-view-detail" data-id="${tx.id}" type="button" style="background: transparent; border: 1px solid #CBD5E1; color: #334155; font-size: 0.72rem; font-weight: 600; padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; line-height: 1.2; box-sizing: border-box; white-space: nowrap;">
               Detail ▼
             </button>
-          ` : '<div></div>'}
-          <div style="display: flex; gap: 6px; align-items: center;">
-            ${actionBtnHtml}
           </div>
         </div>
 
@@ -2758,30 +2761,37 @@ export async function renderRequestMataEntresLanding() {
         </div>
       </header>
 
-      <!-- MAIN BODY -->
-      <main style="flex: 1; overflow-y: auto; padding: 12px 16px; max-width: 600px; margin: 0 auto; width: 100%; box-sizing: border-box;">
-        
-        <!-- DUAL TABS SELECTOR (Permintaan Saya vs Permintaan Masuk) -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #F1F5F9; padding: 4px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #E2E8F0;">
+      <!-- TABS NAV (Permintaan Saya vs Permintaan Masuk + Notif Bubble 🔴) -->
+      <div style="background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 16px; flex-shrink: 0;">
+        <div style="display: flex; gap: 4px; max-width: 600px; margin: 0 auto;">
           <button 
             id="tab-my-requests" 
-            style="position: relative; padding: 8px 10px; border: none; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease; ${activeTab === 'MY_REQUESTS' ? 'background: #FFFFFF; color: #116834; box-shadow: 0 1px 3px rgba(0,0,0,0.06);' : 'background: transparent; color: #64748B;'}"
+            type="button" 
+            style="flex: 1; padding: 8px 4px; background: transparent; border: none; border-bottom: 2px solid ${activeTab === 'MY_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'MY_REQUESTS' ? '800' : '600'}; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;"
           >
-            Permintaan Saya (${myRequests.length})
-            ${actionableMyCount > 0 ? `
-              <span style="display: inline-block; width: 7px; height: 7px; background: #DC2626; border-radius: 50%; position: absolute; top: 6px; right: 8px;"></span>
-            ` : ''}
+            <span>Permintaan Saya</span>
+            ${actionableMyCount > 0 ? `<span style="display: inline-block; width: 7px; height: 7px; background: #DC2626; border-radius: 50%;"></span>` : ''}
+            <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; background: ${activeTab === 'MY_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700;">
+              ${myRequests.length}
+            </span>
           </button>
+          
           <button 
             id="tab-incoming-requests" 
-            style="position: relative; padding: 8px 10px; border: none; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease; ${activeTab === 'INCOMING_REQUESTS' ? 'background: #FFFFFF; color: #116834; box-shadow: 0 1px 3px rgba(0,0,0,0.06);' : 'background: transparent; color: #64748B;'}"
+            type="button" 
+            style="flex: 1; padding: 8px 4px; background: transparent; border: none; border-bottom: 2px solid ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'INCOMING_REQUESTS' ? '800' : '600'}; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;"
           >
-            Permintaan Masuk (${incomingRequests.length})
-            ${actionableIncomingCount > 0 ? `
-              <span style="display: inline-block; width: 7px; height: 7px; background: #DC2626; border-radius: 50%; position: absolute; top: 6px; right: 8px;"></span>
-            ` : ''}
+            <span>Permintaan Masuk</span>
+            ${actionableIncomingCount > 0 ? `<span class="notif-dot" style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #DC2626;"></span>` : ''}
+            <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; background: ${activeTab === 'INCOMING_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700;">
+              ${incomingRequests.length}
+            </span>
           </button>
         </div>
+      </div>
+
+      <!-- MAIN BODY -->
+      <main style="flex: 1; overflow-y: auto; padding: 12px 16px; max-width: 600px; margin: 0 auto; width: 100%; box-sizing: border-box;">
 
         <!-- STATUS FILTER PILLS -->
         <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px; scrollbar-width: none;">
@@ -2837,14 +2847,6 @@ export async function renderRequestMataEntresLanding() {
   app.querySelectorAll('.tab-filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       activeStatusFilter = btn.dataset.filter;
-      renderRequestMataEntresLanding();
-    });
-  });
-
-  app.querySelectorAll('.btn-toggle-expand').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.index, 10);
-      expandedCardIndex = expandedCardIndex === idx ? -1 : idx;
       renderRequestMataEntresLanding();
     });
   });

@@ -17,6 +17,7 @@ import { session } from './session.js';
 import { storage } from './storage.js';
 import { ROLES } from './permissions.js';
 import { todayISO, esc } from './utils.js';
+import { getEffectiveDate } from './simulation-clock-service.js';
 import { getCurrentUserContext } from './user-context.js';
 import { navigate } from './router.js';
 import { toast } from '../components/toast.js';
@@ -47,7 +48,7 @@ export function getGlobalAttendanceGateStatus(userContext = null, targetDate = n
   const role = activeUser.role || session.getRole();
   const dateStr = (typeof targetDate === 'string' && targetDate.trim().length >= 10) 
     ? targetDate.trim().slice(0, 10) 
-    : todayISO();
+    : getEffectiveDate();
 
   // Role selain MANTRI_TANAMAN tidak terkena Global Attendance Gate
   if (role && role !== ROLES.MANTRI_TANAMAN) {

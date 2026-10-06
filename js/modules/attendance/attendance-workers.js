@@ -16,6 +16,7 @@ import {
 } from '../../data/worker-master.js';
 import { workerRepository, attendanceRepository, photoRepository } from '../../db/repositories.js';
 import { todayISO, nowISO, nowTimeWithSeconds, uid, esc, getAttendanceUniqueKey } from '../../core/utils.js';
+import { getEffectiveDate, getEffectiveTimeWithSeconds, getEffectiveISO } from '../../core/simulation-clock-service.js';
 import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
 import { confirmDialog, openModal, closeModal } from '../../components/modal.js';
@@ -104,7 +105,7 @@ export async function renderAttendanceWorkers() {
   const app = document.getElementById('app');
   const user = session.get() || { name: 'Wagiman', code: '1405482', position: ROLE_LABELS.MANTRI_TANAMAN, id: 'MNT001' };
   const userContext = getCurrentUserContext();
-  const today = todayISO();
+  const today = getEffectiveDate();
   const attType = getAttendanceTypeByHour();
 
   // Reset state jika terjadi pergantian context / persona
@@ -402,16 +403,16 @@ export async function renderAttendanceWorkers() {
           method: 'REKAM_DATA_WAJAH',
           photoId,
           photo: photoData,
-          capturedAt: state?.iso || existingRecord?.capturedAt || nowISO(),
+          capturedAt: state?.iso || existingRecord?.capturedAt || getEffectiveISO(),
           date: today,
           tanggal: today,
-          time: state?.time || existingRecord?.time || nowTimeWithSeconds(),
+          time: state?.time || existingRecord?.time || getEffectiveTimeWithSeconds(),
           location: locationStr,
           estateId: userContext?.estateId,
           divisionId: userContext?.divisionId,
           latitude: state?.latitude || existingRecord?.latitude || '3.1943859',
           longitude: state?.longitude || existingRecord?.longitude || '11.2312083',
-          createdAt: existingRecord?.createdAt || nowISO(),
+          createdAt: existingRecord?.createdAt || getEffectiveISO(),
           createdBy: user.id || 'MNT001',
           status: 'HADIR'
         };
@@ -424,7 +425,7 @@ export async function renderAttendanceWorkers() {
             entityType: 'ATTENDANCE',
             entityId: recordId,
             data: photoData,
-            createdAt: nowISO()
+            createdAt: getEffectiveISO()
           });
         }
       }
@@ -839,8 +840,8 @@ async function openWorkerCamera(worker) {
     workerSessionAttendance.set(worker.id, {
       checkedIn: true,
       photo: photoData,
-      time: nowTimeWithSeconds(),
-      iso: nowISO(),
+      time: getEffectiveTimeWithSeconds(),
+      iso: getEffectiveISO(),
       latitude: '3.1943859',
       longitude: '11.2312083'
     });

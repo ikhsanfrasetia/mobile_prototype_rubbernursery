@@ -83,6 +83,9 @@ export const session = {
   },
 
   clear() {
+    try {
+      localStorage.removeItem('sigma_simulation_clock_mantri');
+    } catch (_) {}
     storage.remove(KEYS.SESSION);
   }
 };

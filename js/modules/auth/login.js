@@ -6,7 +6,7 @@
 import { session } from '../../core/session.js';
 import { navigate } from '../../core/router.js';
 import { userRepository } from '../../db/repositories.js';
-import { ROLE_LABELS } from '../../core/permissions.js';
+import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
 import { esc } from '../../core/utils.js';
 import { storage } from '../../core/storage.js';
 import { openModal, closeModal } from '../../components/modal.js';
@@ -168,9 +168,10 @@ export async function renderLogin() {
 }
 
 function openRolePicker(users, showError) {
-  const allPersonas = getDemoPersonas();
-  const tbsPersonas = allPersonas.filter((p) => p.estateId === 'EST-TBS');
-  const apmPersonas = allPersonas.filter((p) => p.estateId === 'EST-APM');
+  const HIDDEN_SWITCHER_ROLES = [ROLES.KTU, ROLES.TEKNIKER_I];
+  const visiblePersonas = getDemoPersonas().filter((p) => !HIDDEN_SWITCHER_ROLES.includes(p.role));
+  const tbsPersonas = visiblePersonas.filter((p) => p.estateId === 'EST-TBS');
+  const apmPersonas = visiblePersonas.filter((p) => p.estateId === 'EST-APM');
 
   const currentSession = session.get();
   const currentCode = currentSession?.code || currentSession?.userId || currentSession?.id || 'MNT001';

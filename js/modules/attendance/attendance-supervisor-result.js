@@ -13,6 +13,7 @@ import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
 import { confirmDialog } from '../../components/modal.js';
 import { formatFullDateIndonesian, nowISO, todayISO, nowTimeWithSeconds, uid, esc, getAttendanceUniqueKey } from '../../core/utils.js';
+import { getEffectiveDate, getEffectiveTimeWithSeconds, getEffectiveISO } from '../../core/simulation-clock-service.js';
 import { ROLE_LABELS } from '../../core/permissions.js';
 
 export async function renderAttendanceSupervisorResult() {
@@ -29,9 +30,9 @@ export async function renderAttendanceSupervisorResult() {
     userName: user.name || 'Wagiman',
     position: user.position || ROLE_LABELS.MANTRI_TANAMAN,
     photo: 'assets/icons/supervisor_wagiman.jpg',
-    time: nowTimeWithSeconds(),
-    date: todayISO(),
-    iso: nowISO(),
+    time: getEffectiveTimeWithSeconds(),
+    date: getEffectiveDate(),
+    iso: getEffectiveISO(),
     latitude: '3.1943859',
     longitude: '11.2312083',
     method: 'REKAM_DATA_WAJAH'
@@ -124,7 +125,7 @@ export async function renderAttendanceSupervisorResult() {
   saveBtn.addEventListener('click', async () => {
     if (isSaving) return;
 
-    const today = capture.date || todayISO();
+    const today = capture.date || getEffectiveDate();
     const currentUserId = user.id || 'MNT001';
     const currentUserCode = capture.userCode || user.code || user.id || '1405482';
     const currentUserName = capture.userName || user.name || 'Wagiman';
@@ -166,6 +167,7 @@ export async function renderAttendanceSupervisorResult() {
     try {
       const recordId = uid('ATT-SUP-');
       const photoId = capture.photo ? `PHOTO-${recordId}` : null;
+      const effectiveIso = capture.iso || getEffectiveISO();
 
       const supervisorRecord = {
         id: recordId,
@@ -181,14 +183,14 @@ export async function renderAttendanceSupervisorResult() {
         method: 'REKAM_DATA_WAJAH',
         photoId,
         photo: capture.photo || '',
-        capturedAt: capture.iso || nowISO(),
+        capturedAt: effectiveIso,
         date: today,
         tanggal: today,
-        time: capture.time || nowTimeWithSeconds(),
+        time: capture.time || getEffectiveTimeWithSeconds(),
         location: 'Tanah Besih - Divisi I',
         latitude: capture.latitude || '3.1943859',
         longitude: capture.longitude || '11.2312083',
-        createdAt: nowISO(),
+        createdAt: effectiveIso,
         createdBy: currentUserId,
         status: 'HADIR'
       };

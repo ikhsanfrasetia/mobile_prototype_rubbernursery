@@ -9,6 +9,7 @@ import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
 import { attendanceRepository } from '../../db/repositories.js';
 import { nowISO, nowTimeWithSeconds, todayISO } from '../../core/utils.js';
+import { getEffectiveDate, getEffectiveTimeWithSeconds, getEffectiveISO } from '../../core/simulation-clock-service.js';
 import { getAttendanceTypeByHour } from './attendance-landing.js';
 import { ROLE_LABELS } from '../../core/permissions.js';
 
@@ -30,7 +31,7 @@ export async function renderAttendanceSupervisor() {
   const userCode = user.code || user.id || '1405482';
   const userName = user.name || 'Wagiman';
   const identityText = `${userCode}-${userName}`;
-  const today = todayISO();
+  const today = getEffectiveDate();
   const attType = getAttendanceTypeByHour();
   const cameraTitle = attType === 'PULANG' ? 'Presensi Pulang' : 'Presensi Datang';
 
@@ -145,9 +146,9 @@ export async function renderAttendanceSupervisor() {
     shutterBtn.disabled = true;
 
     let capturedPhotoData = '';
-    const captureTime = nowTimeWithSeconds();
-    const captureDate = todayISO();
-    const capturedIso = nowISO();
+    const captureTime = getEffectiveTimeWithSeconds();
+    const captureDate = getEffectiveDate();
+    const capturedIso = getEffectiveISO();
 
     // Default GPS Coordinates (Kebun Socfindo)
     let latitude = '3.1943859';

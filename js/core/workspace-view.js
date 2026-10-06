@@ -146,6 +146,8 @@ export function updateWorkspaceActivePageLabel() {
     '/selection/culling': 'Pemusnahan Bibit',
     '/consolidation': 'Konsolidasi Bibitan',
     '/verification': 'Verifikasi Lapangan',
+    '/reports': 'Laporan',
+    '/reports/stock': 'Laporan Stok Bibit',
     '/profile': 'Profil Pengguna'
   };
 

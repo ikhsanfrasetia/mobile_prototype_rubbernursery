@@ -31,8 +31,21 @@ import { toast } from '../../components/toast.js';
 import { requestRepository } from '../../db/repositories.js';
 import { resolveTransactionActor, applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 import { resolveEstate, getNurseryDivisionsByEstate, resolveNurseryDivision } from '../../data/estate-master.js';
+import { getActiveKlons } from '../../data/klon-master.js';
+import { getCfnaByCode } from '../../data/cfna-master.js';
 import { formatDate, esc } from '../../core/utils.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+
+export function formatAllocationDisplay(code) {
+  if (!code || code === '-') return '-';
+  const clean = String(code).trim();
+  if (!clean || clean === '-') return '-';
+  const cfna = getCfnaByCode(clean);
+  if (cfna && cfna.name) {
+    return `${clean} - ${cfna.name}`;
+  }
+  return `${clean} - -`;
+}
 
 export function matchEstateHelper(estA, estB) {
   if (!estA || !estB) return true;
@@ -167,7 +180,7 @@ export function getActionableIncomingCount(incomingRequests, currentUser) {
 }
 
 /**
- * Filter permohonan milik user aktif (Strict Ownership)
+ * Filter permohonan milik user aktif (Strict Ownership & Type Isolation KEBUN_SEPUPU)
  */
 export function filterMyRequests(requests, currentUser) {
   if (!Array.isArray(requests) || !currentUser) return [];
@@ -175,6 +188,10 @@ export function filterMyRequests(requests, currentUser) {
   const currentLoginCode = currentUser.loginCode || currentUser.code;
 
   return requests.filter(tx => {
+    // Isolasi tipe transaksi: Hanya KEBUN_SEPUPU yang ditampilkan pada Hub Permintaan Bibit Kebun Sepupu
+    const isKebunSepupu = tx.type === 'KEBUN_SEPUPU' || (!tx.type && (tx.docNo || '').includes('/NIR/'));
+    if (!isKebunSepupu) return false;
+
     const actor = resolveTransactionActor(tx);
     const isOwner = (
       (tx.userId && tx.userId === currentUserId) ||
@@ -199,7 +216,8 @@ export function filterIncomingRequests(requests, currentUser) {
   if (userRole !== 'PENGURUS' && userRole !== 'ASKEP' && userRole !== 'ASISTEN_KEPALA' && userRole !== 'ASISTEN_BIBITAN') return [];
 
   return requests.filter(tx => {
-    const isRequestType = tx.type === 'KEBUN_SEPUPU' || tx.type === 'KEBUN_SENDIRI' || !tx.type;
+    // Isolasi tipe transaksi: Hanya KEBUN_SEPUPU yang masuk ke Permintaan Masuk Kebun Sepupu
+    const isRequestType = tx.type === 'KEBUN_SEPUPU' || (!tx.type && (tx.docNo || '').includes('/NIR/'));
     if (!isRequestType) return false;
     const targetEstate = tx.targetEstateId || tx.targetEstate || tx.senderEstateId || tx.targetNextEstateId;
     const sourceEstate = tx.estateId || tx.sourceEstateId || tx.requesterEstate;
@@ -338,7 +356,7 @@ export function openReviewModal(item, currentUser) {
             <span style="font-weight: 700; color: #116834; text-align: right;">${esc(docNo)}</span>
 
             <span style="color: #64748B;">Pemohon</span>
-            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedBy || item.createdByName || 'Pengurus')}</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedBy || item.createdByName || '-')}</span>
 
             <span style="color: #64748B;">Kebun Asal</span>
             <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(sourceName)}</span>
@@ -347,7 +365,7 @@ export function openReviewModal(item, currentUser) {
             <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(targetName)}</span>
 
             <span style="color: #64748B;">Kode Alokasi</span>
-            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.allocationCode || '-')}</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(formatAllocationDisplay(item.allocationCode))}</span>
 
             <span style="color: #64748B;">Klon Diminta</span>
             <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedClone || item.klon || '-')}</span>
@@ -415,16 +433,11 @@ export function openReviewModal(item, currentUser) {
       </div>
     `,
     footer: `
-      <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
-        <div style="display: flex; gap: 8px; width: 100%;">
-          <button class="btn btn-ghost" id="btn-review-cancel" type="button" style="flex: 1; border: 1px solid #CBD5E1; color: #475569; font-weight: 600; padding: 8px;">
-            Batal
-          </button>
-          <button class="btn" id="btn-review-reject" type="button" style="flex: 1; border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-weight: 700; border-radius: 8px; padding: 8px;">
-            Tolak Permintaan
-          </button>
-        </div>
-        <button class="btn" id="btn-review-approve-forward" type="button" style="width: 100%; background: #116834; color: #FFFFFF; border: none; font-weight: 700; border-radius: 8px; padding: 10px; cursor: pointer;">
+      <div style="display: flex; gap: 8px; justify-content: flex-end; width: 100%;">
+        <button class="btn" id="btn-review-reject" type="button" style="padding: 7px 14px; background: #FFFFFF; border: 1px solid #DC2626; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #DC2626; cursor: pointer;">
+          Tolak Permintaan
+        </button>
+        <button class="btn" id="btn-review-approve-forward" type="button" style="padding: 7px 16px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer;">
           Setujui & Teruskan
         </button>
       </div>
@@ -433,10 +446,7 @@ export function openReviewModal(item, currentUser) {
 
   const root = document.getElementById('modal-root');
   
-  // 1. Tombol Batal
-  root?.querySelector('#btn-review-cancel')?.addEventListener('click', closeModal);
-
-  // 2. Tombol Tolak -> Buka Modal Penolakan
+  // 1. Tombol Tolak -> Buka Modal Penolakan
   root?.querySelector('#btn-review-reject')?.addEventListener('click', () => {
     closeModal();
     handleRejectRequestModal(item, currentUser);
@@ -563,7 +573,7 @@ export function openAskepReviewModal(item, currentUser) {
             <span style="font-weight: 700; color: #116834; text-align: right;">${esc(docNo)}</span>
 
             <span style="color: #64748B;">Pemohon</span>
-            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedBy || item.createdByName || 'Pengurus')}</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedBy || item.createdByName || '-')}</span>
 
             <span style="color: #64748B;">Kebun Asal</span>
             <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(sourceName)}</span>
@@ -572,7 +582,7 @@ export function openAskepReviewModal(item, currentUser) {
             <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(targetName)}</span>
 
             <span style="color: #64748B;">Kode Alokasi</span>
-            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.allocationCode || '-')}</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(formatAllocationDisplay(item.allocationCode))}</span>
 
             <span style="color: #64748B;">Klon Diminta</span>
             <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedClone || item.klon || '-')}</span>
@@ -1220,15 +1230,15 @@ function renderRequestCards(items, currentUser) {
  * Render Satu Kartu Transaksi (Compact + Expand/Collapse + Workflow Actions)
  */
 function renderSingleCard(item, index, currentUser) {
-  const docNo = item.docNo || item.nomorDokumen || '2026/NIR/001';
+  const docNo = item.docNo || item.nomorDokumen || '-';
   const status = (item.status || 'DIAJUKAN').toUpperCase();
   const isExpanded = expandedCardIndex === index;
   
   // Resolve Nama Kebun
   const sourceEstate = resolveEstate(item.estateId);
   const targetEstate = resolveEstate(item.targetEstateId);
-  const sourceName = sourceEstate ? sourceEstate.estate_name : (item.estateId || 'Tanah Besih');
-  const targetName = targetEstate ? targetEstate.estate_name : (item.targetEstateName || item.targetEstateId || 'Aek Pamingke');
+  const sourceName = sourceEstate ? sourceEstate.estate_name : (item.estateId || '-');
+  const targetName = targetEstate ? targetEstate.estate_name : (item.targetEstateName || item.targetEstateId || '-');
 
   // Status Badge Colors & Labels
   let badgeBg = '#EFF6FF';
@@ -1291,20 +1301,12 @@ function renderSingleCard(item, index, currentUser) {
     cardActionButtons = `
       <div style="display: flex; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #E2E8F0;">
         <button 
-          class="btn-card-reject" 
+          class="btn-action-review" 
           data-index="${index}" 
           type="button" 
-          style="flex: 1; border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.75rem; font-weight: 700; padding: 7px 8px; border-radius: 6px; cursor: pointer;"
+          style="flex: 1; background: #116834; color: #FFFFFF; border: 1px solid #116834; font-size: 0.75rem; font-weight: 700; padding: 7px 8px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;"
         >
-          Tolak Permintaan
-        </button>
-        <button 
-          class="btn-card-process" 
-          data-index="${index}" 
-          type="button" 
-          style="flex: 1; background: #116834; color: #FFFFFF; border: none; font-size: 0.75rem; font-weight: 700; padding: 7px 8px; border-radius: 6px; cursor: pointer;"
-        >
-          ${status === 'PERLU_REVISI_PENGURUS' ? 'Revisi Permintaan' : 'Proses Permintaan'}
+          Review Permintaan
         </button>
       </div>
     `;
@@ -1358,13 +1360,13 @@ function renderSingleCard(item, index, currentUser) {
     <div class="card-expanded-detail" style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #E2E8F0;">
       <div style="display: grid; grid-template-columns: 40% 60%; gap: 4px; font-size: 0.75rem; padding: 0 2px;">
         <span style="color: #64748B;">Pemohon</span>
-        <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedBy || item.createdByName || 'Pengurus')}</span>
+        <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedBy || item.createdByName || '-')}</span>
 
         <span style="color: #64748B;">Tujuan Permintaan</span>
-        <span style="font-weight: 700; color: #1E293B; text-align: right; overflow-wrap: anywhere;">${esc(item.purpose || 'Penanaman / Bibit Tanam')}</span>
+        <span style="font-weight: 700; color: #1E293B; text-align: right; overflow-wrap: anywhere;">${esc(item.purpose || '-')}</span>
 
         <span style="color: #64748B;">Kode Alokasi</span>
-        <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.allocationCode || '-')}</span>
+        <span style="font-weight: 700; color: #1E293B; text-align: right; overflow-wrap: anywhere;">${esc(formatAllocationDisplay(item.allocationCode))}</span>
 
         <span style="color: #64748B;">Tahapan Pertumbuhan</span>
         <span style="font-weight: 700; color: #1E293B; text-align: right; overflow-wrap: anywhere;">${esc(item.growthStage || '-')}</span>
@@ -1439,113 +1441,75 @@ function renderSingleCard(item, index, currentUser) {
   // Unexpanded footer markup
   let unexpandedFooter = '';
   if (!isExpanded) {
+    let actionGroupHtml = '';
     if (isPengurusAuthorized && (status === 'DIAJUKAN' || status === 'PERLU_REVISI_PENGURUS')) {
-      unexpandedFooter = `
-        <div style="display: flex; gap: 6px; align-items: center; justify-content: space-between; border-top: 1px dashed #F1F5F9; padding-top: 8px; margin-top: 6px;">
-          <button 
-            class="btn-view-detail" 
-            data-index="${index}"
-            type="button" 
-            style="background: transparent; border: 1px solid #CBD5E1; color: #334155; font-size: 0.72rem; font-weight: 600; padding: 4px 8px; border-radius: 5px; cursor: pointer;"
-          >
-            Detail ▼
-          </button>
-          <div style="display: flex; gap: 6px;">
-            <button 
-              class="btn-card-reject" 
-              data-index="${index}" 
-              type="button" 
-              style="border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.72rem; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;"
-            >
-              Tolak Permintaan
-            </button>
-            <button 
-              class="btn-card-process" 
-              data-index="${index}" 
-              type="button" 
-              style="background: #116834; color: #FFFFFF; border: none; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 5px; cursor: pointer;"
-            >
-              ${status === 'PERLU_REVISI_PENGURUS' ? 'Revisi Permintaan' : 'Proses Permintaan'}
-            </button>
-          </div>
-        </div>
+      actionGroupHtml = `
+        <button 
+          class="btn-action-review" 
+          data-index="${index}" 
+          type="button" 
+          style="padding: 5px 10px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.72rem; font-weight: 700; color: #FFFFFF; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: background 0.15s ease; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box;"
+        >
+          Review Permintaan
+        </button>
       `;
     } else if (isAskepAuthorized && (status === 'MENUNGGU_VERIFIKASI_ASISTEN_KEPALA' || status === 'PERLU_REVISI_ASISTEN_KEPALA')) {
-      unexpandedFooter = `
-        <div style="display: flex; gap: 6px; align-items: center; justify-content: space-between; border-top: 1px dashed #F1F5F9; padding-top: 8px; margin-top: 6px;">
-          <button 
-            class="btn-view-detail" 
-            data-index="${index}"
-            type="button" 
-            style="background: transparent; border: 1px solid #CBD5E1; color: #334155; font-size: 0.72rem; font-weight: 600; padding: 4px 8px; border-radius: 5px; cursor: pointer;"
-          >
-            Detail ▼
-          </button>
-          <div style="display: flex; gap: 6px;">
-            <button 
-              class="btn-card-askep-return" 
-              data-index="${index}" 
-              type="button" 
-              style="border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.72rem; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;"
-            >
-              Kembalikan
-            </button>
-            <button 
-              class="btn-card-askep-process" 
-              data-index="${index}" 
-              type="button" 
-              style="background: #116834; color: #FFFFFF; border: none; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 5px; cursor: pointer;"
-            >
-              Verifikasi
-            </button>
-          </div>
-        </div>
+      actionGroupHtml = `
+        <button 
+          class="btn-card-askep-return" 
+          data-index="${index}" 
+          type="button" 
+          style="border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.72rem; font-weight: 700; padding: 5px 9px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
+        >
+          Kembalikan
+        </button>
+        <button 
+          class="btn-card-askep-process" 
+          data-index="${index}" 
+          type="button" 
+          style="background: #116834; color: #FFFFFF; border: 1px solid #116834; font-size: 0.72rem; font-weight: 700; padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
+        >
+          Verifikasi
+        </button>
       `;
     } else if (isAsistenAuthorized && (status === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' || status === 'MENUNGGU_VERIFIKASI_ASISTEN')) {
-      unexpandedFooter = `
-        <div style="display: flex; gap: 6px; align-items: center; justify-content: space-between; border-top: 1px dashed #F1F5F9; padding-top: 8px; margin-top: 6px;">
-          <button 
-            class="btn-view-detail" 
-            data-index="${index}"
-            type="button" 
-            style="background: transparent; border: 1px solid #CBD5E1; color: #334155; font-size: 0.72rem; font-weight: 600; padding: 4px 8px; border-radius: 5px; cursor: pointer;"
-          >
-            Detail ▼
-          </button>
-          <div style="display: flex; gap: 6px;">
-            <button 
-              class="btn-card-return" 
-              data-index="${index}" 
-              type="button" 
-              style="border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.72rem; font-weight: 700; padding: 4px 8px; border-radius: 5px; cursor: pointer;"
-            >
-              Kembalikan
-            </button>
-            <button 
-              class="btn-card-verify" 
-              data-index="${index}" 
-              type="button" 
-              style="background: #116834; color: #FFFFFF; border: none; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 5px; cursor: pointer;"
-            >
-              Verifikasi
-            </button>
-          </div>
-        </div>
-      `;
-    } else {
-      unexpandedFooter = `
-        <div style="display: flex; justify-content: flex-end; border-top: 1px dashed #F1F5F9; padding-top: 6px; margin-top: 6px;">
-          <button 
-            class="btn-view-detail" 
-            data-index="${index}"
-            type="button" 
-            style="background: transparent; border: 1px solid #CBD5E1; color: #334155; font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 5px; cursor: pointer;"
-          >
-            Detail ▼
-          </button>
-        </div>
+      actionGroupHtml = `
+        <button 
+          class="btn-card-return" 
+          data-index="${index}" 
+          type="button" 
+          style="border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.72rem; font-weight: 700; padding: 5px 9px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
+        >
+          Kembalikan
+        </button>
+        <button 
+          class="btn-card-verify" 
+          data-index="${index}" 
+          type="button" 
+          style="background: #116834; color: #FFFFFF; border: 1px solid #116834; font-size: 0.72rem; font-weight: 700; padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
+        >
+          Verifikasi
+        </button>
       `;
     }
+
+    unexpandedFooter = `
+      <div class="action-footer" style="display: flex; gap: 6px; align-items: center; justify-content: space-between; border-top: 1px dashed #F1F5F9; padding-top: 8px; margin-top: 6px;">
+        <div class="action-group" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          ${actionGroupHtml}
+        </div>
+        <div class="detail-action" style="margin-left: auto;">
+          <button 
+            class="btn-view-detail" 
+            data-index="${index}"
+            type="button" 
+            style="background: transparent; border: 1px solid #CBD5E1; color: #334155; font-size: 0.72rem; font-weight: 600; padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
+          >
+            Detail ▼
+          </button>
+        </div>
+      </div>
+    `;
   }
 
   return `
@@ -1607,59 +1571,13 @@ function renderEmptyState(tab) {
  * Modal Detail Transaksi (Read-Only Detail View + Conditional Actions)
  */
 function showDetailModal(item, currentUser) {
-  const docNo = item.docNo || item.nomorDokumen || '2026/NIR/001';
+  const docNo = item.docNo || item.nomorDokumen || '-';
   const sourceEstate = resolveEstate(item.estateId);
   const targetEstate = resolveEstate(item.targetEstateId);
-  const sourceName = sourceEstate ? sourceEstate.estate_name : (item.estateId || 'Tanah Besih');
-  const targetName = targetEstate ? targetEstate.estate_name : (item.targetEstateName || item.targetEstateId || 'Aek Pamingke');
+  const sourceName = sourceEstate ? sourceEstate.estate_name : (item.estateId || '-');
+  const targetName = targetEstate ? targetEstate.estate_name : (item.targetEstateName || item.targetEstateId || '-');
   const qtyFormatted = parseInt(item.qty || item.requestedQty || 0, 10).toLocaleString('id-ID');
   const status = (item.status || 'DIAJUKAN').toUpperCase();
-
-  const isAuthorizedPengurus = canPerformReceiverAction(item, currentUser);
-  const isAuthorizedAskep = canPerformAskepAction(item, currentUser);
-  const isAuthorizedAsisten = canPerformAsistenAction(item, currentUser);
-
-  // Tentukan footer modal aksi berdasarkan otorisasi & status
-  let modalFooterMarkup = `
-    <div style="width: 100%;">
-      <button class="btn btn-ghost" id="btn-close-detail" style="width: 100%; border: 1px solid #CBD5E1; color: #475569; font-weight: 600;">Tutup</button>
-    </div>
-  `;
-
-  if (isAuthorizedPengurus && (status === 'DIAJUKAN' || status === 'PERLU_REVISI_PENGURUS')) {
-    modalFooterMarkup = `
-      <div style="display: flex; gap: 8px; width: 100%;">
-        <button class="btn" id="btn-modal-reject" type="button" style="flex: 1; border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-weight: 700; border-radius: 8px; padding: 8px 12px; cursor: pointer;">
-          Tolak Permintaan
-        </button>
-        <button class="btn" id="btn-modal-process" type="button" style="flex: 1; background: #116834; color: #FFFFFF; border: none; font-weight: 700; border-radius: 8px; padding: 8px 12px; cursor: pointer;">
-          ${status === 'PERLU_REVISI_PENGURUS' ? 'Revisi Permintaan' : 'Proses Permintaan'}
-        </button>
-      </div>
-    `;
-  } else if (isAuthorizedAskep && (status === 'MENUNGGU_VERIFIKASI_ASISTEN_KEPALA' || status === 'PERLU_REVISI_ASISTEN_KEPALA')) {
-    modalFooterMarkup = `
-      <div style="display: flex; gap: 8px; width: 100%;">
-        <button class="btn" id="btn-modal-askep-return" type="button" style="flex: 1; border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-weight: 700; border-radius: 8px; padding: 8px 12px; cursor: pointer;">
-          Kembalikan ke Pengurus
-        </button>
-        <button class="btn" id="btn-modal-askep-process" type="button" style="flex: 1; background: #116834; color: #FFFFFF; border: none; font-weight: 700; border-radius: 8px; padding: 8px 12px; cursor: pointer;">
-          Verifikasi & Teruskan
-        </button>
-      </div>
-    `;
-  } else if (isAuthorizedAsisten && (status === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' || status === 'MENUNGGU_VERIFIKASI_ASISTEN')) {
-    modalFooterMarkup = `
-      <div style="display: flex; gap: 8px; width: 100%;">
-        <button class="btn" id="btn-modal-return" type="button" style="flex: 1; border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-weight: 700; border-radius: 8px; padding: 8px 12px; cursor: pointer;">
-          Kembalikan ke Asisten Kepala
-        </button>
-        <button class="btn" id="btn-modal-verify" type="button" style="flex: 1; background: #116834; color: #FFFFFF; border: none; font-weight: 700; border-radius: 8px; padding: 8px 12px; cursor: pointer;">
-          Verifikasi & Teruskan
-        </button>
-      </div>
-    `;
-  }
 
   openModal({
     title: 'Detail Permintaan Bibit Kebun Sepupu',
@@ -1670,11 +1588,6 @@ function showDetailModal(item, currentUser) {
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #E2E8F0;">
             <span style="color: #64748B;">No. Dokumen</span>
             <span style="font-weight: 800; color: #116834; text-align: right;">${esc(docNo)}</span>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
-            <span style="color: #64748B;">Sumber Permintaan</span>
-            <span style="font-weight: 700; color: #116834; text-align: right;">Kebun Sepupu</span>
           </div>
 
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
@@ -1694,17 +1607,17 @@ function showDetailModal(item, currentUser) {
 
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
             <span style="color: #64748B;">Pemohon</span>
-            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedBy || item.createdByName || 'Pengurus')}</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedBy || item.createdByName || '-')}</span>
           </div>
 
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
             <span style="color: #64748B;">Tujuan Permintaan</span>
-            <span style="font-weight: 700; color: #1E293B; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(item.purpose || 'Penanaman / Bibit Tanam')}</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(item.purpose || '-')}</span>
           </div>
 
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
             <span style="color: #64748B;">Kode Alokasi</span>
-            <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.allocationCode || '-')}</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right; min-width: 0; overflow-wrap: anywhere;">${esc(formatAllocationDisplay(item.allocationCode))}</span>
           </div>
 
           <div style="display: grid; grid-template-columns: 42% 58%; gap: 8px; align-items: start; margin-bottom: 7px;">
@@ -1817,44 +1730,15 @@ function showDetailModal(item, currentUser) {
         </div>
       </div>
     `,
-    footer: modalFooterMarkup
+    footer: `
+      <div style="width: 100%;">
+        <button class="btn btn-ghost" id="btn-close-detail" style="width: 100%; border: 1px solid #CBD5E1; color: #475569; font-weight: 600;">Tutup</button>
+      </div>
+    `
   });
 
   const root = document.getElementById('modal-root');
   root?.querySelector('#btn-close-detail')?.addEventListener('click', closeModal);
-
-  // Wire Pengurus actions
-  root?.querySelector('#btn-modal-process')?.addEventListener('click', () => {
-    closeModal();
-    openReviewModal(item, currentUser);
-  });
-
-  root?.querySelector('#btn-modal-reject')?.addEventListener('click', () => {
-    closeModal();
-    handleRejectRequestModal(item, currentUser);
-  });
-
-  // Wire Askep actions
-  root?.querySelector('#btn-modal-askep-process')?.addEventListener('click', () => {
-    closeModal();
-    openAskepReviewModal(item, currentUser);
-  });
-
-  root?.querySelector('#btn-modal-askep-return')?.addEventListener('click', () => {
-    closeModal();
-    openAskepReturnModal(item, currentUser);
-  });
-
-  // Wire Asisten actions
-  root?.querySelector('#btn-modal-verify')?.addEventListener('click', () => {
-    closeModal();
-    openVerifyModal(item, currentUser);
-  });
-
-  root?.querySelector('#btn-modal-return')?.addEventListener('click', () => {
-    closeModal();
-    openReturnModal(item, currentUser);
-  });
 }
 
 /**
@@ -1941,7 +1825,7 @@ function attachLandingEvents(items, currentUser) {
   });
 
   // Pengurus Card Action: Buka Form Modal Review Permintaan
-  app.querySelectorAll('.btn-card-process').forEach(btn => {
+  app.querySelectorAll('.btn-action-review, .btn-card-process').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(btn.getAttribute('data-index'), 10);

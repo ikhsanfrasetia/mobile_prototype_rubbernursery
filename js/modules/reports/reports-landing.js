@@ -14,14 +14,14 @@ import { renderAsbBottomNav, attachAsbBottomNavEvents } from '../../components/b
 
 const REPORT_ICONS = {
   chart: `
-    <svg viewBox="0 0 24 24" width="48" height="48" fill="#116834">
+    <svg viewBox="0 0 24 24" width="56" height="56" fill="#116834">
       <rect x="3" y="12" width="4" height="9" rx="1" fill="#116834"/>
       <rect x="10" y="7" width="4" height="14" rx="1" fill="#116834"/>
       <rect x="17" y="3" width="4" height="18" rx="1" fill="#116834"/>
     </svg>
   `,
   document: `
-    <svg viewBox="0 0 24 24" width="48" height="48" fill="#116834">
+    <svg viewBox="0 0 24 24" width="56" height="56" fill="#116834">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="#116834"/>
       <polyline points="14 2 14 8 20 8" stroke="#FFFFFF" stroke-width="1.5" fill="none"/>
       <line x1="8" y1="13" x2="16" y2="13" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/>
@@ -34,7 +34,7 @@ export const REPORT_MENUS = [
   {
     id: 'stok-bibit',
     title: 'Stok Bibit',
-    route: '/history',
+    route: '/reports/stock',
     icon: REPORT_ICONS.chart
   },
   {
@@ -50,13 +50,9 @@ export function renderReportsLanding() {
   if (!app) return;
 
   const menuCards = REPORT_MENUS.map((item) => `
-    <button class="report-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 20px 12px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: transform 0.1s ease, box-shadow 0.1s ease; text-align: center; gap: 10px; min-height: 120px;">
-      <div style="display: flex; align-items: center; justify-content: center;">
-        ${item.icon}
-      </div>
-      <div style="font-size: 0.84rem; font-weight: 700; color: #111827; line-height: 1.25;">
-        ${item.title}
-      </div>
+    <button class="beranda-menu-card report-menu-card" data-menu-id="${item.id}" data-route="${item.route}" type="button" style="position: relative;">
+      <div class="beranda-card-icon">${item.icon}</div>
+      <div class="beranda-card-title">${item.title}</div>
     </button>
   `).join('');
 
@@ -91,8 +87,8 @@ export function renderReportsLanding() {
       </header>
 
       <!-- BODY / CARDS GRID -->
-      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 18px 16px;">
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;">
+      <main class="beranda-body" style="flex: 1; min-height: 0; overflow-y: auto; padding: 12px 10px 14px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           ${menuCards}
         </div>
       </main>

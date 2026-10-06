@@ -12,6 +12,7 @@ import { esc } from '../core/utils.js';
 import { getDemoPersonas, getDemoPersonaByCode } from '../data/demo-personas.js';
 import { getCurrentUserContext } from '../core/user-context.js';
 import { ASISTEN_BIBITAN_MAIN_MENUS, ASISTEN_BIBITAN_DATA_MASTER_MENUS } from '../core/menu-registry.js';
+import { isSimulationActive, openSimulationClockModal } from '../core/simulation-clock-service.js';
 
 let drawerEl = null;
 
@@ -93,6 +94,12 @@ const SVGS = {
       <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
       <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
     </svg>
+  `,
+  clock: `
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#222222" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <polyline points="12 6 12 12 16 14"></polyline>
+    </svg>
   `
 };
 
@@ -105,11 +112,14 @@ export function openDrawer() {
   const displayRole = user.position || ROLE_LABELS[user.role] || user.role;
   const currentPath = (getCurrent().route || '/home');
   const isAsistenBibitan = userCtx?.role === ROLES.ASISTEN_BIBITAN || user?.role === ROLES.ASISTEN_BIBITAN;
+  const isMantri = userCtx?.role === ROLES.MANTRI_TANAMAN || user?.role === ROLES.MANTRI_TANAMAN;
+  const isSimActive = isSimulationActive();
 
-  // Load all 14 personas from Master Persona Registry (Phase 3)
-  const allPersonas = getDemoPersonas();
-  const tbsPersonas = allPersonas.filter((p) => p.estateId === 'EST-TBS');
-  const apmPersonas = allPersonas.filter((p) => p.estateId === 'EST-APM');
+  // Load personas from Master Persona Registry excluding hidden switcher roles (KTU & Tekniker I)
+  const HIDDEN_SWITCHER_ROLES = [ROLES.KTU, ROLES.TEKNIKER_I];
+  const visiblePersonas = getDemoPersonas().filter((p) => !HIDDEN_SWITCHER_ROLES.includes(p.role));
+  const tbsPersonas = visiblePersonas.filter((p) => p.estateId === 'EST-TBS');
+  const apmPersonas = visiblePersonas.filter((p) => p.estateId === 'EST-APM');
 
   const currentPersonaCode = user.code || user.userId || user.id;
 
@@ -243,6 +253,19 @@ export function openDrawer() {
           </div>
         </button>
 
+        ${isMantri ? `
+          <button class="drawer-nav-row" id="menu-simulasi-waktu" type="button">
+            <div class="drawer-row-left">
+              <span class="drawer-row-icon">${SVGS.clock}</span>
+              <span class="drawer-row-label">Simulasi Waktu</span>
+              ${isSimActive ? '<span style="font-size: 0.65rem; background: #FEF3C7; color: #92400E; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">AKTIF</span>' : ''}
+            </div>
+            <div class="drawer-row-right">
+              ${SVGS.chevron}
+            </div>
+          </button>
+        ` : ''}
+
         <button class="drawer-nav-row ${currentPath === '/sync' ? 'is-active' : ''}" id="menu-sync" data-nav-route="/sync" type="button">
           <div class="drawer-row-left">
             <span class="drawer-row-icon">${SVGS.sync}</span>
@@ -343,6 +366,12 @@ export function openDrawer() {
       closeDrawer();
       if (target) navigate(target);
     });
+  });
+
+  // Handler Simulasi Waktu
+  drawerEl.querySelector('#menu-simulasi-waktu')?.addEventListener('click', () => {
+    closeDrawer();
+    openSimulationClockModal();
   });
 
   drawerEl.querySelector('#menu-logout')?.addEventListener('click', () => {
