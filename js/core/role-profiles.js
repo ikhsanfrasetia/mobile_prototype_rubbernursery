@@ -79,7 +79,7 @@ export const ROLE_PROFILES = Object.freeze({
     ]),
     status: 'ACTIVE',
     menuReady: true,
-    existingModules: Object.freeze(['inspection', 'review', 'history'])
+    existingModules: Object.freeze(['reception', 'request', 'history'])
   },
 
   [ROLES.ASISTEN_BIBITAN]: {

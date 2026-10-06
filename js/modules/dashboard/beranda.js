@@ -135,11 +135,7 @@ const ASKEP_MENU_ITEMS = [
 
 const ASISTEN_MENU_ITEMS = [
   { id: 'penerimaan', title: 'Penerimaan<br>Bibit', icon: ICONS.documentPlus, route: '/reception/kebun-sepupu' },
-  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' },
-  { id: 'pemeriksaan', title: 'Pemeriksaan', icon: ICONS.documentPlus, route: '/inspection' },
-  { id: 'penyeleksian', title: 'Penyeleksian', icon: ICONS.sprout, route: '/selection' },
-  { id: 'pemeliharaan', title: 'Rekam<br>Pemeliharaan', icon: ICONS.documentPlus, route: '/nursery-activity' },
-  { id: 'pengeluaran-bibit', title: 'Pengeluaran<br>Bibit', icon: ICONS.sprout, route: '/dispatch' }
+  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' }
 ];
 
 function renderBerandaAskep() {
@@ -243,12 +239,9 @@ function renderBerandaAsisten() {
 
   const allRequests = storage.get('requests_transactions', []);
   const hasActionableRequest = hasActionablePermintaan(allRequests, userCtx);
-  const hasActionableDispatch = getActionableDispatchCount(allRequests, userCtx) > 0;
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
-  const hasActionableSelectionBadge = hasActionableSelection(userCtx);
-  const hasActionableInspectionBadge = hasActionableInspection(userCtx);
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -272,18 +265,6 @@ function renderBerandaAsisten() {
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;
     } else if (item.id === 'penerimaan' && hasActionableReceipt) {
-      badgeHtml = `
-        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
-      `;
-    } else if (item.id === 'penyeleksian' && hasActionableSelectionBadge) {
-      badgeHtml = `
-        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
-      `;
-    } else if (item.id === 'pemeriksaan' && hasActionableInspectionBadge) {
-      badgeHtml = `
-        <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
-      `;
-    } else if (item.id === 'pengeluaran-bibit' && hasActionableDispatch) {
       badgeHtml = `
         <div class="beranda-menu-badge-dot notif-dot" style="position: absolute; top: 12px; right: 12px; width: 11px; height: 11px; background-color: #D32F2F; border-radius: 50%; box-shadow: 0 0 0 2px #FFFFFF; z-index: 5;"></div>
       `;

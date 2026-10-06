@@ -98,6 +98,27 @@ export const permissions = {
   canAccessRoute(route) {
     const r = session.getRole();
     if (!r) return false;
+
+    if (r === ROLES.ASISTEN) {
+      const cleanPath = (route || '').split('?')[0].split('#')[0].trim();
+      const normalizedPath = cleanPath.length > 1 && cleanPath.endsWith('/') ? cleanPath.slice(0, -1) : cleanPath;
+      const ASISTEN_AUTHORIZED_ROUTES = [
+        '/',
+        '/login',
+        '/splash',
+        '/home',
+        '/sync',
+        '/profile',
+        '/history',
+        '/reception',
+        '/reception/kebun-sepupu',
+        '/request',
+        '/request/kebun-sendiri',
+        '/request/kebun-sendiri/form'
+      ];
+      return ASISTEN_AUTHORIZED_ROUTES.includes(normalizedPath);
+    }
+
     if (route.startsWith('/home')) return this.canAccessHome(r);
     if (route.startsWith('/splash')) return true; // Splash setelah login: semua role
     if (route.startsWith('/sync')) return true; // Sinkronisasi: semua role

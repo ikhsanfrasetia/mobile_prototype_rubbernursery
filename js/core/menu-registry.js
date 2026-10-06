@@ -147,7 +147,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-PENERIMAAN',
     key: 'PENERIMAAN',
     label: 'Penerimaan',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN, ROLES.ASISTEN]),
     icon: '📦',
     order: 2,
     status: 'ACTIVE'
@@ -174,7 +174,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-PEMERIKSAAN',
     key: 'PEMERIKSAAN',
     label: 'Pemeriksaan',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN, ROLES.ASKEP]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASKEP]),
     icon: '🔍',
     order: 5,
     status: 'ACTIVE'
@@ -210,7 +210,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-PERMINTAAN',
     key: 'PERMINTAAN',
     label: 'Permintaan',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN, ROLES.ASISTEN]),
     icon: '📋',
     order: 9,
     status: 'ACTIVE'
@@ -228,7 +228,7 @@ export const MENU_REGISTRY = Object.freeze([
     id: 'MENU-REVIEW-WORKSPACE',
     key: 'REVIEW_WORKSPACE',
     label: 'Review & Otorisasi',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN, ROLES.KTU, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.KTU, ROLES.ASISTEN_BIBITAN]),
     icon: '📝',
     order: 11,
     status: 'ACTIVE'
@@ -300,7 +300,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'PENERIMAAN_BIBIT_ESTATE',
     menuKey: 'PENERIMAAN',
     label: 'Penerimaan Bibit Kebun',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASISTEN_BIBITAN, ROLES.ASISTEN]),
     order: 2,
     status: 'ACTIVE'
   },
@@ -342,7 +342,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'PEMERIKSAAN_LAPANGAN',
     menuKey: 'PEMERIKSAAN',
     label: 'Inspeksi & Pemeriksaan Bibit',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN, ROLES.ASKEP]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASKEP]),
     order: 1,
     status: 'ACTIVE'
   },
@@ -395,7 +395,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'PERMINTAAN_BIBIT_ESTATE',
     menuKey: 'PERMINTAAN',
     label: 'Permintaan Bibit Kebun Sepupu',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN_BIBITAN, ROLES.ASISTEN]),
     order: 1,
     status: 'ACTIVE'
   },
@@ -417,7 +417,7 @@ export const SUBMENU_REGISTRY = Object.freeze([
     key: 'REVIEW_VERIFIKASI',
     menuKey: 'REVIEW_WORKSPACE',
     label: 'Verifikasi & Otorisasi Transaksi',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN, ROLES.KTU, ROLES.ASISTEN_BIBITAN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.KTU, ROLES.ASISTEN_BIBITAN]),
     order: 1,
     status: 'ACTIVE'
   },
@@ -557,7 +557,7 @@ export const FEATURE_REGISTRY = Object.freeze([
     submenuKey: 'PEMERIKSAAN_LAPANGAN',
     label: 'Inspeksi Kondisi Bibitan & Foto',
     description: 'Pemeriksaan visual bibit, kesehatan, dan upload foto evidensi.',
-    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN, ROLES.ASISTEN_BIBITAN, ROLES.ASKEP]),
+    roleKeys: Object.freeze([ROLES.MANTRI_TANAMAN, ROLES.ASISTEN_BIBITAN, ROLES.ASKEP]),
     expectedScope: SCOPE_TYPES.DIVISION,
     implementationStatus: IMPLEMENTATION_STATUS.EXISTING,
     actionKeys: Object.freeze([ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.SUBMIT, ACTIONS.VERIFY]),
@@ -625,7 +625,7 @@ export const FEATURE_REGISTRY = Object.freeze([
     submenuKey: 'PERMINTAAN_BIBIT_ESTATE',
     label: 'Daftar Permintaan Bibit',
     description: 'Melihat batch permintaan bibit dari kebun sepupu / unit pemesan.',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.MANTRI_TANAMAN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.MANTRI_TANAMAN, ROLES.ASISTEN]),
     expectedScope: SCOPE_TYPES.ESTATE,
     implementationStatus: IMPLEMENTATION_STATUS.EXISTING,
     actionKeys: Object.freeze([ACTIONS.VIEW, ACTIONS.MONITOR]),
@@ -665,7 +665,7 @@ export const FEATURE_REGISTRY = Object.freeze([
     submenuKey: 'REVIEW_VERIFIKASI',
     label: 'Workspace Review & Approval Transaksi',
     description: 'Pusat verifikasi dan approval berkas transaksi operasional.',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN, ROLES.KTU]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.KTU]),
     expectedScope: SCOPE_TYPES.ESTATE,
     implementationStatus: IMPLEMENTATION_STATUS.EXISTING,
     actionKeys: Object.freeze([ACTIONS.VIEW, ACTIONS.REVIEW, ACTIONS.APPROVE, ACTIONS.VERIFY]),
