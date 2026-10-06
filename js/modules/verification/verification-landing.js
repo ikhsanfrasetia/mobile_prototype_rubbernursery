@@ -42,8 +42,8 @@ let selectedTxItem = null; // Transaksi yang dibuka di detail (berisi normalized
 let activeFilterDate = todayDDMMYYYY();
 let tinjauFilter = {
   date: todayDDMMYYYY(),
-  estateId: 'Tanah Besih',
-  divisionId: 'Divisi I'
+  estateId: '',
+  divisionId: ''
 };
 
 const MODULE_ICONS = {
@@ -146,6 +146,12 @@ export function renderVerificationLanding() {
   const currentUser = session.getUser ? session.getUser() : (session.get ? session.get() : null);
   const userCtx = getCurrentUserContext() || resolveUserContext(currentUser);
 
+  if (userCtx) {
+    tinjauFilter.date = todayDDMMYYYY();
+    tinjauFilter.estateId = userCtx.estateName || userCtx.estateId || '';
+    tinjauFilter.divisionId = userCtx.divisionName || userCtx.divisionId || '';
+  }
+
   if (currentVerifView === 'MODULE_GRID') {
     renderModuleGridView(app, userCtx);
   } else if (currentVerifView === 'TRANSACTION_LIST') {
@@ -153,7 +159,7 @@ export function renderVerificationLanding() {
   } else if (currentVerifView === 'TRANSACTION_DETAIL') {
     renderTransactionDetailView(app, userCtx);
   } else if (currentVerifView === 'TINJAU_FILTER') {
-    renderTinjauFilterView(app, userCtx);
+    renderTinjauSummaryView(app, userCtx);
   } else if (currentVerifView === 'TINJAU_SUMMARY') {
     renderTinjauSummaryView(app, userCtx);
   } else if (currentVerifView === 'TINJAU_DETAIL') {
@@ -265,9 +271,9 @@ function renderModuleGridView(app, userCtx) {
     });
   });
 
-  // Open Tinjau Data -> Screen 7
+  // Open Tinjau Data -> Langsung Final Review (TINJAU_SUMMARY)
   app.querySelector('#btn-open-tinjau')?.addEventListener('click', () => {
-    currentVerifView = 'TINJAU_FILTER';
+    currentVerifView = 'TINJAU_SUMMARY';
     renderVerificationLanding();
   });
 
@@ -735,21 +741,6 @@ function renderTinjauSummaryView(app, userCtx) {
       <!-- BODY -->
       <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
         
-        <!-- TOP CARD PERIODE & SCOPE -->
-        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 36px; height: 36px; border-radius: 8px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#116834" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-            </div>
-            <div>
-              <div style="font-size: 0.68rem; color: #64748B;">Periode Data</div>
-              <div style="font-size: 0.82rem; font-weight: 800; color: #111827;">${tinjauFilter.date}</div>
-              <div style="font-size: 0.7rem; color: #64748B;">${tinjauFilter.estateId} - ${tinjauFilter.divisionId}</div>
-            </div>
-          </div>
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="#94A3B8" stroke-width="2.2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg>
-        </div>
-
         <!-- LIST OF 10 MODULES -->
         <div style="display: flex; flex-direction: column; gap: 8px;">
           ${moduleRows}
@@ -785,9 +776,9 @@ function renderTinjauSummaryView(app, userCtx) {
     </div>
   `;
 
-  // Back button
+  // Back button -> kembali langsung ke halaman Verifikasi utama (MODULE_GRID)
   app.querySelector('#btn-back-to-filter')?.addEventListener('click', () => {
-    currentVerifView = 'TINJAU_FILTER';
+    currentVerifView = 'MODULE_GRID';
     renderVerificationLanding();
   });
 
@@ -836,8 +827,10 @@ function renderTinjauDetailView(app, userCtx) {
   const norm = selectedTxItem.normalizedData || getVerificationDetailData(selectedTxItem.rawRecord, userCtx, selectedTxItem.referenceType);
   const currentMod = VERIFICATION_10_MODULES.find(m => m.id === selectedTxItem.moduleCategory || m.types.includes(selectedTxItem.referenceType)) || VERIFICATION_10_MODULES[0];
   const docNo = selectedTxItem.referenceDocNo || selectedTxItem.docNo || selectedTxItem.id;
-  const dateStr = selectedTxItem.date ? String(selectedTxItem.date).substring(0, 10) : tinjauFilter.date;
+  const dateStr = selectedTxItem.date ? String(selectedTxItem.date).substring(0, 10) : (tinjauFilter.date || todayDDMMYYYY());
   const workerName = selectedTxItem.submittedByName || selectedTxItem.rawRecord?.mantri || selectedTxItem.rawRecord?.actorName || userCtx?.name || 'Mantri';
+  const estateName = selectedTxItem.estateName || selectedTxItem.estateId || userCtx?.estateName || userCtx?.estateId || tinjauFilter.estateId || '-';
+  const divisionName = selectedTxItem.divisionName || selectedTxItem.divisionId || userCtx?.divisionName || userCtx?.divisionId || tinjauFilter.divisionId || '-';
 
   // Render Rincian Data dinamis dari normalized fields (Zero hardcoding)
   const detailRows = (norm.fields || []).map(f => `
@@ -886,15 +879,15 @@ function renderTinjauDetailView(app, userCtx) {
           <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem;">
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Periode Data</span>
-              <span style="color: #0F172A; font-weight: 600;">${esc(tinjauFilter.date)}</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(tinjauFilter.date || dateStr)}</span>
             </div>
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Kebun</span>
-              <span style="color: #0F172A; font-weight: 600;">${esc(tinjauFilter.estateId)}</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(estateName)}</span>
             </div>
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Divisi</span>
-              <span style="color: #0F172A; font-weight: 600;">${esc(tinjauFilter.divisionId)}</span>
+              <span style="color: #0F172A; font-weight: 600;">${esc(divisionName)}</span>
             </div>
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Mantri</span>
