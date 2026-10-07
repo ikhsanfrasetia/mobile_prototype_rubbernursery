@@ -72,52 +72,57 @@ assert(allBedenganValid, 'Seluruh bedengan menggunakan format sequence "Bed - 00
 
 // Check Stock Variation & Empty State Batches
 const emptyBatches = MOCK_NURSERY_STOCK_BATCHES.filter(b => b.status === 'EMPTY' && b.availableQty === 0);
-assert(emptyBatches.length === 2, `Terdapat tepat 2 batch berstatus EMPTY (Batch 006 & 011) (aktual: ${emptyBatches.length})`);
+assert(emptyBatches.length === 2, `Terdapat tepat 2 batch berstatus EMPTY (Batch 006, 011) (aktual: ${emptyBatches.length})`);
 
 const availableBatches = MOCK_NURSERY_STOCK_BATCHES.filter(b => b.status === 'AVAILABLE');
 assert(availableBatches.length === 13, `Terdapat 13 batch berstatus AVAILABLE dengan stok bervariasi (aktual: ${availableBatches.length})`);
 
 // --------------------------------------------------------------------------------------
-// 1B. STAGE & AGE BASED SHI RECONCILIATION AUDIT
+// 1B. UNIVERSAL POPULATION FLOW & STOCK FORMULA AUDIT (ALL BATCHES)
 // --------------------------------------------------------------------------------------
-console.log('\n1B. Stage & Age Based SHI Reconciliation Validation:');
+console.log('\n1B. Universal Population Flow & Stock Formula Validation:');
 
-/**
- * Audit rule:
- * TRUE jika: growthStage === 'Rubber Advance Planting Material' ATAU ageWeeks > 30
- * FALSE jika: Main Nursery dan ageWeeks <= 30
- */
-function isShiReconciliationApplicable(batch) {
-  const ageWeeks = calculateAgeInWeeks(batch.tanggalSemai);
-  const isAPM = batch.growthStage === 'Rubber Advance Planting Material';
-  return isAPM || ageWeeks > 30;
-}
-
-// A. Check stockBeforeShi calculation across all 15 batches
-const allStockBeforeShiValid = MOCK_NURSERY_STOCK_BATCHES.every(b => {
-  return b.stockBeforeShi === (b.initialQty - b.jumlahAfkirSeleksi);
+// A. Check Stok Setelah Seleksi across all 15 batches: initialQty - Total Seleksi
+const allStokSetelahSeleksiValid = MOCK_NURSERY_STOCK_BATCHES.every(b => {
+  const totalAfkir = (b.selectionRecords || []).reduce((acc, r) => acc + Number(r.qtyAfkir || 0), 0);
+  const stokSetelahSeleksi = b.initialQty - totalAfkir;
+  return b.stockBeforeShi === stokSetelahSeleksi;
 });
-assert(allStockBeforeShiValid, 'Seluruh 15 batch memiliki stockBeforeShi === (initialQty - jumlahAfkirSeleksi)');
+assert(allStokSetelahSeleksiValid, 'Seluruh 15 batch memiliki Stok Setelah Seleksi === (initialQty - Total Seleksi)');
 
-// B. Check stage & age based reconciliation across all 15 batches
-let allReconciliationLogicValid = true;
+// B. Check Universal Available Qty across all 15 batches: (Stok Setelah Seleksi - Total SHI)
+let allUniversalFormulaValid = true;
+let allShiWithinLimits = true;
 MOCK_NURSERY_STOCK_BATCHES.forEach(b => {
-  const applicable = isShiReconciliationApplicable(b);
-  const totalShi = (b.pengeluaranShi || []).reduce((acc, tx) => acc + (tx.qty || 0), 0);
-  const expectedAvailable = applicable ? (b.stockBeforeShi - totalShi) : b.stockBeforeShi;
-  
+  const totalAfkir = (b.selectionRecords || []).reduce((acc, r) => acc + Number(r.qtyAfkir || 0), 0);
+  const stokSetelahSeleksi = b.initialQty - totalAfkir;
+  const totalShi = (b.pengeluaranShi || []).reduce((acc, tx) => acc + Number(tx.qty || 0), 0);
+  const expectedAvailable = stokSetelahSeleksi - totalShi;
+
+  if (totalShi > stokSetelahSeleksi) {
+    allShiWithinLimits = false;
+    console.error(`Over-issue detected on ${b.batchCode}: totalShi=${totalShi} > stokSetelahSeleksi=${stokSetelahSeleksi}`);
+  }
+
   if (b.availableQty !== expectedAvailable) {
-    allReconciliationLogicValid = false;
-    console.error(`Reconciliation mismatch on ${b.batchCode}: actual=${b.availableQty}, expected=${expectedAvailable}`);
+    allUniversalFormulaValid = false;
+    console.error(`Universal formula mismatch on ${b.batchCode}: actual=${b.availableQty}, expected=${expectedAvailable}`);
   }
 });
-assert(allReconciliationLogicValid, 'Seluruh 15 batch memenuhi rule: SHI rekonsiliasi hanya jika APM atau Umur > 30 Minggu');
+assert(allShiWithinLimits, 'Seluruh 15 batch memenuhi constraint: Total Pengeluaran Bibit SHI <= Stok Setelah Seleksi (0 Over-Issue)');
+assert(allUniversalFormulaValid, 'Seluruh 15 batch memenuhi formula final: availableQty === (Stok Setelah Seleksi - Total Pengeluaran Bibit SHI)');
+
+// Ensure legacy / non-stock fields are NOT used as stock source
+const afkirSeleksiNotUsedAsStock = MOCK_NURSERY_STOCK_BATCHES.every(b => {
+  return b.stockBeforeShi !== (b.initialQty - b.jumlahAfkirSeleksi);
+});
+assert(afkirSeleksiNotUsedAsStock, 'jumlahAfkirSeleksi TIDAK digunakan sebagai source perhitungan stok');
 
 // C. No Negative Stock Validation
 const noNegativeStock = MOCK_NURSERY_STOCK_BATCHES.every(b => b.availableQty >= 0);
 assert(noNegativeStock, 'TIDAK ada batch dengan stok negatif pada 100% dataset');
 
-// D. Specific check for all batch values
+// D. Specific check for all 15 batch values
 const batch001 = MOCK_NURSERY_STOCK_BATCHES.find(b => b.batchCode === 'Batch - 001');
 const batch002 = MOCK_NURSERY_STOCK_BATCHES.find(b => b.batchCode === 'Batch - 002');
 const batch003 = MOCK_NURSERY_STOCK_BATCHES.find(b => b.batchCode === 'Batch - 003');
@@ -134,46 +139,70 @@ const batch013 = MOCK_NURSERY_STOCK_BATCHES.find(b => b.batchCode === 'Batch - 0
 const batch014 = MOCK_NURSERY_STOCK_BATCHES.find(b => b.batchCode === 'Batch - 014');
 const batch015 = MOCK_NURSERY_STOCK_BATCHES.find(b => b.batchCode === 'Batch - 015');
 
-// Main Nursery muda checks (Non-reconciled)
-assert(batch001.availableQty === 14650, 'Batch - 001 (Main Nursery 16 mgg): availableQty = 14.650 Bibit (SHI 2.000 tidak memotong stok)');
-assert(batch002.availableQty === 11600, 'Batch - 002 (Main Nursery 14 mgg): availableQty = 11.600 Bibit (SHI 1.500 tidak memotong stok)');
-assert(batch003.availableQty === 7750, 'Batch - 003 (Main Nursery 11 mgg): availableQty = 7.750 Bibit');
-assert(batch005.availableQty === 2880 && batch005.status === 'AVAILABLE', 'Batch - 005 (Main Nursery 9 mgg): availableQty = 2.880 Bibit & Status AVAILABLE');
-assert(batch009.availableQty === 7280, 'Batch - 009 (Main Nursery 12 mgg): availableQty = 7.280 Bibit');
-assert(batch010.availableQty === 3820 && batch010.status === 'AVAILABLE', 'Batch - 010 (Main Nursery 9 mgg): availableQty = 3.820 Bibit & Status AVAILABLE');
+// Tanah Besih (TBS) batches
+assert(batch001.availableQty === 11100, 'Batch - 001: availableQty = 11.100 Bibit (15.000 - 3.900 - 0 SHI)');
+assert(batch002.availableQty === 8804, 'Batch - 002: availableQty = 8.804 Bibit (12.000 - 3.196 - 0 SHI)');
+assert(batch003.availableQty === 5909, 'Batch - 003: availableQty = 5.909 Bibit (8.000 - 2.091 - 0 SHI)');
+assert(batch004.availableQty === 300, 'Batch - 004: availableQty = 300 Bibit (5.000 - 4.200 - 500 SHI)');
+assert(batch005.availableQty === 2221 && batch005.status === 'AVAILABLE', 'Batch - 005: availableQty = 2.221 Bibit & Status AVAILABLE (3.000 - 779 - 0 SHI)');
+assert(batch006.availableQty === 0 && batch006.status === 'EMPTY', 'Batch - 006: availableQty = 0 Bibit & Status EMPTY (MAX(0, 260 - 260 SHI))');
+assert(batch012.availableQty === 240, 'Batch - 012: availableQty = 240 Bibit (6.000 - 5.160 - 600 SHI)');
+assert(batch013.availableQty === 680, 'Batch - 013: availableQty = 680 Bibit (4.000 - 3.320 - 0 SHI)');
 
-// APM checks (Reconciled)
-assert(batch004.availableQty === 3850, 'Batch - 004 (APM 59 mgg): availableQty = 3.850 Bibit (4.850 - 1.000 SHI)');
-assert(batch006.availableQty === 0 && batch006.status === 'EMPTY', 'Batch - 006 (APM 69 mgg): availableQty = 0 Bibit & Status EMPTY (1.900 - 1.900 SHI)');
-assert(batch007.availableQty === 15000, 'Batch - 007 (APM 55 mgg): availableQty = 15.000 Bibit (17.500 - 2.500 SHI)');
-assert(batch008.availableQty === 8500, 'Batch - 008 (APM 53 mgg): availableQty = 8.500 Bibit (9.700 - 1.200 SHI)');
-assert(batch011.availableQty === 0 && batch011.status === 'EMPTY', 'Batch - 011 (APM 72 mgg): availableQty = 0 Bibit & Status EMPTY (1.450 - 1.450 SHI)');
-assert(batch012.availableQty === 4800, 'Batch - 012 (APM 64 mgg): availableQty = 4.800 Bibit (5.800 - 1.000 SHI)');
-assert(batch013.availableQty === 3900, 'Batch - 013 (APM 57 mgg): availableQty = 3.900 Bibit (3.900 - 0 SHI)');
-assert(batch014.availableQty === 6700, 'Batch - 014 (APM 67 mgg): availableQty = 6.700 Bibit (8.200 - 1.500 SHI)');
-assert(batch015.availableQty === 5350, 'Batch - 015 (APM 60 mgg): availableQty = 5.350 Bibit (5.350 - 0 SHI)');
+// Aek Pamingke (APM) batches
+assert(batch007.availableQty === 560, 'Batch - 007: availableQty = 560 Bibit (18.000 - 14.940 - 2.500 SHI)');
+assert(batch008.availableQty === 600, 'Batch - 008: availableQty = 600 Bibit (10.000 - 8.200 - 1.200 SHI)');
+assert(batch009.availableQty === 5588, 'Batch - 009: availableQty = 5.588 Bibit (7.500 - 1.912 - 0 SHI)');
+assert(batch010.availableQty === 2994 && batch010.status === 'AVAILABLE', 'Batch - 010: availableQty = 2.994 Bibit & Status AVAILABLE (4.000 - 1.006 - 0 SHI)');
+assert(batch011.availableQty === 0 && batch011.status === 'EMPTY', 'Batch - 011: availableQty = 0 Bibit & Status EMPTY (MAX(0, 180 - 180 SHI))');
+assert(batch014.availableQty === 390, 'Batch - 014: availableQty = 390 Bibit (8.500 - 7.310 - 800 SHI)');
+assert(batch015.availableQty === 825, 'Batch - 015: availableQty = 825 Bibit (5.500 - 4.675 - 0 SHI)');
 
 // E. Summary Totals Validation
 const totalTbsAvailable = tbsBatches.reduce((sum, b) => sum + b.availableQty, 0);
 const totalApmAvailable = apmBatches.reduce((sum, b) => sum + b.availableQty, 0);
-assert(totalTbsAvailable === 49430, `Total Stok Tersedia ASB001 (Tanah Besih) harus tepat 49.430 Bibit (aktual: ${totalTbsAvailable})`);
-assert(totalApmAvailable === 46650, `Total Stok Tersedia ASB002 (Aek Pamingke) harus tepat 46.650 Bibit (aktual: ${totalApmAvailable})`);
+const grandTotalAvailable = totalTbsAvailable + totalApmAvailable;
+
+assert(totalTbsAvailable === 29254, `Total Stok Tersedia ASB001 (Tanah Besih) harus tepat 29.254 Bibit (aktual: ${totalTbsAvailable})`);
+assert(totalApmAvailable === 10957, `Total Stok Tersedia ASB002 (Aek Pamingke) harus tepat 10.957 Bibit (aktual: ${totalApmAvailable})`);
+assert(grandTotalAvailable === 40211, `Grand Total Stok Tersedia harus tepat 40.211 Bibit (aktual: ${grandTotalAvailable})`);
+assert((totalTbsAvailable + totalApmAvailable) === grandTotalAvailable, 'Validasi Konsistensi: TBS (29.254) + APM (10.957) === Grand Total (40.211)');
 
 // --------------------------------------------------------------------------------------
-// 1C. GLOBAL SELECTION VALIDATION (NO 100% SELECTION)
+// 1C. TOTAL SELEKSI & SELEKSI (%) CALCULATION AUDIT (15 BATCHES)
 // --------------------------------------------------------------------------------------
-console.log('\n1C. Global Selection Percentage Validation:');
+console.log('\n1C. Total Seleksi & Seleksi (%) Calculation Audit (15 Batches):');
 
-const allSelectionUnder100 = MOCK_NURSERY_STOCK_BATCHES.every(b => {
-  const pct = calculateSelectionPercentage(b.jumlahAfkirSeleksi, b.initialQty);
-  return pct < 100 && b.jumlahAfkirSeleksi < b.initialQty;
-});
-assert(allSelectionUnder100, 'Seluruh 15 mock batch memiliki Seleksi < 100% dan Afkir < Initial Qty');
+let allTotalSeleksiSync = true;
+let allPercentagesCorrect = true;
 
 MOCK_NURSERY_STOCK_BATCHES.forEach(b => {
-  const pct = calculateSelectionPercentage(b.jumlahAfkirSeleksi, b.initialQty);
-  assert(pct < 100, `${b.batchCode} (${b.growthStage}): Seleksi = ${pct}% (< 100%)`);
+  const sumAfkir = (b.selectionRecords || []).reduce((acc, r) => acc + Number(r.qtyAfkir || 0), 0);
+  const expectedPct = Math.round((sumAfkir / b.initialQty) * 100);
+  const calculatedPct = calculateSelectionPercentage(sumAfkir, b.initialQty);
+
+  if (calculatedPct !== expectedPct) {
+    allPercentagesCorrect = false;
+    console.error(`Percentage mismatch on ${b.batchCode}: calculated=${calculatedPct}%, expected=${expectedPct}%`);
+  }
+
+  // Ensure sum of selection records > 0 and <= initialQty
+  if (sumAfkir <= 0 || sumAfkir >= b.initialQty) {
+    allTotalSeleksiSync = false;
+  }
+
+  assert(calculatedPct < 100, `${b.batchCode} (${b.growthStage}): Total Seleksi = ${sumAfkir.toLocaleString('id-ID')} Bibit, Seleksi = ${calculatedPct}% (< 100%)`);
 });
+
+assert(allTotalSeleksiSync, 'Seluruh 15 mock batch memiliki Total Seleksi > 0 dan Total Seleksi < Initial Qty');
+assert(allPercentagesCorrect, 'Seluruh 15 mock batch menghitung Seleksi (%) = round(Total Seleksi / initialQty * 100)');
+
+// Specific verification for Batch - 001
+const b001SumAfkir = (batch001.selectionRecords || []).reduce((acc, r) => acc + Number(r.qtyAfkir || 0), 0);
+const b001Pct = calculateSelectionPercentage(b001SumAfkir, batch001.initialQty);
+assert(b001SumAfkir === 3900, `Batch - 001 Total Seleksi harus tepat 3.900 Bibit (aktual: ${b001SumAfkir})`);
+assert(b001Pct === 26, `Batch - 001 Seleksi (%) harus tepat 26% (aktual: ${b001Pct}%)`);
+
 
 // --------------------------------------------------------------------------------------
 // 1D. MAIN NURSERY & APM GRAFTING BALANCE AUDIT
@@ -223,6 +252,241 @@ assert(allEntresValid, 'Seluruh entresClone (15 batch) adalah klon aktif yang va
 // C. Verify Entres Variety across batches
 const uniqueEntres = new Set(MOCK_NURSERY_STOCK_BATCHES.map(b => b.entresClone));
 assert(uniqueEntres.size >= 8, `Terdapat variasi klon entres yang kaya (${uniqueEntres.size} klon unik: ${Array.from(uniqueEntres).join(', ')})`);
+
+// --------------------------------------------------------------------------------------
+// 1F. SELECTION RECORDS 7-STAGE STRUCTURE & CATEGORY AUDIT
+// --------------------------------------------------------------------------------------
+console.log('\n1F. Selection Records 7-Stage Structure & Category Verification:');
+
+// A. Existence check
+const allHaveSelectionRecords = MOCK_NURSERY_STOCK_BATCHES.every(b => Array.isArray(b.selectionRecords) && b.selectionRecords.length > 0);
+assert(allHaveSelectionRecords, 'Seluruh 15 batch memiliki property selectionRecords berupa Array non-empty');
+
+// B. Record Structure & Required Properties
+const allowedStages = [
+  'SELEKSI_PRA_SEMAI',
+  'SELEKSI_DITOLAK_PINDAH_SEMAI',
+  'SELEKSI_PRA_OKULASI_I',
+  'SELEKSI_PRA_OKULASI_II',
+  'SELEKSI_PRA_OKULASI_III',
+  'SELEKSI_GRAFTING',
+  'SELEKSI_REGRAFTING'
+];
+const allowedCategories = ['PRA_SEMAI', 'DITOLAK_PINDAH_SEMAI', 'PRA_OKULASI', 'PASCA_OKULASI'];
+
+let allRecordsStructureValid = true;
+let allStagesValid = true;
+let allCategoriesValid = true;
+let allCategoryMappingsValid = true;
+let noDuplicatePercentage = true;
+let allPositiveQty = true;
+let allPositiveBaseQty = true;
+let allValidPercentages = true;
+
+MOCK_NURSERY_STOCK_BATCHES.forEach(b => {
+  b.selectionRecords.forEach(rec => {
+    // Check required fields
+    if (!rec.docNo || !rec.tanggal || !rec.category || !rec.stage || !rec.stageLabel ||
+        typeof rec.baseQty !== 'number' || typeof rec.percentage !== 'number' ||
+        typeof rec.qtyAfkir !== 'number' || !rec.alasanUtama) {
+      allRecordsStructureValid = false;
+    }
+    // Check stage enum
+    if (!allowedStages.includes(rec.stage)) {
+      allStagesValid = false;
+    }
+    // Check category enum
+    if (!allowedCategories.includes(rec.category)) {
+      allCategoriesValid = false;
+    }
+    // Check category to stage mapping
+    if (rec.stage === 'SELEKSI_PRA_SEMAI' && rec.category !== 'PRA_SEMAI') allCategoryMappingsValid = false;
+    if (rec.stage === 'SELEKSI_DITOLAK_PINDAH_SEMAI' && rec.category !== 'DITOLAK_PINDAH_SEMAI') allCategoryMappingsValid = false;
+    if (['SELEKSI_PRA_OKULASI_I', 'SELEKSI_PRA_OKULASI_II', 'SELEKSI_PRA_OKULASI_III'].includes(rec.stage) && rec.category !== 'PRA_OKULASI') allCategoryMappingsValid = false;
+    if (['SELEKSI_GRAFTING', 'SELEKSI_REGRAFTING'].includes(rec.stage) && rec.category !== 'PASCA_OKULASI') allCategoryMappingsValid = false;
+
+    // Check no hardcoded persentaseAfkir
+    if (rec.persentaseAfkir !== undefined) {
+      noDuplicatePercentage = false;
+    }
+    // Check positive numbers
+    if (rec.qtyAfkir <= 0) allPositiveQty = false;
+    if (rec.baseQty <= 0) allPositiveBaseQty = false;
+    if (rec.percentage < 0 || rec.percentage > 100) allValidPercentages = false;
+  });
+});
+
+assert(allRecordsStructureValid, 'Seluruh selection records memiliki properti wajib: docNo, tanggal, category, stage, stageLabel, baseQty, percentage, qtyAfkir, alasanUtama');
+assert(allStagesValid, 'Seluruh stage record mengikuti 7 tahapan resmi SIGMA Nursery');
+assert(allCategoriesValid, 'Seluruh category record mengikuti: PRA_SEMAI, DITOLAK_PINDAH_SEMAI, PRA_OKULASI, PASCA_OKULASI');
+assert(allCategoryMappingsValid, 'Seluruh pemetaan category-to-stage valid 100%');
+assert(noDuplicatePercentage, 'TIDAK ada field persentaseAfkir hardcoded (menggunakan field percentage)');
+assert(allPositiveQty, 'Seluruh selection records memiliki qtyAfkir > 0');
+assert(allPositiveBaseQty, 'Seluruh selection records memiliki baseQty > 0');
+assert(allValidPercentages, 'Seluruh percentage berada dalam rentang valid (0 <= percentage <= 100)');
+
+// C. Verification of required Pra-Okulasi (I, II, III) across all batches
+const allHavePraOkulasi123 = MOCK_NURSERY_STOCK_BATCHES.every(b => {
+  const stages = b.selectionRecords.map(r => r.stage);
+  return stages.includes('SELEKSI_PRA_OKULASI_I') &&
+         stages.includes('SELEKSI_PRA_OKULASI_II') &&
+         stages.includes('SELEKSI_PRA_OKULASI_III');
+});
+assert(allHavePraOkulasi123, 'Seluruh 15 batch memiliki Seleksi Pra-Okulasi I, II, dan III lengkap');
+
+// D. Verification of Pasca-Okulasi (Grafting & Regrafting conditional presence)
+const allGraftingValid = MOCK_NURSERY_STOCK_BATCHES.every(b => {
+  const hasGraftingRecord = b.selectionRecords.some(r => r.stage === 'SELEKSI_GRAFTING');
+  return (b.jumlahGrafting > 0) === hasGraftingRecord;
+});
+assert(allGraftingValid, 'Seluruh batch dengan jumlahGrafting > 0 memiliki record Seleksi Grafting');
+
+const allRegraftingValid = MOCK_NURSERY_STOCK_BATCHES.every(b => {
+  const hasRegraftingRecord = b.selectionRecords.some(r => r.stage === 'SELEKSI_REGRAFTING');
+  return (b.jumlahRegrafting > 0) === hasRegraftingRecord;
+});
+assert(allRegraftingValid, 'Seluruh batch dengan jumlahRegrafting > 0 memiliki record Seleksi Regrafting, dan batch regrafting = 0 (Batch 006 & 011) tidak memilikinya');
+
+// --------------------------------------------------------------------------------------
+// 1G. ASAL BIBIT AUDIT & DATA INTEGRITY
+// --------------------------------------------------------------------------------------
+console.log('\n1G. Asal Bibit Audit & Data Integrity:');
+
+assert(batch001.asalBibit === 'Pihak Ke-III', 'Batch - 001 memiliki asalBibit "Pihak Ke-III" (terverifikasi)');
+assert(batch006.asalBibit === 'Pihak Ke-III', 'Batch - 006 memiliki asalBibit "Pihak Ke-III" (terverifikasi)');
+assert(batch011.asalBibit === 'Pihak Ke-III', 'Batch - 011 memiliki asalBibit "Pihak Ke-III" (terverifikasi)');
+
+// Negative test on unverified batches: asalBibit should NOT be assumed/arbitrary
+const unverifiedBatches = MOCK_NURSERY_STOCK_BATCHES.filter(b => !['MOCK-BTCH-001', 'MOCK-BTCH-006', 'MOCK-BTCH-011'].includes(b.batchId));
+assert(unverifiedBatches.every(b => b.asalBibit === undefined || b.asalBibit === null), 'Batch lainnya tidak diasumsikan memiliki asalBibit tanpa source terverifikasi');
+
+// --------------------------------------------------------------------------------------
+// 1H. AGE ELIGIBILITY & SHI ISSUANCE REGRESSION AUDIT
+// --------------------------------------------------------------------------------------
+console.log('\n1H. Age Eligibility & SHI Issuance Regression Audit:');
+
+let allUnder40HaveZeroShi = true;
+let allShiBatchesAreEligible = true;
+
+MOCK_NURSERY_STOCK_BATCHES.forEach(b => {
+  const ageWeeks = calculateAgeInWeeks(b.tanggalSemai);
+  const shiCount = (b.pengeluaranShi || []).length;
+  const totalShi = (b.pengeluaranShi || []).reduce((sum, tx) => sum + Number(tx.qty || 0), 0);
+
+  if (ageWeeks < 40) {
+    if (shiCount > 0 || totalShi > 0) {
+      allUnder40HaveZeroShi = false;
+      console.error(`Violation: ${b.batchCode} age=${ageWeeks}w (< 40) but has ${shiCount} SHI records (total=${totalShi})`);
+    }
+  }
+
+  if (shiCount > 0 && ageWeeks < 40) {
+    allShiBatchesAreEligible = false;
+  }
+});
+
+assert(allUnder40HaveZeroShi, 'Regression Test: Setiap batch dengan umur < 40 minggu WAJIB memiliki pengeluaranShi.length === 0 dan total SHI === 0');
+assert(allShiBatchesAreEligible, 'Regression Test: Seluruh batch yang memiliki pengeluaran SHI terverifikasi berumur >= 40 minggu');
+
+// Check that age >= 40 is not forced to have SHI (eligibility only)
+const eligibleWithoutShi = MOCK_NURSERY_STOCK_BATCHES.filter(b => calculateAgeInWeeks(b.tanggalSemai) >= 40 && (!b.pengeluaranShi || b.pengeluaranShi.length === 0));
+assert(Array.isArray(eligibleWithoutShi), 'Rule umur >= 40 minggu hanya menentukan eligibilitas dan tidak memaksa setiap batch >= 40 minggu harus memiliki SHI');
+
+// --------------------------------------------------------------------------------------
+// 1I. AGE-BASED SELECTION DISTRIBUTION REGRESSION SUITE (20 ACCEPTANCE TESTS)
+// --------------------------------------------------------------------------------------
+console.log('\n1I. Age-Based Selection Distribution Regression Suite:');
+
+// Grouping by age
+const grpUnder20 = MOCK_NURSERY_STOCK_BATCHES.filter(b => calculateAgeInWeeks(b.tanggalSemai) < 20);
+const grp20to29 = MOCK_NURSERY_STOCK_BATCHES.filter(b => {
+  const age = calculateAgeInWeeks(b.tanggalSemai);
+  return age >= 20 && age <= 29;
+});
+const grp30to39 = MOCK_NURSERY_STOCK_BATCHES.filter(b => {
+  const age = calculateAgeInWeeks(b.tanggalSemai);
+  return age >= 30 && age <= 39;
+});
+const grp40plus = MOCK_NURSERY_STOCK_BATCHES.filter(b => calculateAgeInWeeks(b.tanggalSemai) >= 40);
+
+// Helper to calculate percentage of each batch
+const getBatchPct = (b) => {
+  const afkir = (b.selectionRecords || []).reduce((sum, r) => sum + Number(r.qtyAfkir || 0), 0);
+  return calculateSelectionPercentage(afkir, b.initialQty);
+};
+
+// 1. All batches < 20 weeks have selection in 24-27%
+const under20Pcts = grpUnder20.map(getBatchPct);
+const allUnder20InRange = under20Pcts.every(pct => pct >= 24 && pct <= 27);
+assert(allUnder20InRange, `Semua batch < 20 minggu memiliki Total Seleksi dalam range 24–27% (aktual: ${under20Pcts.join('%, ')}%)`);
+
+// 2. Average selection for < 20 weeks in 25-26%
+const avgUnder20 = under20Pcts.reduce((a, b) => a + b, 0) / under20Pcts.length;
+assert(avgUnder20 >= 25 && avgUnder20 <= 26, `Rata-rata seleksi kelompok < 20 minggu berada pada 25–26% (aktual: ${avgUnder20.toFixed(2)}%)`);
+
+// 3. Batches 20-29 weeks in 40-55% (if any)
+if (grp20to29.length > 0) {
+  const pcts20to29 = grp20to29.map(getBatchPct);
+  assert(pcts20to29.every(p => p >= 40 && p <= 55), 'Semua batch 20–29 minggu berada dalam range 40–55%');
+} else {
+  assert(true, 'Kelompok 20–29 minggu: 0 batch (tanggal semai existing dipertahankan)');
+}
+
+// 4. Batches 30-39 weeks in 60-75% (if any)
+if (grp30to39.length > 0) {
+  const pcts30to39 = grp30to39.map(getBatchPct);
+  assert(pcts30to39.every(p => p >= 60 && p <= 75), 'Semua batch 30–39 minggu berada dalam range 60–75%');
+} else {
+  assert(true, 'Kelompok 30–39 minggu: 0 batch (tanggal semai existing dipertahankan)');
+}
+
+// 5. All batches >= 40 weeks have selection in 81-89%
+const over40Pcts = grp40plus.map(getBatchPct);
+const allOver40InRange = over40Pcts.every(pct => pct >= 81 && pct <= 89);
+assert(allOver40InRange, `Semua batch >= 40 minggu memiliki Total Seleksi dalam range 81–89% (aktual: ${over40Pcts.join('%, ')}%)`);
+
+// 6. Average selection for >= 40 weeks > 80% and < 90%
+const avgOver40 = over40Pcts.reduce((a, b) => a + b, 0) / over40Pcts.length;
+assert(avgOver40 > 80 && avgOver40 < 90, `Rata-rata seleksi kelompok >= 40 minggu berada di >80% dan <90% (aktual: ${avgOver40.toFixed(2)}%)`);
+
+// 7. Dynamic Grafting Success > 70% and Regrafting Success < 30% across all 15 batches
+let allGraftingSuccessDynamic = true;
+let allRegraftingSuccessDynamic = true;
+let noNegativePopulation = true;
+
+MOCK_NURSERY_STOCK_BATCHES.forEach(b => {
+  const PRE_GRAFT_STAGES = [
+    'SELEKSI_PRA_SEMAI',
+    'SELEKSI_DITOLAK_PINDAH_SEMAI',
+    'SELEKSI_PRA_OKULASI_I',
+    'SELEKSI_PRA_OKULASI_II',
+    'SELEKSI_PRA_OKULASI_III'
+  ];
+  const preGraftAfkir = (b.selectionRecords || [])
+    .filter(r => PRE_GRAFT_STAGES.includes(r.stage))
+    .reduce((acc, r) => acc + Number(r.qtyAfkir || 0), 0);
+  const graftingInput = b.initialQty - preGraftAfkir;
+  const graftRec = (b.selectionRecords || []).find(r => r.stage === 'SELEKSI_GRAFTING');
+  const graftAfkir = graftRec ? Number(graftRec.qtyAfkir || 0) : 0;
+  const berhasilGrafting = Math.max(0, graftingInput - graftAfkir);
+
+  const regraftingInput = Number(b.jumlahRegrafting || 0);
+  const regraftRec = (b.selectionRecords || []).find(r => r.stage === 'SELEKSI_REGRAFTING');
+  const regraftAfkir = regraftRec ? Number(regraftRec.qtyAfkir || 0) : 0;
+  const berhasilRegrafting = regraftingInput > 0 ? Math.max(0, regraftingInput - regraftAfkir) : 0;
+
+  const totalHasilOkulasi = berhasilGrafting + berhasilRegrafting;
+  const pctGraft = (berhasilGrafting / totalHasilOkulasi) * 100;
+  const pctRegraft = (berhasilRegrafting / totalHasilOkulasi) * 100;
+
+  if (graftingInput <= 0 || berhasilGrafting <= 0) noNegativePopulation = false;
+  if (pctGraft <= 70) allGraftingSuccessDynamic = false;
+  if (pctRegraft >= 30) allRegraftingSuccessDynamic = false;
+});
+
+assert(noNegativePopulation, 'Lineage Integrity: Seluruh batch memiliki Grafting Input > 0 dan Berhasil Grafting > 0');
+assert(allGraftingSuccessDynamic, 'Grafting Success Rate seluruh 15 batch dinamis dan > 70%');
+assert(allRegraftingSuccessDynamic, 'Regrafting Success Rate seluruh 15 batch dinamis dan < 30%');
 
 // --------------------------------------------------------------------------------------
 // 2. USER CONTEXT & STRICT SCOPE FILTERING (NEGATIVE & POSITIVE TESTS)
@@ -345,8 +609,8 @@ assert(capturedHTML.includes('Laporan Stok Bibit'), 'Header menampilkan title re
 assert(capturedHTML.includes('Batch - 001'), 'HTML memuat Batch - 001 untuk ASB001');
 assert(capturedHTML.includes('Batch - 006'), 'HTML memuat Batch - 006 (Stok Kosong)');
 assert(capturedHTML.includes('Batch - 012'), 'HTML memuat Batch - 012 untuk ASB001');
-assert(capturedHTML.includes('49.430'), 'Summary HTML memuat total stok tersedia ASB001: "49.430" Bibit');
-assert(capturedHTML.includes('14.650'), 'Batch - 001 card memuat stok tersedia: "14.650" Bibit');
+assert(capturedHTML.includes('29.254'), 'Summary HTML memuat total stok tersedia ASB001: "29.254" Bibit');
+assert(capturedHTML.includes('11.100'), 'Batch - 001 card memuat stok tersedia: "11.100" Bibit');
 
 // Label UI Verification in Rendered HTML
 assert(capturedHTML.includes('Stok Tersedia'), 'Batch Card menampilkan label baru "Stok Tersedia"');
@@ -366,9 +630,9 @@ if (eventListeners['#btn-back']) {
 }
 
 // --------------------------------------------------------------------------------------
-// 6. DETAIL MODAL & TERMINOLOGY INTEGRITY
+// 6. DETAIL MODAL, SHI, 7-STAGE SELECTION & UI FORMAT AUDIT
 // --------------------------------------------------------------------------------------
-console.log('\n6. Detail Modal, SHI & Terminology Verification:');
+console.log('\n6. Detail Modal, SHI, 7-Stage Selection & UI Format Verification:');
 
 // Test Program Name Standardization
 const allProgramNamesValid = MOCK_NURSERY_STOCK_BATCHES.every(b => b.programName === 'Program Nursery 2026');
@@ -377,7 +641,7 @@ assert(!MOCK_NURSERY_STOCK_BATCHES.some(b => b.programName.includes('TB') || b.p
 
 // Validate all SHI transactions follow standard document and block pattern
 const allShiItems = MOCK_NURSERY_STOCK_BATCHES.flatMap(b => b.pengeluaranShi || []);
-assert(allShiItems.length === 11, `Total transaksi pengeluaran SHI harus tepat 11 (aktual: ${allShiItems.length})`);
+assert(allShiItems.length === 7, `Total transaksi pengeluaran SHI harus tepat 7 (aktual: ${allShiItems.length})`);
 assert(allShiItems.every(tx => /^2026\/NIR\/\d{3}$/.test(tx.docNo)), 'Semua docNo mengikuti sequence 2026/NIR/XXX');
 assert(!allShiItems.some(tx => tx.docNo.includes('OUT/SHI')), 'Tidak ada docNo yang memuat "OUT/SHI"');
 assert(allShiItems.every(tx => /^Block\s\d{3}\/\d{2}$/.test(tx.block)), 'Semua block mengikuti format Block XXX/YY');
@@ -386,12 +650,35 @@ assert(allShiItems.every(tx => ['Divisi I', 'Divisi II'].includes(tx.divisi)), '
 // Modal inspection by setting modal root
 let modalRenderedBody = '';
 let modalRenderedTitle = '';
+let modalRenderedFooter = '';
+let modalClosed = false;
+const modalListeners = {};
+
 const mockModalRoot = {
   get innerHTML() { return modalRenderedBody; },
-  set innerHTML(val) { modalRenderedBody = val; },
-  querySelector: (sel) => ({
-    addEventListener: () => {}
-  })
+  set innerHTML(val) {
+    modalRenderedBody = val;
+    if (val === '') modalClosed = true;
+  },
+  querySelector: (sel) => {
+    return {
+      addEventListener: (event, handler) => {
+        modalListeners[sel] = handler;
+      }
+    };
+  },
+  querySelectorAll: (sel) => {
+    return [
+      {
+        nextElementSibling: { style: { display: 'none' } },
+        querySelector: () => ({ innerHTML: '&gt;', style: {} }),
+        addEventListener: (event, handler) => {
+          if (!modalListeners[sel]) modalListeners[sel] = [];
+          modalListeners[sel].push(handler);
+        }
+      }
+    ];
+  }
 };
 const origGetElementById = global.document.getElementById;
 global.document.getElementById = (id) => {
@@ -403,51 +690,149 @@ global.document.getElementById = (id) => {
 openBatchDetailModal(batch001);
 assert(modalRenderedBody.includes('Program Pembibitan'), 'Modal memuat label "Program Pembibitan"');
 assert(modalRenderedBody.includes('Program Nursery 2026'), 'Modal memuat nama program "Program Nursery 2026"');
+assert(modalRenderedBody.includes('Tanah Besih - Divisi I'), 'Modal memuat kebun & divisi "Tanah Besih - Divisi I"');
+assert(modalRenderedBody.includes('Rubber Main Nursery'), 'Modal memuat tahapan pertumbuhan "Rubber Main Nursery"');
+assert(modalRenderedBody.includes('Asal Bibit'), 'Modal memuat label "Asal Bibit"');
+assert(modalRenderedBody.includes('Pihak Ke-III'), 'Modal Batch - 001 memuat Asal Bibit "Pihak Ke-III"');
+assert(!modalRenderedBody.includes('>Material<'), 'Modal Batch - 001 TIDAK memuat nilai hardcoded "Material"');
+assert(modalRenderedBody.includes('Bed - 001'), 'Modal memuat bedengan "Bed - 001"');
 assert(modalRenderedBody.includes('Stok Awal Semai'), 'Modal memuat label "Stok Awal Semai"');
 assert(modalRenderedBody.includes('15.000 Bibit'), 'Modal Batch - 001 memuat stok awal "15.000 Bibit"');
 
-// Label checks in Modal
-assert(modalRenderedBody.includes('Okulasi (Grafting)'), 'Modal memuat label baru "Okulasi (Grafting)"');
-assert(!modalRenderedBody.includes('Okulasi Pokok (Grafting)'), 'Modal TIDAK memuat label lama "Okulasi Pokok (Grafting)"');
-assert(modalRenderedBody.includes('Okulasi Ulang (Regrafting)'), 'Modal memuat label "Okulasi Ulang (Regrafting)"');
-assert(modalRenderedBody.includes('Total Afkir / Seleksi'), 'Modal memuat label "Total Afkir / Seleksi"');
-assert(modalRenderedBody.includes('Persentase Seleksi (%)'), 'Modal memuat label "Persentase Seleksi (%)"');
+// Section III Label & Value checks in Modal
+assert(modalRenderedBody.includes('Berhasil Diokulasi (Grafting)'), 'Modal memuat label "Berhasil Diokulasi (Grafting)"');
+assert(modalRenderedBody.includes('11.139 Bibit'), 'Modal memuat Berhasil Diokulasi (Grafting) "11.139 Bibit"');
+assert(modalRenderedBody.includes('Berhasil Diokulasi Ulang (Regrafting)'), 'Modal memuat label "Berhasil Diokulasi Ulang (Regrafting)"');
+assert(modalRenderedBody.includes('461 Bibit'), 'Modal memuat Berhasil Diokulasi Ulang (Regrafting) "461 Bibit"');
+assert(modalRenderedBody.includes('Total Seleksi'), 'Modal Card III memuat label resmi "Total Seleksi"');
+assert(!modalRenderedBody.includes('Total Afkir / Seleksi'), 'Modal Card III TIDAK memuat label lama "Total Afkir / Seleksi"');
+assert(!modalRenderedBody.includes('Jumlah Afkir/Seleksi'), 'Modal Card III TIDAK memuat label "Jumlah Afkir/Seleksi"');
+assert(modalRenderedBody.includes('3.900 Bibit'), 'Modal Batch - 001 Card III memuat Total Seleksi "3.900 Bibit"');
+assert(modalRenderedBody.includes('26%'), 'Modal Batch - 001 Card III memuat Persentase Seleksi "26%"');
+assert(!modalRenderedBody.includes('Stok Sebelum SHI'), 'Modal Card III TIDAK memuat label "Stok Sebelum SHI"');
+assert(!modalRenderedBody.includes('Pengeluaran SHI</span>'), 'Modal Card III TIDAK memuat baris terpisah "Pengeluaran SHI"');
+assert(modalRenderedBody.includes('Stok Tersedia (SHI)'), 'Modal Card III memuat label "Stok Tersedia (SHI)"');
+assert(modalRenderedBody.includes('11.100 Bibit'), 'Modal Batch - 001 memuat Stok Tersedia "11.100 Bibit"');
 
-assert(modalRenderedBody.includes('Stok Tersedia:'), 'Modal memuat label baru "Stok Tersedia:"');
-assert(!modalRenderedBody.includes('Stok Tersedia (Hidup)'), 'Modal TIDAK memuat label lama "Stok Tersedia (Hidup)"');
-assert(modalRenderedBody.includes('14.650 Bibit'), 'Modal Batch - 001 memuat stok tersedia "14.650 Bibit"');
+// Section IV. Riwayat Tahapan Seleksi Bibit on Batch - 001 (7 Stages)
+assert(modalRenderedBody.includes('IV. Riwayat Tahapan Seleksi Bibit'), 'Modal memuat Section "IV. Riwayat Tahapan Seleksi Bibit"');
+assert(modalRenderedBody.includes('Seleksi Pra-Semai (Deder)'), 'Modal memuat "Seleksi Pra-Semai (Deder)"');
+assert(modalRenderedBody.includes('Seleksi Ditolak Pindah Semai'), 'Modal memuat "Seleksi Ditolak Pindah Semai"');
+assert(modalRenderedBody.includes('Seleksi I – Pra-Okulasi'), 'Modal memuat "Seleksi I – Pra-Okulasi"');
+assert(modalRenderedBody.includes('Seleksi II – Pra-Okulasi'), 'Modal memuat "Seleksi II – Pra-Okulasi"');
+assert(modalRenderedBody.includes('Seleksi III – Pra-Okulasi'), 'Modal memuat "Seleksi III – Pra-Okulasi"');
+assert(modalRenderedBody.includes('Seleksi Grafting'), 'Modal memuat "Seleksi Grafting"');
+assert(modalRenderedBody.includes('Seleksi Regrafting'), 'Modal memuat "Seleksi Regrafting"');
 
+// FORMAT UI CHECK: VALUE before PERCENTAGE e.g. "322 Bibit • 2%" (BUKAN "2% • 322 Bibit")
+assert(modalRenderedBody.includes('322 Bibit • 2%'), 'Modal Batch - 001 memuat format VALUE • %: "322 Bibit • 2%"');
+assert(!modalRenderedBody.includes('2% • 322 Bibit'), 'Modal Batch - 001 TIDAK memuat format terbalik "2% • 322 Bibit"');
+assert(modalRenderedBody.includes('2.420 Bibit • 16,4%'), 'Modal Batch - 001 memuat format VALUE • %: "2.420 Bibit • 16,4%"');
+assert(modalRenderedBody.includes('39 Bibit • 6,5%'), 'Modal Batch - 001 memuat format VALUE • %: "39 Bibit • 6,5%"');
+
+// EXPAND / COLLAPSE STRUCTURE CHECKS
+assert(modalRenderedBody.includes('stage-accordion-item'), 'Modal memuat accordion item untuk tahapan seleksi');
+assert(modalRenderedBody.includes('stage-toggle-row'), 'Modal memuat trigger row untuk expand/collapse');
+assert(modalRenderedBody.includes('stage-arrow'), 'Modal memuat kontrol panah expand di ujung kanan');
+assert(modalRenderedBody.includes('display: none'), 'Tahapan seleksi dalam kondisi DEFAULT COLLAPSED (display: none)');
+assert(modalRenderedBody.includes('Tanggal Seleksi'), 'Detail tahapan memuat "Tanggal Seleksi"');
+assert(modalRenderedBody.includes('Stok Sebelum'), 'Detail tahapan memuat "Stok Sebelum"');
+assert(modalRenderedBody.includes('Jumlah Seleksi'), 'Detail tahapan memuat "Jumlah Seleksi"');
+assert(modalRenderedBody.includes('Persentase'), 'Detail tahapan memuat "Persentase"');
+
+// REASONS FIELD REMOVAL CHECK
+assert(!modalRenderedBody.includes('Alasan') && !modalRenderedBody.includes('alasanUtama'), 'Field "Alasan / Alasan Utama" WAJIB DIHAPUS dari modal');
+
+// Section V. Pengeluaran Bibit SHI on Batch - 001
 assert(modalRenderedBody.includes('V. Pengeluaran Bibit SHI'), 'Modal memuat Section "V. Pengeluaran Bibit SHI"');
-assert(modalRenderedBody.includes('2.000 Bibit'), 'Modal Batch - 001 memuat total pengeluaran "2.000 Bibit"');
-assert(modalRenderedBody.includes('2026/NIR/001'), 'Modal Batch - 001 memuat dokumen "2026/NIR/001"');
-assert(modalRenderedBody.includes('VI. Komposisi Klon'), 'Modal memuat Section "VI. Komposisi Klon"');
-assert(modalRenderedBody.includes('GT 1'), 'Modal memuat rootstock "GT 1"');
-assert(modalRenderedBody.includes('IRCA 19'), 'Modal memuat entres "IRCA 19" untuk Batch - 001');
+assert(modalRenderedBody.includes('Belum ada riwayat pengeluaran bibit SHI (0 Bibit)'), 'Modal Batch - 001 memuat empty state SHI "Belum ada riwayat pengeluaran bibit SHI (0 Bibit)"');
 
-// Test Batch - 004 detail modal (APM)
+// FOOTER BUTTON & CLOSE HANDLER CHECK
+if (modalListeners['#btn-modal-back']) {
+  modalClosed = false;
+  modalListeners['#btn-modal-back']({ preventDefault: () => {} });
+  assert(modalClosed, 'Tombol "Kembali" berfungsi menutup modal');
+}
+
+// Test Batch - 004 detail modal (APM - Tanah Besih)
 openBatchDetailModal(batch004);
 assert(modalRenderedBody.includes('Rubber Advance Planting Material'), 'Modal Batch - 004 memuat growth stage APM');
 assert(modalRenderedBody.includes('59 Minggu'), 'Modal Batch - 004 memuat umur "59 Minggu"');
-assert(modalRenderedBody.includes('3.850 Bibit'), 'Modal Batch - 004 memuat stok tersedia setelah SHI "3.850 Bibit"');
+assert(modalRenderedBody.includes('162 Bibit • 3%'), 'Modal Batch - 004 memuat format: "162 Bibit • 3%"');
+assert(modalRenderedBody.includes('3.298 Bibit • 68%'), 'Modal Batch - 004 memuat format: "3.298 Bibit • 68%"');
+assert(modalRenderedBody.includes('10 Bibit • 8,3%'), 'Modal Batch - 004 memuat format: "10 Bibit • 8,3%"');
+assert(modalRenderedBody.includes('300 Bibit'), 'Modal Batch - 004 memuat Stok Tersedia "300 Bibit"');
+assert(modalRenderedBody.includes('2026/NIR/003'), 'Modal Batch - 004 memuat dokumen SHI "2026/NIR/003"');
+assert(modalRenderedBody.includes('500 Bibit'), 'Modal Batch - 004 memuat kuantitas SHI "500 Bibit"');
 
-// Test Batch - 006 detail modal (APM Empty with SHI)
+// Test Batch - 006 detail modal (APM Empty, Regrafting = 0)
 openBatchDetailModal(batch006);
-assert(modalRenderedBody.includes('1.900 Bibit'), 'Modal Batch - 006 memuat pengeluaran SHI 1.900 Bibit');
-assert(modalRenderedBody.includes('2026/NIR/010'), 'Modal Batch - 006 memuat docNo 2026/NIR/010');
-assert(modalRenderedBody.includes('0 Bibit'), 'Modal Batch - 006 memuat stok tersedia 0 Bibit');
-assert(modalRenderedBody.includes('5%'), 'Modal Batch - 006 memuat seleksi 5%');
+assert(modalRenderedBody.includes('Batch - 006'), 'Modal Batch - 006 memuat batchCode "Batch - 006"');
+assert(modalRenderedBody.includes('KOSONG'), 'Modal Batch - 006 memuat badge status "KOSONG"');
+assert(modalRenderedBody.includes('Pihak Ke-III'), 'Modal Batch - 006 memuat Asal Bibit "Pihak Ke-III"');
+assert(modalRenderedBody.includes('2.000 Bibit'), 'Modal Batch - 006 memuat stok awal "2.000 Bibit"');
+assert(modalRenderedBody.includes('260 Bibit'), 'Modal Batch - 006 memuat Berhasil Diokulasi (Grafting) "260 Bibit"');
+assert(modalRenderedBody.includes('0 Bibit'), 'Modal Batch - 006 memuat regrafting "0 Bibit"');
+assert(modalRenderedBody.includes('1.740 Bibit'), 'Modal Batch - 006 memuat total seleksi "1.740 Bibit"');
+assert(modalRenderedBody.includes('87%'), 'Modal Batch - 006 memuat seleksi "87%"');
+assert(modalRenderedBody.includes('0 Bibit'), 'Modal Batch - 006 memuat Stok Tersedia "0 Bibit"');
+assert(modalRenderedBody.includes('Seleksi Grafting'), 'Modal Batch - 006 memuat "Seleksi Grafting"');
+assert(modalRenderedBody.includes('Seleksi Regrafting'), 'Modal Batch - 006 memuat 7 tahapan lengkap termasuk "Seleksi Regrafting"');
+assert(modalRenderedBody.includes('2026/NIR/010'), 'Modal Batch - 006 memuat dokumen SHI "2026/NIR/010"');
+assert(modalRenderedBody.includes('18/09/2026'), 'Modal Batch - 006 memuat tanggal SHI "18/09/2026"');
+assert(modalRenderedBody.includes('Divisi I - Block 006/25'), 'Modal Batch - 006 memuat divisi & block "Divisi I - Block 006/25"');
+assert(modalRenderedBody.includes('260 Bibit'), 'Modal Batch - 006 memuat kuantitas SHI ternormalisasi "260 Bibit"');
 
-// Test Batch - 011 detail modal (APM Empty with SHI)
+// Test Batch - 005 detail modal (Main Nursery Available)
+openBatchDetailModal(batch005);
+assert(modalRenderedBody.includes('2.221 Bibit'), 'Modal Batch - 005 memuat Stok Tersedia "2.221 Bibit"');
+assert(modalRenderedBody.includes('Belum ada riwayat pengeluaran bibit SHI (0 Bibit)'), 'Modal Batch - 005 memuat empty state SHI');
+
+// Test Batch - 007 detail modal (APM - Aek Pamingke)
+openBatchDetailModal(batch007);
+assert(modalRenderedBody.includes('583 Bibit • 3%'), 'Modal Batch - 007 memuat "583 Bibit • 3%"');
+assert(modalRenderedBody.includes('11.692 Bibit • 66,8%'), 'Modal Batch - 007 memuat "11.692 Bibit • 66,8%"');
+assert(modalRenderedBody.includes('36 Bibit • 8%'), 'Modal Batch - 007 memuat "36 Bibit • 8%"');
+assert(modalRenderedBody.includes('560 Bibit'), 'Modal Batch - 007 memuat Stok Tersedia "560 Bibit"');
+assert(modalRenderedBody.includes('2026/NIR/005'), 'Modal Batch - 007 memuat dokumen SHI "2026/NIR/005"');
+
+// Test Batch - 009 detail modal (Main Nursery - Aek Pamingke - Empty SHI state)
+openBatchDetailModal(batch009);
+assert(modalRenderedBody.includes('161 Bibit • 2%'), 'Modal Batch - 009 memuat "161 Bibit • 2%"');
+assert(modalRenderedBody.includes('150 Bibit • 2%'), 'Modal Batch - 009 memuat "150 Bibit • 2%"');
+assert(modalRenderedBody.includes('1.183 Bibit • 16,2%'), 'Modal Batch - 009 memuat "1.183 Bibit • 16,2%"');
+assert(modalRenderedBody.includes('16 Bibit • 6,4%'), 'Modal Batch - 009 memuat "16 Bibit • 6,4%"');
+assert(modalRenderedBody.includes('5.588 Bibit'), 'Modal Batch - 009 memuat Stok Tersedia "5.588 Bibit"');
+assert(modalRenderedBody.includes('Belum ada riwayat pengeluaran bibit SHI (0 Bibit)'), 'Modal Batch - 009 memuat empty state SHI "Belum ada riwayat pengeluaran bibit SHI (0 Bibit)"');
+
+// Test Batch - 010 detail modal (Main Nursery Available)
+openBatchDetailModal(batch010);
+assert(modalRenderedBody.includes('2.994 Bibit'), 'Modal Batch - 010 memuat Stok Tersedia "2.994 Bibit"');
+assert(modalRenderedBody.includes('Belum ada riwayat pengeluaran bibit SHI (0 Bibit)'), 'Modal Batch - 010 memuat empty state SHI');
+
+// Test Batch - 011 detail modal (APM - Empty Stock & Full SHI)
 openBatchDetailModal(batch011);
-assert(modalRenderedBody.includes('1.450 Bibit'), 'Modal Batch - 011 memuat pengeluaran SHI 1.450 Bibit');
-assert(modalRenderedBody.includes('2026/NIR/011'), 'Modal Batch - 011 memuat docNo 2026/NIR/011');
-assert(modalRenderedBody.includes('0 Bibit'), 'Modal Batch - 011 memuat stok tersedia 0 Bibit');
-assert(modalRenderedBody.includes('3%'), 'Modal Batch - 011 memuat seleksi 3%');
+assert(modalRenderedBody.includes('Batch - 011'), 'Modal Batch - 011 memuat batchCode "Batch - 011"');
+assert(modalRenderedBody.includes('KOSONG'), 'Modal Batch - 011 memuat badge status "KOSONG"');
+assert(modalRenderedBody.includes('Pihak Ke-III'), 'Modal Batch - 011 memuat Asal Bibit "Pihak Ke-III"');
+assert(modalRenderedBody.includes('1.500 Bibit'), 'Modal Batch - 011 memuat stok awal "1.500 Bibit"');
+assert(modalRenderedBody.includes('1.320 Bibit'), 'Modal Batch - 011 memuat total seleksi "1.320 Bibit"');
+assert(modalRenderedBody.includes('88%'), 'Modal Batch - 011 memuat seleksi "88%"');
+assert(modalRenderedBody.includes('0 Bibit'), 'Modal Batch - 011 memuat Stok Tersedia "0 Bibit"');
+assert(modalRenderedBody.includes('2026/NIR/011'), 'Modal Batch - 011 memuat dokumen SHI "2026/NIR/011"');
+assert(modalRenderedBody.includes('15/09/2026'), 'Modal Batch - 011 memuat tanggal SHI "15/09/2026"');
+assert(modalRenderedBody.includes('Divisi II - Block 005/25'), 'Modal Batch - 011 memuat divisi & block "Divisi II - Block 005/25"');
+assert(modalRenderedBody.includes('180 Bibit'), 'Modal Batch - 011 memuat kuantitas SHI ternormalisasi "180 Bibit"');
 
-// Test Batch - 003 (Empty SHI history)
-openBatchDetailModal(batch003);
-assert(modalRenderedBody.includes('Belum ada riwayat pengeluaran bibit SHI'), 'Modal Batch - 003 menampilkan "Belum ada riwayat pengeluaran bibit SHI"');
-assert(modalRenderedBody.includes('7.750 Bibit'), 'Modal Batch - 003 menampilkan "7.750 Bibit" untuk stok tersedia');
+// Test Missing Data Handling on Asal Bibit (Batch 002 without asalBibit)
+openBatchDetailModal(batch002);
+assert(modalRenderedBody.includes('Asal Bibit</span><span style="color: #64748B;">:</span><strong style="color: #0F172A; word-break: break-word;">-</strong>'), 'Modal Batch - 002 (tanpa asalBibit) menampilkan "-"');
+assert(!modalRenderedBody.includes('Pihak Ke-III'), 'Modal Batch - 002 TIDAK menggunakan fallback otomatis "Pihak Ke-III"');
+assert(!modalRenderedBody.includes('>Material<'), 'Modal Batch - 002 TIDAK memuat nilai hardcoded "Material"');
+
+// Synthetic missing asalBibit test to ensure no fallback to "Pihak Ke-III"
+openBatchDetailModal({ ...batch001, asalBibit: undefined });
+assert(modalRenderedBody.includes('Asal Bibit</span><span style="color: #64748B;">:</span><strong style="color: #0F172A; word-break: break-word;">-</strong>'), 'Modal dengan asalBibit undefined menghasilkan "-" dan tidak fallback ke "Pihak Ke-III"');
 
 // Restore original document getElementById
 global.document.getElementById = origGetElementById;

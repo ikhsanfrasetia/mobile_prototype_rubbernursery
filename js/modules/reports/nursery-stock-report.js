@@ -66,119 +66,179 @@ export function openBatchDetailModal(batch) {
   if (!batch) return;
 
   const ageWeeks = calculateAgeInWeeks(batch.tanggalSemai);
-  const seleksiPct = calculateSelectionPercentage(batch.jumlahAfkirSeleksi, batch.initialQty);
+  const totalSeleksi = (batch.selectionRecords || []).reduce((acc, r) => acc + Number(r.qtyAfkir || 0), 0);
+  const seleksiPct = calculateSelectionPercentage(totalSeleksi, batch.initialQty);
   const isAPM = batch.growthStage === 'Rubber Advance Planting Material';
   const hasShi = Array.isArray(batch.pengeluaranShi) && batch.pengeluaranShi.length > 0;
-  const totalPengeluaran = (batch.pengeluaranShi || []).reduce((acc, tx) => acc + (tx.qty || 0), 0);
+  const totalPengeluaranShi = (batch.pengeluaranShi || []).reduce(
+    (total, tx) => total + Number(tx.qty || 0),
+    0
+  );
+
+  const PRE_GRAFT_STAGES = [
+    'SELEKSI_PRA_SEMAI',
+    'SELEKSI_DITOLAK_PINDAH_SEMAI',
+    'SELEKSI_PRA_OKULASI_I',
+    'SELEKSI_PRA_OKULASI_II',
+    'SELEKSI_PRA_OKULASI_III'
+  ];
+  const preGraftAfkir = (batch.selectionRecords || [])
+    .filter(r => PRE_GRAFT_STAGES.includes(r.stage))
+    .reduce((acc, r) => acc + Number(r.qtyAfkir || 0), 0);
+  const graftingInput = batch.initialQty - preGraftAfkir;
+
+  const graftRec = (batch.selectionRecords || []).find(r => r.stage === 'SELEKSI_GRAFTING');
+  const graftAfkir = graftRec ? Number(graftRec.qtyAfkir || 0) : 0;
+  const berhasilGrafting = Math.max(0, graftingInput - graftAfkir);
+
+  const regraftingInput = Number(batch.jumlahRegrafting || 0);
+  const regraftRec = (batch.selectionRecords || []).find(r => r.stage === 'SELEKSI_REGRAFTING');
+  const regraftAfkir = regraftRec ? Number(regraftRec.qtyAfkir || 0) : 0;
+  const berhasilRegrafting = regraftingInput > 0 ? Math.max(0, regraftingInput - regraftAfkir) : 0;
+
+  const formatStagePercentage = (qtyAfkir, baseQty) => {
+    if (!baseQty || baseQty <= 0) return '0%';
+    const rawPct = (Number(qtyAfkir || 0) / Number(baseQty)) * 100;
+    const rounded = Math.round(rawPct * 10) / 10;
+    const formattedStr = Number.isInteger(rounded)
+      ? String(rounded)
+      : rounded.toFixed(1).replace('.', ',');
+    return `${formattedStr}%`;
+  };
+
+  const STAGES_DEF = [
+    { key: 'SELEKSI_PRA_SEMAI', label: 'Seleksi Pra-Semai (Deder)' },
+    { key: 'SELEKSI_DITOLAK_PINDAH_SEMAI', label: 'Seleksi Ditolak Pindah Semai' },
+    { key: 'SELEKSI_PRA_OKULASI_I', label: 'Seleksi I – Pra-Okulasi' },
+    { key: 'SELEKSI_PRA_OKULASI_II', label: 'Seleksi II – Pra-Okulasi' },
+    { key: 'SELEKSI_PRA_OKULASI_III', label: 'Seleksi III – Pra-Okulasi' },
+    { key: 'SELEKSI_GRAFTING', label: 'Seleksi Grafting' },
+    { key: 'SELEKSI_REGRAFTING', label: 'Seleksi Regrafting' }
+  ];
 
   const modalContent = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 0.82rem; color: #1F2937;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 0.80rem; color: #1E293B;">
       
-      <!-- HEADER BADGE -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #E5E7EB;">
-        <div>
-          <span style="font-size: 1.05rem; font-weight: 800; color: #111827;">${batch.batchCode}</span>
-          <span style="display: inline-block; margin-left: 8px; font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: ${isAPM ? '#EFF6FF' : '#FAF5FF'}; color: ${isAPM ? '#1E40AF' : '#6B21A8'}; border: 1px solid ${isAPM ? '#BFDBFE' : '#E9D5FF'};">
+      <!-- SUBHEADER BATCH -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #E2E8F0;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.10rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em;">${batch.batchCode}</span>
+          <span style="display: inline-block; font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: ${isAPM ? '#EFF6FF' : '#F8FAFC'}; color: ${isAPM ? '#1E40AF' : '#475569'}; border: 1px solid ${isAPM ? '#DBEAFE' : '#E2E8F0'};">
             ${isAPM ? 'APM' : 'Main Nursery'}
           </span>
         </div>
-        <span style="font-size: 0.70rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${batch.status === 'AVAILABLE' ? '#DCFCE7' : '#FEE2E2'}; color: ${batch.status === 'AVAILABLE' ? '#166534' : '#991B1B'};">
+        <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${batch.status === 'AVAILABLE' ? '#DCFCE7' : '#FEE2E2'}; color: ${batch.status === 'AVAILABLE' ? '#166534' : '#DC2626'}; border: 1px solid ${batch.status === 'AVAILABLE' ? '#BBF7D0' : '#FECACA'};">
           ${batch.status === 'AVAILABLE' ? 'TERSEDIA' : 'KOSONG'}
         </span>
       </div>
 
-      <!-- 1. IDENTITAS -->
+      <!-- 1. IDENTITAS BATCH -->
       <div style="margin-bottom: 12px;">
-        <div style="font-size: 0.65rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;">
+        <div style="background: #F1F5F9; border-radius: 4px; padding: 5px 8px; font-size: 0.68rem; font-weight: 800; color: #1E293B; letter-spacing: 0.02em; margin-bottom: 8px; text-transform: uppercase;">
           I. Identitas Batch
         </div>
-        <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;">
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Program Pembibitan:</span><strong style="color: #111827; text-align: right;">${batch.programName}</strong></div>
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Kebun & Divisi:</span><strong style="color: #111827;">${batch.estateName} · ${batch.divisionName}</strong></div>
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Tahapan Pertumbuhan:</span><strong style="color: #111827;">${batch.growthStage}</strong></div>
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Bedengan:</span><strong style="color: #111827;">${batch.bedengan}</strong></div>
+        <div style="display: grid; grid-template-columns: 145px 12px 1fr; row-gap: 5px; font-size: 0.75rem; padding: 0 4px;">
+          <span style="color: #64748B;">Program Pembibitan</span><span style="color: #64748B;">:</span><strong style="color: #0F172A; word-break: break-word;">${batch.programName}</strong>
+          <span style="color: #64748B;">Kebun & Divisi</span><span style="color: #64748B;">:</span><strong style="color: #0F172A; word-break: break-word;">${batch.estateName} - ${batch.divisionName}</strong>
+          <span style="color: #64748B;">Tahapan Pertumbuhan</span><span style="color: #64748B;">:</span><strong style="color: #0F172A; word-break: break-word;">${batch.growthStage}</strong>
+          <span style="color: #64748B;">Asal Bibit</span><span style="color: #64748B;">:</span><strong style="color: #0F172A; word-break: break-word;">${batch.asalBibit || '-'}</strong>
+          <span style="color: #64748B;">Bedengan</span><span style="color: #64748B;">:</span><strong style="color: #0F172A; word-break: break-word;">${batch.bedengan}</strong>
         </div>
       </div>
 
       <!-- 2. UMUR BIBIT -->
       <div style="margin-bottom: 12px;">
-        <div style="font-size: 0.65rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;">
+        <div style="background: #F1F5F9; border-radius: 4px; padding: 5px 8px; font-size: 0.68rem; font-weight: 800; color: #1E293B; letter-spacing: 0.02em; margin-bottom: 8px; text-transform: uppercase;">
           II. Umur Bibit
         </div>
-        <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;">
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Tanggal Semai:</span><strong style="color: #111827;">${formatDisplayDate(batch.tanggalSemai)}</strong></div>
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Umur Bibit:</span><strong style="color: #166534; font-size: 0.88rem;">${ageWeeks} Minggu</strong></div>
+        <div style="display: grid; grid-template-columns: 145px 12px 1fr; row-gap: 5px; font-size: 0.75rem; padding: 0 4px;">
+          <span style="color: #64748B;">Tanggal Semai</span><span style="color: #64748B;">:</span><strong style="color: #0F172A;">${formatDisplayDate(batch.tanggalSemai)}</strong>
+          <span style="color: #64748B;">Umur Bibit</span><span style="color: #64748B;">:</span><strong style="color: #0F172A;">${ageWeeks} Minggu</strong>
         </div>
       </div>
 
       <!-- 3. POPULASI & PROSES -->
       <div style="margin-bottom: 12px;">
-        <div style="font-size: 0.65rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;">
+        <div style="background: #F1F5F9; border-radius: 4px; padding: 5px 8px; font-size: 0.68rem; font-weight: 800; color: #1E293B; letter-spacing: 0.02em; margin-bottom: 8px; text-transform: uppercase;">
           III. Populasi & Proses
         </div>
-        <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;">
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Stok Awal Semai:</span><strong style="color: #111827;">${batch.initialQty.toLocaleString('id-ID')} Bibit</strong></div>
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Okulasi (Grafting):</span><strong style="color: #116834;">${batch.jumlahGrafting.toLocaleString('id-ID')} Bibit</strong></div>
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Okulasi Ulang (Regrafting):</span><strong style="color: #92400E;">${batch.jumlahRegrafting.toLocaleString('id-ID')} Bibit</strong></div>
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Total Afkir / Seleksi:</span><strong style="color: #DC2626;">(${batch.jumlahAfkirSeleksi.toLocaleString('id-ID')}) Bibit</strong></div>
-          <div style="display: flex; justify-content: space-between; padding-top: 3px; border-top: 1px dashed #E5E7EB;"><span style="color: #6B7280;">Persentase Seleksi (%):</span><strong style="color: #DC2626; font-size: 0.86rem;">${seleksiPct}%</strong></div>
+        <div style="display: grid; grid-template-columns: 210px 12px 1fr; row-gap: 5px; font-size: 0.75rem; padding: 0 4px;">
+          <span style="color: #64748B;">Stok Awal Semai</span><span style="color: #64748B;">:</span><strong style="color: #0F172A;">${batch.initialQty.toLocaleString('id-ID')} Bibit</strong>
+          <span style="color: #64748B;">Berhasil Diokulasi (Grafting)</span><span style="color: #64748B;">:</span><strong style="color: #0F172A;">${berhasilGrafting.toLocaleString('id-ID')} Bibit</strong>
+          <span style="color: #64748B;">Berhasil Diokulasi Ulang (Regrafting)</span><span style="color: #64748B;">:</span><strong style="color: #0F172A;">${berhasilRegrafting.toLocaleString('id-ID')} Bibit</strong>
+          <span style="color: #64748B;">Total Seleksi</span><span style="color: #64748B;">:</span><strong style="color: #0F172A;">${totalSeleksi.toLocaleString('id-ID')} Bibit</strong>
+          <span style="color: #64748B;">Persentase Seleksi (%)</span><span style="color: #64748B;">:</span><strong style="color: #0F172A;">${seleksiPct}%</strong>
+        </div>
+        <div style="border-top: 1px dashed #E2E8F0; margin: 6px 0;"></div>
+        <div style="display: grid; grid-template-columns: 210px 12px 1fr; row-gap: 5px; font-size: 0.75rem; padding: 0 4px;">
+          <span style="color: #64748B;">Stok Tersedia (SHI)</span><span style="color: #64748B;">:</span><strong style="color: #0F172A;">${batch.availableQty.toLocaleString('id-ID')} Bibit</strong>
         </div>
       </div>
 
-      <!-- 4. STOK TERSEDIA -->
+      <!-- 4. RIWAYAT TAHAPAN SELEKSI BIBIT -->
       <div style="margin-bottom: 12px;">
-        <div style="font-size: 0.65rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;">
-          IV. Posisi Stok Aktual
+        <div style="background: #F1F5F9; border-radius: 4px; padding: 5px 8px; font-size: 0.68rem; font-weight: 800; color: #1E293B; letter-spacing: 0.02em; margin-bottom: 8px; text-transform: uppercase;">
+          IV. Riwayat Tahapan Seleksi Bibit
         </div>
-        <div style="background: #F0FDF4; border: 1px solid #DCFCE7; border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-weight: 700; color: #166534; font-size: 0.75rem;">Stok Tersedia:</span>
-          <strong style="font-size: 1.15rem; font-weight: 900; color: #116834;">${batch.availableQty.toLocaleString('id-ID')} Bibit</strong>
+        <div style="display: flex; flex-direction: column; gap: 0;">
+          ${STAGES_DEF.map(s => {
+            const rec = (batch.selectionRecords || []).find(r => r.stage === s.key);
+            const qty = rec ? rec.qtyAfkir : 0;
+            const baseQty = rec ? rec.baseQty : 0;
+            const pct = rec ? formatStagePercentage(rec.qtyAfkir, rec.baseQty) : '0%';
+            const tanggal = rec ? formatDisplayDate(rec.tanggal) : '-';
+
+            return `
+              <div class="stage-accordion-item" style="border-bottom: 1px solid #F1F5F9; padding: 8px 4px;">
+                <div class="stage-toggle-row" data-stage="${s.key}" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                  <span style="font-size: 0.75rem; font-weight: 700; color: #0F172A;">${s.label}</span>
+                  <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                    <strong style="font-size: 0.75rem; font-weight: 700; color: #0F172A;">${qty.toLocaleString('id-ID')} Bibit • ${pct}</strong>
+                    <span class="stage-arrow" style="font-size: 0.75rem; font-weight: 700; color: #64748B; font-family: monospace; display: inline-block; width: 10px; text-align: right;">&gt;</span>
+                  </div>
+                </div>
+                <div class="stage-detail-panel" style="display: none; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; margin-top: 6px; font-size: 0.73rem;">
+                  <div style="display: grid; grid-template-columns: 110px 10px 1fr; row-gap: 4px; color: #64748B;">
+                    <span>Tanggal Seleksi</span><span>:</span><strong style="color: #0F172A;">${tanggal}</strong>
+                    <span>Stok Sebelum</span><span>:</span><strong style="color: #0F172A;">${baseQty.toLocaleString('id-ID')} Bibit</strong>
+                    <span>Jumlah Seleksi</span><span>:</span><strong style="color: #0F172A;">${qty.toLocaleString('id-ID')} Bibit</strong>
+                    <span>Persentase</span><span>:</span><strong style="color: #0F172A;">${pct}</strong>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
       </div>
 
       <!-- 5. PENGELUARAN BIBIT SHI -->
       <div style="margin-bottom: 12px;">
-        <div style="font-size: 0.65rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;">
+        <div style="background: #F1F5F9; border-radius: 4px; padding: 5px 8px; font-size: 0.68rem; font-weight: 800; color: #1E293B; letter-spacing: 0.02em; margin-bottom: 8px; text-transform: uppercase;">
           V. Pengeluaran Bibit SHI
         </div>
         ${hasShi ? `
-          <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 4px; border-bottom: 1px dashed #E5E7EB;">
-              <span style="color: #6B7280; font-size: 0.72rem; font-weight: 600;">Total Pengeluaran SHI:</span>
-              <strong style="color: #0369A1; font-size: 0.85rem; font-weight: 800;">${totalPengeluaran.toLocaleString('id-ID')} Bibit</strong>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 4px;">
+            <div style="display: grid; grid-template-columns: 180px 12px 1fr; font-size: 0.75rem;">
+              <span style="color: #64748B;">Total Pengeluaran Bibit (SHI)</span><span style="color: #64748B;">:</span><strong style="color: #0F172A;">${totalPengeluaranShi.toLocaleString('id-ID')} Bibit</strong>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 5px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
               ${batch.pengeluaranShi.map(tx => `
-                <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; padding: 7px 9px; display: flex; flex-direction: column; gap: 3px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="color: #111827; font-size: 0.76rem;">${tx.docNo}</strong>
-                    <span style="color: #6B7280; font-size: 0.68rem; font-weight: 600;">${formatDisplayDate(tx.tanggal)}</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem;">
-                    <span style="color: #4B5563;">${tx.divisi} · <strong style="color: #1E293B;">${tx.block}</strong></span>
-                    <strong style="color: #0369A1; font-weight: 800;">${tx.qty.toLocaleString('id-ID')} Bibit</strong>
+                <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 7px 9px; display: flex; flex-direction: column; gap: 3px;">
+                  <div style="font-weight: 800; color: #0F172A; font-size: 0.75rem; margin-bottom: 2px;">${tx.docNo}</div>
+                  <div style="display: grid; grid-template-columns: 120px 10px 1fr; row-gap: 3px; font-size: 0.73rem; color: #64748B;">
+                    <span>Tanggal</span><span>:</span><strong style="color: #0F172A;">${formatDisplayDate(tx.tanggal)}</strong>
+                    <span>Divisi & Blok</span><span>:</span><strong style="color: #0F172A; word-break: break-word;">${tx.divisi} - ${tx.block}</strong>
+                    <span>Jumlah Pengeluaran</span><span>:</span><strong style="color: #0F172A;">${Number(tx.qty || 0).toLocaleString('id-ID')} Bibit</strong>
                   </div>
                 </div>
               `).join('')}
             </div>
           </div>
         ` : `
-          <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: #6B7280; font-size: 0.72rem;">Belum ada riwayat pengeluaran bibit SHI</span>
-            <strong style="color: #6B7280; font-size: 0.78rem;">0 Bibit</strong>
+          <div style="font-size: 0.74rem; color: #64748B; padding: 4px;">
+            Belum ada riwayat pengeluaran bibit SHI (0 Bibit)
           </div>
         `}
-      </div>
-
-      <!-- 6. KOMPOSISI KLON -->
-      <div>
-        <div style="font-size: 0.65rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;">
-          VI. Komposisi Klon
-        </div>
-        <div style="background: #F9FAFB; border: 1px solid #F3F4F6; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;">
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Klon Batang Bawah (Rootstock):</span><strong style="color: #111827;">${batch.rootstockClone}</strong></div>
-          <div style="display: flex; justify-content: space-between;"><span style="color: #6B7280;">Klon Entres (Mata):</span><strong style="color: #111827;">${batch.entresClone}</strong></div>
-        </div>
       </div>
 
     </div>
@@ -188,13 +248,41 @@ export function openBatchDetailModal(batch) {
     title: `Detail ${batch.batchCode}`,
     body: modalContent,
     footer: `
-      <div style="display: flex; justify-content: flex-end; width: 100%;">
-        <button type="button" class="btn btn-secondary" data-modal-close style="padding: 6px 18px; font-weight: 700; font-size: 0.78rem; border-radius: 6px; cursor: pointer;">
-          Tutup
+      <div style="width: 100%;">
+        <button type="button" id="btn-modal-back" style="width: 100%; background: #116834; border: none; color: #FFFFFF; font-weight: 700; font-size: 0.84rem; height: 38px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+          Kembali
         </button>
       </div>
     `
   });
+
+  // Attach event handlers for modal actions
+  const modalRoot = document.getElementById('modal-root');
+  if (modalRoot) {
+    // 1. Tombol Kembali
+    const backBtn = modalRoot.querySelector('#btn-modal-back');
+    if (backBtn) {
+      backBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeModal();
+      });
+    }
+
+    // 2. Expand/Collapse 7 stages
+    modalRoot.querySelectorAll('.stage-toggle-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const detail = row.nextElementSibling;
+        const arrow = row.querySelector('.stage-arrow');
+        if (!detail) return;
+        const isCollapsed = detail.style.display === 'none';
+        detail.style.display = isCollapsed ? 'block' : 'none';
+        if (arrow) {
+          arrow.innerHTML = isCollapsed ? '&#8964;' : '&gt;'; // ⌄ or >
+          arrow.style.fontSize = isCollapsed ? '0.90rem' : '0.75rem';
+        }
+      });
+    });
+  }
 }
 
 /**
@@ -222,7 +310,10 @@ export function renderNurseryStockReport() {
 
   // 4. Calculate Summary Metrics from filtered batches
   const totalStokAwal = filteredBatches.reduce((acc, b) => acc + (b.initialQty || 0), 0);
-  const totalAfkir = filteredBatches.reduce((acc, b) => acc + (b.jumlahAfkirSeleksi || 0), 0);
+  const totalSeleksiSummary = filteredBatches.reduce((acc, b) => {
+    const bTotal = (b.selectionRecords || []).reduce((sum, r) => sum + Number(r.qtyAfkir || 0), 0);
+    return acc + bTotal;
+  }, 0);
   const totalStokTersedia = filteredBatches.reduce((acc, b) => acc + (b.availableQty || 0), 0);
 
   // Render Page HTML
@@ -239,9 +330,6 @@ export function renderNurseryStockReport() {
             </svg>
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0; letter-spacing: -0.01em;">Laporan Stok Bibit</h1>
-        </div>
-        <div style="font-size: 0.68rem; font-weight: 700; color: #116834; background: #E8F5E9; padding: 3px 8px; border-radius: 4px;">
-          ${user.estateId || 'EST'} · ${user.divisionId || 'DIV'}
         </div>
       </header>
 
@@ -290,9 +378,9 @@ export function renderNurseryStockReport() {
               <div style="font-size: 0.55rem; color: #94A3B8;">Bibit</div>
             </div>
             <div style="min-width: 0;">
-              <div style="font-size: 0.58rem; color: #DC2626; font-weight: 700; text-transform: uppercase;">Total Afkir</div>
+              <div style="font-size: 0.58rem; color: #DC2626; font-weight: 700; text-transform: uppercase;">Total Seleksi</div>
               <div style="font-size: 0.85rem; font-weight: 900; color: #DC2626; margin-top: 1px; white-space: nowrap;">
-                (${totalAfkir.toLocaleString('id-ID')})
+                (${totalSeleksiSummary.toLocaleString('id-ID')})
               </div>
               <div style="font-size: 0.55rem; color: #DC2626;">Bibit</div>
             </div>
@@ -322,7 +410,8 @@ export function renderNurseryStockReport() {
             <div style="display: flex; flex-direction: column; gap: 8px;">
               ${filteredBatches.map((b, idx) => {
                 const ageWeeks = calculateAgeInWeeks(b.tanggalSemai);
-                const seleksiPct = calculateSelectionPercentage(b.jumlahAfkirSeleksi, b.initialQty);
+                const batchTotalSeleksi = (b.selectionRecords || []).reduce((acc, r) => acc + Number(r.qtyAfkir || 0), 0);
+                const seleksiPct = calculateSelectionPercentage(batchTotalSeleksi, b.initialQty);
                 const isAPM = b.growthStage === 'Rubber Advance Planting Material';
                 const isEmpty = b.status === 'EMPTY' || b.availableQty === 0;
 
