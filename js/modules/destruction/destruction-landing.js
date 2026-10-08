@@ -50,8 +50,7 @@ export function renderDestructionLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const rawUser = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan', role: 'MANTRI_TANAMAN' };
-  const currentUser = getCurrentUserContext() || resolveUserContext(rawUser);
+  const currentUser = getCurrentUserContext();
   const normalizedUserRole = normalizeRole(currentUser.role || currentUser.rawRole);
   const isAsistenBibitan = normalizedUserRole === ROLES.ASISTEN_BIBITAN;
 

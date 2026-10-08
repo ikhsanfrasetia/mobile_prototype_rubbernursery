@@ -178,9 +178,8 @@ export function canPerformAsistenSelectionAction(item, currentUser) {
 
   // Pre-grafting selection documents (Seleksi I/II/III)
   const isPreGraftingDoc = Boolean(
-    item.batchCode &&
-    Array.isArray(item.bedenganIds) &&
     !item.originType &&
+    (item.batchCode || item.batchId || item.programCode || item.programId || item.rows || item.bedenganIds) &&
     (item.selectionStage === 'SELEKSI_I' || item.selectionStage === 'SELEKSI_II' || item.selectionStage === 'SELEKSI_III' ||
      item.selectionStage === 'SELEKSI_1' || item.selectionStage === 'SELEKSI_2' || item.selectionStage === 'SELEKSI_3')
   );
@@ -2045,7 +2044,7 @@ export function createSelection2DocumentFromSelection1(sourceSelection1IdOrDocNo
   );
 
   if (existing) {
-    return existing;
+    return { ...existing, isNewlyCreated: false };
   }
 
   // Generate Dokumen Seleksi II No (Format: 2026/SEL-II/001)
@@ -2203,6 +2202,7 @@ export function createSelection2DocumentFromSelection1(sourceSelection1IdOrDocNo
 
   allDocs.push(newDoc);
   storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+  newDoc.isNewlyCreated = true;
   return newDoc;
 }
 
@@ -2258,7 +2258,7 @@ export function createSelection3DocumentFromSelection2(sourceSelection2IdOrDocNo
   );
 
   if (existing) {
-    return existing;
+    return { ...existing, isNewlyCreated: false };
   }
 
   // Generate Dokumen Seleksi III No (Format: 2026/SEL-III/001)
@@ -2417,6 +2417,7 @@ export function createSelection3DocumentFromSelection2(sourceSelection2IdOrDocNo
 
   allDocs.push(newDoc);
   storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+  newDoc.isNewlyCreated = true;
   return newDoc;
 }
 
@@ -2867,6 +2868,18 @@ export function approvePreGraftingSelectionDocument(idOrDocNo, notes = '', curre
   });
   storage.set('verification_transactions', allVerifs);
 
+  // Trigger otomatis downstream document generation saat final approval
+  try {
+    const stageNorm = String(target.selectionStage || '').toUpperCase();
+    if (stageNorm === 'SELEKSI_I' || stageNorm === 'SELEKSI_1' || stageNorm === SELECTION_STAGES.SELEKSI_1) {
+      createSelection2DocumentFromSelection1(target.id, currentUser);
+    } else if (stageNorm === 'SELEKSI_II' || stageNorm === 'SELEKSI_2' || stageNorm === SELECTION_STAGES.SELEKSI_2) {
+      createSelection3DocumentFromSelection2(target.id, currentUser);
+    }
+  } catch (genErr) {
+    console.warn('[approvePreGraftingSelectionDocument] Downstream generation notice:', genErr.message);
+  }
+
   return updatedDoc;
 }
 
@@ -3201,6 +3214,52 @@ export function syncAllSeedingsToPreGraftingSelectionDocuments(currentUser = nul
 }
 
 /**
+ * Sinkronisasi seluruh Dokumen Seleksi Pra-Okulasi yang sudah FINAL disetujui
+ * ke Dokumen Seleksi downstream (Seleksi I -> Seleksi II, Seleksi II -> Seleksi III) secara idempoten
+ */
+export function syncAllApprovedPreGraftingSelectionDocuments(currentUser = null) {
+  const allDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
+  let syncedCount = 0;
+
+  // 1. Rekonsiliasi Seleksi I FINAL -> Seleksi II
+  allDocs.forEach(doc => {
+    const stageNorm = String(doc.selectionStage || '').toUpperCase();
+    const isStage1 = (stageNorm === 'SELEKSI_I' || stageNorm === 'SELEKSI_1' || stageNorm === SELECTION_STAGES.SELEKSI_1);
+    const isApproved = String(doc.status || '').toUpperCase() === SELECTION_STATUS.DISETUJUI;
+    const isFinal = Boolean(doc.isFinal);
+
+    if (isStage1 && isApproved && isFinal && !doc.isSplit && !doc.isLegacyAggregateSplit) {
+      try {
+        const res = createSelection2DocumentFromSelection1(doc.id, currentUser);
+        if (res && res.isNewlyCreated) syncedCount++;
+      } catch (err) {
+        // Idempotency or already exists
+      }
+    }
+  });
+
+  // 2. Rekonsiliasi Seleksi II FINAL -> Seleksi III
+  const refreshedDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
+  refreshedDocs.forEach(doc => {
+    const stageNorm = String(doc.selectionStage || '').toUpperCase();
+    const isStage2 = (stageNorm === 'SELEKSI_II' || stageNorm === 'SELEKSI_2' || stageNorm === SELECTION_STAGES.SELEKSI_2);
+    const isApproved = String(doc.status || '').toUpperCase() === SELECTION_STATUS.DISETUJUI;
+    const isFinal = Boolean(doc.isFinal);
+
+    if (isStage2 && isApproved && isFinal && !doc.isSplit && !doc.isLegacyAggregateSplit) {
+      try {
+        const res = createSelection3DocumentFromSelection2(doc.id, currentUser);
+        if (res && res.isNewlyCreated) syncedCount++;
+      } catch (err) {
+        // Idempotency or already exists
+      }
+    }
+  });
+
+  return syncedCount;
+}
+
+/**
  * =============================================================================
  * TRANSAKSI PELAKSANAAN SELEKSI I (TASK-03)
  * =============================================================================
@@ -3302,7 +3361,7 @@ export function getBedenganScopeStatusForSeleksi1(parentDoc, txsOverride = null)
  * Validasi payload transaksi pelaksanaan Seleksi I
  * Mendukung model kuantitas baru (actualPolybagInspectedQty, actualBibitSelectedQty) dan Legacy
  */
-export function validateSeleksi1Execution(payload, parentDoc, existingTxs = []) {
+export function validateSeleksi1Execution(payload, parentDoc, existingTxs = null) {
   const errors = [];
   if (!payload) {
     return { isValid: false, errors: ['Data transaksi Seleksi I tidak boleh kosong.'] };

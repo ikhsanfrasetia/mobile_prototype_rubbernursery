@@ -15,10 +15,11 @@ import { confirmDialog } from '../../components/modal.js';
 import { formatFullDateIndonesian, nowISO, todayISO, nowTimeWithSeconds, uid, esc, getAttendanceUniqueKey } from '../../core/utils.js';
 import { getEffectiveDate, getEffectiveTimeWithSeconds, getEffectiveISO } from '../../core/simulation-clock-service.js';
 import { ROLE_LABELS } from '../../core/permissions.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 
 export async function renderAttendanceSupervisorResult() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', code: '1405482', position: ROLE_LABELS.MANTRI_TANAMAN, id: 'MNT001' };
+  const user = getCurrentUserContext();
   const attType = getAttendanceTypeByHour();
   const sessionLabel = attType === 'PULANG' ? 'Presensi Pulang' : 'Presensi Datang';
   const pageTitle = `Presensi Supervisor ${attType === 'PULANG' ? 'Pulang' : 'Datang'}`;
@@ -26,7 +27,7 @@ export async function renderAttendanceSupervisorResult() {
   // Ambil state hasil capture atau fallback default jika refresh langsung di route result
   const capture = lastSupervisorCapture || {
     user,
-    userCode: user.code || user.id || '1405482',
+    userCode: user.code || user.id || 'MNT001',
     userName: user.name || 'Wagiman',
     position: user.position || ROLE_LABELS.MANTRI_TANAMAN,
     photo: 'assets/icons/supervisor_wagiman.jpg',
@@ -126,8 +127,8 @@ export async function renderAttendanceSupervisorResult() {
     if (isSaving) return;
 
     const today = capture.date || getEffectiveDate();
-    const currentUserId = user.id || 'MNT001';
-    const currentUserCode = capture.userCode || user.code || user.id || '1405482';
+    const currentUserId = user.id || user.userId || 'MNT001';
+    const currentUserCode = capture.userCode || user.code || user.id || 'MNT001';
     const currentUserName = capture.userName || user.name || 'Wagiman';
     let attendances = [];
 

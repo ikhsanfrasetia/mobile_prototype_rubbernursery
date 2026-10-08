@@ -14,6 +14,7 @@
 
 import { session } from '../../core/session.js';
 import { openDrawer } from '../../components/drawer.js';
+import { openModal, closeModal } from '../../components/modal.js';
 import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
 import { todayDDMMYYYY, esc } from '../../core/utils.js';
@@ -573,8 +574,35 @@ function renderTransactionDetailView(app, userCtx) {
 
   // Return
   app.querySelector('#btn-tx-return')?.addEventListener('click', () => {
-    const reason = prompt('Masukkan alasan pengembalian:');
-    if (reason && reason.trim()) {
+    openModal({
+      title: 'Kembalikan Hasil Pemeriksaan',
+      body: `
+        <div style="font-size: 0.84rem; color: #334155; line-height: 1.5;">
+          <p style="margin: 0 0 12px 0;">
+            Kembalikan dokumen pemeriksaan <strong>${esc(docNo)}</strong> ke Mantri untuk perbaikan atau penyesuaian data.
+          </p>
+          <div style="margin-bottom: 14px;">
+            <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">Alasan Pengembalian (Wajib) <span style="color: #DC2626;">*</span></label>
+            <textarea id="modal-return-reason" rows="3" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;" placeholder="Jelaskan alasan pengembalian..."></textarea>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="btn-cancel-modal" type="button" style="flex: 1; height: 38px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; cursor: pointer;">Batal</button>
+            <button id="btn-confirm-return" type="button" style="flex: 1; height: 38px; background: #DC2626; color: #FFF; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">Kembalikan</button>
+          </div>
+        </div>
+      `
+    });
+
+    document.getElementById('btn-cancel-modal')?.addEventListener('click', closeModal);
+    document.getElementById('btn-confirm-return')?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      if (btn?.disabled) return;
+      const reason = document.getElementById('modal-return-reason')?.value || '';
+      if (!reason.trim()) {
+        toast('Alasan pengembalian wajib diisi.', 'error');
+        return;
+      }
+      if (btn) btn.disabled = true;
       try {
         returnVerification({
           referenceType: selectedTxItem.referenceType,
@@ -582,13 +610,15 @@ function renderTransactionDetailView(app, userCtx) {
           returnReason: reason.trim(),
           currentUser: userCtx
         });
+        closeModal();
         toast(`Dokumen ${docNo} dikembalikan untuk revisi`, 'info');
         currentVerifView = 'TRANSACTION_LIST';
         renderVerificationLanding();
       } catch (err) {
+        if (btn) btn.disabled = false;
         toast(err.message || 'Gagal mengembalikan dokumen', 'error');
       }
-    }
+    });
   });
 
   attachAsbBottomNavEvents(app);

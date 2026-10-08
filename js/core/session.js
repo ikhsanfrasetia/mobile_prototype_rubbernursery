@@ -6,6 +6,7 @@
 import { storage, KEYS } from './storage.js';
 import { ROLE_LABELS } from './permissions.js';
 import { resolveUserContext } from './user-context.js';
+import { getDemoPersonaByCode, getDemoPersonas } from '../data/demo-personas.js';
 
 export const session = {
   get() {
@@ -31,21 +32,47 @@ export const session = {
     return s ? s.userId : null;
   },
 
-  start({ id, userId, code, role, name, position, estateId, estateName, divisionId, divisionName, scopeType, isDemoSession = false }) {
-    const finalUserId = userId || id || code || 'USR-001';
+  start(payload = {}) {
+    const { id, userId, code, role, name } = payload || {};
+    const lookupCode = code || userId || id;
+    let registered = lookupCode ? getDemoPersonaByCode(lookupCode) : null;
+    if (!registered && name) {
+      registered = getDemoPersonas().find((p) => p.name === name) || null;
+    }
+
+    // Master persona fallback: Wagiman (TBS-MNT-001 / MNT001)
+    const defaultPersona = getDemoPersonaByCode('MNT001') || {
+      id: 'TBS-MNT-001',
+      code: 'MNT001',
+      role: 'MANTRI_TANAMAN',
+      name: 'Wagiman',
+      position: 'Mantri Bibitan',
+      estateId: 'EST-TBS',
+      estateName: 'Tanah Besih',
+      divisionId: 'DIV-001',
+      divisionName: 'Tanah Besih - Divisi I',
+      scopeType: 'DIVISION'
+    };
+
+    const target = registered || defaultPersona;
+    const sessionRole = (target.code === 'PGS002' && (role === 'PENGURUS_KEBUN_SEPUPU' || target.role === 'PENGURUS_KEBUN_SEPUPU'))
+      ? 'PENGURUS_KEBUN_SEPUPU'
+      : target.role;
+
     const s = {
-      id: finalUserId,
-      userId: finalUserId,
-      code: code || finalUserId,
-      role,
-      name,
-      position: position || (ROLE_LABELS[role] || role),
-      estateId: estateId || (divisionId && divisionId.includes('APM') ? 'EST-APM' : 'EST-TBS'),
-      estateName: estateName || (divisionId && divisionId.includes('APM') ? 'Aek Pamingke' : 'Tanah Besih'),
-      divisionId: divisionId || 'DIV-001',
-      divisionName: divisionName || 'Tanah Besih - Divisi I',
-      scopeType: scopeType || (['PENGURUS', 'ASKEP', 'TEKNIKER_I', 'KTU', 'PENGURUS_KEBUN_SEPUPU'].includes(role) ? 'ESTATE' : 'DIVISION'),
-      isDemoSession: isDemoSession === true,
+      id: target.id,
+      userId: target.code,
+      code: target.code,
+      loginCode: target.code,
+      role: sessionRole,
+      name: target.name,
+      position: target.position || (ROLE_LABELS[sessionRole] || sessionRole),
+      estateId: target.estateId,
+      estateName: target.estateName,
+      divisionId: target.divisionId,
+      divisionName: target.divisionName,
+      scopeType: target.scopeType,
+      isDemoSession: true,
       loginAt: new Date().toISOString(),
       isAuthenticated: true
     };
@@ -54,22 +81,48 @@ export const session = {
   },
 
   /** Role switcher — mode demo/prototype. Mengganti role tanpa logout. */
-  switchRole({ id, userId, code, role, name, position, estateId, estateName, divisionId, divisionName, scopeType }) {
+  switchRole(payload = {}) {
     const current = this.get();
     const base = current && current.loginAt ? { loginAt: current.loginAt } : {};
-    const finalUserId = userId || id || (current ? current.userId : null) || code || 'USR-001';
+    const { id, userId, code, role, name } = payload || {};
+    const lookupCode = code || userId || id;
+    let registered = lookupCode ? getDemoPersonaByCode(lookupCode) : null;
+    if (!registered && name) {
+      registered = getDemoPersonas().find((p) => p.name === name) || null;
+    }
+
+    const defaultPersona = getDemoPersonaByCode('MNT001') || {
+      id: 'TBS-MNT-001',
+      code: 'MNT001',
+      role: 'MANTRI_TANAMAN',
+      name: 'Wagiman',
+      position: 'Mantri Bibitan',
+      estateId: 'EST-TBS',
+      estateName: 'Tanah Besih',
+      divisionId: 'DIV-001',
+      divisionName: 'Tanah Besih - Divisi I',
+      scopeType: 'DIVISION'
+    };
+
+    const target = registered || (current ? (getDemoPersonaByCode(current.code) || defaultPersona) : defaultPersona);
+    const sessionRole = (target.code === 'PGS002' && (role === 'PENGURUS_KEBUN_SEPUPU' || target.role === 'PENGURUS_KEBUN_SEPUPU'))
+      ? 'PENGURUS_KEBUN_SEPUPU'
+      : target.role;
+
     const s = {
-      id: finalUserId,
-      userId: finalUserId,
-      code: code || (current ? current.code : finalUserId),
-      role,
-      name,
-      position: position || (ROLE_LABELS[role] || role),
-      estateId: estateId || (current ? current.estateId : (divisionId && divisionId.includes('APM') ? 'EST-APM' : 'EST-TBS')),
-      estateName: estateName || (current ? current.estateName : (divisionId && divisionId.includes('APM') ? 'Aek Pamingke' : 'Tanah Besih')),
-      divisionId: divisionId || 'DIV-001',
-      divisionName: divisionName || 'Tanah Besih - Divisi I',
-      scopeType: scopeType || (current ? current.scopeType : (['PENGURUS', 'ASKEP', 'TEKNIKER_I', 'KTU', 'PENGURUS_KEBUN_SEPUPU'].includes(role) ? 'ESTATE' : 'DIVISION')),
+      id: target.id,
+      userId: target.code,
+      code: target.code,
+      loginCode: target.code,
+      role: sessionRole,
+      name: target.name,
+      position: target.position || (ROLE_LABELS[sessionRole] || sessionRole),
+      estateId: target.estateId,
+      estateName: target.estateName,
+      divisionId: target.divisionId,
+      divisionName: target.divisionName,
+      scopeType: target.scopeType,
+      isDemoSession: true,
       ...base,
       switchedAt: new Date().toISOString(),
       isAuthenticated: true

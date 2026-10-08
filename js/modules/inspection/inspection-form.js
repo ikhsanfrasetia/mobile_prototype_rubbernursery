@@ -1,13 +1,14 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 
 export function renderInspectionForm() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan' };
+  const user = getCurrentUserContext();
   const today = formatDate(new Date().toISOString());
 
   // Edit Mode Check
@@ -1024,7 +1025,15 @@ export function renderInspectionForm() {
       totalDiperiksa: grandDiperiksa,
       persenJadi: persenTotal,
       catatan,
-      photos: state.photos
+      photos: state.photos,
+      mantri: user?.name || 'Wagiman',
+      actorName: user?.name || 'Wagiman',
+      inspectorName: user?.name || 'Wagiman',
+      inspektur: user?.name || 'Wagiman',
+      userId: user?.id || user?.userId || 'TBS-MNT-001',
+      actorCode: user?.code || 'MNT001',
+      createdBy: user?.id || user?.userId || 'TBS-MNT-001',
+      createdByName: user?.name || 'Wagiman'
     };
 
     if (isEditing) {

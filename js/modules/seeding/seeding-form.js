@@ -13,8 +13,8 @@ import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.
 
 export function renderSeedingForm() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan' };
-  const userCtx = getCurrentUserContext();
+  const user = getCurrentUserContext();
+  const userCtx = user;
   const today = formatDate(new Date().toISOString());
 
   // Get source transaction (from Dederan adapter first, or receipt fallback)

@@ -14,7 +14,8 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate } from '../../core/utils.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
+import { formatDate, esc } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
 import {
   getDederanTransactionById,
@@ -29,7 +30,7 @@ export function renderDederanInspectionForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const user = session.get() || { name: 'Wagiman', code: '1405482', position: 'Mantri Pembibitan' };
+  const user = getCurrentUserContext();
   const today = formatDate(new Date().toISOString());
 
   const editInspId = storage.get('editing_dederan_inspection_id', null);
@@ -60,6 +61,8 @@ export function renderDederanInspectionForm() {
   const initialBerhasil = isEditing ? (editingInsp.jumlahBerhasil || 0) : 0;
   const initialTidakBerhasil = isEditing ? (editingInsp.jumlahTidakBerhasil || 0) : 0;
   const maxAllowedDiperiksa = isEditing ? (summary.sisaBelumDiperiksa + initialDiperiksa) : summary.sisaBelumDiperiksa;
+  const isReturned = isEditing && editingInsp && (editingInsp.status === 'DIKEMBALIKAN' || editingInsp.verificationStatus === 'DIKEMBALIKAN');
+  const hasReturnReason = isReturned && typeof editingInsp.returnReason === 'string' && editingInsp.returnReason.trim().length > 0;
 
   app.innerHTML = `
     <div class="page dederan-insp-form-page" style="display: flex; flex-direction: column; height: 100%; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; position: relative; overflow: hidden;">
@@ -81,8 +84,8 @@ export function renderDederanInspectionForm() {
         <!-- INFORMASI OPERATOR / TANGGAL -->
         <section style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #F1F5F9; background: #FFFFFF;">
           <div style="flex: 1; min-width: 0;">
-            <div style="font-size: 0.84rem; font-weight: 700; color: #0F172A; line-height: 1.2;">${user.name || 'Wagiman'}</div>
-            <div style="font-size: 0.70rem; color: #64748B; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${user.code || '1405482'} - ${user.position || 'Mantri Pembibitan'}</div>
+            <div style="font-size: 0.84rem; font-weight: 700; color: #0F172A; line-height: 1.2;">${user?.name || 'Wagiman'}</div>
+            <div style="font-size: 0.70rem; color: #64748B; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${user?.code || 'MNT001'} - ${user?.position || 'Mantri Bibitan'}</div>
           </div>
           <div style="width: 1px; height: 26px; background: #E2E8F0; margin: 0 12px; flex-shrink: 0;"></div>
           <div style="text-align: right; flex-shrink: 0;">
@@ -133,6 +136,17 @@ export function renderDederanInspectionForm() {
             </div>
           </div>
         </section>
+
+        <!-- CATATAN PENGEMBALIAN ASISTEN (JIKA STATUS DIKEMBALIKAN) -->
+        ${hasReturnReason ? `
+          <section style="margin: 12px 16px 0 16px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 12px; font-size: 0.74rem; color: #991B1B; line-height: 1.4; overflow-wrap: anywhere; word-break: normal;">
+            <div style="font-weight: 800; color: #DC2626; margin-bottom: 2px; display: flex; align-items: center; gap: 4px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="#DC2626" stroke-width="2.5" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              <span>Catatan Pengembalian Asisten:</span>
+            </div>
+            <div>${esc(editingInsp.returnReason.trim())}</div>
+          </section>
+        ` : ''}
 
         <!-- FORM INPUT AREA -->
         <section style="padding: 12px 16px 0 16px;">

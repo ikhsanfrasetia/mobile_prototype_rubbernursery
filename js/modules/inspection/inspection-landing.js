@@ -1,6 +1,6 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
-import { formatStandardDocNo, todayDDMMYYYY } from '../../core/utils.js';
+import { formatStandardDocNo, todayDDMMYYYY, esc } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
 import { session } from '../../core/session.js';
 import { openDrawer } from '../../components/drawer.js';
@@ -517,7 +517,7 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
         let statusBorder = 'none';
 
         if (summary.isComplete) {
-          statusText = '✓ Selesai (100%)';
+          statusText = 'Selesai (100%)';
           statusBg = '#E8F5E9';
           statusColor = '#116834';
           statusBorder = '1px solid #116834';
@@ -526,6 +526,23 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
           statusBg = '#FFF8E1';
           statusColor = '#F57F17';
           statusBorder = '1px solid #FFE082';
+        }
+
+        // Perhitungan derived display metric % Berhasil Pindah Semai
+        const populasiDeder = parseInt(dtx.jumlahDeder || 0, 10);
+        const totalBerhasil = parseInt(summary.totalBerhasil || 0, 10);
+        let persenBerhasilDisplay = '0%';
+        if (populasiDeder > 0) {
+          const rawPercent = (totalBerhasil / populasiDeder) * 100;
+          if (rawPercent >= 100) {
+            persenBerhasilDisplay = '100%';
+          } else if (rawPercent <= 0) {
+            persenBerhasilDisplay = '0%';
+          } else if (rawPercent % 1 === 0) {
+            persenBerhasilDisplay = `${rawPercent}%`;
+          } else {
+            persenBerhasilDisplay = `${rawPercent.toFixed(1)}%`;
+          }
         }
 
         return `
@@ -548,18 +565,22 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
 
             <hr style="border: none; border-top: 1px solid #F3F4F6; margin: 0 0 10px 0;" />
 
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; margin-bottom: 10px;">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; margin-bottom: ${!summary.isComplete ? '10px' : '0'};">
               <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 6px 2px;">
-                <div style="font-size: 0.65rem; color: #6B7280;">Populasi Deder</div>
-                <div style="font-size: 0.82rem; font-weight: 800; color: #111827; margin-top: 1px;">${(dtx.jumlahDeder || 0).toLocaleString('id-ID')}</div>
+                <div style="font-size: 0.62rem; color: #6B7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Populasi Deder</div>
+                <div style="font-size: 0.80rem; font-weight: 800; color: #111827; margin-top: 1px;">${(dtx.jumlahDeder || 0).toLocaleString('id-ID')}</div>
               </div>
               <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 6px 2px;">
-                <div style="font-size: 0.65rem; color: #116834;">Berhasil</div>
-                <div style="font-size: 0.82rem; font-weight: 800; color: #116834; margin-top: 1px;">${(summary.totalBerhasil || 0).toLocaleString('id-ID')}</div>
+                <div style="font-size: 0.62rem; color: #116834; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Berhasil</div>
+                <div style="font-size: 0.80rem; font-weight: 800; color: #116834; margin-top: 1px;">${(summary.totalBerhasil || 0).toLocaleString('id-ID')}</div>
               </div>
               <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 6px 2px;">
-                <div style="font-size: 0.65rem; color: ${summary.sisaBelumDiperiksa > 0 ? '#D97706' : '#116834'};">Sisa Periksa</div>
-                <div style="font-size: 0.82rem; font-weight: 800; color: ${summary.sisaBelumDiperiksa > 0 ? '#D97706' : '#116834'}; margin-top: 1px;">${(summary.sisaBelumDiperiksa || 0).toLocaleString('id-ID')}</div>
+                <div style="font-size: 0.62rem; color: ${summary.sisaBelumDiperiksa > 0 ? '#D97706' : '#116834'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Sisa Periksa</div>
+                <div style="font-size: 0.80rem; font-weight: 800; color: ${summary.sisaBelumDiperiksa > 0 ? '#D97706' : '#116834'}; margin-top: 1px;">${(summary.sisaBelumDiperiksa || 0).toLocaleString('id-ID')}</div>
+              </div>
+              <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 6px 2px;">
+                <div style="font-size: 0.62rem; color: #116834; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">% Berhasil</div>
+                <div style="font-size: 0.80rem; font-weight: 800; color: #116834; margin-top: 1px;">${persenBerhasilDisplay}</div>
               </div>
             </div>
 
@@ -567,11 +588,7 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
               <button type="button" class="btn-rekam-pemeriksaan-deder" data-id="${dtx.id || dtx.docNo}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
                 Rekam Pemeriksaan Dederan
               </button>
-            ` : `
-              <div style="text-align: center; font-size: 0.74rem; font-weight: 700; color: #116834; padding: 6px 0;">
-                ✓ Pemeriksaan Bedengan Selesai 100%
-              </div>
-            `}
+            ` : ''}
           </div>
         `;
       }).join('')}
@@ -586,16 +603,21 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
         <div style="display: flex; flex-direction: column; gap: 8px;">
           ${dederInspections.map((insp, idx) => {
             const isDederLocked = isTransactionLockedForMantri(insp);
+            const isReturned = (insp.status === 'DIKEMBALIKAN' || insp.verificationStatus === 'DIKEMBALIKAN');
+            const hasReturnReason = isReturned && typeof insp.returnReason === 'string' && insp.returnReason.trim().length > 0;
             return `
             <div class="card-deder-insp-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); position: relative;">
               
               <!-- BARIS 1: JUDUL DOKUMEN & TANGGAL & 3-DOTS ACTION -->
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                  ${isDederLocked ? renderStatusDots([{
+                  ${isReturned ? renderStatusDots([{
+                    key: 'CENTRAL_DIKEMBALIKAN',
+                    label: 'Perlu Revisi'
+                  }]) : (isDederLocked ? renderStatusDots([{
                     key: insp.status === 'DISETUJUI' || insp.verificationStatus === 'TERVERIFIKASI' ? 'CENTRAL_TERVERIFIKASI' : 'TX_LOCKED_VERIF',
                     label: insp.status === 'DISETUJUI' || insp.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi (Terkunci)'
-                  }]) : ''}
+                  }]) : '')}
                   <strong style="color: #116834; font-size: 0.90rem; font-weight: 800;">${insp.docNo}</strong>
                   <span style="color: #6B7280; font-size: 0.70rem;">${insp.tanggalPemeriksaan || '-'}</span>
                 </div>
@@ -630,6 +652,14 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
               <div style="color: #4B5563; font-size: 0.72rem; margin-bottom: 8px;">
                 Bedengan: <strong style="color: #0F172A;">${insp.bedenganCode}</strong> • Sumber Deder: <strong>${insp.dederanTxDocNo}</strong>
               </div>
+
+              <!-- BARIS 2.5: CATATAN PENGEMBALIAN DARI ASISTEN (JIKA STATUS DIKEMBALIKAN) -->
+              ${hasReturnReason ? `
+                <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 8px 10px; font-size: 0.72rem; color: #991B1B; line-height: 1.4; margin-bottom: 8px; overflow-wrap: anywhere; word-break: normal;">
+                  <strong style="display: block; font-size: 0.68rem; color: #DC2626; margin-bottom: 2px;">Catatan Pengembalian Asisten:</strong>
+                  ${esc(insp.returnReason.trim())}
+                </div>
+              ` : ''}
 
               <!-- BARIS 3: STATISTIK 3-KOLOM -->
               <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 8px; font-size: 0.72rem; text-align: center;">

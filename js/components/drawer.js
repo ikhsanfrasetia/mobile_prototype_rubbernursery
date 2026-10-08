@@ -106,9 +106,9 @@ const SVGS = {
 export function openDrawer() {
   closeDrawer();
 
-  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', divisionName: 'Tanah Besih - Divisi I' };
-  const userCtx = getCurrentUserContext();
-  const displayName = (user.name && user.name !== 'Mantri Tanaman' && user.name !== 'Mantri Bibitan') ? user.name : 'Wagiman';
+  const user = getCurrentUserContext();
+  const userCtx = user;
+  const displayName = user.name;
   const displayRole = user.position || ROLE_LABELS[user.role] || user.role;
   const currentPath = (getCurrent().route || '/home');
   const isAsistenBibitan = userCtx?.role === ROLES.ASISTEN_BIBITAN || user?.role === ROLES.ASISTEN_BIBITAN;

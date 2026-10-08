@@ -28,12 +28,9 @@ const MASTER_WORKERS = [
   { id: 'W011', name: 'Kusuma Wardana', code: '104531' },
   { id: 'W012', name: 'Lukman Hakim', code: '104532' }
 ];
-
-
-
 export async function renderBuddingForm() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan' };
+  const user = getCurrentUserContext();
   const today = formatDate(new Date().toISOString());
 
   const buddingType = storage.get('budding_type', 'GRAFTING');
@@ -932,7 +929,13 @@ export async function renderBuddingForm() {
           jumlahKayu: kayu,
           jumlahMataEntres: mataEntres,
           jumlahDitolak: ditolak,
-          alasan: isRegrafting ? app.querySelector('#sel-alasan')?.value : null
+          alasan: isRegrafting ? app.querySelector('#sel-alasan')?.value : null,
+          mantri: user?.name || 'Wagiman',
+          actorName: user?.name || 'Wagiman',
+          userId: user?.id || user?.userId || 'TBS-MNT-001',
+          actorCode: user?.code || 'MNT001',
+          createdBy: user?.id || user?.userId || 'TBS-MNT-001',
+          createdByName: user?.name || 'Wagiman'
         });
         storage.set('budding_transactions', txs);
       }

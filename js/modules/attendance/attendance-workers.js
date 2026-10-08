@@ -103,8 +103,8 @@ function updateWorkerRowInDOM(workerId, photoData, isChecked) {
 
 export async function renderAttendanceWorkers() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', code: '1405482', position: ROLE_LABELS.MANTRI_TANAMAN, id: 'MNT001' };
-  const userContext = getCurrentUserContext();
+  const user = getCurrentUserContext();
+  const userContext = user;
   const today = getEffectiveDate();
   const attType = getAttendanceTypeByHour();
 
@@ -230,7 +230,7 @@ export async function renderAttendanceWorkers() {
         <div class="workers-mantri-card">
           <div class="mantri-left">
             <h2 class="mantri-name">${esc(user.name || 'Wagiman')}</h2>
-            <div class="mantri-sub">${esc(user.code || '1405482')}-${esc(user.position || (ROLE_LABELS[user.role] || ROLE_LABELS.MANTRI_TANAMAN))}</div>
+            <div class="mantri-sub">${esc(user.code || 'MNT001')}-${esc(user.position || (ROLE_LABELS[user.role] || ROLE_LABELS.MANTRI_TANAMAN))}</div>
           </div>
           <div class="mantri-right">
             <span class="mantri-total-num">${totalPekerja}</span>

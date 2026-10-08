@@ -30,11 +30,13 @@ function formatDateDDMMYYYY(val) {
   return val;
 }
 
+import { getCurrentUserContext } from '../../core/user-context.js';
+
 export function renderMenunasForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const user = session.get() || { name: 'Mantri Entres', id: 'MTR-01' };
+  const user = getCurrentUserContext();
   const rawPlot = storage.get('selected_menunas_plot', null) || storage.get('selected_entres_plot', null);
   let selectedPlot = null;
 
@@ -306,7 +308,9 @@ export function renderMenunasForm() {
       jumlahCabang: 0,
       jumlahPanjangMeter: 0,
       verifiedMethod: selectedPlot.verifiedMethod || 'QR_SCAN',
-      mantri: user.name || 'Mantri Entres',
+      mantri: user?.name || 'Wagiman',
+      actorName: user?.name || 'Wagiman',
+      actorCode: user?.code || 'MNT001',
       status: 'SUBMITTED',
       createdAt: new Date().toISOString()
     };

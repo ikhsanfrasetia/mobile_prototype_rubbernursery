@@ -18,8 +18,11 @@ import { getAllBatches } from '../../data/batch-master.js';
 import { getAllBedengan } from '../../data/bedengan-master.js';
 import { getProgramById } from '../../data/program-master.js';
 import { getEstateById } from '../../data/estate-master.js';
-import { getWorkersForUserContext } from '../../data/worker-master.js';
-import { getSelectionStageLabel } from '../selection/selection-manager.js';
+import {
+  getSelectionStageLabel,
+  createSelection2DocumentFromSelection1,
+  createSelection3DocumentFromSelection2
+} from '../selection/selection-manager.js';
 
 export const VERIFICATION_STORAGE_KEY = 'verification_transactions';
 
@@ -1325,6 +1328,21 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
       records[idx].verifiedByUserId = currentUser.userId || currentUser.id;
       records[idx].verifiedByName = currentUser.name || 'Asisten Bibitan';
       storage.set(sourceRecord._storeKey, records);
+
+      // Downstream Document Generation for Seleksi Pra-Okulasi (Seleksi I -> II, Seleksi II -> III)
+      if (referenceType === 'SELEKSI_PRA_OKULASI' || sourceRecord._storeKey === 'pre_grafting_selection_documents') {
+        const approvedDoc = records[idx];
+        const stageNorm = String(approvedDoc.selectionStage || '').toUpperCase();
+        try {
+          if (stageNorm === 'SELEKSI_I' || stageNorm === 'SELEKSI_1') {
+            createSelection2DocumentFromSelection1(approvedDoc.id, currentUser);
+          } else if (stageNorm === 'SELEKSI_II' || stageNorm === 'SELEKSI_2') {
+            createSelection3DocumentFromSelection2(approvedDoc.id, currentUser);
+          }
+        } catch (genErr) {
+          console.warn('[approveVerification] Downstream generation notice:', genErr.message);
+        }
+      }
     }
   }
 

@@ -47,9 +47,11 @@ export function getRestrictedPihakIIIKlons() {
   ];
 }
 
+import { getCurrentUserContext } from '../../core/user-context.js';
+
 export function renderReceiptBenih() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan', estateId: 'EST-TBS', divisionId: 'DIV-001' };
+  const user = getCurrentUserContext();
   const currentEstateId = user.estateId || (user.divisionId && user.divisionId.includes('APM') ? 'EST-APM' : 'EST-TBS');
   const today = formatDate(new Date().toISOString());
 

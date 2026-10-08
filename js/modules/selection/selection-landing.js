@@ -77,6 +77,7 @@ import {
   canCreateSelection3Document,
   createSelection3DocumentFromSelection2,
   syncAllSeedingsToPreGraftingSelectionDocuments,
+  syncAllApprovedPreGraftingSelectionDocuments,
   getSeleksi1ExecutionsByDocument,
   getBedenganScopeStatusForSeleksi1,
   validateSeleksi1Execution,
@@ -129,6 +130,7 @@ export {
   canCreateSelection3Document,
   createSelection3DocumentFromSelection2,
   syncAllSeedingsToPreGraftingSelectionDocuments,
+  syncAllApprovedPreGraftingSelectionDocuments,
   getSeleksi1ExecutionsByDocument,
   getBedenganScopeStatusForSeleksi1,
   validateSeleksi1Execution,
@@ -158,8 +160,7 @@ export function renderSelectionLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const rawUser = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Mantri Pembibitan', role: 'MANTRI_TANAMAN' };
-  const currentUser = getCurrentUserContext() || resolveUserContext(rawUser);
+  const currentUser = getCurrentUserContext();
   const normalizedUserRole = normalizeRole(currentUser.role || currentUser.rawRole);
   const isAsistenBibitan = normalizedUserRole === ROLES.ASISTEN_BIBITAN;
 
@@ -167,6 +168,7 @@ export function renderSelectionLanding() {
   try {
     syncAllSeedingsToSelectionPool();
     syncAllSeedingsToPreGraftingSelectionDocuments(currentUser);
+    syncAllApprovedPreGraftingSelectionDocuments(currentUser);
     syncAllDederanRejectionsToSelectionPool();
   } catch (err) {
     console.warn('[renderSelectionLanding] Gagal sinkronisasi data seeding:', err);
@@ -1180,8 +1182,10 @@ export function openBedenganSourceSelectorModal({
     const compositeKey = `${batchCode}::${bedCode}`;
 
     if (!uniqueBedMap.has(compositeKey)) {
-      const sourcePoly = parseInt(doc.sourcePolybagQty !== undefined ? doc.sourcePolybagQty : (doc.sourceBibitQty || 0), 10);
-      const currentScope = bedScopeList.find(b => formatBedenganDisplayCode(b.bedenganCode).toUpperCase() === bedCode.toUpperCase()) || { remainingPolybag: sourcePoly, initialPolybag: sourcePoly };
+      const currentScope = bedScopeList.find(b => formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === bedCode.toUpperCase()) || { remainingPolybag: 0, initialPolybag: 0 };
+      const sourcePoly = (currentScope.initialPolybag !== undefined && currentScope.initialPolybag > 0)
+        ? currentScope.initialPolybag
+        : parseInt(doc.sourcePolybagQty !== undefined ? doc.sourcePolybagQty : (doc.sourceBibitQty || 0), 10);
       const remainingPoly = currentScope.remainingPolybag !== undefined ? currentScope.remainingPolybag : sourcePoly;
       const isFinished = remainingPoly <= 0 && sourcePoly > 0;
 
@@ -1246,10 +1250,11 @@ export function openBedenganSourceSelectorModal({
   modalRoot.querySelectorAll('.item-bedengan-selector').forEach(el => {
     el.addEventListener('click', () => {
       const docId = el.dataset.docId;
+      const bedCode = el.dataset.bedenganCode;
       const targetDoc = docs.find(d => d.id === docId);
       closeModal();
       if (onSelect && targetDoc) {
-        onSelect(targetDoc);
+        onSelect(targetDoc, bedCode);
       }
     });
   });
@@ -1286,11 +1291,11 @@ export function handleBatchRowClick({ stage, programCode, batchCode, user, onSav
     return;
   }
 
-  const openExecution = (targetDoc) => {
+  const openExecution = (targetDoc, bedCode = null) => {
     if (stage === 'SELEKSI_1' || stage === 'SELEKSI_I') {
       // Row berasal dari active Selection I document yang sudah valid.
       // Tidak perlu re-check canCreatePreGraftingSelection1Document — langsung buka execution.
-      openSeleksi1ExecutionModal({ doc: targetDoc, user, onSaved });
+      openSeleksi1ExecutionModal({ doc: targetDoc, bedenganCode: bedCode, user, onSaved });
     } else if (stage === 'SELEKSI_2' || stage === 'SELEKSI_II') {
       openSeleksi2ExecutionModal({ doc: targetDoc, user, onSaved });
     } else if (stage === 'SELEKSI_3' || stage === 'SELEKSI_III') {
@@ -1305,13 +1310,14 @@ export function handleBatchRowClick({ stage, programCode, batchCode, user, onSav
     const bed = formatBedenganDisplayCode(rawBed);
     const key = `${batchCode}::${bed}`;
     if (!uniqueBedMap.has(key)) {
-      uniqueBedMap.set(key, d);
+      uniqueBedMap.set(key, { doc: d, bedCode: bed });
     }
   });
 
   if (uniqueBedMap.size === 1) {
     // CASE A: Exactly 1 Unique Bedengan -> auto-select Bedengan -> open execution modal directly
-    openExecution(uniqueBedMap.values().next().value);
+    const single = uniqueBedMap.values().next().value;
+    openExecution(single.doc, single.bedCode);
   } else {
     // CASE B: >1 Unique Bedengans -> open modal "Pilih Bedengan Sumber"
     openBedenganSourceSelectorModal({
@@ -1320,9 +1326,7 @@ export function handleBatchRowClick({ stage, programCode, batchCode, user, onSav
       programCode,
       docs: batchDocs,
       user,
-      onSelect: (selectedDoc) => {
-        openExecution(selectedDoc);
-      }
+      onSelect: (targetDoc, bedCode) => openExecution(targetDoc, bedCode)
     });
   }
 }
@@ -1522,6 +1526,48 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
             const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
             const txDate = tx.tanggalSeleksi || tx.tanggal || tx.createdAt || '-';
 
+            const pStatus = String(parentDoc.status || '').toUpperCase();
+            const isFinal = Boolean(parentDoc.isFinal);
+            const isCompleted = Boolean(parentDoc.isCompleted);
+
+            let statusBadgeHtml = '';
+            if (pStatus === SELECTION_STATUS.DISETUJUI && isFinal) {
+              statusBadgeHtml = `
+                <span style="font-size: 0.65rem; font-weight: 700; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 2px 6px; border-radius: 4px;">
+                  Disetujui Final
+                </span>
+              `;
+            } else if (
+              pStatus === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
+              pStatus === 'MENUNGGU_VERIFIKASI' ||
+              pStatus === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
+              pStatus === 'DIAJUKAN'
+            ) {
+              statusBadgeHtml = `
+                <span style="font-size: 0.65rem; font-weight: 700; color: #D97706; background: #FFFBEB; border: 1px solid #FDE68A; padding: 2px 6px; border-radius: 4px;">
+                  Menunggu Asisten
+                </span>
+              `;
+            } else if (pStatus === 'COMPLETED' || isCompleted) {
+              statusBadgeHtml = `
+                <span style="font-size: 0.65rem; font-weight: 700; color: #2563EB; background: #EFF6FF; border: 1px solid #BFDBFE; padding: 2px 6px; border-radius: 4px;">
+                  Siap Konfirmasi Mantri
+                </span>
+              `;
+            } else if (pStatus === 'IN_PROGRESS' || tx.status === 'RECORDED') {
+              statusBadgeHtml = `
+                <span style="font-size: 0.65rem; font-weight: 700; color: #475569; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 6px; border-radius: 4px;">
+                  Tercatat Parsial
+                </span>
+              `;
+            } else {
+              statusBadgeHtml = `
+                <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px;">
+                  Tercatat
+                </span>
+              `;
+            }
+
             return `
               <div class="card-child-tx" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
                 
@@ -1538,9 +1584,7 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
                   </div>
                   
                   <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0;">
-                    <span style="font-size: 0.65rem; font-weight: 700; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 2px 6px; border-radius: 4px;">
-                      Selesai
-                    </span>
+                    ${statusBadgeHtml}
                     <svg class="icon-child-toggle" viewBox="0 0 24 24" width="14" height="14" stroke="#64748B" stroke-width="2.5" fill="none" style="transition: transform 0.2s ease;">
                       <polyline points="6 9 12 15 18 9"></polyline>
                     </svg>
@@ -1742,6 +1786,13 @@ function renderMantriSelectionLanding(app, user) {
   }
 
   // Pre-Grafting Selection Documents (Seleksi I, Seleksi II, Seleksi III)
+  // Reconcile approved documents to downstream stages
+  try {
+    syncAllApprovedPreGraftingSelectionDocuments(user);
+  } catch (syncErr) {
+    console.warn('[renderMantriSelectionLanding] Fallback sync note:', syncErr.message);
+  }
+
   // Canonical Active Collection: exclude legacy aggregate split documents
   const rawPreGraftingDocs = getPreGraftingSelectionDocuments({}, user);
   const preGraftingDocs = rawPreGraftingDocs.filter(d => !d.isSplit && !d.isLegacyAggregateSplit);
@@ -3041,35 +3092,45 @@ function renderAfkirPoolList(poolItems, culledItems, emptyTitle, emptyDesc, pool
  * MODAL PELAKSANAAN TRANSAKSI SELEKSI I (TASK-03)
  * =============================================================================
  */
-export function openSeleksi1ExecutionModal({ doc, user, onSaved }) {
+export function openSeleksi1ExecutionModal({ doc, bedenganCode = null, user, onSaved }) {
   const today = formatDate(new Date().toISOString());
-  const executions = getSeleksi1ExecutionsByDocument(doc.id || doc.docNo);
-  const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
-  const sourceBibit = parseInt(doc.sourceBibitQty !== undefined ? doc.sourceBibitQty : (sourcePolybag * 2), 10);
+  const bedScopeList = getBedenganScopeStatusForSeleksi1(doc);
+  
+  // Resolve target bedengan code
+  const rawBed = bedenganCode || doc.bedenganCode || doc.bedengan || (bedScopeList[0] && bedScopeList[0].bedenganCode) || (doc.rows && doc.rows[0] ? doc.rows[0].bedenganCode : 'BED-001');
+  const bedNorm = formatBedenganDisplayCode(rawBed);
+  
+  let targetScope = bedScopeList.find(scope => formatBedenganDisplayCode(scope.bedenganCode || scope.bedenganId).toUpperCase() === bedNorm.toUpperCase());
+  
+  if (!targetScope && bedScopeList.length === 1 && !bedenganCode) {
+    targetScope = bedScopeList[0];
+  }
 
-  const totalInspectedPolybag = executions.reduce((sum, tx) =>
-    sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10),
-    0
-  );
-  const remainingPolybag = Math.max(0, sourcePolybag - totalInspectedPolybag);
+  if (!targetScope) {
+    toast(`Scope bedengan ${bedNorm} tidak ditemukan pada dokumen ini.`, 'error');
+    return;
+  }
+
+  const sourcePolybag = parseInt(targetScope.initialPolybag || 0, 10);
+  const sourceBibit = parseInt(targetScope.initialBibit !== undefined ? targetScope.initialBibit : (sourcePolybag * 2), 10);
+  const inspectedPolybag = parseInt(targetScope.inspectedPolybag || 0, 10);
+  const inspectedBibit = parseInt(targetScope.inspectedBibit || 0, 10);
+  const remainingPolybag = parseInt(targetScope.remainingPolybag !== undefined ? targetScope.remainingPolybag : Math.max(0, sourcePolybag - inspectedPolybag), 10);
+  const initialRetained = parseInt(targetScope.remainingBibit !== undefined ? targetScope.remainingBibit : Math.max(0, sourceBibit - inspectedBibit), 10);
 
   if (remainingPolybag <= 0 && sourcePolybag > 0) {
     toast('Seluruh populasi polybag pada bedengan ini telah selesai diperiksa.', 'warning');
     return;
   }
 
-  const existingBibitSelected = executions.reduce((sum, tx) =>
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10),
-    0
-  );
-  const initialRetained = Math.max(0, sourceBibit - existingBibitSelected);
+  const existingBibitSelected = inspectedBibit;
 
   // Canonical Display Resolvers
   const displayDocNo = doc.docNo ? doc.docNo.replace(/^2026\/CULL\//i, '2026/SEL/').replace(/^CULL\//i, 'SEL/') : '-';
   const sourceSowDisplay = doc.sourceSeedingDocNo || doc.sourceDocNo || doc.seedingDocNo || (Array.isArray(doc.sourceSeedingDocNos) && doc.sourceSeedingDocNos[0]) || '-';
   const batchDisplay = `${doc.batchCode || doc.batchNo || doc.batchId || '-'} • ${doc.clone || doc.klon || '-'}`;
-  const bedenganDisplay = formatBedenganDisplayCode(doc.bedenganCode || doc.bedengan || (doc.rows && doc.rows[0] ? doc.rows[0].bedenganCode : 'BED-001'));
-  const bedenganId = doc.bedenganId || doc.bedenganCode || bedenganDisplay;
+  const bedenganDisplay = formatBedenganDisplayCode(targetScope.bedenganCode || bedNorm);
+  const bedenganId = targetScope.bedenganId || targetScope.bedenganCode || bedenganDisplay;
 
   const bodyContent = `
     <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 12px;">

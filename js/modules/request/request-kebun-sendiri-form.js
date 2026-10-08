@@ -79,7 +79,7 @@ export async function renderRequestKebunSendiriForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const user = getCurrentUserContext() || session.get() || { name: 'Asisten', role: 'ASISTEN', position: 'Asisten Lapangan', estateId: 'EST-TBS', divisionId: 'DIV-001' };
+  const user = getCurrentUserContext();
 
   // ========================================================================
   // ROUTE GUARD: Hanya ASISTEN_BIBITAN & ASISTEN yang boleh mengakses form ini.

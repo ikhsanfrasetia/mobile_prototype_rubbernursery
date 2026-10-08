@@ -261,8 +261,8 @@ export async function renderRequestKebunSendiriLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const user = session.get() || { role: 'ASISTEN', name: 'Asisten' };
-  const userCtx = getCurrentUserContext() || user;
+  const userCtx = getCurrentUserContext();
+  const user = userCtx;
   const userRole = normalizeRole(userCtx.role || userCtx.rawRole);
 
   // Load requests

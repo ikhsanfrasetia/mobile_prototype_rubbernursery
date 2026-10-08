@@ -40,7 +40,7 @@ export async function renderRequestMataEntresForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const user = getCurrentUserContext() || session.get() || { name: 'Pengurus', role: 'PENGURUS', position: 'Pengurus Kebun', estateId: 'EST-TBS' };
+  const user = getCurrentUserContext();
 
   // ROUTE GUARD: Hanya PENGURUS yang boleh membuat Permintaan Mata Entres
   const userRole = normalizeRole(user.role || user.rawRole);

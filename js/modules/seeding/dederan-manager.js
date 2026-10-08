@@ -17,6 +17,7 @@ import { storage } from '../../core/storage.js';
 import { formatStandardDocNo, formatDate, generateUniqueDocNo, todayISO } from '../../core/utils.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 
 export const DEDERAN_STORAGE_KEYS = Object.freeze({
   INDUK: 'dederan_induk_documents',
@@ -275,6 +276,8 @@ export function saveDederanTransaction(txPayload) {
 
   const allDederTxs = storage.get(DEDERAN_STORAGE_KEYS.TRANSACTIONS, []);
   const docNo = generateUniqueDocNo('dederan', allDederTxs, 2026);
+  const userCtx = getCurrentUserContext();
+  const actorName = txPayload.recordedBy || txPayload.createdBy || userCtx?.name || 'Wagiman';
 
   const newTx = {
     id: `DED-TX-${docNo.replace(/\//g, '-')}`,
@@ -294,7 +297,10 @@ export function saveDederanTransaction(txPayload) {
     qrCode: txPayload.qrCode || null,
     jumlahDeder,
     photos: txPayload.photos || [],
-    createdBy: txPayload.createdBy || 'Mantri Pembibitan',
+    recordedBy: actorName,
+    actorName: actorName,
+    createdBy: userCtx?.userId || userCtx?.id || 'TBS-MNT-001',
+    createdByName: actorName,
     createdAt: new Date().toISOString()
   };
 
@@ -427,6 +433,9 @@ export function createDederanInspection(payload) {
   const jumlahBerhasil = parseInt(payload.jumlahBerhasil || 0, 10);
   const jumlahTidakBerhasil = jumlahDiperiksa - jumlahBerhasil;
 
+  const userCtx = getCurrentUserContext();
+  const inspectorName = payload.inspectorName || userCtx?.name || 'Wagiman';
+
   const newInspection = {
     id: `DED-INS-${docNo.replace(/\//g, '-')}`,
     docNo,
@@ -448,7 +457,13 @@ export function createDederanInspection(payload) {
     jumlahBerhasil,
     jumlahTidakBerhasil,
     photos: Array.isArray(payload.photos) ? payload.photos : [],
-    inspectorName: payload.inspectorName || 'Mantri Pembibitan',
+    inspectorName,
+    inspektur: inspectorName,
+    actorName: inspectorName,
+    inspectorId: userCtx?.userId || userCtx?.id || 'TBS-MNT-001',
+    inspectorCode: userCtx?.code || 'MNT001',
+    createdByUserId: userCtx?.userId || userCtx?.id || 'TBS-MNT-001',
+    createdByName: inspectorName,
     createdAt: new Date().toISOString()
   };
 

@@ -20,7 +20,7 @@ const VPN_KEY = 'vpn';
 function startSession(user, { demo = false } = {}) {
   session.start({
     userId: user.id,
-    code: user.code || user.id || '1405482',
+    code: user.code || user.id || 'MNT001',
     role: user.role,
     name: user.name,
     position: user.position || (ROLE_LABELS[user.role] || user.role),

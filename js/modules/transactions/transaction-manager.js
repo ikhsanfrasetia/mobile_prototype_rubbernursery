@@ -15,6 +15,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 import { ROLE_LABELS } from '../../core/permissions.js';
 import { formatDate, todayISO, uid, formatStandardDocNo, generateUniqueDocNo, getModuleDocCode, MODULE_DOC_CODES } from '../../core/utils.js';
 import { openDrawer } from '../../components/drawer.js';
@@ -194,7 +195,7 @@ export function getTxItemUnit(item, modId) {
 
 export async function renderTransactionManager() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: ROLE_LABELS.MANTRI_TANAMAN };
+  const user = getCurrentUserContext();
 
   // Ambil data untuk tab aktif
   const currentConfig = MODULE_CONFIGS[activeTab] || MODULE_CONFIGS.reception;
@@ -536,7 +537,7 @@ function attachEvents(items, config) {
 function showEditModal(item, tab, config, editIndex = null) {
   const isEdit = item !== null && editIndex !== null;
   const modalContainer = document.getElementById('modal-container');
-  const user = session.get() || { name: 'Wagiman' };
+  const user = getCurrentUserContext();
 
   // Field nilai awal
   const docNo = item ? (item.docNo || item.nomorDokumen || item.id || '') : generateNewDocNo(tab);

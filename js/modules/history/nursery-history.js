@@ -32,7 +32,7 @@ let searchQuery = '';
 
 export function renderNurseryHistory() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', role: 'MANTRI_TANAMAN', position: ROLE_LABELS.MANTRI_TANAMAN };
+  const user = getCurrentUserContext();
   const today = formatDate(new Date().toISOString());
 
   // 1. Ambil data real transaksi dari storage

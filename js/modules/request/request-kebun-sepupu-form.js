@@ -28,7 +28,7 @@ export async function renderRequestKebunSepupuForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const user = getCurrentUserContext() || session.get() || { name: 'Junaidi', role: 'PENGURUS', position: 'Pengurus Kebun', estateId: 'EST-TBS' };
+  const user = getCurrentUserContext();
 
   // ========================================================================
   // ROUTE GUARD: Hanya PENGURUS yang boleh mengakses form create request.

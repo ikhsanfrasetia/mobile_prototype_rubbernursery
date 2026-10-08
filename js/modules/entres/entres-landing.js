@@ -240,7 +240,7 @@ export function renderEntresLanding() {
                 `}
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                   <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Pelaksana (Mantri)</span>
-                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${tx.mantri || 'Mantri Entres'}</span>
+                  <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${tx.mantri || tx.actorName || 'Wagiman'}</span>
                 </div>
               </div>
 

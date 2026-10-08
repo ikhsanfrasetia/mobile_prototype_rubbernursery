@@ -34,11 +34,13 @@ function formatDateDDMMYYYY(val) {
   return val;
 }
 
+import { getCurrentUserContext } from '../../core/user-context.js';
+
 export function renderToppingForm() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const user = session.get() || { name: 'Mantri Entres', id: 'MTR-01' };
+  const user = getCurrentUserContext();
   const rawPlot = storage.get('selected_topping_plot', null) || storage.get('selected_entres_plot', null);
 
   let selectedPlot = null;
@@ -162,17 +164,17 @@ export function renderToppingForm() {
               </div>
             </div>
 
-            <!-- 1. INPUT JUMLAH KAYU* (NUMBER) -->
+            <!-- 1. INPUT JUMLAH CABANG* (NUMBER) -->
             <div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                 <label for="inp-kayu" style="font-size: 0.76rem; font-weight: 700; color: #374151;">
-                  Jumlah Kayu <span style="color: #DC2626;">*</span>
+                  Jumlah Cabang <span style="color: #DC2626;">*</span>
                 </label>
-                <span style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Batang</span>
+                <span style="font-size: 0.68rem; color: #64748B; font-weight: 600;">Cabang</span>
               </div>
               <div style="position: relative;">
                 <input id="inp-kayu" type="number" min="1" value="${initialKayu}" placeholder="Contoh: 120" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.90rem; font-weight: 700; color: #111827; box-sizing: border-box;" />
-                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #64748B;">Btg</span>
+                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #64748B;">Cabang</span>
               </div>
             </div>
 
@@ -201,7 +203,7 @@ export function renderToppingForm() {
               Estimasi Rata-rata Entres:
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #15803D;">
-              <span>Rata-rata / Btg:</span>
+              <span>Rata-rata / Cabang:</span>
               <span id="disp-avg-kayu" style="font-weight: 700;">- Perisai/Btg</span>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #15803D;">
@@ -381,7 +383,9 @@ export function renderToppingForm() {
       totalPanjangMeter: 0, // Preserved in schema
       jumlahPerisai: perisai, // SUMBER STOK MATA ENTRES (PERISAI)
       verifiedMethod: selectedPlot.verifiedMethod || 'QR_SCAN_VERIFIED',
-      mantri: user.name || 'Mantri Entres',
+      mantri: user?.name || 'Wagiman',
+      actorName: user?.name || 'Wagiman',
+      actorCode: user?.code || 'MNT001',
       status: 'SUBMITTED',
       createdAt: new Date().toISOString()
     };

@@ -27,8 +27,7 @@ export function renderConsolidationLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const rawUser = session.get() || { name: 'Irwan Syah Putra', code: '1405482', position: 'Asisten Pembibitan', role: 'ASISTEN_BIBITAN' };
-  const currentUser = getCurrentUserContext() || resolveUserContext(rawUser);
+  const currentUser = getCurrentUserContext();
 
   const data = getConsolidatedData(currentUser);
   const summary = data.summary;

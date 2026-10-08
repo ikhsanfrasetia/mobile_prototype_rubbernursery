@@ -98,15 +98,16 @@ export function normalizeRole(role) {
 export function resolveUserContext(user) {
   if (!user) {
     return {
-      id: 'MNT001',
+      id: 'TBS-MNT-001',
       userId: 'MNT001',
-      code: '1405482',
+      code: 'MNT001',
+      loginCode: 'MNT001',
       name: 'Wagiman',
       role: ROLES.MANTRI_TANAMAN,
       rawRole: ROLES.MANTRI_TANAMAN,
       legacyRole: ROLES.MANTRI_TANAMAN,
       position: 'Mantri Bibitan',
-      estateId: 'EST-001',
+      estateId: 'EST-TBS',
       estateName: 'Tanah Besih',
       divisionId: 'DIV-001',
       divisionName: 'Tanah Besih - Divisi I',

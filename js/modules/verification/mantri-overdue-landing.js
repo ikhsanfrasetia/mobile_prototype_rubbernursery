@@ -41,8 +41,7 @@ export function renderMantriOverdueLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const rawUser = session.get() || { name: 'Irwan Syah Putra', code: '1405482', role: 'MANTRI_TANAMAN' };
-  const currentUser = getCurrentUserContext() || resolveUserContext(rawUser);
+  const currentUser = getCurrentUserContext();
 
   // Ambil seluruh transaksi mantri
   const allTxs = getMantriTodayTransactions(currentUser);

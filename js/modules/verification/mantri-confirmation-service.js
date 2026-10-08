@@ -243,12 +243,12 @@ export function canSubmitTransaction(transaction, currentTime = null) {
 /**
  * Helper: Cek apakah item milik logged-in Mantri berdasarkan identity adapter
  */
-function matchActor(item, userCtx) {
+export function matchActor(item, userCtx) {
   if (!userCtx) return true;
 
   const validIds = [userCtx.id, userCtx.userId].filter(Boolean).map(String);
   const validCodes = [userCtx.code, userCtx.userCode, userCtx.badgeNumber, userCtx.nik, userCtx.nip].filter(Boolean).map(String);
-  const validNames = [userCtx.name, userCtx.fullName, userCtx.userName, userCtx.mantriName]
+  const validNames = [userCtx.name, userCtx.fullName, userCtx.userName, userCtx.mantriName, userCtx.inspectorName]
     .filter(Boolean)
     .map(s => String(s).toLowerCase().trim());
 
@@ -260,7 +260,9 @@ function matchActor(item, userCtx) {
     item.mantriId,
     item.workerId,
     item.penerimaId,
-    item.submittedByUserId
+    item.submittedByUserId,
+    item.inspectorId,
+    item.inspectorUserId
   ].filter(Boolean).map(String);
 
   if (itemIds.length > 0 && validIds.length > 0) {
@@ -276,7 +278,8 @@ function matchActor(item, userCtx) {
     item.penerimaCode,
     item.code,
     item.nik,
-    item.nip
+    item.nip,
+    item.inspectorCode
   ].filter(Boolean).map(String);
 
   if (itemCodes.length > 0 && validCodes.length > 0) {
@@ -294,7 +297,11 @@ function matchActor(item, userCtx) {
     item.penerima,
     item.mandor,
     item.submittedByName,
-    item.name
+    item.name,
+    item.inspectorName,
+    item.inspektur,
+    item.inspekturName,
+    item.inspector
   ].filter(Boolean).map(s => String(s).toLowerCase().trim());
 
   if (itemNames.length > 0 && validNames.length > 0) {

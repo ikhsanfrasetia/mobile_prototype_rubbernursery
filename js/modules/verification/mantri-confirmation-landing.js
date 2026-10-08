@@ -50,8 +50,7 @@ export function renderMantriConfirmationLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const rawUser = session.get() || { name: 'Irwan Syah Putra', code: '1405482', role: 'MANTRI_TANAMAN' };
-  const currentUser = getCurrentUserContext() || resolveUserContext(rawUser);
+  const currentUser = getCurrentUserContext();
 
   const todayStr = todayDDMMYYYY();
   const allRawTxs = getMantriTodayTransactions(currentUser, todayStr);
@@ -735,7 +734,7 @@ export function renderDetailModal(tx, user) {
   const fullDateTime = `${dateFormatted}, ${timeFormatted}`;
 
   const actorName = tx.actor || raw.submittedByName || raw.createdByName || raw.mantri || user?.name || 'Mantri Bibitan';
-  const actorCode = raw.actorCode || raw.userCode || user?.code || '1405482';
+  const actorCode = raw.actorCode || raw.userCode || user?.code || user?.userId || 'MNT001';
   const rawNotes = raw.notes || raw.catatan || raw.keterangan || raw.remarks;
   const notes = (rawNotes !== undefined && rawNotes !== null && String(rawNotes).trim() !== '') ? String(rawNotes).trim() : '-';
 

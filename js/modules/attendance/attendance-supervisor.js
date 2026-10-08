@@ -25,10 +25,12 @@ export function stopCamera() {
   }
 }
 
+import { getCurrentUserContext } from '../../core/user-context.js';
+
 export async function renderAttendanceSupervisor() {
   const app = document.getElementById('app');
-  const user = session.get() || { name: 'Wagiman', code: '1405482', position: ROLE_LABELS.MANTRI_TANAMAN, id: 'MNT001' };
-  const userCode = user.code || user.id || '1405482';
+  const user = getCurrentUserContext();
+  const userCode = user.code || user.id || 'MNT001';
   const userName = user.name || 'Wagiman';
   const identityText = `${userCode}-${userName}`;
   const today = getEffectiveDate();
