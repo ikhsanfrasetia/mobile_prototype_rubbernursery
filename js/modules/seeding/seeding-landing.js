@@ -221,21 +221,21 @@ function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false,
 
               <!-- METRIC GRID 3-KOLOM -->
               <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 6px; text-align: center;">
-                <div>
-                  <div style="font-size: 0.65rem; color: #64748B; font-weight: 600;">Total Penerimaan</div>
-                  <div style="font-size: 0.85rem; font-weight: 800; color: #0F172A; margin-top: 2px;">
+                <div style="display: flex; flex-direction: column; justify-content: space-between;">
+                  <div style="font-size: 0.65rem; color: #64748B; font-weight: 600; min-height: 26px; display: flex; align-items: center; justify-content: center; line-height: 1.2;">Total Penerimaan</div>
+                  <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 2px;">
                     ${totalPenerimaan.toLocaleString('id-ID')}
                   </div>
                 </div>
-                <div>
-                  <div style="font-size: 0.65rem; color: #116834; font-weight: 600;">Sudah Dideder</div>
-                  <div style="font-size: 0.85rem; font-weight: 800; color: #116834; margin-top: 2px;">
+                <div style="display: flex; flex-direction: column; justify-content: space-between; border-left: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0;">
+                  <div style="font-size: 0.65rem; color: #116834; font-weight: 600; min-height: 26px; display: flex; align-items: center; justify-content: center; line-height: 1.2;">Sudah Dideder</div>
+                  <div style="font-size: 0.88rem; font-weight: 800; color: #116834; margin-top: 2px;">
                     ${totalDideder.toLocaleString('id-ID')}
                   </div>
                 </div>
-                <div>
-                  <div style="font-size: 0.65rem; color: ${sisa > 0 ? '#D97706' : '#64748B'}; font-weight: 600;">Sisa Belum Deder</div>
-                  <div style="font-size: 0.85rem; font-weight: 800; color: ${sisa > 0 ? '#D97706' : '#116834'}; margin-top: 2px;">
+                <div style="display: flex; flex-direction: column; justify-content: space-between;">
+                  <div style="font-size: 0.65rem; color: ${sisa > 0 ? '#D97706' : '#64748B'}; font-weight: 600; min-height: 26px; display: flex; align-items: center; justify-content: center; line-height: 1.2;">Sisa Belum Deder</div>
+                  <div style="font-size: 0.88rem; font-weight: 800; color: ${sisa > 0 ? '#D97706' : '#116834'}; margin-top: 2px;">
                     ${sisa.toLocaleString('id-ID')}
                   </div>
                 </div>

@@ -174,18 +174,18 @@ export function renderDederanForm() {
 
           <!-- REKAP SALDO INDUK 3-KOLOM -->
           <div style="padding: 8px 4px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; display: grid; grid-template-columns: 1fr 1fr 1fr; text-align: center;">
-            <div style="padding: 0 4px;">
-              <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px; line-height: 1.2;">Total Penerimaan</div>
+            <div style="padding: 0 4px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px; line-height: 1.2; min-height: 24px; display: flex; align-items: center; justify-content: center;">Total Penerimaan</div>
               <div style="font-size: 0.86rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin: 2px 0;">${totalPenerimaan.toLocaleString('id-ID')}</div>
               <div style="font-size: 0.64rem; color: #64748B; line-height: 1;">Butir</div>
             </div>
-            <div style="padding: 0 4px; border-left: 1px solid #F1F5F9; border-right: 1px solid #F1F5F9;">
-              <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px; line-height: 1.2;">Sudah Dideder</div>
+            <div style="padding: 0 4px; border-left: 1px solid #F1F5F9; border-right: 1px solid #F1F5F9; display: flex; flex-direction: column; justify-content: space-between;">
+              <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px; line-height: 1.2; min-height: 24px; display: flex; align-items: center; justify-content: center;">Sudah Dideder</div>
               <div style="font-size: 0.86rem; font-weight: 800; color: #15803D; line-height: 1.2; margin: 2px 0;">${totalSudahDeder.toLocaleString('id-ID')}</div>
               <div style="font-size: 0.64rem; color: #64748B; line-height: 1;">Butir</div>
             </div>
-            <div style="padding: 0 4px;">
-              <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px; line-height: 1.2;">${isEditMode ? 'Kapasitas Tersedia' : 'Sisa Belum Deder'}</div>
+            <div style="padding: 0 4px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px; line-height: 1.2; min-height: 24px; display: flex; align-items: center; justify-content: center;">${isEditMode ? 'Kapasitas Tersedia' : 'Sisa Belum Deder'}</div>
               <div id="lbl-sisa-saldo" style="font-size: 0.86rem; font-weight: 800; color: #D97706; line-height: 1.2; margin: 2px 0;">${sisaBelumDeder.toLocaleString('id-ID')}</div>
               <div style="font-size: 0.64rem; color: #64748B; line-height: 1;">Butir</div>
             </div>
