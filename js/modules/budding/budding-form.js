@@ -2,7 +2,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
-import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo, generateUniqueDocNo, esc } from '../../core/utils.js';
 import { getWorkersForUserContext, getWorkerById, isWorkerInScope } from '../../data/worker-master.js';
 import { getActiveKlons, getKlonsForUsage, KLON_USAGE, normalizeKlonName, resolveKlon } from '../../data/klon-master.js';
 import { attendanceRepository } from '../../db/repositories.js';
@@ -13,7 +13,9 @@ import {
   validateOkulasiPerisaiUsage
 } from '../../core/entres-inventory-service.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
-import { applyTransactionActor } from '../../core/transaction-actor.js';
+import { applyTransactionActor, canUserAccessTransaction } from '../../core/transaction-actor.js';
+import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { toast } from '../../components/toast.js';
 
 const MASTER_WORKERS = [
   { id: 'W001', name: 'Ahmad Rifai', code: '104521' },
@@ -42,6 +44,21 @@ export async function renderBuddingForm() {
   const isEditing = editingIdx !== null;
   const allBuddingTxs = storage.get('budding_transactions', []);
   const editingTx = isEditing ? allBuddingTxs[parseInt(editingIdx)] : null;
+
+  if (isEditing && editingTx) {
+    if (!canUserAccessTransaction(editingTx, user, 'EDIT')) {
+      toast('Anda tidak memiliki otorisasi untuk mengedit transaksi ini.', 'error');
+      storage.remove('editing_budding_index');
+      navigate(isRegrafting ? '/budding/regrafting' : '/budding/grafting');
+      return;
+    }
+    if (isTransactionLockedForMantri(editingTx)) {
+      toast('Transaksi terkunci karena sedang/sudah diverifikasi.', 'warning');
+      storage.remove('editing_budding_index');
+      navigate(isRegrafting ? '/budding/regrafting' : '/budding/grafting');
+      return;
+    }
+  }
 
   let title = isRegrafting ? 'Okulasi Janda (Regrafting)' : 'Rekam Okulasi (Grafting)';
   if (isEditing) {
@@ -160,24 +177,54 @@ export async function renderBuddingForm() {
         ? [{ id: availableScopedWorkers[0].id, name: availableScopedWorkers[0].name, code: availableScopedWorkers[0].code, qty: 0 }]
         : []);
 
+  const returnReasonNote = isEditing && editingTx ? (editingTx.returnReason || editingTx.lastReturnReason || '') : '';
+
   function renderPage() {
     app.innerHTML = `
       <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow-x: hidden; box-sizing: border-box; position: relative;">
         
         <!-- HEADER -->
-        <header style="display: flex; align-items: center; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #D9D9D9; flex-shrink: 0;">
-          <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: ${themeColor};">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12"></line>
-              <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>
-          </button>
-          <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 8px; letter-spacing: -0.01em;">${title}</h1>
+        <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #D9D9D9; flex-shrink: 0;">
+          <div style="display: flex; align-items: center; min-width: 0;">
+            <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: ${themeColor};">
+              <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+            </button>
+            <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 8px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</h1>
+          </div>
+          ${isEditing && editingTx?.docNo ? `
+            <span style="font-size: 0.68rem; font-weight: 700; background: #FEF2F2; color: #DC2626; padding: 3px 8px; border-radius: 9999px; border: 1px solid #FECACA; flex-shrink: 0; margin-left: 8px; white-space: nowrap;">
+              ${esc(editingTx.docNo)}
+            </span>
+          ` : ''}
         </header>
 
         <!-- SCROLLABLE CONTENT -->
         <main style="flex: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: 24px; box-sizing: border-box;">
           
+          <!-- CATATAN PENGEMBALIAN ASISTEN BANNER (KOREKSI MODE) -->
+          ${isEditing && returnReasonNote ? `
+            <section style="margin: 12px 16px 0 16px; background: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 8px; padding: 9px 12px;">
+              <div style="display: flex; align-items: flex-start; gap: 8px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="#DC2626" stroke-width="2.2" fill="none" style="flex-shrink: 0; margin-top: 1px;">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 0.72rem; font-weight: 700; color: #991B1B; line-height: 1.2; margin-bottom: 2px;">
+                    Catatan Pengembalian Asisten:
+                  </div>
+                  <div style="font-size: 0.74rem; color: #7F1D1D; font-weight: 500; line-height: 1.35; word-break: break-word;">
+                    "${esc(returnReasonNote)}"
+                  </div>
+                </div>
+              </div>
+            </section>
+          ` : ''}
+
           <!-- INFORMASI MANTRI & TANGGAL -->
           <section style="display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 16px; border-bottom: 1px solid #E5E7EB; gap: 12px;">
             <div style="flex: 1; min-width: 0;">
@@ -457,6 +504,11 @@ export async function renderBuddingForm() {
     const dialogValidation = app.querySelector('#dialog-validation');
     const dialogErrorList = app.querySelector('#dialog-error-list');
     const btnCloseValidationDialog = app.querySelector('#btn-close-validation-dialog');
+
+    app.querySelector('#btn-back')?.addEventListener('click', () => {
+      storage.remove('editing_budding_index');
+      navigate(isRegrafting ? '/budding/regrafting' : '/budding/grafting');
+    });
 
     // Dialog Validasi Helpers
     function showValidationErrorDialog(errors) {
@@ -891,15 +943,22 @@ export async function renderBuddingForm() {
         : generateUniqueDocNo(docModKey, txs, 2026);
 
       if (isEditing && txs[parseInt(editingIdx)]) {
+        const existing = txs[parseInt(editingIdx)];
         const updated = applyTransactionActor({
-          ...txs[parseInt(editingIdx)],
+          ...existing,
           klonEntres: normalizeKlonName(selectedKlon),
           workers: canonicalWorkers,
           jumlah: totalDiokulasi,
           jumlahKayu: kayu,
           jumlahMataEntres: mataEntres,
           jumlahDitolak: ditolak,
-          alasan: isRegrafting ? app.querySelector('#sel-alasan')?.value : null
+          alasan: isRegrafting ? app.querySelector('#sel-alasan')?.value : null,
+          status: 'MENUNGGU_VERIFIKASI_MANTRI',
+          returnReason: existing.returnReason || null,
+          lastReturnReason: existing.lastReturnReason || existing.returnReason || null,
+          returnedAt: existing.returnedAt || null,
+          returnedBy: existing.returnedBy || null,
+          updatedAt: new Date().toISOString()
         }, 'UPDATE', user);
         txs[parseInt(editingIdx)] = updated;
         storage.set('budding_transactions', txs);

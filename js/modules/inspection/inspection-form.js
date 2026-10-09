@@ -126,27 +126,48 @@ export function renderInspectionForm() {
       : []
   };
 
-  let pendingCapturedPhoto = null;
+  const returnReasonNote = (isEditing && targetInsp) 
+    ? (targetInsp.returnReason || targetInsp.lastReturnReason || '') 
+    : '';
+  const hasReturnReason = Boolean(returnReasonNote && returnReasonNote.trim().length > 0);
 
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow-x: hidden; box-sizing: border-box; position: relative;">
       
       <!-- HEADER -->
-      <header style="display: flex; align-items: center; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #D9D9D9; flex-shrink: 0;">
-        <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
-          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-          </svg>
-        </button>
-        <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 8px; letter-spacing: -0.01em;">
-          ${isEditing ? 'Edit Pemeriksaan' : 'Rekam Pemeriksaan'}
-        </h1>
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #D9D9D9; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0; letter-spacing: -0.01em;">
+            ${isEditing ? 'Edit Pemeriksaan Okulasi' : 'Rekam Pemeriksaan Okulasi'}
+          </h1>
+        </div>
+        ${isEditing && targetInsp?.docNo ? `
+          <span style="font-size: 0.72rem; font-weight: 700; color: #0284C7; background: #E0F2FE; border: 1px solid #BAE6FD; padding: 4px 8px; border-radius: 6px; letter-spacing: 0.02em;">
+            ${targetInsp.docNo}
+          </span>
+        ` : ''}
       </header>
 
       <!-- SCROLLABLE CONTENT -->
       <main style="flex: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: 24px; box-sizing: border-box;">
         
+        <!-- CATATAN PENGEMBALIAN ASISTEN (JIKA STATUS DIKEMBALIKAN / MEMILIKI CATATAN) -->
+        ${hasReturnReason ? `
+          <section style="margin: 14px 16px 0 16px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 12px; font-size: 0.74rem; color: #991B1B; line-height: 1.4; overflow-wrap: anywhere; word-break: normal;">
+            <div style="font-weight: 800; color: #DC2626; margin-bottom: 2px; display: flex; align-items: center; gap: 4px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="#DC2626" stroke-width="2.5" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              <span>Catatan Pengembalian Asisten:</span>
+            </div>
+            <div>${returnReasonNote.trim()}</div>
+          </section>
+        ` : ''}
+
         <!-- INFORMASI MANTRI & TANGGAL -->
         <section style="display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 16px; border-bottom: 1px solid #E5E7EB; gap: 12px;">
           <div style="flex: 1; min-width: 0;">
@@ -911,6 +932,8 @@ export function renderInspectionForm() {
     storage.remove('inspection_qr_verified');
     storage.remove('inspection_verified_at');
     storage.remove('inspection_verified_batch');
+    storage.remove('editing_inspection_index');
+    storage.remove('editing_inspection_id');
     navigate('/inspection');
   });
 
@@ -1027,6 +1050,11 @@ export function renderInspectionForm() {
       persenJadi: persenTotal,
       catatan,
       photos: state.photos,
+      status: 'MENUNGGU_VERIFIKASI_MANTRI',
+      returnReason: isEditing && targetInsp ? (targetInsp.returnReason || null) : null,
+      lastReturnReason: isEditing && targetInsp ? (targetInsp.lastReturnReason || targetInsp.returnReason || null) : null,
+      returnedAt: isEditing && targetInsp ? (targetInsp.returnedAt || null) : null,
+      returnedBy: isEditing && targetInsp ? (targetInsp.returnedBy || null) : null,
       mantri: user?.name || 'Wagiman',
       actorName: user?.name || 'Wagiman',
       inspectorName: user?.name || 'Wagiman',
@@ -1098,6 +1126,7 @@ export function renderInspectionForm() {
     storage.remove('inspection_verified_at');
     storage.remove('inspection_verified_batch');
     storage.remove('editing_inspection_index');
+    storage.remove('editing_inspection_id');
     toast(isEditing ? 'Perubahan data pemeriksaan berhasil disimpan!' : 'Data pemeriksaan berhasil disimpan!', 'success');
     navigate('/inspection');
   });

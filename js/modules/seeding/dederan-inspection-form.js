@@ -17,6 +17,7 @@ import { session } from '../../core/session.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
 import { formatDate, esc } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
+import { validateSourceEditability } from '../../core/dependency-guard.js';
 import {
   getDederanTransactionById,
   getBedenganInspectionSummary,
@@ -61,25 +62,52 @@ export function renderDederanInspectionForm() {
   const initialBerhasil = isEditing ? (editingInsp.jumlahBerhasil || 0) : 0;
   const initialTidakBerhasil = isEditing ? (editingInsp.jumlahTidakBerhasil || 0) : 0;
   const maxAllowedDiperiksa = isEditing ? (summary.sisaBelumDiperiksa + initialDiperiksa) : summary.sisaBelumDiperiksa;
-  const isReturned = isEditing && editingInsp && (editingInsp.status === 'DIKEMBALIKAN' || editingInsp.verificationStatus === 'DIKEMBALIKAN');
-  const hasReturnReason = isReturned && typeof editingInsp.returnReason === 'string' && editingInsp.returnReason.trim().length > 0;
+  const returnReasonNote = isEditing && editingInsp ? (editingInsp.returnReason || editingInsp.lastReturnReason || '') : '';
 
   app.innerHTML = `
     <div class="page dederan-insp-form-page" style="display: flex; flex-direction: column; height: 100%; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; position: relative; overflow: hidden;">
       
       <!-- HEADER -->
-      <header style="display: flex; align-items: center; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
-        <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
-          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-          </svg>
-        </button>
-        <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 0 8px; letter-spacing: -0.01em;">${isEditing ? 'Edit Pemeriksaan Dederan' : 'Pemeriksaan Dederan'}</h1>
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; min-width: 0;">
+          <button id="btn-back" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 0 8px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${isEditing ? 'Edit Pemeriksaan Dederan' : 'Pemeriksaan Dederan'}</h1>
+        </div>
+        ${isEditing && editingInsp?.docNo ? `
+          <span style="font-size: 0.68rem; font-weight: 700; background: #FEF2F2; color: #DC2626; padding: 3px 8px; border-radius: 9999px; border: 1px solid #FECACA; flex-shrink: 0; margin-left: 8px; white-space: nowrap;">
+            ${esc(editingInsp.docNo)}
+          </span>
+        ` : ''}
       </header>
 
       <!-- SCROLLABLE CONTENT -->
       <main style="flex: 1; overflow-y: auto; padding-bottom: 20px;">
+        
+        <!-- CATATAN PENGEMBALIAN ASISTEN BANNER (KOREKSI MODE) -->
+        ${isEditing && returnReasonNote ? `
+          <section style="margin: 12px 16px 0 16px; background: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 8px; padding: 9px 12px;">
+            <div style="display: flex; align-items: flex-start; gap: 8px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="#DC2626" stroke-width="2.2" fill="none" style="flex-shrink: 0; margin-top: 1px;">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 0.72rem; font-weight: 700; color: #991B1B; line-height: 1.2; margin-bottom: 2px;">
+                  Catatan Pengembalian Asisten:
+                </div>
+                <div style="font-size: 0.74rem; color: #7F1D1D; font-weight: 500; line-height: 1.35; word-break: break-word;">
+                  "${esc(returnReasonNote)}"
+                </div>
+              </div>
+            </div>
+          </section>
+        ` : ''}
         
         <!-- INFORMASI OPERATOR / TANGGAL -->
         <section style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #F1F5F9; background: #FFFFFF;">
@@ -574,7 +602,23 @@ export function renderDederanInspectionForm() {
 
     try {
       if (isEditing) {
+        const editGuard = validateSourceEditability('DEDERAN_INSPECTION', editingInsp.docNo || editingInsp.id, payload);
+        if (!editGuard.allowed) {
+          toast(editGuard.reason || 'Koreksi tidak dapat disimpan karena melanggar konsistensi dokumen hilir yang telah disetujui.', 'error');
+          return;
+        }
+
         const result = updateDederanInspection(editingInsp.docNo || editingInsp.id, payload);
+        let inspections = storage.get('dederan_inspections', []);
+        const idx = inspections.findIndex(i => (i.docNo && i.docNo === result.inspection.docNo) || i.id === result.inspection.id);
+        if (idx !== -1) {
+          inspections[idx].status = 'MENUNGGU_VERIFIKASI_MANTRI';
+          inspections[idx].returnReason = editingInsp.returnReason || null;
+          inspections[idx].lastReturnReason = editingInsp.lastReturnReason || editingInsp.returnReason || null;
+          inspections[idx].returnedAt = editingInsp.returnedAt || null;
+          inspections[idx].returnedBy = editingInsp.returnedBy || null;
+          storage.set('dederan_inspections', inspections);
+        }
         storage.remove('editing_dederan_inspection_id');
         toast(`Pemeriksaan ${result.inspection.docNo} berhasil diperbarui!`, 'success');
       } else {

@@ -62,7 +62,12 @@ export function renderBuddingGrafting() {
   );
   const rawBuddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
   const allBuddingTxs = getAuthorizedTransactions(rawBuddingTxs, userCtx);
+  const returnedGraftingTxs = allBuddingTxs.filter(b =>
+    b.status === 'DIKEMBALIKAN' || b.verificationStatus === 'DIKEMBALIKAN'
+  );
   const buddingTxs = allBuddingTxs.filter(b => {
+    const isReturned = b.status === 'DIKEMBALIKAN' || b.verificationStatus === 'DIKEMBALIKAN';
+    if (isReturned) return false;
     const d = normalizeDateStr(b.tanggal || b.date || b.createdAt);
     return d === selectedGraftingDate;
   });
@@ -321,6 +326,111 @@ export function renderBuddingGrafting() {
           description: 'Belum ada bibit yang siap diokulasi. Seleksi III belum final.',
           customStyle: 'margin-top: 24px;'
         })}
+
+        <!-- SECTION: OKULASI PERLU PERBAIKAN (RETURNED FROM ASISTEN) -->
+        ${returnedGraftingTxs.length > 0 ? `
+          <div style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="display: inline-block; width: 3px; height: 14px; border-radius: 2px; background: #DC2626;"></span>
+                <h2 style="font-size: 0.92rem; font-weight: 700; color: #0F172A; margin: 0;">
+                  Transaksi Okulasi Perlu Perbaikan
+                </h2>
+              </div>
+              <span style="font-size: 0.68rem; font-weight: 600; background: #FEF2F2; color: #DC2626; padding: 2px 8px; border-radius: 9999px; border: 1px solid #FECACA;">
+                ${returnedGraftingTxs.length} dokumen menunggu koreksi
+              </span>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              ${returnedGraftingTxs.map((tx, idx) => {
+                const docNo = tx.docNo ? tx.docNo.replace('/OKL/', '/GRF/') : formatStandardDocNo(2026, 'GRF', idx + 1);
+                const returnNote = tx.returnReason || tx.lastReturnReason || 'Perlu perbaikan data.';
+                const jmlDiokulasi = parseInt(tx.jumlah || 0);
+                const jmlKayu = parseInt(tx.jumlahKayu || 0);
+                const bedenganStr = tx.bedengan ? formatBedenganCode(tx.bedengan, tx.bedenganCode) : 'BED-001';
+
+                return `
+                  <div class="card-summary-wrapper card-returned-okulasi-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
+                    
+                    <!-- BARIS 1: IDENTITAS DOKUMEN & BADGE DIKEMBALIKAN -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                      <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                          <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(docNo)}</span>
+                          <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px;">
+                            <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
+                            Dikembalikan
+                          </span>
+                        </div>
+                        
+                        <!-- BARIS 2 & 3: METADATA -->
+                        <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.35;">
+                          Batch: <strong style="color: #334155; font-weight: 600;">${esc(tx.batchNo || 'Batch-01')}</strong> • Klon: <strong style="color: #116834; font-weight: 600;">${esc(tx.klonEntres || tx.klon || 'PB 260')}</strong>
+                        </div>
+                        <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.35;">
+                          Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(bedenganStr)}</strong> • Tgl: <span style="color: #475569; font-weight: 500;">${esc(tx.tanggal || tx.date || '-')}</span>
+                        </div>
+                      </div>
+
+                      <!-- 3-DOTS ACTION TRIGGER -->
+                      <div style="position: relative; flex-shrink: 0; margin-left: 8px;">
+                        <button type="button" class="btn-tx-action-trigger" data-index="ret-grf-${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
+                          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
+                            <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
+                            <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
+                          </svg>
+                        </button>
+
+                        <!-- POPUP MENU -->
+                        <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
+                          <button type="button" class="menu-action-edit" data-doc="${esc(tx.docNo || '')}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            <span>Edit / Koreksi</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- BARIS 4: CATATAN PENGEMBALIAN -->
+                    <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-left: 3px solid #DC2626; border-radius: 6px; padding: 7px 10px; margin-top: 6px; font-size: 0.74rem;">
+                      <div style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-bottom: 2px;">
+                        Catatan Pengembalian:
+                      </div>
+                      <div style="color: #450A0A; font-weight: 500; word-break: break-word; line-height: 1.35;">
+                        "${esc(returnNote)}"
+                      </div>
+                    </div>
+
+                    <!-- BARIS 5: METRICS CONTAINER -->
+                    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                      <div>
+                        <span style="font-size: 0.68rem; color: #64748B;">Total Diokulasi</span>
+                        <div style="font-size: 0.85rem; font-weight: 800; color: #116834; margin-top: 1px;">
+                          ${jmlDiokulasi.toLocaleString('id-ID')} Pkk
+                        </div>
+                      </div>
+                      <div style="text-align: right;">
+                        <span style="font-size: 0.68rem; color: #64748B;">Kayu Okulasi</span>
+                        <div style="font-size: 0.85rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
+                          ${jmlKayu.toLocaleString('id-ID')} Batang
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- BARIS 6: DIRECT ACTION BUTTON -->
+                    <button type="button" class="btn-koreksi-okulasi" data-doc="${esc(tx.docNo || '')}" style="width: 100%; height: 38px; margin-top: 10px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: all 0.15s ease;">
+                      <svg viewBox="0 0 24 24" width="14" height="14" stroke="#FFFFFF" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                      <span>Edit / Koreksi Okulasi</span>
+                    </button>
+
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
 
         <!-- STATUS BANNER FILTER TANGGAL (JIKA MEMILIH TANGGAL LAMPAU) -->
         ${renderDateFilterBannerHtml(selectedGraftingDate, 'btn-reset-date-filter')}
@@ -593,22 +703,45 @@ export function renderBuddingGrafting() {
     });
   });
 
-  // Event Listener: Action Edit Okulasi
-  app.querySelectorAll('.menu-action-edit').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const idx = parseInt(e.currentTarget.dataset.index);
-      const targetTx = buddingTxs[idx];
-      if (isTransactionLockedForMantri(targetTx)) {
-        toast.error('Transaksi Okulasi tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
-        return;
-      }
-      storage.set('editing_budding_index', idx);
-      storage.set('selected_grafting_batch_index', targetTx?.seedingIndex !== undefined ? targetTx.seedingIndex : 0);
-      storage.set('budding_type', 'GRAFTING');
-      navigate('/budding/grafting/form');
-    });
+  // Event Listener: Action Edit / Koreksi Okulasi
+  const handleEditGrafting = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const doc = e.currentTarget.dataset.doc;
+    const rawIdx = e.currentTarget.dataset.index;
+    const allTxs = storage.get('budding_transactions', []);
+    let origIdx = -1;
+    if (doc) {
+      origIdx = allTxs.findIndex(b => b.docNo === doc || (b.type === 'GRAFTING' && b.docNo?.replace('/OKL/', '/GRF/') === doc));
+    }
+    if (origIdx < 0 && rawIdx !== undefined && rawIdx !== null && !isNaN(parseInt(rawIdx, 10))) {
+      origIdx = parseInt(rawIdx, 10);
+    }
+
+    const targetTx = allTxs[origIdx];
+    if (!targetTx) {
+      toast('Data transaksi Okulasi tidak ditemukan', 'error');
+      return;
+    }
+
+    if (!canUserAccessTransaction(targetTx, userCtx, 'UPDATE')) {
+      toast('Anda tidak memiliki otoritas untuk mengedit transaksi ini.', 'error');
+      return;
+    }
+
+    if (isTransactionLockedForMantri(targetTx)) {
+      toast('Transaksi Okulasi tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');
+      return;
+    }
+
+    storage.set('editing_budding_index', origIdx);
+    storage.set('selected_grafting_batch_index', targetTx?.seedingIndex !== undefined ? targetTx.seedingIndex : 0);
+    storage.set('budding_type', 'GRAFTING');
+    navigate('/budding/grafting/form');
+  };
+
+  app.querySelectorAll('.btn-koreksi-okulasi, .menu-action-edit').forEach(btn => {
+    btn.addEventListener('click', handleEditGrafting);
   });
 
   // Event Listener: Action Delete Okulasi
@@ -620,31 +753,36 @@ export function renderBuddingGrafting() {
       const menu = wrapper?.querySelector('.tx-action-menu');
       if (menu) menu.style.display = 'none';
 
-      const idx = parseInt(e.currentTarget.dataset.index);
       const doc = e.currentTarget.dataset.doc;
+      const rawIdx = e.currentTarget.dataset.index;
       let allTxs = storage.get('budding_transactions', []);
-      const targetTx = allTxs.find(b => b.docNo === doc) || allTxs[idx];
+      let actualIdx = -1;
+      if (doc) {
+        actualIdx = allTxs.findIndex(b => b.docNo === doc || (b.type === 'GRAFTING' && b.docNo?.replace('/OKL/', '/GRF/') === doc));
+      }
+      if (actualIdx < 0 && rawIdx !== undefined && rawIdx !== null && !isNaN(parseInt(rawIdx, 10))) {
+        actualIdx = parseInt(rawIdx, 10);
+      }
+
+      const targetTx = allTxs[actualIdx];
 
       if (!targetTx || !canUserAccessTransaction(targetTx, userCtx, 'DELETE')) {
-        toast.error('Anda tidak memiliki otoritas untuk menghapus transaksi ini.');
+        toast('Anda tidak memiliki otoritas untuk menghapus transaksi ini.', 'error');
         return;
       }
 
       if (isTransactionLockedForMantri(targetTx)) {
-        toast.error('Transaksi Okulasi tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+        toast('Transaksi Okulasi tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');
         return;
       }
 
-      if (confirm(`Apakah Anda yakin ingin menghapus transaksi okulasi "${doc}"?`)) {
-        const actualIdx = allTxs.findIndex(b => b.docNo === doc);
+      if (confirm(`Apakah Anda yakin ingin menghapus transaksi okulasi "${doc || targetTx.docNo || ''}"?`)) {
         if (actualIdx !== -1) {
           allTxs.splice(actualIdx, 1);
-        } else {
-          allTxs.splice(idx, 1);
+          storage.set('budding_transactions', allTxs);
+          toast(`Transaksi okulasi "${doc || targetTx.docNo || ''}" berhasil dihapus.`, 'success');
+          renderBuddingGrafting();
         }
-        storage.set('budding_transactions', allTxs);
-        toast.success(`Transaksi okulasi "${doc}" berhasil dihapus.`);
-        renderBuddingGrafting();
       }
     });
   });

@@ -1679,38 +1679,190 @@ export function deduplicateLogicalSelectionPool(poolList = []) {
 /**
  * Standardized Reject Pool & Culled History List (Dederan, Pindah Semai, Pasca-Okulasi)
  */
-export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], emptyTitle, emptyDesc, pageTitle, today) {
+export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], emptyTitle, emptyDesc, pageTitle, today, allStageCulledTxs = []) {
   const poolItems = deduplicateLogicalSelectionPool(rawPoolItems);
 
-  // Deduplicate: If an item is currently active in poolItems awaiting declaration/re-declaration,
-  // do not render a duplicate active card for the same docNo in the bottom history list.
+  // Identify stage for appropriate section title & unit
+  const isDederanStage = (pageTitle && (pageTitle.includes('Pra-Semai') || pageTitle.includes('Dederan'))) ||
+    poolItems.some(p => p.originType === 'REJECT_DEDERAN' || p.sourceModule === 'DEDERAN') ||
+    allStageCulledTxs.some(t => t.originType === 'REJECT_DEDERAN' || t.sourceModule === 'DEDERAN');
+
+  const returnedSectionTitle = isDederanStage
+    ? 'Transaksi Seleksi Pra-Semai Perlu Perbaikan'
+    : 'Transaksi Seleksi Pindah Semai Perlu Perbaikan';
+
+  // 1. Collect returned items from poolItems
+  const returnedMap = new Map();
+
+  poolItems.forEach(item => {
+    const isRet = item.status === SELECTION_STATUS.DIKEMBALIKAN || item.status === 'REVISION' || Boolean(item.returnReason);
+    if (isRet) {
+      const key = String(item.docNo || item.selectionDocNo || item.id || item.sourceDocNo || '').trim();
+      if (key) returnedMap.set(key, { ...item, status: SELECTION_STATUS.DIKEMBALIKAN });
+    }
+  });
+
+  // 2. Collect returned items from allStageCulledTxs (ensures immunity from date filter)
+  allStageCulledTxs.forEach(tx => {
+    const isRet = tx.status === SELECTION_STATUS.DIKEMBALIKAN || tx.status === 'REVISION' || tx.verificationStatus === 'DIKEMBALIKAN' || Boolean(tx.returnReason);
+    if (isRet) {
+      const key = String(tx.docNo || tx.selectionNo || tx.id || tx.sourceDocNo || '').trim();
+      if (key) {
+        if (!returnedMap.has(key)) {
+          returnedMap.set(key, { ...tx, status: SELECTION_STATUS.DIKEMBALIKAN });
+        } else {
+          // Merge metadata
+          const existing = returnedMap.get(key);
+          if (tx.returnReason && !existing.returnReason) existing.returnReason = tx.returnReason;
+          if (tx.lastReturnReason && !existing.lastReturnReason) existing.lastReturnReason = tx.lastReturnReason;
+        }
+      }
+    }
+  });
+
+  const returnedItems = Array.from(returnedMap.values());
+  const returnedKeys = new Set(Array.from(returnedMap.keys()));
+
+  // 3. Pending pool items awaiting first declaration (exclude any returned items)
+  const pendingPoolItems = poolItems.filter(p => {
+    const key = String(p.docNo || p.selectionDocNo || p.id || p.sourceDocNo || '').trim();
+    if (returnedKeys.has(key)) return false;
+    if (p.status === SELECTION_STATUS.DIKEMBALIKAN || p.status === 'REVISION') return false;
+    return true;
+  });
+
   const activePoolDocNos = new Set(
-    poolItems.map(p => String(p.docNo || p.selectionDocNo || p.id || '').trim()).filter(Boolean)
+    pendingPoolItems.map(p => String(p.docNo || p.selectionDocNo || p.id || '').trim()).filter(Boolean)
   );
 
+  // 4. History transactions (exclude items already shown in returned section or pending pool)
   const displayCulledTxs = culledTxs.filter(tx => {
-    const txDoc = String(tx.docNo || tx.selectionNo || tx.id || '').trim();
+    const txDoc = String(tx.docNo || tx.selectionNo || tx.id || tx.sourceDocNo || '').trim();
+    if (txDoc && returnedKeys.has(txDoc)) {
+      return false; // Already represented in the top returned / repair section
+    }
     if (txDoc && activePoolDocNos.has(txDoc)) {
-      return false; // Already represented in the top active declaration/repair section
+      return false; // Already represented in pending pool section
+    }
+    if (tx.status === SELECTION_STATUS.DIKEMBALIKAN || tx.status === 'REVISION') {
+      return false; // Exclude returned items from normal history
     }
     return true;
   });
 
   return `
+    <!-- SECTION 1: TRANSAKSI PERLU PERBAIKAN (DATE-INDEPENDENT) -->
+    ${returnedItems.length > 0 ? `
+      <div style="margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-block; width: 3px; height: 14px; border-radius: 2px; background: #DC2626;"></span>
+            <h2 style="font-size: 0.92rem; font-weight: 700; color: #0F172A; margin: 0;">
+              ${esc(returnedSectionTitle)}
+            </h2>
+          </div>
+          <span style="font-size: 0.68rem; font-weight: 600; background: #FEF2F2; color: #DC2626; padding: 2px 8px; border-radius: 9999px; border: 1px solid #FECACA;">
+            ${returnedItems.length} dokumen menunggu koreksi
+          </span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          ${returnedItems.map((item, idx) => {
+            const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+            const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN' || isDederanStage;
+            const unit = isDederan ? 'Butir' : 'Pkk';
+            const prog = item.programCode || item.programName || item.program || '-';
+            const batch = isDederan ? null : (item.batchCode || item.batchNo || null);
+            const bedDisplay = formatBedenganDisplayCode(item);
+            const sourceDoc = item.sourceDocNo || item.dederanDocNo || item.seedingDocNo || item.buddingDocNo || item.sourceTransactionId || '-';
+            const displayDocNo = item.docNo || standardizeSelectionDocNo(item.docNo, idx + 1);
+            const rawItemDate = item.tanggalAfkir || item.tanggalSeleksi || item.tanggal || item.createdAt || today;
+            const itemDate = normalizeDateStr(rawItemDate) || formatDate(rawItemDate) || rawItemDate;
+            const returnNote = item.returnReason || item.lastReturnReason || 'Perlu perbaikan data.';
+            const klonDisplay = item.clone || item.klon || null;
+
+            return `
+              <div class="card-summary-wrapper card-returned-selection-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative; display: flex; flex-direction: column; gap: 8px;">
+                
+                <!-- BARIS 1: IDENTITAS DOKUMEN & BADGE DIKEMBALIKAN -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                  <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(displayDocNo)}</span>
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px;">
+                        <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
+                        Dikembalikan
+                      </span>
+                    </div>
+                    
+                    <!-- BARIS 2 & 3: METADATA -->
+                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.35;">
+                      ${isDederan ? `Program: <strong style="color: #334155;">${esc(prog)}</strong>` : `Batch: <strong style="color: #334155;">${esc(batch || '-')}</strong> • Program: <strong style="color: #334155;">${esc(prog)}</strong>`}
+                      ${klonDisplay ? ` • Klon: <strong style="color: #116834;">${esc(klonDisplay)}</strong>` : ''}
+                    </div>
+                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.35;">
+                      Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(bedDisplay)}</strong> • Dok. Asal: <strong style="color: #116834; font-weight: 600;">${esc(sourceDoc)}</strong>
+                    </div>
+                    <div style="font-size: 0.70rem; color: #64748B; margin-top: 2px;">
+                      Tanggal: <span style="color: #475569; font-weight: 500;">${esc(itemDate)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- BARIS 4: CATATAN PENGEMBALIAN -->
+                <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-left: 3px solid #DC2626; border-radius: 6px; padding: 7px 10px; font-size: 0.74rem;">
+                  <div style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-bottom: 2px;">
+                    Catatan Pengembalian Asisten:
+                  </div>
+                  <div style="color: #450A0A; font-weight: 500; word-break: break-word; line-height: 1.35;">
+                    "${esc(returnNote)}"
+                  </div>
+                </div>
+
+                <!-- BARIS 5: METRICS KUANTITAS -->
+                <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B; text-transform: uppercase;">Jumlah Tidak Berhasil</span>
+                    <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">${esc(isDederan ? 'Afkir Pemeriksaan Dederan' : 'Ditolak Pindah Semai')}</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <span style="font-size: 1.15rem; font-weight: 900; color: #DC2626;">${qtyAfkir.toLocaleString('id-ID')}</span>
+                    <span style="font-size: 0.72rem; font-weight: 700; color: #991B1B; margin-left: 2px;">${unit}</span>
+                  </div>
+                </div>
+
+                <!-- BARIS 6: CTA HIJAU DEKLARASI ULANG / KOREKSI SELEKSI -->
+                <div style="margin-top: 2px;">
+                  <button type="button" class="btn-koreksi-seleksi btn-perbaiki-cull" data-pool-id="${esc(item.id || item.docNo)}" data-cull-id="${esc(item.id || item.docNo)}" style="width: 100%; min-height: 38px; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2); transition: background 0.15s ease;">
+                    Deklarasi Ulang / Koreksi Seleksi
+                  </button>
+                </div>
+
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- SECTION 2: DAFTAR BIBIT AFKIR / POOL PERLU DEKLARASI -->
     <div style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
-      <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">${esc(pageTitle)} (${poolItems.length})</h2>
+      <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">${esc(pageTitle)} (${pendingPoolItems.length})</h2>
     </div>
 
-    ${poolItems.length === 0 ? renderEmptyStateCard({
+    ${pendingPoolItems.length === 0 && returnedItems.length === 0 ? renderEmptyStateCard({
       title: emptyTitle,
       description: emptyDesc
-    }) : `
+    }) : pendingPoolItems.length === 0 ? `
+      <div style="background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 8px; padding: 14px; text-align: center; color: #64748B; font-size: 0.76rem; margin-bottom: 16px;">
+        Semua data bibit afkir telah dideklarasikan atau sedang dalam proses perbaikan.
+      </div>
+    ` : `
       <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
-        ${poolItems.map(item => {
+        ${pendingPoolItems.map(item => {
           const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
           const unit = item.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
           const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN';
-          const isReturned = item.status === SELECTION_STATUS.DIKEMBALIKAN || item.status === 'REVISION';
           const prog = item.programCode || item.programName || item.program || '-';
           const batch = isDederan ? null : (item.batchCode || item.batchNo || null);
           const bedDisplay = formatBedenganDisplayCode(item);
@@ -1728,11 +1880,6 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
                     <span style="font-size: 0.70rem; font-weight: 700; color: #64748B; text-transform: uppercase;">
                       ${isDederan ? esc(prog) : `${esc(batch || '-')} • ${esc(prog)}`}
                     </span>
-                    ${isReturned ? `
-                      <span style="font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA;">
-                        Dikembalikan
-                      </span>
-                    ` : ''}
                   </div>
                   <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
                     ${esc(bedDisplay)}
@@ -1743,14 +1890,6 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
                   <span style="font-size: 0.72rem; font-weight: 700; color: #991B1B;">${unit}</span>
                 </div>
               </div>
-
-              <!-- CATATAN PENGEMBALIAN JIKA STATUS DIKEMBALIKAN -->
-              ${isReturned && item.returnReason ? `
-                <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 8px 10px; font-size: 0.72rem; color: #991B1B; line-height: 1.4;">
-                  <strong style="display: block; font-size: 0.68rem; color: #DC2626; margin-bottom: 2px;">Catatan Pengembalian Asisten:</strong>
-                  ${esc(item.returnReason)}
-                </div>
-              ` : ''}
 
               <!-- MIDDLE ROW: SOURCE DOC & TANGGAL (SEJAJAR) -->
               <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: #64748B;">
@@ -1765,7 +1904,7 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
               <!-- BOTTOM ROW: TOMBOL DEKLARASI FULL-WIDTH -->
               <div style="margin-top: 4px; padding-top: 6px; border-top: 1px solid #F1F5F9;">
                 <button type="button" class="btn-deklarasi-afkir" data-pool-id="${esc(item.id || item.docNo)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2); transition: background 0.15s ease;">
-                  ${isReturned ? 'Deklarasi Ulang / Perbaiki' : 'Deklarasi Bibit Afkir'}
+                  Deklarasi Bibit Afkir
                 </button>
               </div>
 
@@ -1775,7 +1914,7 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
       </div>
     `}
 
-    <!-- RIWAYAT TRANSAKSI / DEKLARASI -->
+    <!-- SECTION 3: RIWAYAT TRANSAKSI / DEKLARASI -->
     ${renderCulledHistoryList(displayCulledTxs, 'Belum ada riwayat deklarasi', 'Riwayat deklarasi bibit afkir akan tercatat di sini.', 'Riwayat Deklarasi', today)}
   `;
 }
@@ -2137,10 +2276,10 @@ function renderMantriSelectionLanding(app, user) {
 
         ` : activeMantriTab === 'PRE_SOWING' ? `
           <!-- VIEW: BIBIT AFKIR PRA-SEMAI (DEDERAN) -->
-          ${renderStandardizedRejectList(preSowingSelectionPool, filteredPreSowingCulledTxs, 'Belum Ada Data Afkir Dederan', 'Data afkir dederan akan muncul saat terdapat bibit yang tidak berhasil pada pemeriksaan dederan.', 'Daftar Bibit Afkir Pra-Semai (Dederan)', today)}
+          ${renderStandardizedRejectList(preSowingSelectionPool, filteredPreSowingCulledTxs, 'Belum Ada Data Afkir Dederan', 'Data afkir dederan akan muncul saat terdapat bibit yang tidak berhasil pada pemeriksaan dederan.', 'Daftar Bibit Afkir Pra-Semai (Dederan)', today, preSowingCulledTxs)}
         ` : activeMantriTab === 'PINDAH_SEMAI_REJECT' ? `
           <!-- VIEW: BIBIT DITOLAK PINDAH SEMAI -->
-          ${renderStandardizedRejectList(pindahSemaiSelectionPool, filteredPindahSemaiCulledTxs, 'Belum Ada Data Ditolak Pindah Semai', 'Data bibit ditolak akan muncul saat transaksi Pindah Semai mencatat adanya bibit yang ditolak/afkir.', 'Daftar Hasil Ditolak Pindah Semai', today)}
+          ${renderStandardizedRejectList(pindahSemaiSelectionPool, filteredPindahSemaiCulledTxs, 'Belum Ada Data Ditolak Pindah Semai', 'Data bibit ditolak akan muncul saat transaksi Pindah Semai mencatat adanya bibit yang ditolak/afkir.', 'Daftar Hasil Ditolak Pindah Semai', today, pindahSemaiCulledTxs)}
         ` : `
           <!-- VIEW: BIBIT AFKIR PASCA-OKULASI (COMPACT PROGRAM/BATCH VIEW) -->
           <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
@@ -2348,12 +2487,12 @@ function renderMantriSelectionLanding(app, user) {
     });
   });
 
-  // Re-declare / Repair flow for returned items in culled history
-  app.querySelectorAll('.btn-perbaiki-cull').forEach(btn => {
+  // Re-declare / Repair flow for returned items
+  app.querySelectorAll('.btn-perbaiki-cull, .btn-koreksi-seleksi').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const cullId = e.currentTarget.dataset.cullId;
-      const targetCullItem = scopedAllTxs.find(s => (s.id && String(s.id) === String(cullId)) || (s.docNo && String(s.docNo) === String(cullId)) || (s.selectionNo && String(s.selectionNo) === String(cullId))) ||
-        scopedPool.find(s => (s.id && String(s.id) === String(cullId)) || (s.docNo && String(s.docNo) === String(cullId)));
+      const cullId = e.currentTarget.dataset.cullId || e.currentTarget.dataset.poolId;
+      const targetCullItem = scopedPool.find(s => (s.id && String(s.id) === String(cullId)) || (s.docNo && String(s.docNo) === String(cullId))) ||
+        scopedAllTxs.find(s => (s.id && String(s.id) === String(cullId)) || (s.docNo && String(s.docNo) === String(cullId)) || (s.selectionNo && String(s.selectionNo) === String(cullId)));
       if (!targetCullItem) return;
 
       const displayDocNo = targetCullItem.docNo || standardizeSelectionDocNo(targetCullItem.docNo, 1);

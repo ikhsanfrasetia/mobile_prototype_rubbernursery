@@ -373,3 +373,98 @@ export function guardDependency(docNo, moduleName, action = 'Diubah') {
   return false; // Safe
 }
 
+/**
+ * Validasi apakah dokumen sumber aman untuk dikoreksi.
+ * Membedakan perubahan metadata (selalu aman) dari perubahan kuantitas yang dapat melanggar kuantitas yang sudah disetujui di dokumen turunan langsung.
+ *
+ * @param {string} docType - Tipe dokumen sumber ('DEDERAN', 'DEDERAN_INSPECTION', 'BUDDING', 'SEEDING', etc.)
+ * @param {string} docNo - Nomor dokumen sumber
+ * @param {object} [updatedPayload=null] - Payload koreksi yang akan disimpan
+ * @returns {{ allowed: boolean, reason?: string, blockingDocNo?: string }}
+ */
+export function validateSourceEditability(docType, docNo, updatedPayload = null) {
+  if (!docNo) return { allowed: true };
+
+  const normType = String(docType || '').toUpperCase();
+
+  // 1. Kasus Dokumen Dederan / Germinasi
+  if (normType === 'DEDERAN' || normType === 'DEDERAN_TRANSACTION') {
+    if (!updatedPayload) return { allowed: true };
+
+    const newQty = parseInt(
+      updatedPayload.jumlahDeder !== undefined
+        ? updatedPayload.jumlahDeder
+        : (updatedPayload.jumlahKecambahDitanam !== undefined ? updatedPayload.jumlahKecambahDitanam : -1),
+      10
+    );
+
+    if (isNaN(newQty) || newQty < 0) {
+      // Jika perubahan tidak memodifikasi kuantitas (hanya metadata/catatan), selalu izinkan
+      return { allowed: true, isMetadataOnly: true };
+    }
+
+    // Cek turunan Pindah Semai (seeding_transactions) yang telah DISETUJUI
+    const seedingTxs = storage.get('seeding_transactions', []);
+    let approvedPindahSemaiQty = 0;
+    let blockingSeedingDoc = null;
+
+    seedingTxs.forEach(s => {
+      if (!s) return;
+      const isRef = (s.dederanTxDocNo && s.dederanTxDocNo === docNo) || (s.sourceDocNo && s.sourceDocNo === docNo);
+      const isApproved = String(s.status || '').toUpperCase() === 'DISETUJUI' || String(s.status || '').toUpperCase() === 'TERVERIFIKASI';
+      if (isRef && isApproved) {
+        const sQty = parseInt(s.jumlahBibitDipindahkan || s.totalDisemai || s.qty || 0, 10);
+        approvedPindahSemaiQty += sQty;
+        if (!blockingSeedingDoc) blockingSeedingDoc = s.docNo || s.id;
+      }
+    });
+
+    if (approvedPindahSemaiQty > 0 && newQty < approvedPindahSemaiQty) {
+      return {
+        allowed: false,
+        reason: `Kuantitas baru (${newQty.toLocaleString('id-ID')}) lebih kecil dari kuantitas yang telah disetujui pada Pindah Semai (${approvedPindahSemaiQty.toLocaleString('id-ID')}).`,
+        blockingDocNo: blockingSeedingDoc
+      };
+    }
+  }
+
+  // 2. Kasus Pemeriksaan Dederan
+  if (normType === 'DEDERAN_INSPECTION' || normType === 'PEMERIKSAAN_DEDERAN') {
+    if (!updatedPayload) return { allowed: true };
+
+    const newDiperiksa = parseInt(updatedPayload.jumlahDiperiksa, 10);
+    const newBerhasil = parseInt(updatedPayload.jumlahBerhasil, 10);
+
+    if (!isNaN(newDiperiksa) && !isNaN(newBerhasil)) {
+      const newTidakBerhasil = Math.max(0, newDiperiksa - newBerhasil);
+
+      // Cek apakah ada Transaksi Seleksi turunan yang telah DISETUJUI dengan kuantitas > newTidakBerhasil
+      const selTxs = storage.get('selection_transactions', []);
+      let approvedSelAfkir = 0;
+      let blockingSelDoc = null;
+
+      selTxs.forEach(st => {
+        if (!st) return;
+        const isRef = (st.sourceDocNo && st.sourceDocNo === docNo) || (st.dederanTxDocNo && st.dederanTxDocNo === docNo);
+        const isApproved = String(st.status || '').toUpperCase() === 'DISETUJUI';
+        if (isRef && isApproved) {
+          const afkirQty = parseInt(st.jumlahAfkirTotal || st.jumlahAfkir || st.quantity || 0, 10);
+          approvedSelAfkir += afkirQty;
+          if (!blockingSelDoc) blockingSelDoc = st.docNo || st.id;
+        }
+      });
+
+      if (approvedSelAfkir > 0 && newTidakBerhasil < approvedSelAfkir) {
+        return {
+          allowed: false,
+          reason: `Kuantitas afkir baru (${newTidakBerhasil.toLocaleString('id-ID')}) lebih kecil dari kuantitas seleksi yang telah disetujui (${approvedSelAfkir.toLocaleString('id-ID')}).`,
+          blockingDocNo: blockingSelDoc
+        };
+      }
+    }
+  }
+
+  return { allowed: true };
+}
+
+

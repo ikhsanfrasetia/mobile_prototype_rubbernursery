@@ -64,6 +64,74 @@ export const SELECTION_STORAGE_KEY = 'selection_transactions';
 export const PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY = 'pre_grafting_selection_documents';
 
 /**
+ * Memvalidasi konsistensi transaksi seleksi terhadap data sumber terbaru secara dinamis.
+ * Mencegah persetujuan atau eksekusi transaksi jika kuantitas afkir melebihi batas afkir pada dokumen sumber yang telah dikoreksi.
+ *
+ * @param {object} tx - Transaksi seleksi yang akan divalidasi
+ * @returns {{ isValid: boolean, reason?: string, declaredQuantity?: number, latestSourceQuantity?: number }}
+ */
+export function validateSelectionTransactionAgainstSource(tx) {
+  if (!tx || typeof tx !== 'object') return { isValid: true };
+
+  const stage = String(tx.selectionStage || tx.stage || tx.selectionType || tx.type || '').toUpperCase();
+  const originType = String(tx.originType || tx.sourceModule || '').toUpperCase();
+  const isDederan = stage === 'SELEKSI_PRA_SEMAI' || stage === 'PRA_SEMAI' || originType === 'REJECT_DEDERAN' || originType === 'DEDERAN' || tx.sourceTransactionType === 'DEDER_INSPECTION';
+  const isSowingReject = stage === 'SELEKSI_PINDAH_SEMAI' || stage === 'PINDAH_SEMAI' || originType === 'REJECT_PENYEMAIAN' || originType === 'PENYEMAIAN';
+
+  const txAfkir = parseInt(
+    tx.jumlahAfkirTotal !== undefined
+      ? tx.jumlahAfkirTotal
+      : (tx.jumlahAfkir !== undefined ? tx.jumlahAfkir : (tx.quantity !== undefined ? tx.quantity : 0)),
+    10
+  );
+
+  if (isNaN(txAfkir) || txAfkir <= 0) return { isValid: true };
+
+  // 1. Validasi Seleksi Pra-Semai (Dederan)
+  if (isDederan) {
+    const inspDocNo = tx.sourceDocNo || tx.dederanTxDocNo || tx.sourceTransactionId;
+    if (inspDocNo) {
+      const allInspections = storage.get('dederan_inspections', []);
+      const insp = allInspections.find(i => (i.docNo && i.docNo === inspDocNo) || i.id === inspDocNo || (i.dederanTxDocNo && i.dederanTxDocNo === inspDocNo));
+      if (insp) {
+        const latestTidakBerhasil = parseInt(insp.jumlahTidakBerhasil !== undefined ? insp.jumlahTidakBerhasil : 0, 10);
+        if (txAfkir > latestTidakBerhasil) {
+          return {
+            isValid: false,
+            reason: `Jumlah afkir seleksi (${txAfkir.toLocaleString('id-ID')}) melebihi hasil pemeriksaan dederan terbaru (${latestTidakBerhasil.toLocaleString('id-ID')}).`,
+            declaredQuantity: txAfkir,
+            latestSourceQuantity: latestTidakBerhasil
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Validasi Seleksi Pindah Semai (Reject Sowing)
+  if (isSowingReject) {
+    const seedingDocNo = tx.sourceDocNo || tx.seedingDocNo || tx.sourceTransactionId;
+    if (seedingDocNo) {
+      const allSeeding = storage.get('seeding_transactions', []);
+      const seedTx = allSeeding.find(s => (s.docNo && s.docNo === seedingDocNo) || s.id === seedingDocNo);
+      if (seedTx) {
+        const latestDitolak = parseInt(seedTx.jumlahDitolakPindahSemai !== undefined ? seedTx.jumlahDitolakPindahSemai : (seedTx.afkir || 0), 10);
+        if (txAfkir > latestDitolak) {
+          return {
+            isValid: false,
+            reason: `Jumlah afkir seleksi (${txAfkir.toLocaleString('id-ID')}) melebihi jumlah ditolak pindah semai terbaru (${latestDitolak.toLocaleString('id-ID')}).`,
+            declaredQuantity: txAfkir,
+            latestSourceQuantity: latestDitolak
+          };
+        }
+      }
+    }
+  }
+
+  return { isValid: true };
+}
+
+
+/**
  * Memeriksa apakah suatu item seleksi merupakan Seleksi Pra-Okulasi (Seleksi I/II/III)
  */
 export function isPreGraftingSelection(item) {

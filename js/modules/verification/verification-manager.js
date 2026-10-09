@@ -22,7 +22,8 @@ import { getWorkersForUserContext } from '../../data/worker-master.js';
 import {
   getSelectionStageLabel,
   createSelection2DocumentFromSelection1,
-  createSelection3DocumentFromSelection2
+  createSelection3DocumentFromSelection2,
+  validateSelectionTransactionAgainstSource
 } from '../selection/selection-manager.js';
 
 export const VERIFICATION_STORAGE_KEY = 'verification_transactions';
@@ -945,12 +946,39 @@ export function evaluateRecordConsistency(referenceType, record, fullDataset = n
     if (record.dispatchId && !dataset.dispatches.some(d => d.id === record.dispatchId || d.docNo === record.dispatchId || d.dispatchNo === record.dispatchId)) {
       errors.push({ type: 'ORPHAN_RECEIPT', severity: 'ERROR', message: `Dispatch referensi (${record.dispatchId}) tidak ditemukan.` });
     }
-  } else if (referenceType === REFERENCE_TYPES.SELECTION || referenceType === REFERENCE_TYPES.DESTRUCTION || referenceType === 'PENYELEKSIAN') {
+  } else if (referenceType === REFERENCE_TYPES.SELECTION || referenceType === REFERENCE_TYPES.DESTRUCTION || referenceType === 'PENYELEKSIAN' || referenceType === 'SELECTION') {
     const dataset = fullDataset || getConsolidatedData(null);
     const bId = record.batchId || record.batchCode || record.batchNo;
     const batchExists = dataset.batches.some(b => b.id === bId || b.batchCode === bId || b.batchNo === bId);
     if (bId && !batchExists) {
       errors.push({ type: 'INVALID_BATCH_REFERENCE', severity: 'ERROR', message: `Batch ${bId} tidak terdaftar di nursery_batches.` });
+    }
+
+    // Validasi konsistensi dinamis terhadap dokumen sumber terbaru
+    const selValidation = validateSelectionTransactionAgainstSource(record);
+    if (!selValidation.isValid) {
+      errors.push({
+        type: 'STALE_SOURCE_QUANTITY',
+        severity: 'ERROR',
+        message: selValidation.reason || 'Dokumen sumber telah mengalami koreksi kuantitas setelah transaksi ini diajukan.'
+      });
+    }
+  } else if (referenceType === REFERENCE_TYPES.PEMERIKSAAN_DEDERAN || referenceType === 'PEMERIKSAAN_DEDERAN') {
+    const dederTxDocNo = record.dederanTxDocNo || record.dederanTxId;
+    if (dederTxDocNo) {
+      const dederTxs = storage.get('dederan_transactions', []);
+      const parentDeder = dederTxs.find(t => (t.docNo && t.docNo === dederTxDocNo) || t.id === dederTxDocNo);
+      if (parentDeder) {
+        const maxDeder = parseInt(parentDeder.jumlahDeder !== undefined ? parentDeder.jumlahDeder : (parentDeder.jumlahKecambahDitanam || 0), 10);
+        const diperiksa = parseInt(record.jumlahDiperiksa || 0, 10);
+        if (maxDeder > 0 && diperiksa > maxDeder) {
+          errors.push({
+            type: 'STALE_SOURCE_QUANTITY',
+            severity: 'ERROR',
+            message: `Jumlah diperiksa (${diperiksa.toLocaleString('id-ID')}) melebihi populasi Dederan sumber terbaru (${maxDeder.toLocaleString('id-ID')}).`
+          });
+        }
+      }
     }
   }
 

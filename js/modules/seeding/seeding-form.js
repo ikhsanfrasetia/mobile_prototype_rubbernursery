@@ -161,18 +161,48 @@ export function renderSeedingForm() {
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
       <!-- HEADER -->
-      <header style="display: flex; align-items: center; height: 50px; padding: 0 14px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
-        <button id="btn-back" type="button" aria-label="Kembali" style="padding: 6px; margin-left: -6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
-          <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-          </svg>
-        </button>
-        <h1 style="font-size: 0.95rem; font-weight: 700; color: #111827; margin: 0 0 0 8px;">Pindah Semai</h1>
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 50px; padding: 0 14px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; min-width: 0;">
+          <button id="btn-back" type="button" aria-label="Kembali" style="padding: 6px; margin-left: -6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 style="font-size: 0.95rem; font-weight: 700; color: #111827; margin: 0 0 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            ${editTx ? 'Koreksi Pindah Semai' : 'Pindah Semai'}
+          </h1>
+        </div>
+        ${editTx ? `
+          <span style="font-size: 0.68rem; font-weight: 700; background: #FEF2F2; color: #DC2626; padding: 3px 8px; border-radius: 9999px; border: 1px solid #FECACA; flex-shrink: 0; margin-left: 8px; white-space: nowrap;">
+            ${esc(editTx.docNo)}
+          </span>
+        ` : ''}
       </header>
 
       <!-- SCROLLABLE CONTENT -->
       <main style="flex: 1; overflow-y: auto; padding-bottom: 20px;">
+        
+        <!-- CATATAN PENGEMBALIAN ASISTEN BANNER (KOREKSI MODE) -->
+        ${editTx && (editTx.returnReason || editTx.lastReturnReason) ? `
+          <section style="margin: 10px 14px 0 14px; background: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 8px; padding: 9px 12px;">
+            <div style="display: flex; align-items: flex-start; gap: 8px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="#DC2626" stroke-width="2.2" fill="none" style="flex-shrink: 0; margin-top: 1px;">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 0.72rem; font-weight: 700; color: #991B1B; line-height: 1.2; margin-bottom: 2px;">
+                  Catatan Pengembalian Asisten:
+                </div>
+                <div style="font-size: 0.74rem; color: #7F1D1D; font-weight: 500; line-height: 1.35; word-break: break-word;">
+                  "${esc(editTx.returnReason || editTx.lastReturnReason)}"
+                </div>
+              </div>
+            </div>
+          </section>
+        ` : ''}
         
         <!-- 1. IDENTITAS TRANSAKSI -->
         <section style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #E5E7EB; background: #FFFFFF;">
@@ -828,22 +858,23 @@ export function renderSeedingForm() {
     });
 
     const newTx = {
-      date: today,
-      tanggal: today,
-      userId: user?.id || user?.userId || userCtx?.id || 'TBS-MNT-001',
-      actorId: user?.id || user?.userId || userCtx?.id || 'TBS-MNT-001',
-      actorCode: user?.code || userCtx?.code || 'MNT001',
-      actorName: user?.name || userCtx?.name || 'Wagiman',
-      mantri: user?.name || userCtx?.name || 'Wagiman',
-      createdByName: user?.name || userCtx?.name || 'Wagiman',
-      createdBy: user?.id || user?.userId || userCtx?.id || 'TBS-MNT-001',
+      ...((editIdx !== null && editTx) ? editTx : {}),
+      date: editTx?.date || today,
+      tanggal: editTx?.tanggal || today,
+      userId: editTx?.userId || user?.id || user?.userId || userCtx?.id || 'TBS-MNT-001',
+      actorId: editTx?.actorId || user?.id || user?.userId || userCtx?.id || 'TBS-MNT-001',
+      actorCode: editTx?.actorCode || user?.code || userCtx?.code || 'MNT001',
+      actorName: editTx?.actorName || user?.name || userCtx?.name || 'Wagiman',
+      mantri: editTx?.mantri || user?.name || userCtx?.name || 'Wagiman',
+      createdByName: editTx?.createdByName || user?.name || userCtx?.name || 'Wagiman',
+      createdBy: editTx?.createdBy || user?.id || user?.userId || userCtx?.id || 'TBS-MNT-001',
       docNo: seedingDocNo,
       sourceDocNo: sourceDocNo,
       sourceIndex: sourceIdx,
-      sourceDederTxId: sourceTx.id || null,
-      sourceDederDocNo: sourceTx.docNo || null,
-      dederanTxDocNo: sourceTx.dederanTxDocNo || null,
-      parentDederIndukDocNo: sourceTx.parentDederIndukDocNo || null,
+      sourceDederTxId: sourceTx.id || editTx?.sourceDederTxId || null,
+      sourceDederDocNo: sourceTx.docNo || editTx?.sourceDederDocNo || null,
+      dederanTxDocNo: sourceTx.dederanTxDocNo || editTx?.dederanTxDocNo || null,
+      parentDederIndukDocNo: sourceTx.parentDederIndukDocNo || editTx?.parentDederIndukDocNo || null,
 
       // Issue Gudang Reference
       issueDocNo: issueDocNo,
@@ -867,7 +898,7 @@ export function renderSeedingForm() {
       batchNo: finalBatchCode || state.batchNo || 'B-001',
       program: finalProgramCode || sourceTx.program || 'PRG/NUR/01/2026',
       tahapan: sourceTx.tahapan || 'Rubber Main Nursery',
-      klonAwal: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1',
+      klonAwal: sourceTx.klon ? normalizeKlonName(sourceTx.klon) : (editTx?.klonAwal || 'GT 1'),
       bedengan: bedenganDisplay,
       totalPenerimaan,
       ditolak: state.ditolak,
@@ -875,8 +906,22 @@ export function renderSeedingForm() {
       rows: enrichedRows,
       photos: state.photos,
       totalDisemai,
-      totalPolybag
+      totalPolybag,
+
+      // Preserving return history
+      returnReason: editTx?.returnReason || null,
+      lastReturnReason: editTx?.lastReturnReason || editTx?.returnReason || null,
+      returnedAt: editTx?.returnedAt || null,
+      returnedBy: editTx?.returnedBy || null
     };
+
+    // If it was returned and is being corrected by Mantri, reset status to ready for submission / verification
+    if (editTx && (editTx.status === 'DIKEMBALIKAN' || editTx.verificationStatus === 'DIKEMBALIKAN')) {
+      newTx.status = 'MENUNGGU_VERIFIKASI_MANTRI';
+      newTx.verificationStatus = 'MENUNGGU_VERIFIKASI_MANTRI';
+      newTx.isCorrected = true;
+      newTx.correctedAt = new Date().toISOString();
+    }
 
     const finalizedTx = applyTransactionActor(newTx, editIdx !== null ? 'UPDATE' : 'CREATE', userCtx);
 
@@ -912,6 +957,11 @@ export function renderSeedingForm() {
     setTimeout(() => {
       navigate('/seeding');
     }, 1500);
+  });
+
+  app.querySelector('#btn-back')?.addEventListener('click', () => {
+    storage.remove('editing_seeding_index');
+    navigate('/seeding');
   });
 
   // Render initial
