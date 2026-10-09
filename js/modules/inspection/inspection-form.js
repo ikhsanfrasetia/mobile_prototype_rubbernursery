@@ -5,6 +5,7 @@ import { getCurrentUserContext } from '../../core/user-context.js';
 import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
+import { applyTransactionActor } from '../../core/transaction-actor.js';
 
 export function renderInspectionForm() {
   const app = document.getElementById('app');
@@ -1036,10 +1037,12 @@ export function renderInspectionForm() {
       createdByName: user?.name || 'Wagiman'
     };
 
+    const finalizedInspection = applyTransactionActor(inspectionRecord, isEditing ? 'UPDATE' : 'CREATE', user);
+
     if (isEditing) {
-      txs[parseInt(editingIdx)] = inspectionRecord;
+      txs[parseInt(editingIdx)] = finalizedInspection;
     } else {
-      txs.push(inspectionRecord);
+      txs.push(finalizedInspection);
     }
     storage.set('inspection_transactions', txs);
 

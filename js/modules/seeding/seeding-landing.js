@@ -25,6 +25,8 @@ import { hasExistingCullDeclarationForSeeding } from '../selection/selection-man
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { toast } from '../../components/toast.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
+import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
 import {
   normalizeDateStr,
   renderCalendarHeaderButton,
@@ -47,16 +49,20 @@ export function getSelectedSeedingDate() {
 export function renderSeedingLanding() {
   const app = document.getElementById('app');
   if (!app) return;
+  const userCtx = getCurrentUserContext();
 
   // Sync Dederan Induk with Benih receipts (1:1)
   syncDederanIndukDocuments();
 
-  const dederanIndukDocs = getDederanIndukDocuments();
-  const dederanTxs = getDederanTransactions();
-  const eligiblePindahSemai = getEligiblePindahSemaiSources();
-  const allInspectedSources = getAllInspectedDederanSources();
+  const allDederanIndukDocs = getDederanIndukDocuments();
+  const dederanIndukDocs = getAuthorizedTransactions(allDederanIndukDocs, userCtx);
+  const allDederanTxs = getDederanTransactions();
+  const dederanTxs = getAuthorizedTransactions(allDederanTxs, userCtx);
+  const eligiblePindahSemai = getEligiblePindahSemaiSources(userCtx);
+  const allInspectedSources = getAllInspectedDederanSources(userCtx);
   const pendingApprovalSources = allInspectedSources.filter(s => !s.isApproved);
-  const seedingTxs = storage.get('seeding_transactions', []);
+  const rawSeedingTxs = storage.get('seeding_transactions', []);
+  const seedingTxs = getAuthorizedTransactions(rawSeedingTxs, userCtx);
 
   // Counts for tab badges
   const pendingDederCount = dederanIndukDocs.filter(d => (d.sisaBelumDeder || 0) > 0).length;
@@ -165,7 +171,13 @@ function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false,
     });
   }
 
+  const returnedDederanTxs = dederanTxs.filter(tx => 
+    tx.status === 'DIKEMBALIKAN' || tx.verificationStatus === 'DIKEMBALIKAN'
+  );
+
   const filteredDederanTxs = dederanTxs.filter(tx => {
+    const isReturned = tx.status === 'DIKEMBALIKAN' || tx.verificationStatus === 'DIKEMBALIKAN';
+    if (isReturned) return false;
     const d = normalizeDateStr(tx.tanggalDeder || tx.tanggal || tx.date || tx.createdAt);
     return d === selectedDate;
   });
@@ -247,7 +259,109 @@ function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false,
   }).join('')}
       </div>
 
-      <!-- SECTION 2: RINGKASAN TRANSAKSI DEDERAN -->
+      <!-- SECTION 2: DEDERAN PERLU PERBAIKAN (RETURNED FROM ASISTEN) -->
+      ${returnedDederanTxs.length > 0 ? `
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="display: inline-block; width: 3px; height: 14px; border-radius: 2px; background: #DC2626;"></span>
+              <h2 style="font-size: 0.92rem; font-weight: 700; color: #0F172A; margin: 0;">
+                Transaksi Dederan Perlu Perbaikan
+              </h2>
+            </div>
+            <span style="font-size: 0.68rem; font-weight: 600; background: #FEF2F2; color: #DC2626; padding: 2px 8px; border-radius: 9999px; border: 1px solid #FECACA;">
+              ${returnedDederanTxs.length} dokumen menunggu koreksi
+            </span>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            ${returnedDederanTxs.map((tx, idx) => {
+              const inspSummary = getBedenganInspectionSummary(tx);
+              const returnNote = tx.returnReason || tx.lastReturnReason || 'Perlu perbaikan data.';
+
+              return `
+                <div class="card-summary-wrapper card-returned-deder-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
+                  
+                  <!-- BARIS 1: IDENTITAS DOKUMEN, STATUS BADGE & 3-DOTS ACTION -->
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${tx.docNo}</span>
+                        <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px;">
+                          <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
+                          Dikembalikan
+                        </span>
+                      </div>
+                      
+                      <!-- BARIS 2 & 3: DOKUMEN INDUK, KLON, BEDENGAN & TANGGAL -->
+                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.3;">
+                        Dok. Induk: <strong style="color: #334155;">${tx.parentDederIndukDocNo || '-'}</strong> • Klon: <strong style="color: #116834;">${tx.klon || 'GT 1'}</strong>
+                      </div>
+                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.3;">
+                        Bedengan: <strong style="color: #0F172A;">${tx.bedenganCode || tx.bedengan || 'BED-001'}</strong> • Tgl: ${tx.tanggalDeder || tx.tanggal || '-'}
+                      </div>
+                    </div>
+
+                    <!-- 3-DOTS ACTION TRIGGER -->
+                    <div style="position: relative; flex-shrink: 0; margin-left: 8px;">
+                      <button type="button" class="btn-tx-action-trigger" data-index="ret-${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
+                          <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
+                          <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
+                        </svg>
+                      </button>
+
+                      <!-- POPUP MENU -->
+                      <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
+                        <button type="button" class="menu-action-edit-deder" data-doc="${tx.docNo}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                          <span>Edit / Koreksi</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- BARIS 4: CATATAN PENGEMBALIAN -->
+                  <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-left: 3px solid #DC2626; border-radius: 6px; padding: 7px 10px; margin-top: 6px; font-size: 0.74rem;">
+                    <div style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-bottom: 2px;">
+                      Catatan Pengembalian:
+                    </div>
+                    <div style="color: #450A0A; font-weight: 500; word-break: break-word; line-height: 1.35;">
+                      "${esc(returnNote)}"
+                    </div>
+                  </div>
+
+                  <!-- BARIS 5: METRICS CONTAINER -->
+                  <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                    <div>
+                      <span style="font-size: 0.68rem; color: #64748B;">Jumlah Deder</span>
+                      <div style="font-size: 0.85rem; font-weight: 800; color: #116834; margin-top: 1px;">
+                        ${(tx.jumlahDeder || 0).toLocaleString('id-ID')} Butir
+                      </div>
+                    </div>
+                    <div style="text-align: right;">
+                      <span style="font-size: 0.68rem; color: #64748B;">Hasil Periksa</span>
+                      <div style="font-size: 0.85rem; font-weight: 800; color: ${inspSummary.totalDiperiksa > 0 ? '#15803D' : '#64748B'}; margin-top: 1px;">
+                        ${inspSummary.totalDiperiksa > 0 ? `${inspSummary.totalBerhasil.toLocaleString('id-ID')} Berhasil` : 'Belum Diperiksa'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- BARIS 6: DIRECT ACTION BUTTON -->
+                  <button type="button" class="btn-koreksi-deder" data-doc="${tx.docNo}" style="width: 100%; height: 38px; margin-top: 10px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: all 0.15s ease;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="#FFFFFF" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    <span>Edit / Koreksi Dederan</span>
+                  </button>
+
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- SECTION 3: RINGKASAN TRANSAKSI DEDERAN -->
       <div>
         ${renderDateFilterBannerHtml(selectedDate, isFiltered, 'btn-reset-date-seeding')}
 
@@ -266,6 +380,7 @@ function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false,
             ${filteredDederanTxs.map((tx, idx) => {
     const inspSummary = getBedenganInspectionSummary(tx);
     const hasInspection = inspSummary.totalDiperiksa > 0;
+    const isLocked = isTransactionLockedForMantri(tx);
 
     const activeDederFlags = [];
     if (inspSummary.isComplete) {
@@ -305,6 +420,12 @@ function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false,
 
                       <!-- POPUP MENU -->
                       <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
+                        ${!isLocked ? `
+                          <button type="button" class="menu-action-edit-deder" data-doc="${tx.docNo}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #2563EB; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F1F5F9;">
+                            <svg viewBox="0 0 24 24" width="13" height="13" stroke="#2563EB" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            <span>Edit</span>
+                          </button>
+                        ` : ''}
                         ${hasInspection ? `
                           <button type="button" class="menu-action-locked" style="width: 100%; padding: 8px 12px; text-align: left; background: #FAFAFA; border: none; font-size: 0.75rem; font-weight: 600; color: #9CA3AF; cursor: not-allowed;">
                             <span>Hapus (Terkunci)</span>
@@ -726,6 +847,30 @@ function attachDederanEvents(app) {
     });
   });
 
+  // Edit / Koreksi Dederan Transaction
+  app.querySelectorAll('.btn-koreksi-deder, .menu-action-edit-deder').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const docNo = e.currentTarget.dataset.doc;
+      const allTxs = getDederanTransactions();
+      const tx = allTxs.find(t => t.docNo === docNo || t.id === docNo);
+      const userCtx = getCurrentUserContext();
+      if (!tx || !canUserAccessTransaction(tx, userCtx)) {
+        toast('Anda tidak memiliki otorisasi untuk mengoreksi transaksi ini.', 'error');
+        return;
+      }
+      if (isTransactionLockedForMantri(tx)) {
+        toast('Transaksi Dederan sedang dalam proses verifikasi atau sudah disetujui.', 'error');
+        return;
+      }
+      storage.set('editing_dederan_doc_no', docNo);
+      storage.remove('scanned_dederan_bedengan_id');
+      storage.remove('scanned_dederan_bedengan_code');
+      storage.remove('scanned_dederan_bedengan_name');
+      navigate('/seeding/dederan/form');
+    });
+  });
+
   // Delete Dederan Transaction
   app.querySelectorAll('.menu-action-delete-deder').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -828,6 +973,11 @@ function attachPindahSemaiEvents(app) {
         return;
       }
 
+      if (!canUserAccessTransaction(stx, userCtx, 'UPDATE')) {
+        toast('Anda tidak memiliki otoritas untuk mengedit transaksi ini.', 'error');
+        return;
+      }
+
       if (isTransactionLockedForMantri(stx) || hasExistingCullDeclarationForSeeding(stx)) {
         toast('Transaksi tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');
         return;
@@ -861,6 +1011,11 @@ function attachPindahSemaiEvents(app) {
       const docNo = e.currentTarget.dataset.doc;
       const txs = storage.get('seeding_transactions', []);
       const stx = txs[idx];
+
+      if (!stx || !canUserAccessTransaction(stx, userCtx, 'DELETE')) {
+        toast('Anda tidak memiliki otoritas untuk menghapus transaksi ini.', 'error');
+        return;
+      }
 
       if (isTransactionLockedForMantri(stx) || hasExistingCullDeclarationForSeeding(stx)) {
         toast('Transaksi tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');

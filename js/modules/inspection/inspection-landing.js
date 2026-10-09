@@ -18,6 +18,7 @@ import {
   DEDERAN_STORAGE_KEYS
 } from '../seeding/dederan-manager.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import {
@@ -194,7 +195,8 @@ export function renderInspectionLanding() {
   if (!app) return;
 
   // Load all budding transactions (both Grafting & Regrafting) and inspection transactions
-  const buddingTxs = storage.get('budding_transactions', []);
+  const rawBuddingTxs = storage.get('budding_transactions', []);
+  const buddingTxs = getAuthorizedTransactions(rawBuddingTxs, userCtx);
   let rawInspectionTxs = storage.get('inspection_transactions', []);
 
   // Normalize legacy doc numbers to 2026/INS/xxx
@@ -212,11 +214,13 @@ export function renderInspectionLanding() {
     storage.set('inspection_transactions', inspectionTxs);
   }
 
+  const authorizedInspectionTxs = getAuthorizedTransactions(inspectionTxs, userCtx);
+
   // Group or map budding transactions with cumulative inspection stats (Strict per Dokumen Okulasi)
   const items = buddingTxs.map((btx, idx) => {
     const populasiDiokulasi = parseInt(btx.jumlah || 0);
     const isRegrafting = btx.type === 'REGRAFTING';
-    const relatedInspections = inspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo);
+    const relatedInspections = authorizedInspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo);
     
     let totalDiperiksa = 0;
     let totalJadi = 0;
@@ -339,9 +343,10 @@ export function renderInspectionLanding() {
 
   // Dederan Inspections data
   syncDederanIndukDocuments();
-  const dederIndukDocs = getDederanIndukDocuments();
-  const dederTxs = getDederanTransactions();
-  const dederInspections = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
+  const dederIndukDocs = getAuthorizedTransactions(getDederanIndukDocuments(), userCtx);
+  const dederTxs = getAuthorizedTransactions(getDederanTransactions(), userCtx);
+  const rawDederInspections = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
+  const authorizedDederInspections = getAuthorizedTransactions(rawDederInspections, userCtx);
 
   // Calculate pending Dederan inspection count
   let pendingDederInspCount = 0;
@@ -356,11 +361,11 @@ export function renderInspectionLanding() {
   });
 
   // Filtered lists for Ringkasan Transaksi display based on selectedInspectionDate
-  const filteredDederInspections = dederInspections.filter(insp => {
+  const filteredDederInspections = authorizedDederInspections.filter(insp => {
     const d = normalizeDateStr(insp.tanggalPemeriksaan || insp.tanggal || insp.date || insp.createdAt);
     return d === selectedInspectionDate;
   });
-  const filteredInspectionTxs = inspectionTxs.filter(insp => {
+  const filteredInspectionTxs = authorizedInspectionTxs.filter(insp => {
     const d = normalizeDateStr(insp.tanggal || insp.date || insp.createdAt);
     return d === selectedInspectionDate;
   });
@@ -1044,6 +1049,10 @@ function attachDederanInspectionEvents(app) {
       pendingDeleteDederDocNo = e.currentTarget.dataset.doc;
       const allDeder = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
       const targetInsp = allDeder.find(d => d.docNo === pendingDeleteDederDocNo || d.id === pendingDeleteDederDocNo);
+      if (!targetInsp || !canUserAccessTransaction(targetInsp, userCtx, 'DELETE')) {
+        toast.error('Anda tidak memiliki otoritas untuk menghapus data pemeriksaan ini.');
+        return;
+      }
       if (isTransactionLockedForMantri(targetInsp)) {
         toast.error('Data pemeriksaan tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
         return;
@@ -1200,6 +1209,10 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
       pendingDeleteDocNo = e.currentTarget.dataset.doc;
       const allInsp = storage.get('inspection_transactions', []);
       const targetInsp = allInsp.find(i => i.docNo === pendingDeleteDocNo || i.id === pendingDeleteDocNo);
+      if (!targetInsp || !canUserAccessTransaction(targetInsp, userCtx, 'DELETE')) {
+        toast.error('Anda tidak memiliki otoritas untuk menghapus data pemeriksaan ini.');
+        return;
+      }
       if (isTransactionLockedForMantri(targetInsp)) {
         toast.error('Data pemeriksaan tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
         return;

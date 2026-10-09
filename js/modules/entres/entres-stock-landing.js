@@ -5,6 +5,7 @@
  */
 
 import { navigate } from '../../core/router.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 import { getMataEntresBalances } from '../../core/entres-inventory-service.js';
 import { esc } from '../../core/utils.js';
 
@@ -12,8 +13,10 @@ export function renderEntresStockLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  // 1. Ambil data saldo inventori dari existing service
-  const allBalances = getMataEntresBalances();
+  const userCtx = getCurrentUserContext();
+
+  // 1. Ambil data saldo inventori dari existing service dengan scope userContext & estate
+  const allBalances = getMataEntresBalances({ userContext: userCtx, estateId: userCtx?.estateId });
 
   // Hitung total agregat stok dan klon tersedia
   const totalMataEntres = allBalances.reduce((acc, b) => acc + (b.saldoMataEntres || 0), 0);

@@ -17,7 +17,7 @@ import { getBedenganById } from '../../data/bedengan-master.js';
 import { getProgramById } from '../../data/program-master.js';
 import { getEstateById, resolveNurseryDivision } from '../../data/estate-master.js';
 import { formatStandardDocNo, formatDate } from '../../core/utils.js';
-import { applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
+import { applyTransactionActor, canUserAccessTransaction, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 import { 
   deductBatchStock as deductInventoryStock, 
   getAvailableQty as getInventoryAvailableQty, 
@@ -230,18 +230,8 @@ export function canPerformAsistenSelectionAction(item, currentUser) {
  */
 export function filterSelectionByScope(records, currentUser) {
   if (!Array.isArray(records) || !currentUser) return [];
-  const role = normalizeRole(currentUser.role || currentUser.rawRole);
-
   return records.filter(item => {
-    // Estate scope
-    if (currentUser.estateId && item.estateId && item.estateId !== currentUser.estateId) {
-      return false;
-    }
-    // Division scope for division-level roles
-    if (currentUser.divisionId && item.divisionId && item.divisionId !== currentUser.divisionId) {
-      return false;
-    }
-    return true;
+    return canUserAccessTransaction(item, currentUser, 'READ');
   });
 }
 
@@ -664,7 +654,9 @@ export function createSelectionRecord(payload, currentUser) {
       polybagCount: payload.polybagCount !== undefined ? parseInt(payload.polybagCount, 10) : Math.ceil(val.checked / 2),
       
       tanggalSeleksi: payload.tanggalSeleksi || payload.selectionDate || formatDate(new Date().toISOString()),
-      catatan: payload.catatan || payload.remarks || payload.alasan || '-',
+      catatan: (typeof payload.catatan === 'string' && payload.catatan.trim() !== '')
+        ? payload.catatan.trim()
+        : ((typeof payload.remarks === 'string' && payload.remarks.trim() !== '') ? payload.remarks.trim() : null),
       
       status: payload.status || 'READY_TO_CONFIRM',
       submissionStatus: payload.submissionStatus || null,
@@ -1287,7 +1279,7 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
 
   const today = formatDate(new Date().toISOString());
   const selectedCat = customOptions.category || targetPoolItem.category || targetPoolItem.alasanDitolakCategory || 'AFKIR';
-  const customNotes = customOptions.notes || targetPoolItem.catatan || targetPoolItem.alasan || '-';
+  const customNotes = (typeof customOptions.notes === 'string' && customOptions.notes.trim() !== '') ? customOptions.notes.trim() : null;
 
   // 1. Cari existing transaction berdasarkan identitas source selection
   const existingTx = findExistingSelectionTransaction(targetPoolItem);
@@ -1319,6 +1311,7 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
     finalTx.status = SELECTION_STATUS.READY_TO_CONFIRM;
     finalTx.submissionStatus = null;
     finalTx.submittedAt = null;
+    finalTx.lastReturnReason = finalTx.returnReason || finalTx.lastReturnReason || null;
     finalTx.returnReason = null;
     finalTx.stockMutationStatus = STOCK_MUTATION_STATUS.PENDING;
     finalTx.updatedAt = new Date().toISOString();
@@ -1327,7 +1320,7 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
       finalTx.createdByName = user.name;
       finalTx.createdByUserId = user.userId || user.code || user.id;
     }
-    if (customNotes && customNotes !== '-') finalTx.catatan = customNotes;
+    finalTx.catatan = customNotes;
     // Update photo reference if photoResult provided
     if (photoResult && photoResult.dataUrl) {
       finalTx.photoId = photoResult.id || `PHOTO-SEL-${Date.now()}`;

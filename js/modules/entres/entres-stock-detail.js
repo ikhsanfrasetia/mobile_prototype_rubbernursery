@@ -7,7 +7,8 @@
 
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
-import { getFifoAllocationBreakdown, canonicalKlon } from '../../core/entres-inventory-service.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
+import { getFifoAllocationBreakdown, canonicalKlon, filterTransactionsByContext } from '../../core/entres-inventory-service.js';
 import { esc } from '../../core/utils.js';
 
 function formatDisplayDate(rawDate) {
@@ -38,19 +39,24 @@ export function renderEntresStockDetail() {
   const app = document.getElementById('app');
   if (!app) return;
 
+  const userCtx = getCurrentUserContext();
+
   // 1. Ekstrak query param klon dari hash URL (e.g. #/entres/stock/detail?klon=GT%201)
   const hash = window.location.hash || '';
   const queryIndex = hash.indexOf('?');
   const params = new URLSearchParams(queryIndex !== -1 ? hash.substring(queryIndex) : '');
   const klonName = params.get('klon') || 'GT 1';
 
-  // 2. Ambil data breakdown saldo dari existing service
-  const breakdown = getFifoAllocationBreakdown(klonName);
+  // 2. Ambil data breakdown saldo dari existing service dengan user context & estate scope
+  const breakdown = getFifoAllocationBreakdown(klonName, { userContext: userCtx, estateId: userCtx?.estateId });
   const targetKey = canonicalKlon(klonName);
 
-  // 3. Ambil data mutasi individual secara read-only dari storage
-  const allToppings = storage.get('entres_topping_transactions', []);
-  const allBuddings = storage.get('budding_transactions', []);
+  // 3. Ambil data mutasi individual secara read-only dari storage terfilter konteks
+  const rawToppings = storage.get('entres_topping_transactions', []);
+  const rawBuddings = storage.get('budding_transactions', []);
+
+  const allToppings = filterTransactionsByContext(rawToppings, userCtx, userCtx?.estateId);
+  const allBuddings = filterTransactionsByContext(rawBuddings, userCtx, userCtx?.estateId);
 
   // Filter Topping untuk klon ini (status !== 'VOID')
   const klonToppings = allToppings.filter(t => 

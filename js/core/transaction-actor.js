@@ -270,8 +270,189 @@ export function resolveTransactionActor(record) {
 }
 
 // ==========================================
-// GENERIC QUERY & FILTERING HELPERS
+// GENERIC QUERY & FILTERING HELPERS & GLOBAL AUTHORIZATION
 // ==========================================
+
+/**
+ * Memeriksa apakah role memiliki kewenangan manajerial (estate-wide scope)
+ * @param {string} role
+ * @returns {boolean}
+ */
+export function isRoleManagerial(role) {
+  if (!role) return false;
+  const normalized = normalizeRole(role);
+  return (
+    normalized === ROLES.PENGURUS ||
+    normalized === ROLES.ASKEP ||
+    normalized === ROLES.ASISTEN ||
+    normalized === ROLES.ASISTEN_BIBITAN ||
+    normalized === ROLES.KTU ||
+    normalized === ROLES.TEKNIKER_I ||
+    normalized === ROLES.PENGURUS_KEBUN_SEPUPU ||
+    normalized === 'ASISTEN_KEPALA'
+  );
+}
+
+/**
+ * Canonical Actor Matcher:
+ * Memeriksa apakah suatu transaksi atau record dimiliki / dibuat / dikerjakan oleh user context aktif.
+ * Mendukung seluruh field alias legacy & canonical (id, code, name, mantri, inspector, worker, dll).
+ *
+ * @param {Object} item - Record transaksi
+ * @param {Object} [userCtx] - Context user (default: getCurrentUserContext())
+ * @returns {boolean}
+ */
+export function matchActor(item, userCtx = null) {
+  if (!item || typeof item !== 'object') return false;
+  const ctx = userCtx ? resolveUserContext(userCtx) : getCurrentUserContext();
+  if (!ctx) return true;
+
+  const validIds = [ctx.id, ctx.userId, ctx.code, ctx.loginCode].filter(Boolean).map(String);
+  const validCodes = [ctx.code, ctx.loginCode, ctx.userCode, ctx.badgeNumber, ctx.nik, ctx.nip].filter(Boolean).map(String);
+  const validNames = [ctx.name, ctx.fullName, ctx.userName, ctx.mantriName, ctx.inspectorName]
+    .filter(Boolean)
+    .map(s => String(s).toLowerCase().trim());
+
+  // Periksa field ID
+  const itemIds = [
+    item.actorId,
+    item.userId,
+    item.createdByUserId,
+    item.mantriId,
+    item.workerId,
+    item.penerimaId,
+    item.submittedByUserId,
+    item.inspectorId,
+    item.inspectorUserId,
+    item.requestedByUserId
+  ].filter(Boolean).map(String);
+
+  if (itemIds.length > 0 && validIds.length > 0) {
+    if (itemIds.some(id => validIds.includes(id))) return true;
+  }
+
+  // Periksa field Code
+  const itemCodes = [
+    item.actorCode,
+    item.userCode,
+    item.mantriCode,
+    item.workerCode,
+    item.penerimaCode,
+    item.code,
+    item.nik,
+    item.nip,
+    item.inspectorCode,
+    item.createdByLoginCode,
+    item.submittedByLoginCode
+  ].filter(Boolean).map(String);
+
+  if (itemCodes.length > 0 && validCodes.length > 0) {
+    if (itemCodes.some(c => validCodes.includes(c))) return true;
+  }
+
+  // Periksa field Name
+  const itemNames = [
+    item.actorName,
+    item.userName,
+    item.mantri,
+    item.createdByName,
+    item.recordedBy,
+    item.workerName,
+    item.penerima,
+    item.mandor,
+    item.submittedByName,
+    item.name,
+    item.inspectorName,
+    item.inspektur,
+    item.inspekturName,
+    item.inspector,
+    item.requestedByName,
+    item.requestedBy
+  ].filter(Boolean).map(s => String(s).toLowerCase().trim());
+
+  if (itemNames.length > 0 && validNames.length > 0) {
+    if (itemNames.some(n => validNames.includes(n))) return true;
+  }
+
+  // Jika item memiliki metadata actor eksplisit namun tidak cocok sama sekali, tolak
+  if (itemIds.length > 0 || itemCodes.length > 0 || itemNames.length > 0) {
+    return false;
+  }
+
+  // Default fallback bila tidak ada metadata actor sama sekali
+  return true;
+}
+
+/**
+ * Memeriksa apakah user context memiliki izin untuk mengakses record transaksi tertentu.
+ * - Role operasional (Mantri): strict personal actor match.
+ * - Role manajerial (Pengurus, Askep, Asisten, KTU, Tekniker I): estate-wide scope match.
+ *
+ * @param {Object} record - Record transaksi
+ * @param {Object} [userContext=null] - User context
+ * @param {string} [mode='READ'] - READ | UPDATE | DELETE | CONFIRM
+ * @returns {boolean}
+ */
+export function canUserAccessTransaction(record, userContext = null, mode = 'READ') {
+  if (!record || typeof record !== 'object') return false;
+  const ctx = userContext ? resolveUserContext(userContext) : getCurrentUserContext();
+  if (!ctx) return false;
+
+  const actor = resolveTransactionActor(record);
+
+  // Jika manajerial atau scopeType ESTATE: cek kecocokan Estate
+  if (isRoleManagerial(ctx.role) || ctx.scopeType === SCOPE_TYPES.ESTATE) {
+    const recordEstateId = record.estateId || record.createdByEstateId || actor.estateId;
+    if (!recordEstateId || !ctx.estateId) return true;
+    return recordEstateId === ctx.estateId;
+  }
+
+  // Role operasional (MANTRI_TANAMAN / MANTRI_BIBITAN):
+  // 1. Verifikasi kecocokan Estate jika ada
+  const recordEstateId = record.estateId || record.createdByEstateId || actor.estateId;
+  if (recordEstateId && ctx.estateId && recordEstateId !== ctx.estateId) {
+    return false;
+  }
+
+  // 2. Strict personal actor match
+  return matchActor(record, ctx);
+}
+
+/**
+ * Filter dataset transaksi secara terpusat berdasarkan otorisasi dan scope identitas aktif.
+ * SINGLE CENTRAL QUERY ENFORCEMENT POINT.
+ *
+ * @param {Array<Object>} transactions - Array transaksi mentah
+ * @param {Object} [userContext=null] - User context
+ * @param {Object} [options={}] - Opsi tambahan
+ * @returns {Array<Object>} Authorized transactions
+ */
+export function getAuthorizedTransactions(transactions, userContext = null, options = {}) {
+  if (!Array.isArray(transactions)) return [];
+  const ctx = userContext ? resolveUserContext(userContext) : getCurrentUserContext();
+  if (!ctx) return transactions;
+
+  return transactions.filter(tx => {
+    return canUserAccessTransaction(tx, ctx, 'READ');
+  });
+}
+
+/**
+ * Assertion penjaga untuk mutasi (Edit / Hapus / Konfirmasi) transaksi.
+ * Melempar error jika user aktif tidak memiliki otoritas atas record transaksi.
+ *
+ * @param {Object} record - Record transaksi target
+ * @param {Object} [userContext=null] - User context
+ * @param {string} [actionName='Aksi'] - Nama aksi untuk pesan error
+ * @returns {boolean}
+ */
+export function assertTransactionActorOrThrow(record, userContext = null, actionName = 'Aksi') {
+  const ctx = userContext ? resolveUserContext(userContext) : getCurrentUserContext();
+  if (!canUserAccessTransaction(record, ctx, 'UPDATE')) {
+    throw new Error(`${actionName} ditolak: Anda tidak memiliki otoritas atas transaksi ini.`);
+  }
+  return true;
+}
 
 /**
  * Filter daftar transaksi berdasarkan User ID.

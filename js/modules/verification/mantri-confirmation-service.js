@@ -22,6 +22,8 @@ import {
 } from '../selection/selection-manager.js';
 import { getWorkersForUserContext } from '../../data/worker-master.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
+import { matchActor } from '../../core/transaction-actor.js';
+export { matchActor };
 
 export const MANTRI_TRANSACTION_STATUS = Object.freeze({
   READY_TO_CONFIRM: 'READY_TO_CONFIRM',
@@ -240,82 +242,6 @@ export function canSubmitTransaction(transaction, currentTime = null) {
   return getSubmissionWindowInfo(transaction, currentTime).canSubmit;
 }
 
-/**
- * Helper: Cek apakah item milik logged-in Mantri berdasarkan identity adapter
- */
-export function matchActor(item, userCtx) {
-  if (!userCtx) return true;
-
-  const validIds = [userCtx.id, userCtx.userId].filter(Boolean).map(String);
-  const validCodes = [userCtx.code, userCtx.userCode, userCtx.badgeNumber, userCtx.nik, userCtx.nip].filter(Boolean).map(String);
-  const validNames = [userCtx.name, userCtx.fullName, userCtx.userName, userCtx.mantriName, userCtx.inspectorName]
-    .filter(Boolean)
-    .map(s => String(s).toLowerCase().trim());
-
-  // Periksa field id
-  const itemIds = [
-    item.actorId,
-    item.userId,
-    item.createdByUserId,
-    item.mantriId,
-    item.workerId,
-    item.penerimaId,
-    item.submittedByUserId,
-    item.inspectorId,
-    item.inspectorUserId
-  ].filter(Boolean).map(String);
-
-  if (itemIds.length > 0 && validIds.length > 0) {
-    if (itemIds.some(id => validIds.includes(id))) return true;
-  }
-
-  // Periksa field code
-  const itemCodes = [
-    item.actorCode,
-    item.userCode,
-    item.mantriCode,
-    item.workerCode,
-    item.penerimaCode,
-    item.code,
-    item.nik,
-    item.nip,
-    item.inspectorCode
-  ].filter(Boolean).map(String);
-
-  if (itemCodes.length > 0 && validCodes.length > 0) {
-    if (itemCodes.some(c => validCodes.includes(c))) return true;
-  }
-
-  // Periksa field name
-  const itemNames = [
-    item.actorName,
-    item.userName,
-    item.mantri,
-    item.createdByName,
-    item.recordedBy,
-    item.workerName,
-    item.penerima,
-    item.mandor,
-    item.submittedByName,
-    item.name,
-    item.inspectorName,
-    item.inspektur,
-    item.inspekturName,
-    item.inspector
-  ].filter(Boolean).map(s => String(s).toLowerCase().trim());
-
-  if (itemNames.length > 0 && validNames.length > 0) {
-    if (itemNames.some(n => validNames.includes(n))) return true;
-  }
-
-  // Jika item memiliki data actor eksplisit namun tidak cocok sama sekali, tolak
-  if (itemIds.length > 0 || itemCodes.length > 0 || itemNames.length > 0) {
-    return false;
-  }
-
-  // Default fallback bila tidak ada metadata actor sama sekali
-  return true;
-}
 
 /**
  * Canonical Predicate: Memeriksa apakah suatu transaksi berstatus LOCKED untuk Mantri.
@@ -328,13 +254,35 @@ export function isTransactionLockedForMantri(item) {
   if (!item) return false;
   if (item.isFinal === true) return true;
 
+  const primaryStatus = String(item.status || '').toUpperCase().trim();
+  const verifStatus = String(item.verificationStatus || '').toUpperCase().trim();
+  const subStatus = String(item.submissionStatus || '').toUpperCase().trim();
+
+  // If status is returned/revision, it is unlocked unless actively resubmitted or approved
+  const isReturned = primaryStatus === 'DIKEMBALIKAN' || primaryStatus === 'REVISION' ||
+                     verifStatus === 'DIKEMBALIKAN' || verifStatus === 'REVISION' ||
+                     subStatus === 'DIKEMBALIKAN' || subStatus === 'REVISION';
+
+  if (isReturned) {
+    const isActivelyWaitingOrApproved =
+      primaryStatus === 'MENUNGGU_VERIFIKASI' ||
+      primaryStatus === 'TERVERIFIKASI' ||
+      primaryStatus === 'DISETUJUI' ||
+      verifStatus === 'MENUNGGU_VERIFIKASI' ||
+      verifStatus === 'TERVERIFIKASI' ||
+      verifStatus === 'DISETUJUI' ||
+      primaryStatus === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN';
+
+    if (!isActivelyWaitingOrApproved) {
+      return false; // Valid returned state is EDITABLE
+    }
+  }
+
   const statuses = [
-    item.status,
-    item.verificationStatus,
-    item.submissionStatus
-  ]
-    .filter(Boolean)
-    .map(v => String(v).toUpperCase().trim());
+    primaryStatus,
+    verifStatus,
+    subStatus
+  ].filter(Boolean);
 
   if (statuses.length === 0) return false;
 
@@ -350,26 +298,6 @@ export function isTransactionLockedForMantri(item) {
     'VERIFIED',
     'APPROVED'
   ]);
-
-  const isReturned = statuses.some(s => s === 'DIKEMBALIKAN' || s === 'REVISION');
-
-  if (isReturned) {
-    const hasResubmittedOrApproved = statuses.some(s =>
-      s === 'MENUNGGU_VERIFIKASI' ||
-      s === 'SUBMITTED_TO_ASB' ||
-      s === 'PENDING_ASB' ||
-      s === 'DIAJUKAN' ||
-      s === 'DIAJUKAN_PEMERIKSAAN' ||
-      s === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
-      s === 'TERVERIFIKASI' ||
-      s === 'DISETUJUI' ||
-      s === 'VERIFIED' ||
-      s === 'APPROVED'
-    );
-    if (!hasResubmittedOrApproved) {
-      return false; // Valid returned state is EDITABLE
-    }
-  }
 
   return statuses.some(s => lockedStates.has(s));
 }
@@ -506,7 +434,7 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
 
   // Jika belum ada Presensi Datang yang tersimpan hari ini, Tidak Hadir = 0 (jangan buat item)
   if (todayWorkerAtts.length > 0) {
-    const activePool = getWorkersForUserContext(user, { activeOnly: true });
+    const scopedAll = getWorkersForUserContext(user, { activeOnly: false }) || [];
     const presentWorkerKeys = new Set();
     todayWorkerAtts.forEach(a => {
       if (a.workerId) presentWorkerKeys.add(String(a.workerId));
@@ -514,10 +442,18 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       if (a.workerCode) presentWorkerKeys.add(String(a.workerCode));
     });
 
-    const absentWorkers = activePool.filter(w =>
-      !presentWorkerKeys.has(String(w.id)) &&
-      !presentWorkerKeys.has(String(w.code))
+    const scopedAbsent = scopedAll.filter(
+      w => w.status !== 'ACTIVE' || w.active === false || !!w.absentType
     );
+
+    const activeUnchecked = scopedAll.filter(
+      w =>
+        (w.status === 'ACTIVE' && w.active !== false && !w.absentType) &&
+        !presentWorkerKeys.has(String(w.id)) &&
+        !presentWorkerKeys.has(String(w.code))
+    );
+
+    const absentWorkers = [...scopedAbsent, ...activeUnchecked];
 
     if (absentWorkers.length > 0) {
       const docNo = `ABSEN-${todayStr.replace(/\//g, '')}`;

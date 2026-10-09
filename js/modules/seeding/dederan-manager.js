@@ -18,6 +18,7 @@ import { formatStandardDocNo, formatDate, generateUniqueDocNo, todayISO } from '
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
+import { applyTransactionActor, canUserAccessTransaction } from '../../core/transaction-actor.js';
 
 export const DEDERAN_STORAGE_KEYS = Object.freeze({
   INDUK: 'dederan_induk_documents',
@@ -304,13 +305,14 @@ export function saveDederanTransaction(txPayload) {
     createdAt: new Date().toISOString()
   };
 
-  allDederTxs.push(newTx);
+  const finalizedTx = applyTransactionActor(newTx, 'CREATE', userCtx);
+  allDederTxs.push(finalizedTx);
   storage.set(DEDERAN_STORAGE_KEYS.TRANSACTIONS, allDederTxs);
 
   // Re-sync induk document aggregate balance and status
   syncDederanIndukDocuments();
 
-  return newTx;
+  return finalizedTx;
 }
 
 /**
@@ -467,7 +469,8 @@ export function createDederanInspection(payload) {
     createdAt: new Date().toISOString()
   };
 
-  allInspections.push(newInspection);
+  const finalizedInspection = applyTransactionActor(newInspection, 'CREATE', userCtx);
+  allInspections.push(finalizedInspection);
   storage.set(DEDERAN_STORAGE_KEYS.INSPECTIONS, allInspections);
 
   // Check cumulative status for this bedengan
@@ -475,11 +478,11 @@ export function createDederanInspection(payload) {
 
   // Consolidate rejection / inspection result to selection_pool as PENDING_DECLARATION only if reject > 0
   if (newSummary.totalTidakBerhasil > 0) {
-    integrateDederanRejectionToSelectionPool(newInspection, newSummary.totalTidakBerhasil);
+    integrateDederanRejectionToSelectionPool(finalizedInspection, newSummary.totalTidakBerhasil);
   }
 
   return {
-    inspection: newInspection,
+    inspection: finalizedInspection,
     summary: newSummary
   };
 }
@@ -499,7 +502,22 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
 
   const dederanTxDocNo = inspectionTx.dederanTxDocNo || inspectionTx.docNo;
   const poolId = `SEL-POOL-DED-${dederanTxDocNo}`;
-  const existingIdx = selectionPool.findIndex(s => s.id === poolId || (s.dederanDocNo === dederanTxDocNo && s.originType === 'REJECT_DEDERAN'));
+  const inspectionDocNo = inspectionTx.docNo;
+  const inspectionId = inspectionTx.id;
+  const bedenganCode = inspectionTx.bedenganCode;
+  const parentInduk = inspectionTx.parentDederIndukDocNo || inspectionTx.dederanIndukDocNo;
+
+  const existingIdx = selectionPool.findIndex(s => {
+    if (s.id === poolId) return true;
+    if (s.dederanDocNo && s.dederanDocNo === dederanTxDocNo && (s.originType === 'REJECT_DEDERAN' || s.sourceModule === 'DEDERAN')) return true;
+    if (s.sourceDocNo && (s.sourceDocNo === dederanTxDocNo || (inspectionDocNo && s.sourceDocNo === inspectionDocNo)) && (s.originType === 'REJECT_DEDERAN' || s.sourceModule === 'DEDERAN')) return true;
+    if (s.sourceTransactionId && (s.sourceTransactionId === dederanTxDocNo || (inspectionId && s.sourceTransactionId === inspectionId) || (inspectionDocNo && s.sourceTransactionId === inspectionDocNo)) && (s.originType === 'REJECT_DEDERAN' || s.sourceModule === 'DEDERAN')) return true;
+    if (bedenganCode && s.bedenganCode === bedenganCode && (s.originType === 'REJECT_DEDERAN' || s.sourceModule === 'DEDERAN')) {
+      if (s.dederanIndukDocNo && parentInduk && s.dederanIndukDocNo === parentInduk) return true;
+      if (!s.dederanDocNo && !s.sourceDocNo) return true;
+    }
+    return false;
+  });
 
   // PATH B Guard: If qty === 0, do not create or maintain pending candidate
   if (qty === 0) {
@@ -508,6 +526,10 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
       // Only clean up draft pending candidate, do NOT delete if already converted to official transaction
       if (!existingItem.selectionTransactionId && existingItem.status === 'PENDING_DECLARATION') {
         selectionPool.splice(existingIdx, 1);
+        storage.set('selection_pool', selectionPool);
+      } else {
+        existingItem.jumlahAfkir = 0;
+        existingItem.quantity = 0;
         storage.set('selection_pool', selectionPool);
       }
     }
@@ -528,7 +550,7 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
   const existingItem = existingIdx >= 0 ? selectionPool[existingIdx] : null;
 
   const poolEntry = {
-    id: poolId,
+    id: existingItem?.id || poolId,
     docNo: existingItem?.docNo || formatStandardDocNo(2026, 'CULL', maxSeq + 1),
     originType: 'REJECT_DEDERAN',
     sourceModule: 'DEDERAN',
@@ -553,10 +575,13 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
     tahapan: 'Rubber Main Nursery',
     tanggal: inspectionTx.tanggalPemeriksaan || inspectionTx.tanggal || (existingItem?.tanggal || new Date().toISOString().split('T')[0]),
     status: existingItem?.status || 'PENDING_DECLARATION',
-    declaredAt: existingItem?.declaredAt,
-    declaredBy: existingItem?.declaredBy,
-    selectionTransactionId: existingItem?.selectionTransactionId,
-    selectionDocNo: existingItem?.selectionDocNo,
+    returnReason: existingItem?.returnReason || null,
+    returnedAt: existingItem?.returnedAt || null,
+    returnedByName: existingItem?.returnedByName || null,
+    declaredAt: existingItem?.declaredAt || null,
+    declaredBy: existingItem?.declaredBy || null,
+    selectionTransactionId: existingItem?.selectionTransactionId || null,
+    selectionDocNo: existingItem?.selectionDocNo || null,
     stockMutationStatus: existingItem?.stockMutationStatus || 'PENDING',
     createdAt: existingItem?.createdAt || new Date().toISOString()
   };
@@ -786,7 +811,7 @@ export function updateDederanInspection(idOrDocNo, payload) {
 }
 
 /**
- * Updates an existing Dederan transaction (if no inspections recorded)
+ * Updates an existing Dederan transaction (correction / edit)
  */
 export function updateDederanTransaction(idOrDocNo, payload) {
   if (!idOrDocNo || !payload) throw new Error('Data transaksi tidak valid.');
@@ -795,32 +820,52 @@ export function updateDederanTransaction(idOrDocNo, payload) {
   if (idx < 0) throw new Error('Transaksi Dederan tidak ditemukan.');
 
   const existing = txs[idx];
+  const userCtx = getCurrentUserContext();
+
+  if (!canUserAccessTransaction(existing, userCtx)) {
+    throw new Error('Anda tidak memiliki otorisasi untuk mengubah transaksi Dederan ini.');
+  }
+
+  if (isTransactionLockedForMantri(existing)) {
+    throw new Error('Transaksi Dederan tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+  }
+
   const parent = getDederanIndukById(existing.parentDederIndukDocNo);
   if (!parent) throw new Error('Dokumen Induk Deder tidak ditemukan.');
 
   const inspections = getDederanInspectionsByDederTx(existing.docNo);
-  if (inspections.length > 0) {
-    throw new Error('Transaksi Dederan tidak dapat diedit karena sudah memiliki data pemeriksaan.');
-  }
+  const totalDiperiksa = inspections.reduce((sum, ins) => sum + parseInt(ins.jumlahDiperiksa || 0, 10), 0);
 
   const maxAllowed = (parent.sisaBelumDeder || 0) + parseInt(existing.jumlahDeder || 0, 10);
-  const newJumlah = parseInt(payload.jumlahDeder || 0, 10);
+  const newJumlah = parseInt(payload.jumlahDeder !== undefined ? payload.jumlahDeder : existing.jumlahDeder, 10);
   if (isNaN(newJumlah) || newJumlah <= 0) {
     throw new Error('Jumlah di deder harus lebih dari 0.');
   }
   if (newJumlah > maxAllowed) {
     throw new Error(`Jumlah di deder (${newJumlah.toLocaleString('id-ID')}) melebihi kuota sisa (${maxAllowed.toLocaleString('id-ID')}).`);
   }
+  if (inspections.length > 0 && newJumlah < totalDiperiksa) {
+    throw new Error(`Jumlah di deder (${newJumlah.toLocaleString('id-ID')}) tidak boleh lebih kecil dari jumlah yang sudah diperiksa (${totalDiperiksa.toLocaleString('id-ID')} Butir).`);
+  }
 
-  txs[idx] = {
+  let updatedRecord = {
     ...existing,
     jumlahDeder: newJumlah,
     photos: Array.isArray(payload.photos) ? payload.photos : existing.photos,
+    status: 'READY_TO_CONFIRM',
+    verificationStatus: null,
+    submissionStatus: null,
+    submittedAt: null,
+    lastReturnReason: existing.returnReason || existing.lastReturnReason || null,
+    returnReason: null,
     updatedAt: new Date().toISOString()
   };
 
+  updatedRecord = applyTransactionActor(updatedRecord, 'UPDATE', userCtx);
+
+  txs[idx] = updatedRecord;
   storage.set(DEDERAN_STORAGE_KEYS.TRANSACTIONS, txs);
   syncDederanIndukDocuments();
-  return txs[idx];
+  return updatedRecord;
 }
 

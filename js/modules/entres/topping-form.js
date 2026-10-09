@@ -35,6 +35,7 @@ function formatDateDDMMYYYY(val) {
 }
 
 import { getCurrentUserContext } from '../../core/user-context.js';
+import { applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 
 export function renderToppingForm() {
   const app = document.getElementById('app');
@@ -257,7 +258,7 @@ export function renderToppingForm() {
     const p = parseFloat(inpPerisai?.value || 0);
 
     if (p > 0 && k > 0) {
-      dispAvgKayu.textContent = `${(p / k).toFixed(1)} Perisai/Btg`;
+      dispAvgKayu.textContent = `${Math.round(p / k)} Perisai/Btg`;
     } else {
       dispAvgKayu.textContent = '- Perisai/Btg';
     }
@@ -349,12 +350,14 @@ export function renderToppingForm() {
         return;
       }
 
-      txs[editingIdx] = {
+      let updatedTx = {
         ...txs[editingIdx],
         jumlahKayu: kayu,
         jumlahPerisai: perisai,
         updatedAt: new Date().toISOString()
       };
+      updatedTx = applyTransactionActor(updatedTx, AUDIT_EVENT_TYPES.UPDATE, user, `Pembaruan transaksi topping ${existingDocNo} (${perisai} Perisai)`);
+      txs[editingIdx] = updatedTx;
       storage.set('entres_topping_transactions', txs);
       storage.remove('editing_topping_index');
 
@@ -370,7 +373,7 @@ export function renderToppingForm() {
     const currentYear = tgl ? (parseInt(String(tgl).substring(0, 4), 10) || new Date().getFullYear()) : new Date().getFullYear();
     const docNo = generateUniqueDocNo('BWGDTL', combinedTxs, currentYear);
 
-    const newTx = {
+    let newTx = {
       docNo,
       type: 'TOPPING',
       sourceMenunasDocNo: null, // Decoupled from Menunas
@@ -389,6 +392,8 @@ export function renderToppingForm() {
       status: 'SUBMITTED',
       createdAt: new Date().toISOString()
     };
+
+    newTx = applyTransactionActor(newTx, AUDIT_EVENT_TYPES.CREATE, user, `Pembuatan transaksi topping ${docNo} (${kayu} Btg, ${perisai} Perisai)`);
 
     txs.push(newTx);
     storage.set('entres_topping_transactions', txs);

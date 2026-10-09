@@ -2,6 +2,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
+import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
 import { formatStandardDocNo, formatDate, todayDDMMYYYY, todayISO, esc } from '../../core/utils.js';
 import { guardDependency, isReceiptLocked, isReceiptUsedAsReference } from '../../core/dependency-guard.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
@@ -40,12 +41,16 @@ export function renderReceiptLanding() {
   const hasActionableEntresReceipt = getActionableMataEntresReceiptCount(allRequests, userCtx) > 0;
 
   const allReceiptTxs = storage.get('receipt_transactions', []);
+  const authorizedReceiptTxs = getAuthorizedTransactions(allReceiptTxs, userCtx);
   const todayStr = todayDDMMYYYY();
   const isFiltered = selectedReceiptDate !== todayStr;
 
   // Filter transactions by selected date while preserving original index
-  const filteredTxsWithIndex = allReceiptTxs
-    .map((tx, originalIndex) => ({ tx, originalIndex }))
+  const filteredTxsWithIndex = authorizedReceiptTxs
+    .map((tx) => {
+      const originalIndex = allReceiptTxs.findIndex(t => t === tx || (t.id && t.id === tx.id) || (t.docNo && t.docNo === tx.docNo));
+      return { tx, originalIndex: originalIndex >= 0 ? originalIndex : 0 };
+    })
     .filter(({ tx }) => {
       const txDate = normalizeDateStr(tx.tanggal || tx.date || tx.createdAt);
       return txDate === selectedReceiptDate;
@@ -359,6 +364,11 @@ export function renderReceiptLanding() {
         const txs = storage.get('receipt_transactions', []);
         const tx = txs[idx];
         
+        if (!tx || !canUserAccessTransaction(tx, userCtx, 'UPDATE')) {
+          alert('Anda tidak memiliki otoritas untuk mengedit transaksi ini.');
+          return;
+        }
+
         const lock = isReceiptLocked(tx, idx);
         if (lock.locked) {
           if (lock.reason === 'VERIFICATION_LOCK') {
@@ -411,6 +421,11 @@ export function renderReceiptLanding() {
         const idx = Number(e.currentTarget.dataset.index);
         const txs = storage.get('receipt_transactions', []);
         const tx = txs[idx];
+
+        if (!tx || !canUserAccessTransaction(tx, userCtx, 'DELETE')) {
+          alert('Anda tidak memiliki otoritas untuk menghapus transaksi ini.');
+          return;
+        }
 
         const lock = isReceiptLocked(tx, idx);
         if (lock.locked) {

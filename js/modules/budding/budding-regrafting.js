@@ -6,6 +6,8 @@ import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
+import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
 import {
   normalizeDateStr,
   renderCalendarHeaderButton,
@@ -71,7 +73,8 @@ export function renderBuddingRegrafting() {
     storage.set('budding_transactions', allBuddingTxs);
   }
 
-  const allRegraftTxs = allBuddingTxs.filter(b => b.type === 'REGRAFTING');
+  const userCtx = getCurrentUserContext();
+  const allRegraftTxs = getAuthorizedTransactions(allBuddingTxs.filter(b => b.type === 'REGRAFTING'), userCtx);
   const regraftTxs = allRegraftTxs.filter(b => {
     const d = normalizeDateStr(b.tanggal || b.date || b.createdAt);
     return d === selectedRegraftingDate;
@@ -735,6 +738,12 @@ export function renderBuddingRegrafting() {
 
       let allTxs = storage.get('budding_transactions', []);
       const existing = allTxs.find(b => b.docNo === doc) || allTxs[origIdx];
+
+      if (!existing || !canUserAccessTransaction(existing, userCtx, 'DELETE')) {
+        toast('Anda tidak memiliki otoritas untuk menghapus transaksi ini.', 'error');
+        return;
+      }
+
       if (existing && isTransactionLockedForMantri(existing)) {
         toast('Transaksi terkunci karena sedang/sudah diverifikasi.', 'warning');
         return;

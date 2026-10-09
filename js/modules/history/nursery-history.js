@@ -22,6 +22,7 @@ import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
 import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
+import { getAuthorizedTransactions } from '../../core/transaction-actor.js';
 import { formatDate, formatStandardDocNo } from '../../core/utils.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 
@@ -35,12 +36,21 @@ export function renderNurseryHistory() {
   const user = getCurrentUserContext();
   const today = formatDate(new Date().toISOString());
 
-  // 1. Ambil data real transaksi dari storage
-  const receiptTxs = storage.get('receipt_transactions', []);
-  const seedingTxs = storage.get('seeding_transactions', []);
-  const buddingTxs = storage.get('budding_transactions', []);
-  const inspectionTxs = storage.get('inspection_transactions', []);
-  const selectionTxs = storage.get('selection_transactions', []);
+  // 1. Ambil data real transaksi dari storage dan terapkan isolasi otorisasi
+  const rawReceiptTxs = storage.get('receipt_transactions', []);
+  const receiptTxs = getAuthorizedTransactions(rawReceiptTxs, user);
+
+  const rawSeedingTxs = storage.get('seeding_transactions', []);
+  const seedingTxs = getAuthorizedTransactions(rawSeedingTxs, user);
+
+  const rawBuddingTxs = storage.get('budding_transactions', []);
+  const buddingTxs = getAuthorizedTransactions(rawBuddingTxs, user);
+
+  const rawInspectionTxs = storage.get('inspection_transactions', []);
+  const inspectionTxs = getAuthorizedTransactions(rawInspectionTxs, user);
+
+  const rawSelectionTxs = storage.get('selection_transactions', []);
+  const selectionTxs = getAuthorizedTransactions(rawSelectionTxs, user);
 
   // 2. Kumpulkan Daftar Program Pembibitan Unik dari Transaksi Real
   const programSet = new Set();

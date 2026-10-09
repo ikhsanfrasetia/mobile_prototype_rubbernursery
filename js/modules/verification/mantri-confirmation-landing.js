@@ -20,7 +20,8 @@ import {
   MODULE_TYPES,
   MODULE_LABELS,
   normalizeDateStr,
-  formatSafeNumber
+  formatSafeNumber,
+  matchActor
 } from './mantri-confirmation-service.js';
 import { getSelectionStageLabel } from '../selection/selection-manager.js';
 
@@ -736,7 +737,50 @@ export function renderDetailModal(tx, user) {
   const actorName = tx.actor || raw.submittedByName || raw.createdByName || raw.mantri || user?.name || 'Mantri Bibitan';
   const actorCode = raw.actorCode || raw.userCode || user?.code || user?.userId || 'MNT001';
   const rawNotes = raw.notes || raw.catatan || raw.keterangan || raw.remarks;
-  const notes = (rawNotes !== undefined && rawNotes !== null && String(rawNotes).trim() !== '') ? String(rawNotes).trim() : '-';
+  const isLegacySystemFallback = Boolean(rawNotes && raw.alasan && String(rawNotes).trim() === String(raw.alasan).trim());
+  const notes = (!isLegacySystemFallback && rawNotes !== undefined && rawNotes !== null && String(rawNotes).trim() !== '' && String(rawNotes).trim() !== '-') ? String(rawNotes).trim() : '-';
+  const returnReason = tx.returnReason || raw.returnReason || tx.latestVerification?.returnReason || null;
+  const isRevision = tx.status === MANTRI_TRANSACTION_STATUS.REVISION || Boolean(returnReason);
+  const canRepair = matchActor(raw, user) || matchActor(tx, user);
+
+  let repairRoute = '/home';
+  switch (tx.moduleType) {
+    case MODULE_TYPES.PENYELEKSIAN:
+    case MODULE_TYPES.SELEKSI_PRA_OKULASI:
+      repairRoute = '/selection';
+      break;
+    case MODULE_TYPES.PEMERIKSAAN:
+    case MODULE_TYPES.PEMERIKSAAN_DEDERAN:
+    case MODULE_TYPES.PEMERIKSAAN_OKULASI:
+      repairRoute = '/inspection';
+      break;
+    case MODULE_TYPES.PENYEMAIAN:
+    case MODULE_TYPES.DEDERAN:
+      repairRoute = '/seeding';
+      break;
+    case MODULE_TYPES.PENERIMAAN:
+      repairRoute = '/receipt';
+      break;
+    case MODULE_TYPES.OKULASI:
+      repairRoute = '/grafting';
+      break;
+    case MODULE_TYPES.PEMELIHARAAN:
+      repairRoute = '/nursery-activity';
+      break;
+    case MODULE_TYPES.KEBUN_ENTRES:
+    case MODULE_TYPES.MENUNAS:
+    case MODULE_TYPES.TOPPING:
+      repairRoute = '/entres';
+      break;
+    case MODULE_TYPES.PENGELUARAN:
+      repairRoute = '/dispatch';
+      break;
+    case MODULE_TYPES.MATERIAL:
+      repairRoute = '/material';
+      break;
+    default:
+      repairRoute = '/home';
+  }
 
   // Khusus Modul MATERIAL: Tampilkan struktur dua section (DOKUMEN MATERIAL + REFERENSI TRANSAKSI)
   if (tx.moduleType === MODULE_TYPES.MATERIAL) {
@@ -844,6 +888,18 @@ export function renderDetailModal(tx, user) {
               </div>
             </div>
 
+            <!-- Catatan Pengembalian jika ada -->
+            ${returnReason ? `
+              <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 12px; margin-top: 4px;">
+                <div style="font-size: 0.72rem; font-weight: 800; color: #DC2626; margin-bottom: 2px;">
+                  Catatan Pengembalian Asisten
+                </div>
+                <div style="font-size: 0.74rem; color: #991B1B; line-height: 1.4;">
+                  ${esc(returnReason)}
+                </div>
+              </div>
+            ` : ''}
+
             <!-- Catatan Section with Shaded Box -->
             <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
               <span style="color: #64748B; font-weight: 600;">Catatan</span>
@@ -854,12 +910,23 @@ export function renderDetailModal(tx, user) {
 
           </div>
 
-          <!-- Modal Footer: Full width Tutup button -->
-          <div style="padding: 12px 16px; border-top: 1px solid #F1F5F9; background: #FFFFFF;">
-            <button id="btn-close-modal-footer" type="button" style="width: 100%; height: 38px; background: #FFFFFF; border: 1.5px solid #057A55; color: #057A55; font-size: 0.82rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
-              Tutup
-            </button>
-          </div>
+          <!-- Modal Footer -->
+          ${isRevision && canRepair ? `
+            <div style="padding: 12px 16px; border-top: 1px solid #F1F5F9; background: #FFFFFF; display: flex; gap: 8px;">
+              <button id="btn-close-modal-footer" type="button" style="flex: 1; height: 38px; background: #FFFFFF; border: 1.5px solid #64748B; color: #475569; font-size: 0.82rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
+                Tutup
+              </button>
+              <button id="btn-repair-doc" data-route="${esc(repairRoute)}" data-tx-id="${esc(tx.id || tx.docNo)}" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; font-size: 0.82rem; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.25); transition: all 0.15s ease;">
+                Perbaiki Dokumen
+              </button>
+            </div>
+          ` : `
+            <div style="padding: 12px 16px; border-top: 1px solid #F1F5F9; background: #FFFFFF;">
+              <button id="btn-close-modal-footer" type="button" style="width: 100%; height: 38px; background: #FFFFFF; border: 1.5px solid #057A55; color: #057A55; font-size: 0.82rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
+                Tutup
+              </button>
+            </div>
+          `}
 
         </div>
 
@@ -930,6 +997,18 @@ export function renderDetailModal(tx, user) {
             </div>
           </div>
 
+          <!-- Catatan Pengembalian jika ada -->
+          ${returnReason ? `
+            <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 12px; margin-top: 4px;">
+              <div style="font-size: 0.72rem; font-weight: 800; color: #DC2626; margin-bottom: 2px;">
+                Catatan Pengembalian Asisten
+              </div>
+              <div style="font-size: 0.74rem; color: #991B1B; line-height: 1.4;">
+                ${esc(returnReason)}
+              </div>
+            </div>
+          ` : ''}
+
           <!-- Catatan Section with Shaded Box -->
           <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
             <span style="color: #64748B; font-weight: 600;">Catatan</span>
@@ -940,12 +1019,23 @@ export function renderDetailModal(tx, user) {
 
         </div>
 
-        <!-- Modal Footer: Full width Tutup button -->
-        <div style="padding: 12px 16px; border-top: 1px solid #F1F5F9; background: #FFFFFF;">
-          <button id="btn-close-modal-footer" type="button" style="width: 100%; height: 38px; background: #FFFFFF; border: 1.5px solid #057A55; color: #057A55; font-size: 0.82rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
-            Tutup
-          </button>
-        </div>
+        <!-- Modal Footer -->
+        ${isRevision && canRepair ? `
+          <div style="padding: 12px 16px; border-top: 1px solid #F1F5F9; background: #FFFFFF; display: flex; gap: 8px;">
+            <button id="btn-close-modal-footer" type="button" style="flex: 1; height: 38px; background: #FFFFFF; border: 1.5px solid #64748B; color: #475569; font-size: 0.82rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
+              Tutup
+            </button>
+            <button id="btn-repair-doc" data-route="${esc(repairRoute)}" data-tx-id="${esc(tx.id || tx.docNo)}" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; font-size: 0.82rem; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.25); transition: all 0.15s ease;">
+              Perbaiki Dokumen
+            </button>
+          </div>
+        ` : `
+          <div style="padding: 12px 16px; border-top: 1px solid #F1F5F9; background: #FFFFFF;">
+            <button id="btn-close-modal-footer" type="button" style="width: 100%; height: 38px; background: #FFFFFF; border: 1.5px solid #057A55; color: #057A55; font-size: 0.82rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
+              Tutup
+            </button>
+          </div>
+        `}
 
       </div>
 
@@ -1160,6 +1250,11 @@ function attachEvents(allTxs, user, currentSectionTitle) {
 
   document.getElementById('btn-close-modal-x')?.addEventListener('click', closeModal);
   document.getElementById('btn-close-modal-footer')?.addEventListener('click', closeModal);
+  document.getElementById('btn-repair-doc')?.addEventListener('click', (e) => {
+    const route = e.currentTarget.getAttribute('data-route') || '/home';
+    selectedTxForModal = null;
+    navigate(route);
+  });
   document.getElementById('modal-tx-detail-backdrop')?.addEventListener('click', (e) => {
     if (e.target.id === 'modal-tx-detail-backdrop') {
       closeModal();

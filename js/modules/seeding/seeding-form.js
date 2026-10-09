@@ -10,6 +10,7 @@ import { integrateSeedingToSelectionPool } from '../selection/selection-manager.
 import { getEligiblePindahSemaiSources, calculateRemainingIssueBalance } from './dederan-pindah-semai-adapter.js';
 import { toast } from '../../components/toast.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
+import { applyTransactionActor } from '../../core/transaction-actor.js';
 
 export function renderSeedingForm() {
   const app = document.getElementById('app');
@@ -19,7 +20,7 @@ export function renderSeedingForm() {
 
   // Get source transaction (from Dederan adapter first, or receipt fallback)
   const sourceIdx = storage.get('seeding_source_index', null);
-  const eligibleSources = getEligiblePindahSemaiSources();
+  const eligibleSources = getEligiblePindahSemaiSources(userCtx);
   let sourceTx = eligibleSources.find(s =>
     s.sourceIndex == sourceIdx ||
     s.sourceDederTxId == sourceIdx ||
@@ -744,7 +745,7 @@ export function renderSeedingForm() {
     // Defense-in-Depth Gate #3: Validasi status persetujuan Asisten Bibitan
     const isDederanSource = sourceIdx && (String(sourceIdx).startsWith('DED_') || sourceTx.isFromDederan || sourceTx.sourceType === 'DEDER_INSPECTION');
     if (isDederanSource && editIdx === null) {
-      const currentEligible = getEligiblePindahSemaiSources();
+      const currentEligible = getEligiblePindahSemaiSources(userCtx);
       const isStillEligible = currentEligible.some(s =>
         s.sourceIndex == sourceIdx ||
         s.docNo == sourceDocNo ||
@@ -877,10 +878,12 @@ export function renderSeedingForm() {
       totalPolybag
     };
 
+    const finalizedTx = applyTransactionActor(newTx, editIdx !== null ? 'UPDATE' : 'CREATE', userCtx);
+
     if (editIdx !== null) {
-      txs[editIdx] = newTx;
+      txs[editIdx] = finalizedTx;
     } else {
-      txs.push(newTx);
+      txs.push(finalizedTx);
     }
 
     storage.set('seeding_transactions', txs);
@@ -888,7 +891,7 @@ export function renderSeedingForm() {
 
     // Integrasikan bibit ditolak (Rusak, Mati, Lainnya) ke Selection Pool secara idempoten
     try {
-      integrateSeedingToSelectionPool(newTx, { isEditing: editIdx !== null });
+      integrateSeedingToSelectionPool(finalizedTx, { isEditing: editIdx !== null });
     } catch (err) {
       console.warn('[seeding-form] Gagal integrasi ke selection_pool:', err.message);
     }

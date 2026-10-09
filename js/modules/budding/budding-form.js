@@ -13,6 +13,7 @@ import {
   validateOkulasiPerisaiUsage
 } from '../../core/entres-inventory-service.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
+import { applyTransactionActor } from '../../core/transaction-actor.js';
 
 const MASTER_WORKERS = [
   { id: 'W001', name: 'Ahmad Rifai', code: '104521' },
@@ -890,7 +891,7 @@ export async function renderBuddingForm() {
         : generateUniqueDocNo(docModKey, txs, 2026);
 
       if (isEditing && txs[parseInt(editingIdx)]) {
-        txs[parseInt(editingIdx)] = {
+        const updated = applyTransactionActor({
           ...txs[parseInt(editingIdx)],
           klonEntres: normalizeKlonName(selectedKlon),
           workers: canonicalWorkers,
@@ -899,11 +900,12 @@ export async function renderBuddingForm() {
           jumlahMataEntres: mataEntres,
           jumlahDitolak: ditolak,
           alasan: isRegrafting ? app.querySelector('#sel-alasan')?.value : null
-        };
+        }, 'UPDATE', user);
+        txs[parseInt(editingIdx)] = updated;
         storage.set('budding_transactions', txs);
         storage.remove('editing_budding_index');
       } else {
-        txs.push({
+        const rawNewTx = {
           docNo: docNoBudding,
           type: isRegrafting ? 'REGRAFTING' : 'GRAFTING',
           seedingIndex: parseInt(batchIdx),
@@ -936,7 +938,9 @@ export async function renderBuddingForm() {
           actorCode: user?.code || 'MNT001',
           createdBy: user?.id || user?.userId || 'TBS-MNT-001',
           createdByName: user?.name || 'Wagiman'
-        });
+        };
+        const finalizedTx = applyTransactionActor(rawNewTx, 'CREATE', user);
+        txs.push(finalizedTx);
         storage.set('budding_transactions', txs);
       }
 

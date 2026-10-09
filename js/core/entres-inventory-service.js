@@ -13,6 +13,8 @@
 
 import { storage } from './storage.js';
 import { normalizeKlonName } from '../data/klon-master.js';
+import { resolveUserContext, ROLES, isScopeEstate, normalizeRole } from './user-context.js';
+import { matchActor } from '../modules/verification/mantri-confirmation-service.js';
 
 /**
  * Normalisasi string nama klon untuk perbandingan deterministik
@@ -28,11 +30,54 @@ export function canonicalKlon(klonName) {
 /**
  * Helper untuk pencocokan ID/kode Estate
  */
-function matchEstate(targetEstate, currentEstate) {
-  if (!targetEstate || !currentEstate) return true;
+export function matchEstate(targetEstate, currentEstate) {
+  if (!targetEstate || !currentEstate) return false;
   const cleanTarget = String(targetEstate).trim().toUpperCase().replace(/^EST-/, '');
   const cleanCurrent = String(currentEstate).trim().toUpperCase().replace(/^EST-/, '');
   return cleanTarget === cleanCurrent;
+}
+
+/**
+ * Helper filter transaksi inventori berdasarkan konteks user aktif dan scope role
+ * @param {Array<Object>} transactions
+ * @param {Object} [userContext]
+ * @param {string} [estateIdFilter]
+ * @returns {Array<Object>}
+ */
+export function filterTransactionsByContext(transactions, userContext = null, estateIdFilter = null) {
+  if (!Array.isArray(transactions)) return [];
+  if (!userContext && !estateIdFilter) return transactions;
+
+  const ctx = userContext ? resolveUserContext(userContext) : null;
+  const normalizedRole = ctx ? normalizeRole(ctx.role || ctx.rawRole) : null;
+  const effectiveEstateId = estateIdFilter || ctx?.estateId || null;
+
+  return transactions.filter(t => {
+    if (!t) return false;
+
+    if (ctx) {
+      // Role operasional (Mantri): isolasi personal menggunakan matchActor
+      if (normalizedRole === ROLES.MANTRI_TANAMAN || normalizedRole === 'MANTRI_BIBITAN') {
+        return matchActor(t, ctx);
+      }
+
+      // Role manajerial (Pengurus, Askep, Asisten Bibitan, KTU, Tekniker): isolasi per Estate
+      if (isScopeEstate(ctx) || ctx.scopeType === 'ESTATE' || normalizedRole === ROLES.ASISTEN_BIBITAN || normalizedRole === ROLES.ASISTEN) {
+        const tEstate = t.createdByEstateId || t.estateId || t.estateCode;
+        if (tEstate && ctx.estateId) {
+          return matchEstate(tEstate, ctx.estateId);
+        }
+        return matchActor(t, ctx);
+      }
+    }
+
+    if (effectiveEstateId) {
+      const tEstate = t.createdByEstateId || t.estateId || t.estateCode;
+      return matchEstate(tEstate, effectiveEstateId);
+    }
+
+    return true;
+  });
 }
 
 /**
@@ -43,14 +88,15 @@ function matchEstate(targetEstate, currentEstate) {
  * @returns {Array<Object>}
  */
 export function getSortedToppingSources(klonKey, toppingTxs = null, options = {}) {
-  const txs = toppingTxs || storage.get('entres_topping_transactions', []);
+  const rawTxs = toppingTxs || storage.get('entres_topping_transactions', []);
+  const userCtx = options.userContext || options.user || null;
+  const txs = filterTransactionsByContext(rawTxs, userCtx, options.estateId);
   const targetKey = canonicalKlon(klonKey);
 
   return txs
     .filter(t => {
       if (!t || t.status === 'VOID') return false;
       if (canonicalKlon(t.namaKlon) !== targetKey) return false;
-      if (options.estateId && !matchEstate(t.estateId || t.estateCode, options.estateId)) return false;
       return true;
     })
     .sort((a, b) => {
@@ -68,7 +114,7 @@ export function getSortedToppingSources(klonKey, toppingTxs = null, options = {}
 /**
  * Menghitung rincian alokasi FIFO dan saldo Mata Entres per klon
  * @param {string} klonName
- * @param {Object} [options={}] - { excludeBuddingDocNo?: string, excludeToppingDocNo?: string, excludeDispatchDocNo?: string, estateId?: string }
+ * @param {Object} [options={}] - { excludeBuddingDocNo?: string, excludeToppingDocNo?: string, excludeDispatchDocNo?: string, estateId?: string, userContext?: Object }
  * @returns {Object}
  */
 export function getFifoAllocationBreakdown(klonName, options = {}) {
@@ -88,14 +134,18 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
     };
   }
 
-  const allToppings = storage.get('entres_topping_transactions', []);
-  const allBuddings = storage.get('budding_transactions', []);
-  const allDispatches = storage.get('dispatch_transactions', []);
+  const userCtx = options.userContext || options.user || null;
+  const rawToppings = storage.get('entres_topping_transactions', []);
+  const rawBuddings = storage.get('budding_transactions', []);
+  const rawDispatches = storage.get('dispatch_transactions', []);
+
+  const allToppings = filterTransactionsByContext(rawToppings, userCtx, options.estateId);
+  const allBuddings = filterTransactionsByContext(rawBuddings, userCtx, options.estateId);
+  const allDispatches = filterTransactionsByContext(rawDispatches, userCtx, options.estateId);
 
   const excludeBudDoc = options.excludeBuddingDocNo || null;
   const excludeTopDoc = options.excludeToppingDocNo || null;
   const excludeDspDoc = options.excludeDispatchDocNo || null;
-  const estateIdFilter = options.estateId || null;
 
   // 1. Ambil Topping sources
   const toppingList = allToppings
@@ -103,7 +153,6 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
       if (!t || t.status === 'VOID') return false;
       if (canonicalKlon(t.namaKlon) !== targetKey) return false;
       if (excludeTopDoc && t.docNo === excludeTopDoc) return false;
-      if (estateIdFilter && !matchEstate(t.estateId || t.estateCode, estateIdFilter)) return false;
       return true;
     })
     .sort((a, b) => {
@@ -198,7 +247,6 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
     const dKlon = d.details?.[0]?.klon || d.klon || d.klonName || '';
     if (canonicalKlon(dKlon) !== targetKey) return false;
     if (excludeDspDoc && (d.docNo === excludeDspDoc || d.dispatchNo === excludeDspDoc)) return false;
-    if (estateIdFilter && !matchEstate(d.estateId || d.dispatchedFromEstateId, estateIdFilter)) return false;
     return true;
   });
 
@@ -256,13 +304,18 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
 
 /**
  * Mengambil ringkasan saldo seluruh klon yang memiliki riwayat Topping, Okulasi, atau Dispatch
- * @param {Object} [options={}] - { estateId?: string }
+ * @param {Object} [options={}] - { estateId?: string, userContext?: Object }
  * @returns {Array<Object>}
  */
 export function getMataEntresBalances(options = {}) {
-  const allToppings = storage.get('entres_topping_transactions', []);
-  const allBuddings = storage.get('budding_transactions', []);
-  const allDispatches = storage.get('dispatch_transactions', []);
+  const userCtx = options.userContext || options.user || null;
+  const rawToppings = storage.get('entres_topping_transactions', []);
+  const rawBuddings = storage.get('budding_transactions', []);
+  const rawDispatches = storage.get('dispatch_transactions', []);
+
+  const allToppings = filterTransactionsByContext(rawToppings, userCtx, options.estateId);
+  const allBuddings = filterTransactionsByContext(rawBuddings, userCtx, options.estateId);
+  const allDispatches = filterTransactionsByContext(rawDispatches, userCtx, options.estateId);
 
   const klonSet = new Set();
 

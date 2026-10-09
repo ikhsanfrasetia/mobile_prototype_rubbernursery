@@ -5,7 +5,8 @@ import { normalizeKlonName } from '../../data/klon-master.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
-import { renderStatusDots } from '../../core/status-dot-renderer.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
+import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
 import {
   normalizeDateStr,
   renderCalendarHeaderButton,
@@ -49,6 +50,7 @@ export function formatBedenganCode(bedengan, bedenganCode) {
 
 export function renderBuddingGrafting() {
   const app = document.getElementById('app');
+  const userCtx = getCurrentUserContext();
 
   // Load Seleksi III FINAL documents (Rootstock population source)
   const allSelectionDocs = storage.get('pre_grafting_selection_documents', []);
@@ -58,7 +60,8 @@ export function renderBuddingGrafting() {
     d.status === 'DISETUJUI' &&
     Boolean(d.isFinal)
   );
-  const allBuddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
+  const rawBuddingTxs = storage.get('budding_transactions', []).filter(b => b.type === 'GRAFTING' || !b.type);
+  const allBuddingTxs = getAuthorizedTransactions(rawBuddingTxs, userCtx);
   const buddingTxs = allBuddingTxs.filter(b => {
     const d = normalizeDateStr(b.tanggal || b.date || b.createdAt);
     return d === selectedGraftingDate;
@@ -621,6 +624,11 @@ export function renderBuddingGrafting() {
       const doc = e.currentTarget.dataset.doc;
       let allTxs = storage.get('budding_transactions', []);
       const targetTx = allTxs.find(b => b.docNo === doc) || allTxs[idx];
+
+      if (!targetTx || !canUserAccessTransaction(targetTx, userCtx, 'DELETE')) {
+        toast.error('Anda tidak memiliki otoritas untuk menghapus transaksi ini.');
+        return;
+      }
 
       if (isTransactionLockedForMantri(targetTx)) {
         toast.error('Transaksi Okulasi tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');

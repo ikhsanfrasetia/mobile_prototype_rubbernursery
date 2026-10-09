@@ -29,6 +29,7 @@ import {
 import { getEligiblePindahSemaiSources } from '../seeding/dederan-pindah-semai-adapter.js';
 import { getMantriTodayTransactions } from '../verification/mantri-confirmation-service.js';
 import { renderAsbBottomNav, attachAsbBottomNavEvents } from '../../components/bottom-nav-asb.js';
+import { getAuthorizedTransactions } from '../../core/transaction-actor.js';
 
 /* SVG Icons sesuai desain acuan - proporsional & tajam */
 const ICONS = {
@@ -606,9 +607,9 @@ export function renderBeranda() {
   
   // Hitung pending Penyemaian (Dederan Belum Selesai ATAU Pindah Semai Eligible Belum Selesai)
   syncDederanIndukDocuments();
-  const dederIndukDocs = getDederanIndukDocuments();
+  const dederIndukDocs = getAuthorizedTransactions(getDederanIndukDocuments(), userCtx);
   const hasPendingDederan = dederIndukDocs.some(d => (d.sisaBelumDeder || 0) > 0);
-  const eligiblePindahSemai = getEligiblePindahSemaiSources();
+  const eligiblePindahSemai = getEligiblePindahSemaiSources(userCtx);
   const hasPendingPindahSemai = eligiblePindahSemai.some(s => (s.remainingQty || 0) > 0);
   const hasPendingBenih = hasPendingDederan || hasPendingPindahSemai;
 

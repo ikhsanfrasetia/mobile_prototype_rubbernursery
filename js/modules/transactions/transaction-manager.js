@@ -16,6 +16,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
+import { getAuthorizedTransactions, applyTransactionActor } from '../../core/transaction-actor.js';
 import { ROLE_LABELS } from '../../core/permissions.js';
 import { formatDate, todayISO, uid, formatStandardDocNo, generateUniqueDocNo, getModuleDocCode, MODULE_DOC_CODES } from '../../core/utils.js';
 import { openDrawer } from '../../components/drawer.js';
@@ -199,7 +200,8 @@ export async function renderTransactionManager() {
 
   // Ambil data untuk tab aktif
   const currentConfig = MODULE_CONFIGS[activeTab] || MODULE_CONFIGS.reception;
-  let items = await loadModuleData(activeTab);
+  let rawItems = await loadModuleData(activeTab);
+  let items = getAuthorizedTransactions(rawItems, user);
 
   // Filter pencarian
   if (searchQuery.trim()) {
@@ -962,13 +964,15 @@ async function loadModuleData(tab) {
 async function saveModuleRecord(tab, payload, editIndex, originalItem) {
   const cfg = MODULE_CONFIGS[tab];
   const list = await loadModuleData(tab);
-
-  const updatedRecord = {
+  const user = getCurrentUserContext();
+  const rawRecord = {
     ...(originalItem || {}),
     ...payload,
     id: originalItem?.id || payload.id || uid(`${tab.toUpperCase().slice(0, 3)}-`),
     updatedAt: new Date().toISOString()
   };
+
+  const updatedRecord = applyTransactionActor(rawRecord, editIndex !== null ? 'UPDATE' : 'CREATE', user);
 
   if (editIndex !== null && editIndex >= 0 && editIndex < list.length) {
     list[editIndex] = updatedRecord;

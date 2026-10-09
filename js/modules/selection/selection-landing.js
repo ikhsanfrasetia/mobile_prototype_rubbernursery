@@ -1343,7 +1343,7 @@ export function handlePascaBatchRowClick({ programCode, batchCode, user, onSaved
   }
 
   let rawSelectionPool = storage.get('selection_pool', []);
-  let scopedPool = filterSelectionByScope(rawSelectionPool, user).filter(item => {
+  let rawScopedPool = filterSelectionByScope(rawSelectionPool, user).filter(item => {
     const existing = findExistingSelectionTransaction(item);
     if (!existing) {
       return item.status !== 'DECLARED_CULLED' && item.status !== SELECTION_STATUS.DISETUJUI && item.status !== SELECTION_STATUS.MENUNGGU_VERIFIKASI && item.status !== 'SUBMITTED_TO_ASB' && item.status !== 'VERIFIED';
@@ -1357,6 +1357,8 @@ export function handlePascaBatchRowClick({ programCode, batchCode, user, onSaved
     }
     return false;
   });
+
+  const scopedPool = deduplicateLogicalSelectionPool(rawScopedPool);
 
   const postGraftingSelectionPool = scopedPool.filter(item =>
     item.originType !== 'REJECT_DEDERAN' &&
@@ -1631,9 +1633,69 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
 }
 
 /**
+ * Deduplicate Logical Selection Pool items to ensure 1 action card per logical pool item
+ */
+export function deduplicateLogicalSelectionPool(poolList = []) {
+  if (!Array.isArray(poolList) || poolList.length <= 1) return poolList;
+
+  const map = new Map();
+
+  poolList.forEach(item => {
+    // 1. If tied to an existing selection transaction (e.g. CULL doc), group by that transaction
+    const existingTx = findExistingSelectionTransaction(item);
+    let key;
+    if (existingTx && (existingTx.id || existingTx.docNo)) {
+      key = `TX:${existingTx.docNo || existingTx.id}`;
+    } else {
+      const mod = String(item.originType || item.sourceModule || 'GENERIC').toUpperCase().trim();
+      const dedDoc = String(item.dederanDocNo || '').trim();
+      const srcDoc = String(item.sourceDocNo || item.seedingDocNo || item.inspectionDocNo || '').trim();
+      const bed = String(item.bedenganCode || item.bedenganId || item.bedengan || '').trim();
+      const cat = String(item.category || item.alasanDitolakCategory || '').trim();
+      const prog = String(item.programCode || item.programId || item.program || '').trim();
+      const batch = String(item.batchCode || item.batchNo || '').trim();
+
+      key = `${mod}::${dedDoc || srcDoc || item.id || item.docNo}::${bed}::${prog}::${batch}::${cat}`;
+    }
+
+    if (!map.has(key)) {
+      map.set(key, item);
+    } else {
+      const existing = map.get(key);
+      const isReturnedItem = item.status === SELECTION_STATUS.DIKEMBALIKAN || item.status === 'REVISION' || Boolean(item.returnReason);
+      const isReturnedExisting = existing.status === SELECTION_STATUS.DIKEMBALIKAN || existing.status === 'REVISION' || Boolean(existing.returnReason);
+
+      if (isReturnedItem && !isReturnedExisting) {
+        map.set(key, { ...existing, ...item });
+      } else if (item.returnReason && !existing.returnReason) {
+        map.set(key, { ...existing, returnReason: item.returnReason });
+      }
+    }
+  });
+
+  return Array.from(map.values());
+}
+
+/**
  * Standardized Reject Pool & Culled History List (Dederan, Pindah Semai, Pasca-Okulasi)
  */
-export function renderStandardizedRejectList(poolItems = [], culledTxs = [], emptyTitle, emptyDesc, pageTitle, today) {
+export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], emptyTitle, emptyDesc, pageTitle, today) {
+  const poolItems = deduplicateLogicalSelectionPool(rawPoolItems);
+
+  // Deduplicate: If an item is currently active in poolItems awaiting declaration/re-declaration,
+  // do not render a duplicate active card for the same docNo in the bottom history list.
+  const activePoolDocNos = new Set(
+    poolItems.map(p => String(p.docNo || p.selectionDocNo || p.id || '').trim()).filter(Boolean)
+  );
+
+  const displayCulledTxs = culledTxs.filter(tx => {
+    const txDoc = String(tx.docNo || tx.selectionNo || tx.id || '').trim();
+    if (txDoc && activePoolDocNos.has(txDoc)) {
+      return false; // Already represented in the top active declaration/repair section
+    }
+    return true;
+  });
+
   return `
     <div style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
       <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">${esc(pageTitle)} (${poolItems.length})</h2>
@@ -1648,11 +1710,13 @@ export function renderStandardizedRejectList(poolItems = [], culledTxs = [], emp
           const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
           const unit = item.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
           const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN';
+          const isReturned = item.status === SELECTION_STATUS.DIKEMBALIKAN || item.status === 'REVISION';
           const prog = item.programCode || item.programName || item.program || '-';
           const batch = isDederan ? null : (item.batchCode || item.batchNo || null);
           const bedDisplay = formatBedenganDisplayCode(item);
           const sourceDoc = item.sourceDocNo || item.dederanDocNo || item.seedingDocNo || item.buddingDocNo || item.docNo || '-';
-          const itemDate = item.tanggalAfkir || item.tanggal || item.createdAt || today;
+          const rawItemDate = item.tanggalAfkir || item.tanggal || item.createdAt || today;
+          const itemDate = normalizeDateStr(rawItemDate) || formatDate(rawItemDate) || rawItemDate;
 
           return `
             <div class="card-pool-item" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 6px;">
@@ -1660,8 +1724,15 @@ export function renderStandardizedRejectList(poolItems = [], culledTxs = [], emp
               <!-- TOP ROW: TITLE & QTY -->
               <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                  <div style="font-size: 0.70rem; font-weight: 700; color: #64748B; text-transform: uppercase;">
-                    ${isDederan ? esc(prog) : `${esc(batch || '-')} • ${esc(prog)}`}
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 0.70rem; font-weight: 700; color: #64748B; text-transform: uppercase;">
+                      ${isDederan ? esc(prog) : `${esc(batch || '-')} • ${esc(prog)}`}
+                    </span>
+                    ${isReturned ? `
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA;">
+                        Dikembalikan
+                      </span>
+                    ` : ''}
                   </div>
                   <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
                     ${esc(bedDisplay)}
@@ -1672,6 +1743,14 @@ export function renderStandardizedRejectList(poolItems = [], culledTxs = [], emp
                   <span style="font-size: 0.72rem; font-weight: 700; color: #991B1B;">${unit}</span>
                 </div>
               </div>
+
+              <!-- CATATAN PENGEMBALIAN JIKA STATUS DIKEMBALIKAN -->
+              ${isReturned && item.returnReason ? `
+                <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 8px 10px; font-size: 0.72rem; color: #991B1B; line-height: 1.4;">
+                  <strong style="display: block; font-size: 0.68rem; color: #DC2626; margin-bottom: 2px;">Catatan Pengembalian Asisten:</strong>
+                  ${esc(item.returnReason)}
+                </div>
+              ` : ''}
 
               <!-- MIDDLE ROW: SOURCE DOC & TANGGAL (SEJAJAR) -->
               <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: #64748B;">
@@ -1686,7 +1765,7 @@ export function renderStandardizedRejectList(poolItems = [], culledTxs = [], emp
               <!-- BOTTOM ROW: TOMBOL DEKLARASI FULL-WIDTH -->
               <div style="margin-top: 4px; padding-top: 6px; border-top: 1px solid #F1F5F9;">
                 <button type="button" class="btn-deklarasi-afkir" data-pool-id="${esc(item.id || item.docNo)}" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2); transition: background 0.15s ease;">
-                  Deklarasi Bibit Afkir
+                  ${isReturned ? 'Deklarasi Ulang / Perbaiki' : 'Deklarasi Bibit Afkir'}
                 </button>
               </div>
 
@@ -1697,7 +1776,7 @@ export function renderStandardizedRejectList(poolItems = [], culledTxs = [], emp
     `}
 
     <!-- RIWAYAT TRANSAKSI / DEKLARASI -->
-    ${renderCulledHistoryList(culledTxs, 'Belum ada riwayat deklarasi', 'Riwayat deklarasi bibit afkir akan tercatat di sini.', 'Riwayat Deklarasi', today)}
+    ${renderCulledHistoryList(displayCulledTxs, 'Belum ada riwayat deklarasi', 'Riwayat deklarasi bibit afkir akan tercatat di sini.', 'Riwayat Deklarasi', today)}
   `;
 }
 
@@ -1724,15 +1803,43 @@ export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, t
           ${culledTxs.map(tx => {
             const qty = parseInt(tx.jumlahAfkir || tx.quantity || 0, 10);
             const unit = tx.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
-            const txDate = tx.tanggalSeleksi || tx.tanggal || tx.createdAt || today;
+            const rawTxDate = tx.tanggalSeleksi || tx.tanggal || tx.createdAt || today;
+            const txDate = normalizeDateStr(rawTxDate) || formatDate(rawTxDate) || rawTxDate;
             const bedDisplay = formatBedenganDisplayCode(tx);
+
+            let badgeText = 'Tercatat';
+            let badgeBg = '#F0FDF4';
+            let badgeColor = '#15803D';
+            let badgeBorder = '#BBF7D0';
+
+            if (tx.status === SELECTION_STATUS.DISETUJUI || tx.verificationStatus === 'TERVERIFIKASI' || tx.verificationStatus === 'DATA_TERKONFIRMASI') {
+              badgeText = 'Disetujui';
+              badgeBg = '#F0FDF4';
+              badgeColor = '#15803D';
+              badgeBorder = '#BBF7D0';
+            } else if (tx.status === SELECTION_STATUS.DIKEMBALIKAN || tx.status === 'REVISION') {
+              badgeText = 'Dikembalikan';
+              badgeBg = '#FEF2F2';
+              badgeColor = '#DC2626';
+              badgeBorder = '#FECACA';
+            } else if (tx.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || tx.submissionStatus === 'SUBMITTED_TO_ASB') {
+              badgeText = 'Menunggu';
+              badgeBg = '#FEF3C7';
+              badgeColor = '#B45309';
+              badgeBorder = '#FDE68A';
+            } else if (tx.status === SELECTION_STATUS.READY_TO_CONFIRM) {
+              badgeText = 'Siap Konfirmasi';
+              badgeBg = '#FEF3C7';
+              badgeColor = '#B45309';
+              badgeBorder = '#FDE68A';
+            }
 
             return `
               <div class="card-culled-tx" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                   <div style="display: flex; align-items: center; gap: 6px;">
                     <strong style="color: #0F172A; font-size: 0.82rem;">${esc(tx.docNo || '-')}</strong>
-                    <span style="font-size: 0.65rem; font-weight: 700; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 1px 6px; border-radius: 4px;">Tercatat</span>
+                    <span style="font-size: 0.65rem; font-weight: 700; color: ${badgeColor}; background: ${badgeBg}; border: 1px solid ${badgeBorder}; padding: 1px 6px; border-radius: 4px;">${badgeText}</span>
                   </div>
                   <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
                     ${esc(bedDisplay)} • Sumber: <strong style="color: #334155;">${esc(tx.sourceDocNo || tx.sourceTransactionId || '-')}</strong>
@@ -1744,7 +1851,7 @@ export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, t
                     <span style="font-weight: 800; font-size: 0.95rem; color: #DC2626;">${qty.toLocaleString('id-ID')}</span>
                     <span style="font-size: 0.70rem; font-weight: 700; color: #991B1B;">${unit}</span>
                   </div>
-                  <!-- DATE AT BOTTOM-RIGHT -->
+                  <!-- DATE AT BOTTOM-RIGHT (STANDARDIZED DD/MM/YYYY) -->
                   <div style="font-size: 0.68rem; color: #64748B; margin-top: 3px;">
                     ${esc(txDate)}
                   </div>
@@ -1802,7 +1909,7 @@ function renderMantriSelectionLanding(app, user) {
 
   // Filter Selection Pool into Pra-Semai (Dederan) vs Pasca-Okulasi
   let rawSelectionPool = storage.get('selection_pool', []);
-  let scopedPool = filterSelectionByScope(rawSelectionPool, user).filter(item => {
+  let rawScopedPool = filterSelectionByScope(rawSelectionPool, user).filter(item => {
     const existing = findExistingSelectionTransaction(item);
     if (!existing) {
       return item.status !== 'DECLARED_CULLED' && item.status !== SELECTION_STATUS.DISETUJUI && item.status !== SELECTION_STATUS.MENUNGGU_VERIFIKASI && item.status !== 'SUBMITTED_TO_ASB' && item.status !== 'VERIFIED';
@@ -1816,6 +1923,8 @@ function renderMantriSelectionLanding(app, user) {
     }
     return false;
   });
+
+  const scopedPool = deduplicateLogicalSelectionPool(rawScopedPool);
 
   const preSowingSelectionPool = scopedPool.filter(item =>
     (item.originType === 'REJECT_DEDERAN' || (!item.originType && item.sourceModule === 'DEDERAN')) &&
@@ -2231,6 +2340,48 @@ function renderMantriSelectionLanding(app, user) {
               } catch (err) {
                 console.error('[Declare Selection Error]', err);
                 toast(err.message || 'Gagal menyimpan deklarasi seleksi', 'error');
+              }
+            }
+          });
+        }
+      });
+    });
+  });
+
+  // Re-declare / Repair flow for returned items in culled history
+  app.querySelectorAll('.btn-perbaiki-cull').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const cullId = e.currentTarget.dataset.cullId;
+      const targetCullItem = scopedAllTxs.find(s => (s.id && String(s.id) === String(cullId)) || (s.docNo && String(s.docNo) === String(cullId)) || (s.selectionNo && String(s.selectionNo) === String(cullId))) ||
+        scopedPool.find(s => (s.id && String(s.id) === String(cullId)) || (s.docNo && String(s.docNo) === String(cullId)));
+      if (!targetCullItem) return;
+
+      const displayDocNo = targetCullItem.docNo || standardizeSelectionDocNo(targetCullItem.docNo, 1);
+
+      // STEP 1: Modal Konfirmasi Deklarasi
+      openSelectionConfirmationModal({
+        item: targetCullItem,
+        displayDocNo,
+        user,
+        onConfirm: ({ category, notes }) => {
+          // STEP 2: Kamera / Upload Dokumentasi Foto
+          openSelectionCameraModal({
+            item: targetCullItem,
+            displayDocNo,
+            user,
+            category,
+            notes,
+            onCaptureCancel: () => {
+              toast('Pengambilan foto dokumentasi dibatalkan. Perbaikan belum disimpan.', 'info');
+            },
+            onCaptureSuccess: (photoResult) => {
+              try {
+                const res = declareSelectionItem(targetCullItem, photoResult, user, { category, notes });
+                toast(`Dokumen ${res.transaction.docNo} berhasil diperbaiki dan siap dikonfirmasi kembali di Central Hub.`, 'success');
+                renderMantriSelectionLanding(app, user);
+              } catch (err) {
+                console.error('[Repair Selection Error]', err);
+                toast(err.message || 'Gagal menyimpan perbaikan seleksi', 'error');
               }
             }
           });
@@ -3079,6 +3230,15 @@ function renderAfkirPoolList(poolItems, culledItems, emptyTitle, emptyDesc, pool
                 <div>Pengaju: <strong style="color: #334155;">${esc(ctx.createdByName || ctx.mantri || user.name)}</strong></div>
                 <div>${esc(ctx.tanggalSeleksi || ctx.tanggal || today)}</div>
               </div>
+
+              <!-- 6. ACTION JIKA STATUS DIKEMBALIKAN (PERBAIKI / DEKLARASI ULANG) -->
+              ${isReturned ? `
+                <div style="margin-top: 4px; padding-top: 6px; border-top: 1px dashed #FECACA;">
+                  <button type="button" class="btn-perbaiki-cull" data-cull-id="${esc(ctx.id || ctx.docNo || ctx.selectionNo)}" style="width: 100%; min-height: 38px; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25); text-align: center; transition: background 0.15s ease;">
+                    Deklarasi Ulang / Perbaiki
+                  </button>
+                </div>
+              ` : ''}
             </div>
           `;
   }).join('')}

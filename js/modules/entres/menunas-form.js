@@ -31,6 +31,7 @@ function formatDateDDMMYYYY(val) {
 }
 
 import { getCurrentUserContext } from '../../core/user-context.js';
+import { applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 
 export function renderMenunasForm() {
   const app = document.getElementById('app');
@@ -164,11 +165,11 @@ export function renderMenunasForm() {
                 <span style="font-size: 0.68rem; color: #116834; font-weight: 700;">Realisasi Aktual</span>
               </div>
               <div style="position: relative;">
-                <input id="inp-pohon-ditunas" type="number" min="1" value="${initialPohonDitunas}" placeholder="Contoh: 120" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #116834; border-radius: 8px; font-size: 0.92rem; font-weight: 800; color: #116834; box-sizing: border-box; transition: border-color 0.15s ease;" />
+                <input id="inp-pohon-ditunas" type="number" min="1" max="${parseInt(selectedPlot.jlhPokok || 0, 10) || 0}" value="${initialPohonDitunas}" placeholder="Contoh: 120" style="width: 100%; height: 44px; padding: 0 64px 0 12px; background: #FFFFFF; border: 1px solid #116834; border-radius: 8px; font-size: 0.92rem; font-weight: 800; color: #116834; box-sizing: border-box; transition: border-color 0.15s ease;" oninput="if(this.value && parseInt(this.value) > parseInt(this.max)) this.value = this.max;" />
                 <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 700; color: #116834;">Pkk</span>
               </div>
               <div style="font-size: 0.68rem; color: #64748B; margin-top: 4px;">
-                Masukkan jumlah pokok aktual yang dikerjakan pada kegiatan menunas hari ini.
+                Masukkan jumlah pokok aktual yang dikerjakan pada kegiatan menunas hari ini. Maksimal: ${parseInt(selectedPlot.jlhPokok || 0, 10) || 0} Pkk.
               </div>
             </div>
 
@@ -248,6 +249,18 @@ export function renderMenunasForm() {
   app.querySelector('#btn-close-validation')?.addEventListener('click', closeValidationModal);
   valOverlay?.addEventListener('click', closeValidationModal);
 
+  // Dynamic input validation listener
+  const pohonInp = app.querySelector('#inp-pohon-ditunas');
+  const maxPlotPokok = parseInt(String(selectedPlot.jlhPokok || '0').replace(/\D/g, ''), 10) || 0;
+  if (pohonInp) {
+    pohonInp.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10);
+      if (!isNaN(val) && val > maxPlotPokok && maxPlotPokok > 0) {
+        e.target.value = maxPlotPokok;
+      }
+    });
+  }
+
   // Save Menunas Transaction
   app.querySelector('#btn-simpan-menunas')?.addEventListener('click', () => {
     try {
@@ -261,9 +274,17 @@ export function renderMenunasForm() {
     const pohonDitunasVal = (app.querySelector('#inp-pohon-ditunas')?.value || '').trim();
 
     const errors = [];
+    const maxPokokStr = String(selectedPlot.jlhPokok || '0').replace(/\D/g, '');
+    let maxPokok = parseInt(maxPokokStr, 10);
+    if (isNaN(maxPokok)) maxPokok = 0; // Fallback to 0 if totally invalid
+
+    const jumlahPohonDitunas = parseInt(pohonDitunasVal, 10);
+
     if (!tgl) errors.push('Tanggal Menunas wajib diisi.');
-    if (!pohonDitunasVal || parseInt(pohonDitunasVal, 10) <= 0) {
+    if (!pohonDitunasVal || isNaN(jumlahPohonDitunas) || jumlahPohonDitunas <= 0) {
       errors.push('Jumlah Pokok Ditunas wajib diisi angka > 0.');
+    } else if (jumlahPohonDitunas > maxPokok) {
+      errors.push(`Jumlah Pokok Ditunas tidak boleh melebihi Populasi (${maxPokok} Pkk).`);
     }
 
     if (errors.length > 0) {
@@ -271,14 +292,14 @@ export function renderMenunasForm() {
       return;
     }
 
-    const jumlahPohonDitunas = parseInt(pohonDitunasVal, 10);
-
     if (editingIdx !== null && txs[editingIdx]) {
-      txs[editingIdx] = {
+      let updatedTx = {
         ...txs[editingIdx],
         jumlahPohonDitunas,
         updatedAt: new Date().toISOString()
       };
+      updatedTx = applyTransactionActor(updatedTx, AUDIT_EVENT_TYPES.UPDATE, user, `Pembaruan transaksi menunas ${updatedTx.docNo}`);
+      txs[editingIdx] = updatedTx;
       storage.set('entres_menunas_transactions', txs);
       storage.remove('editing_menunas_index');
 
@@ -294,7 +315,7 @@ export function renderMenunasForm() {
     const currentYear = tgl ? (parseInt(String(tgl).substring(0, 4), 10) || new Date().getFullYear()) : new Date().getFullYear();
     const docNo = generateUniqueDocNo('BWGDTL', combinedTxs, currentYear);
 
-    const newTx = {
+    let newTx = {
       docNo,
       type: 'MENUNAS',
       kodePlot: selectedPlot.kodePlot,
@@ -314,6 +335,8 @@ export function renderMenunasForm() {
       status: 'SUBMITTED',
       createdAt: new Date().toISOString()
     };
+
+    newTx = applyTransactionActor(newTx, AUDIT_EVENT_TYPES.CREATE, user, `Pembuatan transaksi menunas ${docNo} (${jumlahPohonDitunas} Pkk)`);
 
     txs.push(newTx);
     storage.set('entres_menunas_transactions', txs);

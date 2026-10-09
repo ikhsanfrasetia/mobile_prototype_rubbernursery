@@ -17,7 +17,7 @@ import { getBedenganById } from '../../data/bedengan-master.js';
 import { getProgramById } from '../../data/program-master.js';
 import { getEstateById, resolveNurseryDivision } from '../../data/estate-master.js';
 import { formatStandardDocNo, formatDate } from '../../core/utils.js';
-import { applyTransactionActor, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
+import { applyTransactionActor, canUserAccessTransaction, AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
 import { 
   deductBatchStock as deductInventoryStock, 
   getAvailableQty as getInventoryAvailableQty, 
@@ -79,18 +79,8 @@ export function canPerformAsistenDestructionAction(item, currentUser) {
  */
 export function filterDestructionByScope(records, currentUser) {
   if (!Array.isArray(records) || !currentUser) return [];
-  const role = normalizeRole(currentUser.role || currentUser.rawRole);
-
   return records.filter(item => {
-    // Estate scope
-    if (currentUser.estateId && item.estateId && item.estateId !== currentUser.estateId) {
-      return false;
-    }
-    // Division scope for division-level roles
-    if (currentUser.divisionId && item.divisionId && item.divisionId !== currentUser.divisionId) {
-      return false;
-    }
-    return true;
+    return canUserAccessTransaction(item, currentUser, 'READ');
   });
 }
 

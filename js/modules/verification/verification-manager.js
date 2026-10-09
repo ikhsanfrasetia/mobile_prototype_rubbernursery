@@ -18,6 +18,7 @@ import { getAllBatches } from '../../data/batch-master.js';
 import { getAllBedengan } from '../../data/bedengan-master.js';
 import { getProgramById } from '../../data/program-master.js';
 import { getEstateById } from '../../data/estate-master.js';
+import { getWorkersForUserContext } from '../../data/worker-master.js';
 import {
   getSelectionStageLabel,
   createSelection2DocumentFromSelection1,
@@ -270,11 +271,11 @@ export function resolveTidakHadirDeterministic(referenceId, userCtx = null) {
   });
 
   if (matchingAtts.length > 0) {
-    let activePool = [];
+    let scopedAll = [];
     try {
-      activePool = getWorkersForUserContext(user, { activeOnly: true }) || [];
+      scopedAll = getWorkersForUserContext(user, { activeOnly: false }) || [];
     } catch (_) {
-      activePool = [];
+      scopedAll = [];
     }
 
     const presentWorkerKeys = new Set();
@@ -284,10 +285,18 @@ export function resolveTidakHadirDeterministic(referenceId, userCtx = null) {
       if (a.workerCode) presentWorkerKeys.add(String(a.workerCode));
     });
 
-    const absentWorkers = activePool.filter(w =>
-      !presentWorkerKeys.has(String(w.id)) &&
-      !presentWorkerKeys.has(String(w.code))
+    const scopedAbsent = scopedAll.filter(
+      w => w.status !== 'ACTIVE' || w.active === false || !!w.absentType
     );
+
+    const activeUnchecked = scopedAll.filter(
+      w =>
+        (w.status === 'ACTIVE' && w.active !== false && !w.absentType) &&
+        !presentWorkerKeys.has(String(w.id)) &&
+        !presentWorkerKeys.has(String(w.code))
+    );
+
+    const absentWorkers = [...scopedAbsent, ...activeUnchecked];
 
     return {
       id: targetId,
@@ -397,7 +406,15 @@ export function findSourceRecord(referenceType, referenceId, userCtx = null) {
 export function getVerificationDetailData(sourceRecord, userCtx = null, referenceType = null) {
   const raw = sourceRecord || {};
   const refType = referenceType || raw.referenceType || raw.type || raw.moduleType || 'PENERIMAAN';
+  const res = _computeVerificationDetailData(raw, userCtx, refType);
+  if (res && typeof res === 'object') {
+    res.returnReason = raw.returnReason || null;
+    res.status = raw.status || raw.verificationStatus || null;
+  }
+  return res;
+}
 
+function _computeVerificationDetailData(raw, userCtx = null, refType = 'PENERIMAAN') {
   switch (refType) {
     case 'TIDAK_HADIR': {
       const totalAbsent = raw.totalAbsent !== undefined
@@ -659,6 +676,10 @@ export function getVerificationDetailData(sourceRecord, userCtx = null, referenc
       const bedengan = raw.bedengan || raw.lokasi || '-';
       const summary = `${stage}: ${formattedLayak} Layak, ${formattedAfkir} Afkir`;
 
+      const rawNotes = raw.keterangan || raw.catatan || raw.notes;
+      const isLegacyFallback = Boolean(rawNotes && raw.alasan && String(rawNotes).trim() === String(raw.alasan).trim());
+      const displayNotes = (!isLegacyFallback && rawNotes !== undefined && rawNotes !== null && String(rawNotes).trim() !== '' && String(rawNotes).trim() !== '-') ? String(rawNotes).trim() : '-';
+
       return {
         title: 'Penyeleksian Bibit',
         info: `Kategori ${reason} · Bedengan ${bedengan}`,
@@ -671,7 +692,7 @@ export function getVerificationDetailData(sourceRecord, userCtx = null, referenc
           { label: 'Bedengan / Lokasi', value: bedengan },
           { label: 'Bibit Afkir (Selected)', value: afkir !== '-' ? `${formattedAfkir} Pkk` : '-', highlight: true },
           { label: 'Bibit Dipertahankan (Retained)', value: layak !== '-' ? `${formattedLayak} Pkk` : '-' },
-          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+          { label: 'Keterangan', value: displayNotes }
         ]
       };
     }
@@ -972,12 +993,21 @@ export function getActionableRecordsForAsb(currentUser, filters = {}) {
     // 1. Exclude logistics types (REQUEST)
     if (LOGISTICS_TYPES.includes(refType)) return;
 
-    // 2. Jika sudah TERVERIFIKASI final, tidak actionable lagi untuk pending
-    if (verifRecord.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || verifRecord.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI) return;
+    // 2. Jika sudah TERVERIFIKASI final atau DIKEMBALIKAN, tidak actionable lagi untuk pending queue Asisten
+    if (
+      verifRecord.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI ||
+      verifRecord.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI ||
+      verifRecord.verificationStatus === VERIFICATION_STATUS.DIKEMBALIKAN ||
+      verifRecord.verificationStatus === 'REVISION' ||
+      verifRecord.verificationStatus === 'DIKEMBALIKAN'
+    ) return;
 
     // 3. Resolve source record untuk enrichment & scope check
     const sourceRecord = findSourceRecord(refType, refId, currentUser);
     const rawRecord = sourceRecord || verifRecord;
+
+    // Jika source record berstatus DIKEMBALIKAN / REVISION, tidak actionable untuk pending queue Asisten
+    if (rawRecord.status === 'DIKEMBALIKAN' || rawRecord.status === 'REVISION' || rawRecord.materialSubmissionStatus === 'DIKEMBALIKAN') return;
 
     const estateId = verifRecord.estateId || rawRecord.targetEstateId || rawRecord.estateId || rawRecord.sourceEstateId;
     const divisionId = verifRecord.divisionId || rawRecord.targetDivisionId || rawRecord.divisionId || rawRecord.sourceDivisionId;
@@ -1059,6 +1089,103 @@ export function getPendingVerificationCount(currentUser) {
   if (!currentUser) return 0;
   const list = getActionableRecordsForAsb(currentUser);
   return list.length;
+}
+
+/**
+ * Mengambil seluruh catatan verifikasi dalam scope ASB (Pending, Dikembalikan, Terverifikasi)
+ * Digunakan untuk Transaction List View pada layar per modul.
+ */
+export function getVerificationRecordsByScope(currentUser, filters = {}) {
+  const allVerifRecords = getAllVerifications();
+
+  // Deduplicate: ambil verifikasi terbaru per (referenceType:referenceId)
+  const latestMap = new Map();
+  allVerifRecords.forEach(v => {
+    const key = `${v.referenceType}:${v.referenceId}`;
+    if (!latestMap.has(key) || new Date(v.createdAt || v.submittedAt || 0) > new Date(latestMap.get(key).createdAt || latestMap.get(key).submittedAt || 0)) {
+      latestMap.set(key, v);
+    }
+  });
+
+  const list = [];
+
+  latestMap.forEach((verifRecord) => {
+    const refType = verifRecord.referenceType;
+    const refId = verifRecord.referenceId;
+
+    // Exclude logistics types (REQUEST)
+    if (LOGISTICS_TYPES.includes(refType)) return;
+
+    const sourceRecord = findSourceRecord(refType, refId, currentUser);
+    const rawRecord = sourceRecord || verifRecord;
+
+    const estateId = verifRecord.estateId || rawRecord.targetEstateId || rawRecord.estateId || rawRecord.sourceEstateId;
+    const divisionId = verifRecord.divisionId || rawRecord.targetDivisionId || rawRecord.divisionId || rawRecord.sourceDivisionId;
+    const docNo = verifRecord.referenceDocNo || rawRecord.docNo || rawRecord.id || refId;
+
+    // ROLE + ESTATE + DIVISION ISOLATION
+    if (currentUser?.role && normalizeRole(currentUser.role) === ROLES.ASISTEN_BIBITAN) {
+      if (currentUser.estateId && estateId && estateId !== currentUser.estateId) return;
+      if (currentUser.divisionId && divisionId && divisionId !== currentUser.divisionId) return;
+    } else if (currentUser?.estateId && estateId && estateId !== currentUser.estateId) {
+      return;
+    }
+
+    let evalResult = { canApprove: true, errors: [], warnings: [] };
+    if (sourceRecord) {
+      try {
+        evalResult = evaluateRecordConsistency(refType, sourceRecord);
+      } catch (_) {
+        // Operational types default to clean
+      }
+    }
+
+    const dateValue = rawRecord.date || rawRecord.tanggal || rawRecord.tanggalSeleksi || rawRecord.tanggalDeder ||
+      rawRecord.tanggalOkulasi || rawRecord.tanggalPemeriksaan || rawRecord.tanggalTopping || rawRecord.tanggalTunas ||
+      rawRecord.activityDate || rawRecord.attendanceDate || rawRecord.dispatchDate || rawRecord.receiptDate ||
+      verifRecord.submittedAt || verifRecord.createdAt;
+
+    const matchedModule = VERIFICATION_10_MODULES.find(m => m.types.includes(refType) || m.id === refType);
+    const moduleCategory = matchedModule ? matchedModule.id : refType;
+
+    const normalizedData = getVerificationDetailData(sourceRecord || rawRecord, currentUser, refType);
+
+    list.push({
+      referenceType: refType,
+      referenceId: refId,
+      referenceDocNo: docNo,
+      moduleCategory,
+      rawRecord: sourceRecord || rawRecord,
+      normalizedData,
+      summary: normalizedData.summary,
+      estateId,
+      divisionId,
+      currentStatus: rawRecord.status || verifRecord.verificationStatus || 'SUBMITTED',
+      verificationStatus: verifRecord.verificationStatus || VERIFICATION_STATUS.MENUNGGU_VERIFIKASI,
+      returnReason: rawRecord.returnReason || verifRecord.returnReason || null,
+      latestVerification: verifRecord,
+      canApprove: evalResult.canApprove,
+      errors: evalResult.errors,
+      warnings: evalResult.warnings,
+      date: dateValue,
+      submittedByName: verifRecord.submittedByName || rawRecord.mantri || rawRecord.submittedByName || 'Mantri Bibitan',
+      submittedAt: verifRecord.submittedAt || verifRecord.createdAt
+    });
+  });
+
+  return list.filter(item => {
+    if (filters.estateId && item.estateId !== filters.estateId) return false;
+    if (filters.divisionId && item.divisionId !== filters.divisionId) return false;
+    if (filters.moduleCategory && filters.moduleCategory !== 'ALL' && item.moduleCategory !== filters.moduleCategory) return false;
+    if (filters.referenceType && filters.referenceType !== 'ALL' && item.referenceType !== filters.referenceType) return false;
+    if (filters.status && filters.status !== 'ALL' && item.verificationStatus !== filters.status) return false;
+    if (filters.date) {
+      const itemDateStr = String(item.date || '').substring(0, 10);
+      const filterDateStr = String(filters.date).substring(0, 10);
+      if (itemDateStr && filterDateStr && !itemDateStr.includes(filterDateStr) && !filterDateStr.includes(itemDateStr)) return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -1444,6 +1571,9 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
       } else {
         records[idx].status = 'DIKEMBALIKAN';
         records[idx].verificationStatus = VERIFICATION_STATUS.DIKEMBALIKAN;
+        if (records[idx].submissionStatus) {
+          records[idx].submissionStatus = 'DIKEMBALIKAN';
+        }
       }
       records[idx].returnReason = returnReason.trim();
       records[idx].returnedAt = nowIso;

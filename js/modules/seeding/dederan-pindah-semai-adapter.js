@@ -16,6 +16,7 @@
 import { storage } from '../../core/storage.js';
 import { DEDERAN_STORAGE_KEYS, getBedenganInspectionSummary, getDederanTransactionsByParent } from './dederan-manager.js';
 import { SELECTION_STATUS } from '../selection/selection-manager.js';
+import { getAuthorizedTransactions } from '../../core/transaction-actor.js';
 import { 
   getAllIssueDocuments, 
   calculateRemainingIssueBalance as calcRemainingIssueBalance 
@@ -183,10 +184,12 @@ export function getDederanSelectionApprovalStatus(dtx) {
 /**
  * Gets all eligible Pindah Semai sources derived from 100% completed Dederan Inspections
  * with mandatory SELECTION APPROVAL GATE (status === DISETUJUI)
+ * @param {Object} [userContext=null] - Optional user context for authorization filtering
  * @returns {Array<Object>} Normalized Source Objects
  */
-export function getEligiblePindahSemaiSources() {
-  const dederTxs = storage.get(DEDERAN_STORAGE_KEYS.TRANSACTIONS, []);
+export function getEligiblePindahSemaiSources(userContext = null) {
+  const rawDederTxs = storage.get(DEDERAN_STORAGE_KEYS.TRANSACTIONS, []);
+  const dederTxs = getAuthorizedTransactions(rawDederTxs, userContext);
   const seedingTxs = storage.get('seeding_transactions', []);
   const allInspections = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
 
@@ -259,7 +262,15 @@ export function getEligiblePindahSemaiSources() {
       isFromDederan: true,
       selectionStatus: approval.status,
       selectionApprovedAt: approval.verifiedAt,
-      selectionApprovedBy: approval.verifiedByName || (summary.totalTidakBerhasil === 0 ? 'Pemeriksaan 100% Normal' : 'Asisten Bibitan')
+      selectionApprovedBy: approval.verifiedByName || (summary.totalTidakBerhasil === 0 ? 'Pemeriksaan 100% Normal' : 'Asisten Bibitan'),
+      recordedBy: dtx.recordedBy || dtx.actorName || dtx.createdByName || null,
+      actorName: dtx.actorName || dtx.recordedBy || dtx.createdByName || null,
+      actorCode: dtx.actorCode || dtx.createdByLoginCode || dtx.createdByUserId || null,
+      createdBy: dtx.createdBy || null,
+      createdByUserId: dtx.createdByUserId || null,
+      createdByLoginCode: dtx.createdByLoginCode || null,
+      createdByName: dtx.createdByName || dtx.actorName || null,
+      createdByEstateId: dtx.createdByEstateId || dtx.estateId || null
     };
 
     eligibleSources.push(normalizedSource);
@@ -270,10 +281,12 @@ export function getEligiblePindahSemaiSources() {
 
 /**
  * Gets all inspected Dederan sources including those pending selection approval (for UX status overview)
+ * @param {Object} [userContext=null] - Optional user context for authorization filtering
  * @returns {Array<Object>} List of all sources with approval metadata
  */
-export function getAllInspectedDederanSources() {
-  const dederTxs = storage.get(DEDERAN_STORAGE_KEYS.TRANSACTIONS, []);
+export function getAllInspectedDederanSources(userContext = null) {
+  const rawDederTxs = storage.get(DEDERAN_STORAGE_KEYS.TRANSACTIONS, []);
+  const dederTxs = getAuthorizedTransactions(rawDederTxs, userContext);
   const seedingTxs = storage.get('seeding_transactions', []);
   const allInspections = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
 
@@ -341,7 +354,15 @@ export function getAllInspectedDederanSources() {
       selectionStatus: approval.status,
       selectionStatusLabel: approval.statusLabel,
       selectionApprovedAt: approval.verifiedAt,
-      selectionApprovedBy: approval.verifiedByName
+      selectionApprovedBy: approval.verifiedByName,
+      recordedBy: dtx.recordedBy || dtx.actorName || dtx.createdByName || null,
+      actorName: dtx.actorName || dtx.recordedBy || dtx.createdByName || null,
+      actorCode: dtx.actorCode || dtx.createdByLoginCode || dtx.createdByUserId || null,
+      createdBy: dtx.createdBy || null,
+      createdByUserId: dtx.createdByUserId || null,
+      createdByLoginCode: dtx.createdByLoginCode || null,
+      createdByName: dtx.createdByName || dtx.actorName || null,
+      createdByEstateId: dtx.createdByEstateId || dtx.estateId || null
     });
   });
 
@@ -350,9 +371,11 @@ export function getAllInspectedDederanSources() {
 
 /**
  * Checks if a specific Dederan transaction has remaining eligible Pindah Semai quota
+ * @param {string} dederTxDocNo
+ * @param {Object} [userContext=null]
  */
-export function getRemainingPindahSemaiQuota(dederTxDocNo) {
-  const sources = getEligiblePindahSemaiSources();
+export function getRemainingPindahSemaiQuota(dederTxDocNo, userContext = null) {
+  const sources = getEligiblePindahSemaiSources(userContext);
   const source = sources.find(s => s.dederanTxDocNo === dederTxDocNo || s.sourceDocNo === dederTxDocNo);
   return source ? source.remainingQty : 0;
 }

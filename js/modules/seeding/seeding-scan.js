@@ -16,9 +16,10 @@ import { getEligiblePindahSemaiSources } from './dederan-pindah-semai-adapter.js
 
 export function renderSeedingScan() {
   const app = document.getElementById('app');
+  const userCtx = getCurrentUserContext();
 
   const sourceIdx = storage.get('seeding_source_index', null);
-  const eligibleSources = getEligiblePindahSemaiSources();
+  const eligibleSources = getEligiblePindahSemaiSources(userCtx);
   let sourceTx = eligibleSources.find(s => s.sourceIndex == sourceIdx || s.docNo == sourceIdx || s.dederanTxDocNo == sourceIdx);
   
   // Defense-in-Depth Guard: If Dederan source is not approved, BLOCK and redirect
@@ -37,7 +38,6 @@ export function renderSeedingScan() {
   const program = sourceTx.program || sourceTx.rawState?.programNurseryCode || 'PRG/NUR/01/2026';
   const klon = sourceTx.klon ? normalizeKlonName(sourceTx.klon) : 'GT 1';
 
-  const userCtx = getCurrentUserContext();
   const effectiveEstateId = sourceTx.estateId || userCtx?.estateId || 'EST-TBS';
   const effectiveDivisionId = sourceTx.divisionId || userCtx?.divisionId || (effectiveEstateId === 'EST-APM' ? 'DIV-APM-02' : 'DIV-001');
   const effectiveProgramId = sourceTx.programId || sourceTx.rawState?.programNurseryId || null;

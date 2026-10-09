@@ -26,6 +26,7 @@ import {
   VERIFICATION_STATUS,
   REFERENCE_TYPE_LABELS,
   getActionableRecordsForAsb,
+  getVerificationRecordsByScope,
   getVerifiedTransactionsByScope,
   get10ModulesSummary,
   canSubmitFinalVerificationToServer,
@@ -286,14 +287,10 @@ function renderModuleGridView(app, userCtx) {
  */
 function renderTransactionListView(app, userCtx) {
   const currentMod = VERIFICATION_10_MODULES.find(m => m.id === activeModuleId) || VERIFICATION_10_MODULES[0];
-  const allActionable = getActionableRecordsForAsb(userCtx);
-  const allVerified = getVerifiedTransactionsByScope(userCtx);
+  const allRecords = getVerificationRecordsByScope(userCtx);
 
   // Filter items matching this module
-  const pendingForMod = allActionable.filter(item => currentMod.types.includes(item.referenceType) || item.moduleCategory === currentMod.id);
-  const verifiedForMod = allVerified.filter(item => currentMod.types.includes(item.referenceType) || item.moduleCategory === currentMod.id);
-
-  const combinedList = [...pendingForMod, ...verifiedForMod];
+  const combinedList = allRecords.filter(item => currentMod.types.includes(item.referenceType) || item.moduleCategory === currentMod.id);
 
   app.innerHTML = `
     <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -352,6 +349,22 @@ function renderTransactionListView(app, userCtx) {
           </div>
         ` : combinedList.map(item => {
           const isVerified = item.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || item.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI;
+          const isReturned = item.verificationStatus === VERIFICATION_STATUS.DIKEMBALIKAN || item.currentStatus === 'DIKEMBALIKAN' || item.currentStatus === 'REVISION' || item.rawRecord?.status === 'DIKEMBALIKAN';
+          
+          let badgeText = 'Menunggu';
+          let badgeBg = '#FEF3C7';
+          let badgeColor = '#92400E';
+
+          if (isVerified) {
+            badgeText = 'Terverifikasi';
+            badgeBg = '#DEF7EC';
+            badgeColor = '#03543F';
+          } else if (isReturned) {
+            badgeText = 'Dikembalikan';
+            badgeBg = '#FEF2F2';
+            badgeColor = '#DC2626';
+          }
+
           const docNo = item.referenceDocNo || item.docNo || item.id;
           const dateStr = item.date ? String(item.date).substring(0, 10) : activeFilterDate;
           const workerName = item.submittedByName || item.rawRecord?.mantri || item.rawRecord?.actorName || 'Mantri Bibitan';
@@ -381,8 +394,8 @@ function renderTransactionListView(app, userCtx) {
               </div>
 
               <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                <span style="font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: ${isVerified ? '#DEF7EC' : '#FEF3C7'}; color: ${isVerified ? '#03543F' : '#92400E'};">
-                  ${isVerified ? 'Terverifikasi' : 'Menunggu'}
+                <span style="font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor};">
+                  ${badgeText}
                 </span>
                 <svg viewBox="0 0 24 24" width="16" height="16" stroke="#94A3B8" stroke-width="2.2" fill="none">
                   <polyline points="9 18 15 12 9 6"></polyline>
@@ -443,6 +456,23 @@ function renderTransactionDetailView(app, userCtx) {
   const currentMod = VERIFICATION_10_MODULES.find(m => m.id === selectedTxItem.moduleCategory || m.types.includes(selectedTxItem.referenceType)) || VERIFICATION_10_MODULES[0];
   const docNo = selectedTxItem.referenceDocNo || selectedTxItem.docNo || selectedTxItem.id;
   const isVerified = selectedTxItem.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || selectedTxItem.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI;
+  const isReturned = selectedTxItem.verificationStatus === VERIFICATION_STATUS.DIKEMBALIKAN || selectedTxItem.currentStatus === 'DIKEMBALIKAN' || selectedTxItem.currentStatus === 'REVISION' || selectedTxItem.rawRecord?.status === 'DIKEMBALIKAN' || selectedTxItem.rawRecord?.verificationStatus === VERIFICATION_STATUS.DIKEMBALIKAN;
+
+  let badgeText = 'Menunggu';
+  let badgeBg = '#FEF3C7';
+  let badgeColor = '#92400E';
+
+  if (isVerified) {
+    badgeText = 'Terverifikasi';
+    badgeBg = '#DEF7EC';
+    badgeColor = '#03543F';
+  } else if (isReturned) {
+    badgeText = 'Dikembalikan';
+    badgeBg = '#FEF2F2';
+    badgeColor = '#DC2626';
+  }
+
+  const returnReasonText = selectedTxItem.returnReason || selectedTxItem.rawRecord?.returnReason || selectedTxItem.latestVerification?.returnReason || norm.returnReason;
   const dateStr = selectedTxItem.date ? String(selectedTxItem.date).substring(0, 10) : activeFilterDate;
   const workerName = selectedTxItem.submittedByName || selectedTxItem.rawRecord?.mantri || selectedTxItem.rawRecord?.actorName || userCtx?.name || 'Mantri';
 
@@ -480,10 +510,27 @@ function renderTransactionDetailView(app, userCtx) {
             <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 1px;">${esc(docNo)}</div>
             <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">${esc(workerName)} &bull; ${esc(dateStr)}</div>
           </div>
-          <span style="font-size: 0.65rem; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: ${isVerified ? '#DEF7EC' : '#FEF3C7'}; color: ${isVerified ? '#03543F' : '#92400E'};">
-            ${isVerified ? 'Terverifikasi' : 'Menunggu'}
+          <span style="font-size: 0.65rem; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor};">
+            ${badgeText}
           </span>
         </div>
+
+        <!-- CATATAN PENGEMBALIAN JIKA ADA -->
+        ${returnReasonText ? `
+          <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 12px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="font-size: 0.82rem; font-weight: 800; color: #DC2626; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="#DC2626" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              Catatan Pengembalian
+            </div>
+            <div style="font-size: 0.78rem; color: #991B1B; line-height: 1.4;">
+              ${esc(returnReasonText)}
+            </div>
+          </div>
+        ` : ''}
 
         <!-- INFORMASI UMUM -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
@@ -524,8 +571,16 @@ function renderTransactionDetailView(app, userCtx) {
           </div>
         </div>
 
-        <!-- ACTION BUTTONS IF PENDING -->
-        ${!isVerified ? `
+        <!-- ACTION BUTTONS IF PENDING, OR STATUS NOTICE -->
+        ${isReturned ? `
+          <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 12px; text-align: center; color: #DC2626; font-size: 0.78rem; font-weight: 700; margin-top: 8px;">
+            ⚠ Dokumen ini telah dikembalikan ke Mantri untuk perbaikan
+          </div>
+        ` : (isVerified ? `
+          <div style="background: #DEF7EC; border: 1px solid #A7F3D0; border-radius: 8px; padding: 12px; text-align: center; color: #03543F; font-size: 0.78rem; font-weight: 700; margin-top: 8px;">
+            ✓ Dokumen ini telah selesai diverifikasi
+          </div>
+        ` : `
           <div style="display: flex; gap: 10px; margin-top: 10px; padding-bottom: 10px;">
             ${selectedTxItem.referenceType !== 'TIDAK_HADIR' ? `
               <button id="btn-tx-return" type="button" style="flex: 1; height: 42px; background: #FFFFFF; border: 1.5px solid #EF4444; color: #DC2626; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
@@ -536,11 +591,7 @@ function renderTransactionDetailView(app, userCtx) {
               Setujui
             </button>
           </div>
-        ` : `
-          <div style="background: #DEF7EC; border: 1px solid #A7F3D0; border-radius: 8px; padding: 12px; text-align: center; color: #03543F; font-size: 0.78rem; font-weight: 700; margin-top: 8px;">
-            ✓ Dokumen ini telah selesai diverifikasi
-          </div>
-        `}
+        `)}
 
       </main>
 

@@ -8,6 +8,7 @@ import { getActiveKlons } from '../../data/klon-master.js';
 import { getOpenPrograms, getActivePrograms, getProgramById } from '../../data/program-master.js';
 import { getActiveBatches, getBatchById, getBatchByCode } from '../../data/batch-master.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
+import { applyTransactionActor } from '../../core/transaction-actor.js';
 
 export function getRestrictedPihakIIIKlons() {
   const active = getActiveKlons();
@@ -1143,11 +1144,13 @@ export function renderReceiptBenih() {
       }
     };
 
+    const finalizedTx = applyTransactionActor(newTx, editingIdx !== null ? 'UPDATE' : 'CREATE', user);
+
     if (editingIdx !== null) {
-      txs[editingIdx] = newTx;
+      txs[editingIdx] = finalizedTx;
       storage.remove('editing_transaction_index');
     } else {
-      txs.push(newTx);
+      txs.push(finalizedTx);
     }
     storage.set('receipt_transactions', txs);
 

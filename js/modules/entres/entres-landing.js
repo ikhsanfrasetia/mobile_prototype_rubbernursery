@@ -6,9 +6,10 @@
 
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
+import { getCurrentUserContext } from '../../core/user-context.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { getMataEntresBalances, validateToppingDeletion } from '../../core/entres-inventory-service.js';
-import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { isTransactionLockedForMantri, matchActor } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
 
 function formatDateDDMMYYYY(val) {
@@ -24,10 +25,21 @@ export function renderEntresLanding() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  // 1. Ambil data transaksi dari storage
-  const menunasTxs = storage.get('entres_menunas_transactions', []);
-  const toppingTxs = storage.get('entres_topping_transactions', []);
-  const entresBalances = getMataEntresBalances();
+  const currentUser = getCurrentUserContext();
+
+  // 1. Ambil data transaksi dari storage dengan isolasi aktor
+  const rawMenunasTxs = storage.get('entres_menunas_transactions', []);
+  const rawToppingTxs = storage.get('entres_topping_transactions', []);
+  const entresBalances = getMataEntresBalances({ userContext: currentUser, estateId: currentUser?.estateId });
+
+  // Filter transaksi milik aktor aktif
+  const visibleMenunas = rawMenunasTxs
+    .map((t, originalIndex) => ({ ...t, activityType: 'Menunas', originalIndex }))
+    .filter(t => matchActor(t, currentUser));
+
+  const visibleToppings = rawToppingTxs
+    .map((t, originalIndex) => ({ ...t, activityType: 'Topping', originalIndex }))
+    .filter(t => matchActor(t, currentUser));
 
   // Hitung total agregat stok dan klon tersedia
   const totalMataEntres = entresBalances.reduce((acc, b) => acc + (b.saldoMataEntres || 0), 0);
@@ -35,8 +47,8 @@ export function renderEntresLanding() {
 
   // Gabungkan transaksi dengan originalIndex masing-masing untuk fitur Edit & Hapus
   const allTxs = [
-    ...menunasTxs.map((t, originalIndex) => ({ ...t, activityType: 'Menunas', originalIndex })),
-    ...toppingTxs.map((t, originalIndex) => ({ ...t, activityType: 'Topping', originalIndex }))
+    ...visibleMenunas,
+    ...visibleToppings
   ].reverse();
 
   app.innerHTML = `
@@ -235,7 +247,7 @@ export function renderEntresLanding() {
                   </div>
                   <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
                     <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Rata-rata Perisai / Btg</span>
-                    <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${(tx.jumlahPerisai && tx.jumlahKayu ? (tx.jumlahPerisai / tx.jumlahKayu).toFixed(2) : '-')}</span>
+                    <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">${(tx.jumlahPerisai && tx.jumlahKayu ? Math.round(tx.jumlahPerisai / tx.jumlahKayu) : '-')}</span>
                   </div>
                 `}
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
@@ -451,6 +463,10 @@ export function renderEntresLanding() {
         if (type === 'Menunas') {
           const txs = storage.get('entres_menunas_transactions', []);
           const editTx = txs[origIdx];
+          if (!editTx || !matchActor(editTx, currentUser)) {
+            toast.error('Akses ditolak: Anda tidak memiliki wewenang untuk mengubah transaksi ini.');
+            return;
+          }
           if (isTransactionLockedForMantri(editTx)) {
             toast.error('Transaksi Menunas tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
             return;
@@ -470,6 +486,10 @@ export function renderEntresLanding() {
         } else {
           const txs = storage.get('entres_topping_transactions', []);
           const editTx = txs[origIdx];
+          if (!editTx || !matchActor(editTx, currentUser)) {
+            toast.error('Akses ditolak: Anda tidak memiliki wewenang untuk mengubah transaksi ini.');
+            return;
+          }
           if (isTransactionLockedForMantri(editTx)) {
             toast.error('Transaksi Topping tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
             return;
@@ -505,6 +525,11 @@ export function renderEntresLanding() {
           ? storage.get('entres_menunas_transactions', [])
           : storage.get('entres_topping_transactions', []);
         const targetTx = txs[pendingDeleteOrigIdx];
+
+        if (!targetTx || !matchActor(targetTx, currentUser)) {
+          toast.error('Akses ditolak: Anda tidak memiliki wewenang untuk menghapus transaksi ini.');
+          return;
+        }
 
         if (isTransactionLockedForMantri(targetTx)) {
           toast.error(`Transaksi ${pendingDeleteType} tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.`);
