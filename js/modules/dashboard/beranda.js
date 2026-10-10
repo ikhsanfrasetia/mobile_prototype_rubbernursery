@@ -98,7 +98,7 @@ import { getActionableDestructionCount } from '../destruction/destruction-manage
 import { getActionableDispatchCount } from '../dispatch/dispatch-landing.js';
 import { getPendingVerificationCount } from '../verification/verification-manager.js';
 import { getActionableConsolidationCount } from '../consolidation/consolidation-manager.js';
-import { hasActionableInspection } from '../inspection/inspection-landing.js';
+import { hasActionableInspection, hasReturnedInspection } from '../inspection/inspection-landing.js';
 import { ASISTEN_BIBITAN_MAIN_MENUS } from '../../core/menu-registry.js';
 
 export function hasActionablePermintaan(requests, userCtx) {
@@ -605,13 +605,24 @@ export function renderBeranda() {
     return;
   }
   
-  // Hitung pending Penyemaian (Dederan Belum Selesai ATAU Pindah Semai Eligible Belum Selesai)
+  // Hitung pending Penyemaian (Dederan Belum Selesai ATAU Pindah Semai Eligible Belum Selesai ATAU Transaksi Dikembalikan)
   syncDederanIndukDocuments();
   const dederIndukDocs = getAuthorizedTransactions(getDederanIndukDocuments(), userCtx);
   const hasPendingDederan = dederIndukDocs.some(d => (d.sisaBelumDeder || 0) > 0);
   const eligiblePindahSemai = getEligiblePindahSemaiSources(userCtx);
   const hasPendingPindahSemai = eligiblePindahSemai.some(s => (s.remainingQty || 0) > 0);
-  const hasPendingBenih = hasPendingDederan || hasPendingPindahSemai;
+  const authDederTxs = getAuthorizedTransactions(getDederanTransactions(), userCtx);
+  const hasReturnedDeder = authDederTxs.some(tx => 
+    (tx.status === 'DIKEMBALIKAN' || tx.verificationStatus === 'DIKEMBALIKAN' || tx.status === 'REVISION' || tx.returnReason || tx.lastReturnReason) &&
+    tx.status !== 'MENUNGGU_VERIFIKASI_MANTRI' && tx.status !== 'PENDING_SUBMISSION' && tx.status !== 'APPROVED' && tx.status !== 'DISETUJUI'
+  );
+  const rawPindahSemai = storage.get('pindah_semai_transactions', []);
+  const authPindahSemai = getAuthorizedTransactions(rawPindahSemai, userCtx);
+  const hasReturnedPindahSemai = authPindahSemai.some(tx => 
+    (tx.status === 'DIKEMBALIKAN' || tx.verificationStatus === 'DIKEMBALIKAN' || tx.status === 'REVISION' || tx.returnReason || tx.lastReturnReason) &&
+    tx.status !== 'MENUNGGU_VERIFIKASI_MANTRI' && tx.status !== 'PENDING_SUBMISSION' && tx.status !== 'APPROVED' && tx.status !== 'DISETUJUI'
+  );
+  const hasPendingBenih = hasPendingDederan || hasPendingPindahSemai || hasReturnedDeder || hasReturnedPindahSemai;
 
   // Check pending grafting batches from Dokumen Seleksi III FINAL (Konsisten dengan modul Okulasi)
   const allSelectionDocs = storage.get('pre_grafting_selection_documents', []);
@@ -649,7 +660,7 @@ export function renderBeranda() {
     }
   }
 
-  // Hitung pending pemeriksaan (Dederan Siap Periksa ATAU Okulasi Siap Periksa)
+  // Hitung pending pemeriksaan (Dederan Siap Periksa ATAU Okulasi Siap Periksa ATAU Pemeriksaan Dikembalikan)
   const dederTxs = getDederanTransactions();
   let hasPendingDederanInspection = false;
   for (const dtx of dederTxs) {
@@ -662,7 +673,7 @@ export function renderBeranda() {
       }
     }
   }
-  const hasPendingPemeriksaan = hasPendingDederanInspection || hasActionableInspection(userCtx);
+  const hasPendingPemeriksaan = hasPendingDederanInspection || hasActionableInspection(userCtx) || hasReturnedInspection(userCtx);
 
   const regraftPool = storage.get('regrafting_pool', []);
   const regraftTxs = storage.get('budding_transactions', []).filter(b => b.type === 'REGRAFTING');
@@ -723,12 +734,18 @@ export function renderBeranda() {
   const hasActionableMantriTxs = actionableMantriTxs.length > 0;
   const hasAnyMantriTxs = mantriTodayTxs.length > 0;
 
+  const authBudding = getAuthorizedTransactions(buddingTxs, userCtx);
+  const hasReturnedBudding = authBudding.some(tx => 
+    (tx.status === 'DIKEMBALIKAN' || tx.verificationStatus === 'DIKEMBALIKAN' || tx.status === 'REVISION' || tx.returnReason || tx.lastReturnReason) &&
+    tx.status !== 'MENUNGGU_VERIFIKASI_MANTRI' && tx.status !== 'PENDING_SUBMISSION' && tx.status !== 'APPROVED' && tx.status !== 'DISETUJUI'
+  );
+
   const menuCards = MENU_ITEMS.map((item) => {
     let badgeHtml = '';
     const hasNotification = (
       (item.id === 'penyeleksian' && hasPendingPenyeleksian) ||
       (item.id === 'penyemaian' && hasPendingBenih) ||
-      (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting)) ||
+      (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting || hasReturnedBudding)) ||
       (item.id === 'pemeriksaan' && hasPendingPemeriksaan) ||
       (item.id === 'pengeluaran' && hasPendingPengeluaran) ||
       (item.id === 'penerimaan' && hasPendingPenerimaan) ||

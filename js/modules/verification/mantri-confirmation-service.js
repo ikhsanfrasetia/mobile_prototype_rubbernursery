@@ -20,6 +20,7 @@ import {
   getSeleksi3ExecutionsByDocument,
   getSelectionStageLabel
 } from '../selection/selection-manager.js';
+import { syncAllDederanRejectionsToSelectionPool } from '../seeding/dederan-manager.js';
 import { getWorkersForUserContext } from '../../data/worker-master.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 import { matchActor } from '../../core/transaction-actor.js';
@@ -264,16 +265,21 @@ export function isTransactionLockedForMantri(item) {
                      subStatus === 'DIKEMBALIKAN' || subStatus === 'REVISION';
 
   if (isReturned) {
-    const isActivelyWaitingOrApproved =
-      primaryStatus === 'MENUNGGU_VERIFIKASI' ||
+    const isApproved =
       primaryStatus === 'TERVERIFIKASI' ||
       primaryStatus === 'DISETUJUI' ||
-      verifStatus === 'MENUNGGU_VERIFIKASI' ||
+      primaryStatus === 'APPROVED' ||
       verifStatus === 'TERVERIFIKASI' ||
       verifStatus === 'DISETUJUI' ||
-      primaryStatus === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN';
+      verifStatus === 'APPROVED';
 
-    if (!isActivelyWaitingOrApproved) {
+    const isResubmittedAfterCorrection =
+      item.isCorrected === true &&
+      (primaryStatus === 'MENUNGGU_VERIFIKASI' ||
+       primaryStatus === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
+       subStatus === 'SUBMITTED_TO_ASB');
+
+    if (!isApproved && !isResubmittedAfterCorrection) {
       return false; // Valid returned state is EDITABLE
     }
   }
@@ -296,7 +302,9 @@ export function isTransactionLockedForMantri(item) {
     'TERVERIFIKASI',
     'DISETUJUI',
     'VERIFIED',
-    'APPROVED'
+    'APPROVED',
+    'DATA_TERKONFIRMASI',
+    'TERKONFIRMASI'
   ]);
 
   return statuses.some(s => lockedStates.has(s));
@@ -317,7 +325,15 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
 
   if (verifRecord) {
     const vStat = (verifRecord.verificationStatus || '').toUpperCase();
-    if (vStat === VERIFICATION_STATUS.TERVERIFIKASI || vStat === 'VERIFIED' || vStat === 'APPROVED' || vStat === 'DISETUJUI') {
+    if (
+      vStat === VERIFICATION_STATUS.TERVERIFIKASI ||
+      vStat === 'VERIFIED' ||
+      vStat === 'APPROVED' ||
+      vStat === 'DISETUJUI' ||
+      vStat === VERIFICATION_STATUS.DATA_TERKONFIRMASI ||
+      vStat === 'DATA_TERKONFIRMASI' ||
+      vStat === 'TERKONFIRMASI'
+    ) {
       return {
         status: MANTRI_TRANSACTION_STATUS.VERIFIED,
         verificationStatus: VERIFICATION_STATUS.TERVERIFIKASI,
@@ -325,6 +341,18 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
       };
     }
     if (vStat === VERIFICATION_STATUS.DIKEMBALIKAN || vStat === 'REVISION') {
+      const isRepairedReady = (
+        String(item.status || '').toUpperCase() === 'READY_TO_CONFIRM' ||
+        String(item.status || '').toUpperCase() === 'MENUNGGU_VERIFIKASI_MANTRI' ||
+        Boolean(item.isCorrected)
+      ) && item.verificationStatus !== 'DIKEMBALIKAN';
+      if (isRepairedReady) {
+        return {
+          status: MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM,
+          verificationStatus: null,
+          latestVerification: verifRecord
+        };
+      }
       return {
         status: MANTRI_TRANSACTION_STATUS.REVISION,
         verificationStatus: VERIFICATION_STATUS.DIKEMBALIKAN,
@@ -346,7 +374,15 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
   const rawStat = String(item.status || item.verificationStatus || '').toUpperCase().trim();
   const isFinal = Boolean(item.isFinal);
 
-  if (rawStat === 'DISETUJUI' || rawStat === 'VERIFIED' || rawStat === 'APPROVED' || (rawStat === 'DISETUJUI' && isFinal) || item.verifiedAt) {
+  if (
+    rawStat === 'DISETUJUI' ||
+    rawStat === 'VERIFIED' ||
+    rawStat === 'APPROVED' ||
+    rawStat === 'DATA_TERKONFIRMASI' ||
+    rawStat === 'TERKONFIRMASI' ||
+    (rawStat === 'DISETUJUI' && isFinal) ||
+    item.verifiedAt
+  ) {
     return {
       status: MANTRI_TRANSACTION_STATUS.VERIFIED,
       verificationStatus: VERIFICATION_STATUS.TERVERIFIKASI,
@@ -392,6 +428,10 @@ function resolveTransactionStatus(item, moduleType, verifMap) {
 export function getMantriTodayTransactions(userContext = null, targetDate = null, currentTime = null) {
   const user = userContext || getCurrentUserContext() || resolveUserContext();
   const todayStr = targetDate ? normalizeDateStr(targetDate) : todayDDMMYYYY();
+
+  try {
+    syncAllDederanRejectionsToSelectionPool();
+  } catch (_) {}
 
   // Ambil data verifikasi untuk mapping status verifikasi terbaru
   const allVerifications = storage.get(VERIFICATION_STORAGE_KEY, []);

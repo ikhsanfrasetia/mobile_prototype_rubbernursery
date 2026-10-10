@@ -39,6 +39,17 @@ import {
 
 import { storage } from '../js/core/storage.js';
 
+// Setup Mock Environment
+const store = new Map();
+if (typeof globalThis.localStorage === 'undefined') {
+  globalThis.localStorage = {
+    getItem: (k) => store.get(k) || null,
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+    clear: () => store.clear()
+  };
+}
+
 // Setup Mock DOM Environment for Node.js
 const makeMockElement = (tag = 'DIV') => ({
   tagName: tag.toUpperCase(),
@@ -222,6 +233,12 @@ const mockLegacySplitDoc = {
 // -----------------------------------------------------------------------------
 // IT-STD-001: Program Header Rendered Once per Program Group
 // -----------------------------------------------------------------------------
+storage.set('seeding_transactions', [
+  { id: 'SOW-STD-01', docNo: '2026/SOW/STD01', batchCode: 'BTCH-001', status: 'DISETUJUI', verificationStatus: 'TERVERIFIKASI' },
+  { id: 'SOW-STD-02', docNo: '2026/SOW/STD02', batchCode: 'BTCH-002', status: 'DISETUJUI', verificationStatus: 'TERVERIFIKASI' },
+  { id: 'SOW-STD-03', docNo: '2026/SOW/STD03', batchCode: 'BTCH-003', status: 'DISETUJUI', verificationStatus: 'TERVERIFIKASI' }
+]);
+
 const allTestDocs = [...mockDocsBatch1, ...mockDocsBatch2, ...mockDocsBatch3];
 const progGroups = groupPreGraftingDocsByProgram(allTestDocs);
 const renderedHtml = renderProgramBatchCompactView({

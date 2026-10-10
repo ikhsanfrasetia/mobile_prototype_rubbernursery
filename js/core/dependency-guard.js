@@ -39,6 +39,12 @@ function getReceiptContextYear(receiptTx) {
   return new Date().getFullYear();
 }
 
+function isTxActive(tx) {
+  if (!tx || typeof tx !== 'object') return false;
+  const s = String(tx.status || tx.verificationStatus || '').trim().toUpperCase();
+  return s !== 'BATAL' && s !== 'CANCELLED' && s !== 'VOID';
+}
+
 /**
  * Memeriksa apakah Penerimaan (receiptTx) sudah digunakan sebagai dokumen referensi oleh modul hilir (downstream).
  * Menggunakan prioritas identity kanonikal:
@@ -50,9 +56,10 @@ function getReceiptContextYear(receiptTx) {
  * 
  * @param {object} receiptTx - Record transaksi penerimaan
  * @param {number} [receiptIndex=-1] - Indeks array penerimaan (fallback)
- * @returns {boolean} true jika telah digunakan oleh transaksi downstream
+ * @param {object} [preloadedContext=null] - Konteks koleksi transaksi yang telah dimuat sebelumnya (opsional)
+ * @returns {boolean} true jika telah digunakan oleh transaksi downstream yang aktif
  */
-export function isReceiptUsedAsReference(receiptTx, receiptIndex = -1) {
+export function isReceiptUsedAsReference(receiptTx, receiptIndex = -1, preloadedContext = null) {
   if (!receiptTx && receiptIndex < 0) return false;
 
   const tx = receiptTx || {};
@@ -72,10 +79,15 @@ export function isReceiptUsedAsReference(receiptTx, receiptIndex = -1) {
   const hasValidIndex = (receiptIndex !== undefined && receiptIndex !== null && Number(receiptIndex) >= 0);
   const targetIndex = hasValidIndex ? Number(receiptIndex) : (tx.originalIndex !== undefined ? Number(tx.originalIndex) : -1);
 
+  const getCol = (key, preloadedKey) => {
+    if (preloadedContext && preloadedContext[preloadedKey]) return preloadedContext[preloadedKey];
+    return storage.get(key, []);
+  };
+
   // 1. Cek Seeding (seeding_transactions)
-  const seedingTxs = storage.get('seeding_transactions', []);
+  const seedingTxs = getCol('seeding_transactions', 'seedingTxs');
   const usedInSeeding = seedingTxs.some(s => {
-    if (!s) return false;
+    if (!s || !isTxActive(s)) return false;
     // Priority 1: ID
     if (canonicalId && (
       (s.sourceReceiptId && String(s.sourceReceiptId).trim() === canonicalId) ||
@@ -99,9 +111,9 @@ export function isReceiptUsedAsReference(receiptTx, receiptIndex = -1) {
   if (usedInSeeding) return true;
 
   // 2. Cek Dederan (dederan_transactions)
-  const dederTxs = storage.get('dederan_transactions', []);
+  const dederTxs = getCol('dederan_transactions', 'dederTxs');
   const usedInDederan = dederTxs.some(d => {
-    if (!d) return false;
+    if (!d || !isTxActive(d)) return false;
     // Priority 1: ID
     if (canonicalId && (
       (d.sourceReceiptId && String(d.sourceReceiptId).trim() === canonicalId) ||
@@ -128,8 +140,8 @@ export function isReceiptUsedAsReference(receiptTx, receiptIndex = -1) {
   });
   if (usedInDederan) return true;
 
-  // 3. Cek Dokumen Induk Deder (dederan_induk_documents) yang AKTIF mengikat kuota (totalDidederSDHI > 0 atau child txs)
-  const indukDocs = storage.get('dederan_induk_documents', []);
+  // 3. Cek Dokumen Induk Deder (dederan_induk_documents) yang AKTIF mengikat kuota (totalDidederSDHI > 0 atau child txs aktif)
+  const indukDocs = getCol('dederan_induk_documents', 'indukDocs');
   const activeInduk = indukDocs.find(induk => {
     if (!induk) return false;
     let isMatch = false;
@@ -145,7 +157,7 @@ export function isReceiptUsedAsReference(receiptTx, receiptIndex = -1) {
     if (isMatch) {
       const totalDideder = parseInt(induk.totalDidederSDHI || 0, 10);
       if (totalDideder > 0) return true;
-      const hasChildDeder = dederTxs.some(t => t.parentDederIndukDocNo === induk.docNo);
+      const hasChildDeder = dederTxs.some(t => isTxActive(t) && t.parentDederIndukDocNo === induk.docNo);
       if (hasChildDeder) return true;
     }
     return false;
@@ -153,9 +165,9 @@ export function isReceiptUsedAsReference(receiptTx, receiptIndex = -1) {
   if (activeInduk) return true;
 
   // 4. Cek Seleksi Pra-Okulasi (pre_grafting_selection_documents) yang direct referensi ke Penerimaan
-  const selectionDocs = storage.get('pre_grafting_selection_documents', []);
+  const selectionDocs = getCol('pre_grafting_selection_documents', 'selectionDocs');
   const usedInSelection = selectionDocs.some(d => {
-    if (!d) return false;
+    if (!d || !isTxActive(d)) return false;
     if (canonicalDocNo && (
       (d.receiptDocNo && String(d.receiptDocNo).trim() === canonicalDocNo) ||
       (d.sourceReceiptDocNo && String(d.sourceReceiptDocNo).trim() === canonicalDocNo) ||
@@ -178,9 +190,10 @@ export function isReceiptUsedAsReference(receiptTx, receiptIndex = -1) {
  * 
  * @param {object} receiptTx - Record transaksi penerimaan
  * @param {number} [receiptIndex=-1] - Indeks transaksi dalam list
+ * @param {object} [preloadedContext=null] - Konteks koleksi transaksi yang telah dimuat sebelumnya (opsional)
  * @returns {{ locked: boolean, reason: 'VERIFICATION_LOCK' | 'REFERENTIAL_LOCK' | null }}
  */
-export function isReceiptLocked(receiptTx, receiptIndex = -1) {
+export function isReceiptLocked(receiptTx, receiptIndex = -1, preloadedContext = null) {
   if (isTransactionLockedForMantri(receiptTx)) {
     return {
       locked: true,
@@ -188,7 +201,7 @@ export function isReceiptLocked(receiptTx, receiptIndex = -1) {
     };
   }
 
-  if (isReceiptUsedAsReference(receiptTx, receiptIndex)) {
+  if (isReceiptUsedAsReference(receiptTx, receiptIndex, preloadedContext)) {
     return {
       locked: true,
       reason: 'REFERENTIAL_LOCK'
@@ -203,147 +216,413 @@ export function isReceiptLocked(receiptTx, receiptIndex = -1) {
 
 /**
  * Memeriksa apakah suatu dokumen/transaksi telah digunakan sebagai referensi oleh modul hilir (downstream).
- * @param {string} docNo - Nomor dokumen yang akan dicek.
- * @returns {object|null} - Mengembalikan objek { docNo, moduleName, url } jika ada dependensi, atau null jika aman.
+ * Mendukung masukan string (docNo/ID) maupun object transaksi ({ id, docNo, ... }).
+ * Menggunakan Directional Topological Filtering untuk membatasi pemindaian tabel yang relevan secara domain,
+ * dengan full-scan fallback jika tipe sumber tidak dikenali atau ambigu.
+ * Mengecualikan transaksi downstream yang berstatus pembatalan valid (BATAL, CANCELLED, VOID).
+ *
+ * @param {string|object} docIdentifier - Nomor dokumen atau record objek transaksi
+ * @param {string} [sourceTypeHint=null] - Petunjuk tipe modul sumber ('RECEIPT', 'DEDERAN', 'SEEDING', 'SELECTION', 'BUDDING', 'INSPECTION')
+ * @param {object} [preloadedContext=null] - Konteks koleksi transaksi yang telah dimuat sebelumnya (opsional)
+ * @returns {object|null} - Mengembalikan objek { docNo, moduleName, url, status } jika ada dependensi aktif, atau null jika aman.
  */
-export function findDownstreamDependency(docNo) {
-  if (!docNo) return null;
+export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, preloadedContext = null) {
+  if (!docIdentifier) return null;
 
-  // 0. Cek Penyemaian yang mungkin menggunakan Penerimaan ini
-  const seedingTxs = storage.get('seeding_transactions', []);
-  const dependentSeeding = seedingTxs.find(d => 
-    (d.sourceDocNo && d.sourceDocNo === docNo) || 
-    (d.receiptDocNo && d.receiptDocNo === docNo) ||
-    (d.sourceReceiptDocNo && d.sourceReceiptDocNo === docNo) ||
-    (d.docNo && d.docNo === docNo) || 
-    (d.nomorDokumen && d.nomorDokumen === docNo)
-  );
-  if (dependentSeeding) {
-    return {
-      docNo: dependentSeeding.docNo || 'Transaksi Penyemaian',
-      moduleName: 'Penyemaian Benih',
-      url: '/seeding'
-    };
+  const isObj = typeof docIdentifier === 'object' && docIdentifier !== null;
+  const docNo = isObj
+    ? (docIdentifier.docNo || docIdentifier.nomorDokumen || docIdentifier.selectionNo || null)
+    : (typeof docIdentifier === 'string' ? docIdentifier.trim() : null);
+  const docId = isObj
+    ? (docIdentifier.id || docIdentifier.receiptId || docIdentifier.txId || null)
+    : (typeof docIdentifier === 'string' ? docIdentifier.trim() : null);
+  const batchCode = isObj
+    ? (docIdentifier.batchCode || docIdentifier.batchNo || docIdentifier.batch_id || null)
+    : null;
+
+  if (!docNo && !docId && !batchCode) return null;
+
+  const matchesKey = (val, targetKeys) => {
+    if (!val) return false;
+    const strVal = String(val).trim();
+    return targetKeys.some(k => k && String(k).trim() === strVal);
+  };
+
+  const keysToCheck = [docNo, docId].filter(Boolean);
+
+  // Helper untuk membaca dari preloadedContext jika tersedia atau storage.get
+  const getCol = (key, preloadedKey) => {
+    if (preloadedContext && preloadedContext[preloadedKey]) return preloadedContext[preloadedKey];
+    return storage.get(key, []);
+  };
+
+  // 1. Cek Penyemaian / Pindah Semai (seeding_transactions)
+  const checkSeeding = () => {
+    const seedingTxs = getCol('seeding_transactions', 'seedingTxs');
+    const dependentSeeding = seedingTxs.find(s => {
+      if (!s || !isTxActive(s)) return false;
+      if (s.id && (s.id === docId || s.id === docNo)) return false; // Abaikan dirinya sendiri
+      if (s.docNo && s.docNo === docNo) return false;
+
+      return (
+        matchesKey(s.sourceDocNo, keysToCheck) ||
+        matchesKey(s.receiptDocNo, keysToCheck) ||
+        matchesKey(s.sourceReceiptDocNo, keysToCheck) ||
+        matchesKey(s.sourceReceiptId, keysToCheck) ||
+        matchesKey(s.receiptId, keysToCheck) ||
+        matchesKey(s.sourceTxId, keysToCheck) ||
+        matchesKey(s.dederanTxDocNo, keysToCheck) ||
+        matchesKey(s.sourceDederanDocNo, keysToCheck) ||
+        matchesKey(s.sourceDederanId, keysToCheck)
+      );
+    });
+    if (dependentSeeding) {
+      return {
+        docNo: dependentSeeding.docNo || dependentSeeding.nomorDokumen || dependentSeeding.id || 'Transaksi Penyemaian',
+        moduleName: 'Penyemaian / Pindah Semai',
+        url: '/seeding',
+        status: dependentSeeding.status || dependentSeeding.verificationStatus || 'AKTIF'
+      };
+    }
+    return null;
+  };
+
+  // 2. Cek Dederan (dederan_transactions)
+  const checkDederan = () => {
+    const dederTxs = getCol('dederan_transactions', 'dederTxs');
+    const dependentDeder = dederTxs.find(d => {
+      if (!d || !isTxActive(d)) return false;
+      if (d.id && (d.id === docId || d.id === docNo)) return false;
+      if (d.docNo && d.docNo === docNo) return false;
+
+      return (
+        matchesKey(d.sourceReceiptDocNo, keysToCheck) ||
+        matchesKey(d.receiptDocNo, keysToCheck) ||
+        matchesKey(d.sourceDocNo, keysToCheck) ||
+        matchesKey(d.sourceReceiptId, keysToCheck) ||
+        matchesKey(d.receiptId, keysToCheck)
+      );
+    });
+    if (dependentDeder) {
+      return {
+        docNo: dependentDeder.docNo || dependentDeder.nomorDokumen || dependentDeder.id || 'Transaksi Dederan',
+        moduleName: 'Dederan (Germinasi)',
+        url: '/seeding',
+        status: dependentDeder.status || dependentDeder.verificationStatus || 'AKTIF'
+      };
+    }
+    return null;
+  };
+
+  // 3. Cek Dokumen Induk Deder yang aktif (dederan_induk_documents)
+  const checkInduk = () => {
+    const indukDocs = getCol('dederan_induk_documents', 'indukDocs');
+    const dederTxs = getCol('dederan_transactions', 'dederTxs');
+    const dependentInduk = indukDocs.find(induk => {
+      if (!induk) return false;
+      if (induk.docNo && induk.docNo === docNo) return false;
+
+      const isMatch = (
+        matchesKey(induk.sourceReceiptDocNo, keysToCheck) ||
+        matchesKey(induk.receiptDocNo, keysToCheck) ||
+        matchesKey(induk.sourceReceiptId, keysToCheck)
+      );
+      if (!isMatch) return false;
+
+      const totalDideder = parseInt(induk.totalDidederSDHI || 0, 10);
+      const hasChildDeder = dederTxs.some(t => isTxActive(t) && t.parentDederIndukDocNo === induk.docNo);
+      return totalDideder > 0 || hasChildDeder;
+    });
+    if (dependentInduk) {
+      return {
+        docNo: dependentInduk.docNo || 'Dokumen Induk Deder',
+        moduleName: 'Dederan (Dokumen Induk)',
+        url: '/seeding',
+        status: 'AKTIF'
+      };
+    }
+    return null;
+  };
+
+  // 4. Cek Pemeriksaan Dederan (dederan_inspection_transactions)
+  const checkDederInspection = () => {
+    const dederInspTxs = getCol('dederan_inspection_transactions', 'dederInspTxs');
+    const dependentDederInsp = dederInspTxs.find(di => {
+      if (!di || !isTxActive(di)) return false;
+      if (di.id && (di.id === docId || di.id === docNo)) return false;
+      if (di.docNo && di.docNo === docNo) return false;
+
+      return (
+        matchesKey(di.dederanTxDocNo, keysToCheck) ||
+        matchesKey(di.sourceDederanDocNo, keysToCheck) ||
+        matchesKey(di.sourceDocNo, keysToCheck) ||
+        matchesKey(di.dederanTxId, keysToCheck)
+      );
+    });
+    if (dependentDederInsp) {
+      return {
+        docNo: dependentDederInsp.docNo || 'Pemeriksaan Dederan',
+        moduleName: 'Pemeriksaan Dederan',
+        url: '/inspection',
+        status: dependentDederInsp.status || dependentDederInsp.verificationStatus || 'AKTIF'
+      };
+    }
+    return null;
+  };
+
+  // 5. Cek Dokumen Seleksi Pra-Okulasi (pre_grafting_selection_documents) & Transaksi Seleksi (selection_transactions)
+  const checkSelection = () => {
+    const selectionDocs = getCol('pre_grafting_selection_documents', 'selectionDocs');
+    const dependentSelection = selectionDocs.find(d => {
+      if (!d || !isTxActive(d)) return false;
+      if (d.id && (d.id === docId || d.id === docNo)) return false;
+      if (d.docNo && d.docNo === docNo) return false;
+
+      return (
+        matchesKey(d.sourceSeedingDocNo, keysToCheck) ||
+        matchesKey(d.sourceDocNo, keysToCheck) ||
+        matchesKey(d.seedingDocNo, keysToCheck) ||
+        matchesKey(d.receiptDocNo, keysToCheck) ||
+        matchesKey(d.sourceReceiptDocNo, keysToCheck) ||
+        matchesKey(d.sourceSelection1DocNo, keysToCheck) ||
+        matchesKey(d.sourceSelection2DocNo, keysToCheck) ||
+        matchesKey(d.sourceSelectionDocNo, keysToCheck) ||
+        matchesKey(d.sourceSeedingId, keysToCheck) ||
+        matchesKey(d.dederanTxDocNo, keysToCheck)
+      );
+    });
+    if (dependentSelection) {
+      return {
+        docNo: dependentSelection.docNo || 'Dokumen Seleksi',
+        moduleName: 'Penyeleksian (Pra-Okulasi)',
+        url: '/selection',
+        status: dependentSelection.status || dependentSelection.verificationStatus || 'AKTIF'
+      };
+    }
+
+    const selectionTxs = getCol('selection_transactions', 'selectionTxs');
+    const dependentSelectionTx = selectionTxs.find(st => {
+      if (!st || !isTxActive(st)) return false;
+      if (st.id && (st.id === docId || st.id === docNo)) return false;
+      if (st.docNo && st.docNo === docNo) return false;
+
+      return (
+        matchesKey(st.sourceDocNo, keysToCheck) ||
+        matchesKey(st.dederanTxDocNo, keysToCheck) ||
+        matchesKey(st.sourceTransactionId, keysToCheck) ||
+        matchesKey(st.sourceSeedingDocNo, keysToCheck)
+      );
+    });
+    if (dependentSelectionTx) {
+      return {
+        docNo: dependentSelectionTx.docNo || dependentSelectionTx.selectionNo || 'Transaksi Seleksi',
+        moduleName: 'Penyeleksian',
+        url: '/selection',
+        status: dependentSelectionTx.status || dependentSelectionTx.verificationStatus || 'AKTIF'
+      };
+    }
+    return null;
+  };
+
+  // 6. Cek Okulasi Grafting / Regrafting (budding_transactions)
+  const checkBudding = () => {
+    const buddingTxs = getCol('budding_transactions', 'buddingTxs');
+    const dependentBudding = buddingTxs.find(b => {
+      if (!b || !isTxActive(b)) return false;
+      if (b.id && (b.id === docId || b.id === docNo)) return false;
+      if (b.docNo && b.docNo === docNo) return false;
+
+      return (
+        matchesKey(b.sourceSelection3DocNo, keysToCheck) ||
+        matchesKey(b.sourceSelectionDocNo, keysToCheck) ||
+        matchesKey(b.sourceSelection3DocumentId, keysToCheck) ||
+        matchesKey(b.sourceSeedingDocNo, keysToCheck) ||
+        matchesKey(b.seedingDocNo, keysToCheck) ||
+        matchesKey(b.sourceDocNo, keysToCheck) ||
+        matchesKey(b.regraftPoolDocNo, keysToCheck) ||
+        matchesKey(b.sourceInspectionDocNo, keysToCheck) ||
+        matchesKey(b.inspectionDocNo, keysToCheck) ||
+        matchesKey(b.sourceInspectionId, keysToCheck)
+      );
+    });
+    if (dependentBudding) {
+      const isRegraft = b => b.type === 'REGRAFTING';
+      return {
+        docNo: dependentBudding.docNo || 'Transaksi Okulasi',
+        moduleName: isRegraft(dependentBudding) ? 'Okulasi (Regrafting)' : 'Okulasi (Grafting)',
+        url: isRegraft(dependentBudding) ? '/budding/regrafting' : '/budding/grafting',
+        status: dependentBudding.status || dependentBudding.verificationStatus || 'AKTIF'
+      };
+    }
+    return null;
+  };
+
+  // 7. Cek Pemeriksaan Okulasi (inspection_transactions)
+  const checkInspection = () => {
+    const inspectionTxs = getCol('inspection_transactions', 'inspectionTxs');
+    const dependentInspection = inspectionTxs.find(ins => {
+      if (!ins || !isTxActive(ins)) return false;
+      if (ins.id && (ins.id === docId || ins.id === docNo)) return false;
+      if (ins.docNo && ins.docNo === docNo) return false;
+
+      return (
+        matchesKey(ins.buddingDocNo, keysToCheck) ||
+        matchesKey(ins.sourceBuddingDocNo, keysToCheck) ||
+        matchesKey(ins.sourceDocNo, keysToCheck) ||
+        matchesKey(ins.buddingId, keysToCheck) ||
+        matchesKey(ins.sourceBuddingId, keysToCheck)
+      );
+    });
+    if (dependentInspection) {
+      return {
+        docNo: dependentInspection.docNo || 'Transaksi Pemeriksaan Okulasi',
+        moduleName: 'Pemeriksaan Okulasi',
+        url: '/inspection',
+        status: dependentInspection.status || dependentInspection.verificationStatus || 'AKTIF'
+      };
+    }
+    return null;
+  };
+
+  // 8. Cek Pool Pasca-Okulasi / Regrafting (selection_pool) yang aktif dikonsumsi
+  const checkPool = () => {
+    const pool = getCol('selection_pool', 'pool');
+    const dependentPool = pool.find(p => {
+      if (!p || !isTxActive(p)) return false;
+      if (p.id && (p.id === docId || p.id === docNo)) return false;
+      if (p.docNo && p.docNo === docNo) return false;
+
+      const matches = (
+        matchesKey(p.inspectionDocNo, keysToCheck) ||
+        matchesKey(p.buddingDocNo, keysToCheck) ||
+        matchesKey(p.sourceInspectionId, keysToCheck) ||
+        matchesKey(p.sourceDocNo, keysToCheck)
+      );
+      if (!matches) return false;
+
+      // Pool dianggap dependensi aktif jika sudah dikonsumsi atau memiliki kuantitas aktif
+      return Boolean(p.isConsumed || (p.consumedQty && Number(p.consumedQty) > 0) || p.status === 'CONSUMED' || p.status === 'ACTIVE');
+    });
+    if (dependentPool) {
+      return {
+        docNo: dependentPool.docNo || dependentPool.inspectionDocNo || 'Alokasi Regrafting / Seleksi',
+        moduleName: 'Seleksi Pasca-Okulasi',
+        url: '/selection',
+        status: dependentPool.status || 'AKTIF'
+      };
+    }
+    return null;
+  };
+
+  // Resolusi tipe sumber (Source Type Resolution)
+  let resolvedType = null;
+  if (sourceTypeHint && typeof sourceTypeHint === 'string') {
+    resolvedType = sourceTypeHint.trim().toUpperCase();
+  } else if (isObj) {
+    if (docIdentifier.type) resolvedType = String(docIdentifier.type).trim().toUpperCase();
+    else if (docIdentifier.module) resolvedType = String(docIdentifier.module).trim().toUpperCase();
+    else if (docIdentifier.stage) resolvedType = String(docIdentifier.stage).trim().toUpperCase();
+    else if (docIdentifier.sourceModule) resolvedType = String(docIdentifier.sourceModule).trim().toUpperCase();
   }
 
-  // 0b. Cek Dederan yang menggunakan Penerimaan ini
-  const dederTxs = storage.get('dederan_transactions', []);
-  const dependentDeder = dederTxs.find(d => 
-    (d.sourceReceiptDocNo && d.sourceReceiptDocNo === docNo) || 
-    (d.receiptDocNo && d.receiptDocNo === docNo) || 
-    (d.sourceDocNo && d.sourceDocNo === docNo) ||
-    (d.docNo && d.docNo === docNo)
-  );
-  if (dependentDeder) {
-    return {
-      docNo: dependentDeder.docNo || 'Transaksi Dederan',
-      moduleName: 'Dederan (Germinasi)',
-      url: '/dederan'
-    };
+  // Normalisasi kategori tipe sumber
+  let category = 'UNKNOWN';
+  if (resolvedType) {
+    if (resolvedType.includes('RECEIPT') || resolvedType.includes('PENERIMAAN') || resolvedType === 'APR') {
+      category = 'RECEIPT';
+    } else if (resolvedType.includes('DEDERAN') || resolvedType.includes('GERMINASI') || resolvedType === 'DED') {
+      category = 'DEDERAN';
+    } else if (resolvedType.includes('SEEDING') || resolvedType.includes('PINDAH_SEMAI') || resolvedType.includes('PENYEMAIAN') || resolvedType === 'SOW') {
+      category = 'SEEDING';
+    } else if (resolvedType.includes('SELEKSI') || resolvedType.includes('SELECTION') || resolvedType === 'SEL' || resolvedType === 'CULL') {
+      category = 'SELECTION';
+    } else if (resolvedType.includes('BUDDING') || resolvedType.includes('OKULASI') || resolvedType.includes('GRAFTING') || resolvedType === 'GRF' || resolvedType === 'RGRF') {
+      category = 'BUDDING';
+    } else if (resolvedType.includes('INSPECTION') || resolvedType.includes('PEMERIKSAAN') || resolvedType === 'INS' || resolvedType === 'PRK') {
+      category = 'INSPECTION';
+    }
   }
 
-  // 0c. Cek Dokumen Induk Deder yang aktif
-  const indukDocs = storage.get('dederan_induk_documents', []);
-  const dependentInduk = indukDocs.find(induk => 
-    ((induk.sourceReceiptDocNo && induk.sourceReceiptDocNo === docNo) || 
-     (induk.receiptDocNo && induk.receiptDocNo === docNo) || 
-     (induk.docNo && induk.docNo === docNo)) &&
-    (parseInt(induk.totalDidederSDHI || 0, 10) > 0 || dederTxs.some(t => t.parentDederIndukDocNo === induk.docNo))
-  );
-  if (dependentInduk) {
-    return {
-      docNo: dependentInduk.docNo || 'Dokumen Induk Deder',
-      moduleName: 'Dederan (Germinasi)',
-      url: '/dederan'
-    };
+  // Secondary prefix hint (hanya jika category masih UNKNOWN)
+  if (category === 'UNKNOWN' && docNo) {
+    const upperDoc = String(docNo).toUpperCase();
+    if (upperDoc.includes('/APR/') || upperDoc.startsWith('APR-') || upperDoc.includes('/REC/')) {
+      category = 'RECEIPT';
+    } else if (upperDoc.includes('/DED/') || upperDoc.startsWith('DED-')) {
+      category = 'DEDERAN';
+    } else if (upperDoc.includes('/SOW/') || upperDoc.startsWith('SOW-')) {
+      category = 'SEEDING';
+    } else if (upperDoc.includes('/SEL/') || upperDoc.includes('/SEL-') || upperDoc.includes('/CULL/')) {
+      category = 'SELECTION';
+    } else if (upperDoc.includes('/GRF/') || upperDoc.includes('/RGRF/') || upperDoc.includes('/OKL/') || upperDoc.includes('/OKJ/')) {
+      category = 'BUDDING';
+    } else if (upperDoc.includes('/INS/') || upperDoc.includes('/PRK/') || upperDoc.includes('/INSP/')) {
+      category = 'INSPECTION';
+    }
   }
 
-  // 1. Cek Seleksi (I, II, III) yang mungkin menggunakan docNo ini (bisa dari Seeding, Penerimaan, atau Seleksi sebelumnya)
-  const selectionDocs = storage.get('pre_grafting_selection_documents', []);
-  const dependentSelection = selectionDocs.find(d => 
-    d.sourceSeedingDocNo === docNo || 
-    d.sourceDocNo === docNo || 
-    d.seedingDocNo === docNo ||
-    d.receiptDocNo === docNo ||
-    d.sourceReceiptDocNo === docNo ||
-    d.sourceSelection1DocNo === docNo ||
-    d.sourceSelection2DocNo === docNo ||
-    d.sourceSelectionDocNo === docNo
-  );
-  if (dependentSelection) {
-    return {
-      docNo: dependentSelection.docNo,
-      moduleName: 'Penyeleksian (Pra-Okulasi)',
-      url: '/selection'
-    };
+  // Directional Topological Routing: Tentukan urutan pemeriksaan tabel yang relevan
+  const checksToRun = [];
+
+  switch (category) {
+    case 'RECEIPT':
+      checksToRun.push(checkSeeding, checkDederan, checkInduk, checkSelection);
+      break;
+    case 'DEDERAN':
+      checksToRun.push(checkSeeding, checkDederInspection, checkSelection);
+      break;
+    case 'SEEDING':
+      checksToRun.push(checkSelection, checkBudding);
+      break;
+    case 'SELECTION':
+      checksToRun.push(checkBudding, checkSelection);
+      break;
+    case 'BUDDING':
+      checksToRun.push(checkInspection, checkPool);
+      break;
+    case 'INSPECTION':
+      checksToRun.push(checkBudding, checkPool, checkSelection);
+      break;
+    default:
+      // Fallback Aman (Full Scan 8 Pemeriksaan dalam urutan asli kanonikal)
+      checksToRun.push(checkSeeding, checkDederan, checkInduk, checkDederInspection, checkSelection, checkBudding, checkInspection, checkPool);
+      break;
   }
 
-  // 2. Cek Okulasi (Grafting) yang mungkin menggunakan Seleksi III
-  const buddingTxs = storage.get('budding_transactions', []);
-  const dependentBudding = buddingTxs.find(d => 
-    d.sourceSelection3DocNo === docNo ||
-    d.sourceSelectionDocNo === docNo
-  );
-  if (dependentBudding) {
-    return {
-      docNo: dependentBudding.docNo || 'Transaksi Okulasi',
-      moduleName: 'Okulasi (Grafting)',
-      url: '/budding'
-    };
-  }
-
-  // 3. Cek Pemeriksaan yang mungkin menggunakan Okulasi
-  const inspectionTxs = storage.get('inspection_transactions', []);
-  const dependentInspection = inspectionTxs.find(d => 
-    d.buddingDocNo === docNo ||
-    d.sourceBuddingDocNo === docNo
-  );
-  if (dependentInspection) {
-    return {
-      docNo: dependentInspection.docNo || 'Transaksi Pemeriksaan',
-      moduleName: 'Pemeriksaan Okulasi',
-      url: '/inspection'
-    };
-  }
-
-  // 4. Cek Seleksi Pasca-Okulasi / Regrafting (selection_pool)
-  const pool = storage.get('selection_pool', []);
-  const dependentPool = pool.find(d => 
-    d.inspectionDocNo === docNo ||
-    d.buddingDocNo === docNo
-  );
-  if (dependentPool) {
-    return {
-      docNo: dependentPool.docNo || 'Data Afkir',
-      moduleName: 'Seleksi Pasca-Okulasi',
-      url: '/selection' // as it has post-grafting tab
-    };
+  for (const fn of checksToRun) {
+    const dep = fn();
+    if (dep) return dep;
   }
 
   return null;
 }
 
 /**
- * Menampilkan warning popup jika ada dependency, dan mengembalikan true jika di-block.
- * @param {string} docNo - Nomor dokumen
+ * Menampilkan warning popup jika ada dependency aktif downstream, dan mengembalikan true jika di-block.
+ *
+ * @param {string|object} docIdentifier - Nomor dokumen atau objek record transaksi
  * @param {string} moduleName - Nama modul (misal: "Penyemaian")
  * @param {string} action - "Diubah" atau "Dihapus"
  * @returns {boolean} - true jika BLOCKED, false jika AMAN
  */
-export function guardDependency(docNo, moduleName, action = 'Diubah') {
-  const dependency = findDownstreamDependency(docNo);
+export function guardDependency(docIdentifier, moduleName, action = 'Diubah') {
+  const dependency = findDownstreamDependency(docIdentifier);
   
   if (dependency) {
+    const docDisplay = (typeof docIdentifier === 'object' && docIdentifier !== null)
+      ? (docIdentifier.docNo || docIdentifier.nomorDokumen || docIdentifier.id || '')
+      : String(docIdentifier || '');
+
     const modalBody = `
       <div style="text-align: center; color: #333;">
-        <p style="margin-bottom: 12px;">Transaksi <strong>${moduleName}</strong> ini sudah digunakan oleh Dokumen hilir.</p>
+        <p style="margin-bottom: 12px;">Transaksi <strong>${moduleName}</strong> ${docDisplay ? `(<strong>${docDisplay}</strong>) ` : ''}tidak dapat ${action.toLowerCase()} karena masih memiliki transaksi downstream aktif.</p>
         <div style="background: #FFF3E0; border: 1px solid #FFE0B2; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
           <div style="font-size: 0.8rem; color: #E65100; margin-bottom: 4px;">DOKUMEN TERKAIT:</div>
           <div style="font-weight: bold; color: #E65100; font-size: 1.1rem;">${dependency.docNo}</div>
-          <div style="font-size: 0.85rem; color: #E65100; margin-top: 4px;">(${dependency.moduleName})</div>
+          <div style="font-size: 0.85rem; color: #E65100; margin-top: 4px;">(${dependency.moduleName}${dependency.status ? ` • ${dependency.status}` : ''})</div>
         </div>
         <p style="font-size: 0.85rem; color: #666; margin-bottom: 20px;">
-          Silakan koreksi atau hapus dokumen terkait terlebih dahulu.
+          Silakan batalkan atau hapus dokumen downstream terkait terlebih dahulu sebelum melakukan ${action.toLowerCase()} pada dokumen sumber ini.
         </p>
         <div style="display: flex; gap: 8px; justify-content: center;">
           <button id="btn-dep-close" style="padding: 10px 16px; border-radius: 6px; border: 1px solid #CCC; background: #FFF; cursor: pointer; flex: 1;">Tutup</button>
@@ -352,20 +631,28 @@ export function guardDependency(docNo, moduleName, action = 'Diubah') {
       </div>
     `;
 
-    openModal({
-      title: `Data Tidak Dapat ${action}`,
-      body: modalBody
-    });
+    if (typeof document !== 'undefined') {
+      try {
+        openModal({
+          title: `Data Tidak Dapat ${action}`,
+          body: modalBody
+        });
 
-    setTimeout(() => {
-      document.getElementById('btn-dep-close')?.addEventListener('click', closeModal);
-      document.getElementById('btn-dep-nav')?.addEventListener('click', () => {
-        closeModal();
-        if (dependency.url) {
-          navigate(dependency.url);
-        }
-      });
-    }, 50);
+        setTimeout(() => {
+          if (typeof document !== 'undefined') {
+            document.getElementById('btn-dep-close')?.addEventListener('click', closeModal);
+            document.getElementById('btn-dep-nav')?.addEventListener('click', () => {
+              closeModal();
+              if (dependency.url) {
+                navigate(dependency.url);
+              }
+            });
+          }
+        }, 50);
+      } catch (e) {
+        // Fallback for environments where modal root is not present
+      }
+    }
 
     return true; // Blocked
   }
@@ -419,11 +706,33 @@ export function validateSourceEditability(docType, docNo, updatedPayload = null)
       }
     });
 
-    if (approvedPindahSemaiQty > 0 && newQty < approvedPindahSemaiQty) {
+    // Cek turunan Seleksi Pra-Semai (selection_transactions) yang telah DISETUJUI
+    const selTxs = storage.get('selection_transactions', []);
+    let approvedSelAfkir = 0;
+    let blockingSelDoc = null;
+
+    selTxs.forEach(st => {
+      if (!st) return;
+      const isDederanStage = st.stage === 'SELEKSI_PRA_SEMAI' || st.stage === 'PRA_SEMAI' || st.originType === 'REJECT_DEDERAN' || st.originType === 'DEDERAN' || st.sourceTransactionType === 'DEDER_INSPECTION';
+      const isRef = (st.sourceDocNo && st.sourceDocNo === docNo) || (st.dederanTxDocNo && st.dederanTxDocNo === docNo) || (st.sourceTransactionId && st.sourceTransactionId === docNo);
+      const isApproved = String(st.status || '').toUpperCase() === 'DISETUJUI' || String(st.status || '').toUpperCase() === 'TERVERIFIKASI';
+      if (isDederanStage && isRef && isApproved) {
+        const afkirQty = parseInt(st.jumlahAfkirTotal || st.jumlahAfkir || st.quantity || 0, 10);
+        approvedSelAfkir += afkirQty;
+        if (!blockingSelDoc) blockingSelDoc = st.docNo || st.id;
+      }
+    });
+
+    const totalPhysicalConsumption = approvedPindahSemaiQty + approvedSelAfkir;
+
+    if (totalPhysicalConsumption > 0 && newQty < totalPhysicalConsumption) {
+      const breakdown = [];
+      if (approvedPindahSemaiQty > 0) breakdown.push(`Pindah Semai: ${approvedPindahSemaiQty.toLocaleString('id-ID')}`);
+      if (approvedSelAfkir > 0) breakdown.push(`Seleksi Pra-Semai: ${approvedSelAfkir.toLocaleString('id-ID')}`);
       return {
         allowed: false,
-        reason: `Kuantitas baru (${newQty.toLocaleString('id-ID')}) lebih kecil dari kuantitas yang telah disetujui pada Pindah Semai (${approvedPindahSemaiQty.toLocaleString('id-ID')}).`,
-        blockingDocNo: blockingSeedingDoc
+        reason: `Kuantitas baru (${newQty.toLocaleString('id-ID')}) lebih kecil dari total konsumsi fisik final yang telah disetujui (${totalPhysicalConsumption.toLocaleString('id-ID')}${breakdown.length > 0 ? ` [${breakdown.join(', ')}]` : ''}).`,
+        blockingDocNo: blockingSeedingDoc || blockingSelDoc
       };
     }
   }
@@ -461,6 +770,158 @@ export function validateSourceEditability(docType, docNo, updatedPayload = null)
           blockingDocNo: blockingSelDoc
         };
       }
+    }
+  }
+
+  // 3. Kasus Penerimaan Benih / Biji Kelatak
+  if (normType === 'RECEIPT' || normType === 'PENERIMAAN' || normType === 'RECEIPT_TRANSACTION') {
+    if (!updatedPayload) return { allowed: true };
+
+    const newQty = parseInt(
+      updatedPayload.diterima !== undefined
+        ? updatedPayload.diterima
+        : (updatedPayload.qty !== undefined ? updatedPayload.qty : (updatedPayload.totalDiterima !== undefined ? updatedPayload.totalDiterima : -1)),
+      10
+    );
+
+    if (isNaN(newQty) || newQty < 0) {
+      return { allowed: true, isMetadataOnly: true };
+    }
+
+    const indukDocs = storage.get('dederan_induk_documents', []);
+    const dederTxs = storage.get('dederan_transactions', []);
+    let committedDederQty = 0;
+    let blockingDederDoc = null;
+
+    indukDocs.forEach(induk => {
+      if (!induk) return;
+      const isRef = (induk.sourceReceiptDocNo && induk.sourceReceiptDocNo === docNo) ||
+                    (induk.receiptDocNo && induk.receiptDocNo === docNo) ||
+                    (induk.docNo && induk.docNo === docNo);
+      if (isRef) {
+        const totalDideder = parseInt(induk.totalDidederSDHI || 0, 10);
+        if (totalDideder > committedDederQty) {
+          committedDederQty = totalDideder;
+          blockingDederDoc = induk.docNo;
+        }
+      }
+    });
+
+    dederTxs.forEach(d => {
+      if (!d) return;
+      const isCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(d.status || '').toUpperCase());
+      if (isCancelled) return;
+      const isRef = (d.sourceReceiptDocNo && d.sourceReceiptDocNo === docNo) ||
+                    (d.receiptDocNo && d.receiptDocNo === docNo) ||
+                    (d.sourceDocNo && d.sourceDocNo === docNo);
+      if (isRef) {
+        const dQty = parseInt(d.jumlahDeder || d.jumlahKecambahDitanam || 0, 10);
+        if (dQty > 0 && !blockingDederDoc) blockingDederDoc = d.docNo || d.id;
+      }
+    });
+
+    if (committedDederQty > 0 && newQty < committedDederQty) {
+      return {
+        allowed: false,
+        reason: `Kuantitas penerimaan baru (${newQty.toLocaleString('id-ID')}) lebih kecil dari total kuantitas yang telah didederkan (${committedDederQty.toLocaleString('id-ID')}).`,
+        blockingDocNo: blockingDederDoc
+      };
+    }
+  }
+
+  // 4. Kasus Pindah Semai (Main Nursery)
+  if (normType === 'SEEDING' || normType === 'PENYEMAIAN' || normType === 'PINDAH_SEMAI' || normType === 'SEEDING_TRANSACTION') {
+    if (!updatedPayload) return { allowed: true };
+
+    const newQty = parseInt(
+      updatedPayload.jumlahBibitDipindahkan !== undefined
+        ? updatedPayload.jumlahBibitDipindahkan
+        : (updatedPayload.totalDisemai !== undefined ? updatedPayload.totalDisemai : (updatedPayload.qty !== undefined ? updatedPayload.qty : -1)),
+      10
+    );
+
+    if (isNaN(newQty) || newQty < 0) {
+      return { allowed: true, isMetadataOnly: true };
+    }
+
+    const selectionDocs = storage.get('pre_grafting_selection_documents', []);
+    const buddingTxs = storage.get('budding_transactions', []);
+    let approvedDownstreamQty = 0;
+    let blockingDownstreamDoc = null;
+
+    selectionDocs.forEach(s => {
+      if (!s) return;
+      const isRef = (s.sourceSeedingDocNo && s.sourceSeedingDocNo === docNo) ||
+                    (s.seedingDocNo && s.seedingDocNo === docNo) ||
+                    (s.sourceDocNo && s.sourceDocNo === docNo);
+      const isApproved = String(s.status || '').toUpperCase() === 'DISETUJUI' || String(s.status || '').toUpperCase() === 'TERVERIFIKASI';
+      if (isRef && isApproved) {
+        const sQty = parseInt(s.jumlahAfkirTotal || s.rejected || s.afkir || 0, 10);
+        approvedDownstreamQty += sQty;
+        if (!blockingDownstreamDoc) blockingDownstreamDoc = s.docNo || s.id;
+      }
+    });
+
+    buddingTxs.forEach(b => {
+      if (!b) return;
+      const isRef = (b.sourceSeedingDocNo && b.sourceSeedingDocNo === docNo) ||
+                    (b.seedingDocNo && b.seedingDocNo === docNo) ||
+                    (b.sourceDocNo && b.sourceDocNo === docNo);
+      const isApproved = String(b.status || '').toUpperCase() === 'DISETUJUI' || String(b.status || '').toUpperCase() === 'TERVERIFIKASI';
+      if (isRef && isApproved) {
+        const bQty = parseInt(b.jumlahOkulasi || b.totalOkulasi || b.jumlahBatangOkulasi || 0, 10);
+        approvedDownstreamQty += bQty;
+        if (!blockingDownstreamDoc) blockingDownstreamDoc = b.docNo || b.id;
+      }
+    });
+
+    if (approvedDownstreamQty > 0 && newQty < approvedDownstreamQty) {
+      return {
+        allowed: false,
+        reason: `Kuantitas Pindah Semai baru (${newQty.toLocaleString('id-ID')}) lebih kecil dari total kuantitas hilir yang telah disetujui (${approvedDownstreamQty.toLocaleString('id-ID')}).`,
+        blockingDocNo: blockingDownstreamDoc
+      };
+    }
+  }
+
+  // 5. Kasus Okulasi (Grafting / Regrafting)
+  if (normType === 'BUDDING' || normType === 'OKULASI' || normType === 'BUDDING_TRANSACTION' || normType === 'GRAFTING' || normType === 'REGRAFTING') {
+    if (!updatedPayload) return { allowed: true };
+
+    const newQty = parseInt(
+      updatedPayload.jumlahOkulasi !== undefined
+        ? updatedPayload.jumlahOkulasi
+        : (updatedPayload.totalOkulasi !== undefined ? updatedPayload.totalOkulasi : (updatedPayload.jumlahBatangOkulasi !== undefined ? updatedPayload.jumlahBatangOkulasi : -1)),
+      10
+    );
+
+    if (isNaN(newQty) || newQty < 0) {
+      return { allowed: true, isMetadataOnly: true };
+    }
+
+    const inspectionTxs = storage.get('inspection_transactions', []);
+    let approvedInspectedQty = 0;
+    let blockingInspDoc = null;
+
+    inspectionTxs.forEach(ins => {
+      if (!ins) return;
+      const isRef = (ins.buddingDocNo && ins.buddingDocNo === docNo) ||
+                    (ins.sourceBuddingDocNo && ins.sourceBuddingDocNo === docNo) ||
+                    (ins.sourceDocNo && ins.sourceDocNo === docNo);
+      const isApproved = String(ins.status || '').toUpperCase() === 'DISETUJUI' || String(ins.status || '').toUpperCase() === 'TERVERIFIKASI';
+      if (isRef && isApproved) {
+        const insQty = parseInt(ins.jumlahDiperiksa || ins.totalDiperiksa || ins.jumlahBatangDiperiksa || 0, 10);
+        approvedInspectedQty += insQty;
+        if (!blockingInspDoc) blockingInspDoc = ins.docNo || ins.id;
+      }
+    });
+
+    if (approvedInspectedQty > 0 && newQty < approvedInspectedQty) {
+      return {
+        allowed: false,
+        reason: `Kuantitas Okulasi baru (${newQty.toLocaleString('id-ID')}) lebih kecil dari jumlah batang yang telah disetujui pada Pemeriksaan Okulasi (${approvedInspectedQty.toLocaleString('id-ID')}).`,
+        blockingDocNo: blockingInspDoc
+      };
     }
   }
 

@@ -4,6 +4,7 @@ import { formatStandardDocNo, todayDDMMYYYY, esc } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { guardDependency } from '../../core/dependency-guard.js';
 import { toast } from '../../components/toast.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
 import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
@@ -773,6 +774,10 @@ export function renderBuddingGrafting() {
 
       if (isTransactionLockedForMantri(targetTx)) {
         toast('Transaksi Okulasi tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');
+        return;
+      }
+
+      if (guardDependency(targetTx || doc, 'Okulasi (Grafting)', 'Dihapus')) {
         return;
       }
 

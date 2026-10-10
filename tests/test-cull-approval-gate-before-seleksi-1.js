@@ -33,6 +33,7 @@ global.localStorage = {
 
 import assert from 'assert';
 import { storage } from '../js/core/storage.js';
+import { getEffectiveDate } from '../js/core/simulation-clock-service.js';
 import {
   canCreatePreGraftingSelection1Document,
   createPreGraftingSelectionDocument,
@@ -506,7 +507,9 @@ runTest('IT-CULL-GATE-013', 'Existing Seleksi I document created sebelum gate (C
     totalDisemai: 1000,
     totalPolybag: 500,
     ditolak: 50,
-    batchCode: 'B-013'
+    batchCode: 'B-013',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
 
@@ -535,13 +538,20 @@ runTest('IT-CULL-GATE-013', 'Existing Seleksi I document created sebelum gate (C
     status: SELECTION_STATUS.DISETUJUI
   }]);
 
+  // Seed attendance agar gate presensi terbuka
+  const todayStr = getEffectiveDate();
+  storage.set('attendance_transactions', [
+    { type: 'SUPERVISOR', role: 'MANTRI_TANAMAN', attendanceType: 'DATANG', date: todayStr, status: 'PRESENT' },
+    { type: 'WORKER', workerId: 'WRK-01', attendanceType: 'DATANG', date: todayStr, status: 'PRESENT' }
+  ]);
+
   // Eksekusi harus berhasil
   const execResult = createSeleksi1ExecutionTransaction({
     selectionDocumentId: 'SEL-DOC-013',
     actualPolybagInspectedQty: 100,
     actualBibitSelectedQty: 200,
     bibitAfkir: 5,
-    tanggalSeleksi: '2026-10-03',
+    tanggalSeleksi: todayStr,
     bedenganId: 'BDG-01'
   }, mockUser);
 

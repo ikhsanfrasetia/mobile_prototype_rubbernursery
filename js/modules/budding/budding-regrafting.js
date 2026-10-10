@@ -4,6 +4,7 @@ import { formatStandardDocNo, todayDDMMYYYY, esc } from '../../core/utils.js';
 import { formatBedenganCode } from './budding-grafting.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { guardDependency } from '../../core/dependency-guard.js';
 import { toast } from '../../components/toast.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
@@ -94,6 +95,9 @@ export function renderBuddingRegrafting() {
 
   // AUTO-SYNC: Ensure all inspections with Regrafting allocation are present in regraftPool
   inspectionTxs.forEach((insp, i) => {
+    const isInspCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.status || '').toUpperCase()) ||
+                            ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.verificationStatus || '').toUpperCase());
+    if (isInspCancelled) return;
     const gagal = parseInt(insp.jumlahGagal || 0);
     const toRegraft = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : gagal;
     if (toRegraft > 0) {
@@ -118,6 +122,9 @@ export function renderBuddingRegrafting() {
 
   // AUTO-SYNC: Ensure any existing Regrafting transaction has its parent document in regraftPool
   allRegraftTxs.forEach((rtx, i) => {
+    const isRtxCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(rtx.status || '').toUpperCase()) ||
+                           ['BATAL', 'CANCELLED', 'VOID'].includes(String(rtx.verificationStatus || '').toUpperCase());
+    if (isRtxCancelled) return;
     const exists = regraftPool.some(p => (rtx.regraftPoolDocNo && p.docNo === rtx.regraftPoolDocNo) || (rtx.inspectionDocNo && p.inspectionDocNo === rtx.inspectionDocNo));
     if (!exists) {
       const totalPop = parseInt(rtx.jumlah || 0) + parseInt(rtx.jumlahDitolak || 0);
@@ -142,14 +149,17 @@ export function renderBuddingRegrafting() {
     const docNo = poolItem.docNo || `REG-POOL/2026/0${idx + 1}`;
     const populasiGagal = parseInt(poolItem.jumlah || 0);
 
-    // Calculate accumulated done regraftings strictly per unique pool/inspection document
+    // Calculate accumulated done regraftings strictly per unique pool/inspection document (excluding cancelled)
     let ttlRegrafted = 0;
     let ttlDitolak = 0;
     let ttlKayu = 0;
-    const relatedRegrafts = allRegraftTxs.filter(r => 
-      (r.regraftPoolDocNo && r.regraftPoolDocNo === docNo) || 
-      (r.inspectionDocNo && poolItem.inspectionDocNo && r.inspectionDocNo === poolItem.inspectionDocNo)
-    );
+    const relatedRegrafts = allRegraftTxs.filter(r => {
+      const isCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(r.status || '').toUpperCase()) ||
+                          ['BATAL', 'CANCELLED', 'VOID'].includes(String(r.verificationStatus || '').toUpperCase());
+      if (isCancelled) return false;
+      return (r.regraftPoolDocNo && r.regraftPoolDocNo === docNo) || 
+             (r.inspectionDocNo && poolItem.inspectionDocNo && r.inspectionDocNo === poolItem.inspectionDocNo);
+    });
     
     relatedRegrafts.forEach(r => {
       ttlRegrafted += parseInt(r.jumlah || 0);
@@ -882,6 +892,10 @@ export function renderBuddingRegrafting() {
 
       if (existing && isTransactionLockedForMantri(existing)) {
         toast('Transaksi terkunci karena sedang/sudah diverifikasi.', 'warning');
+        return;
+      }
+
+      if (guardDependency(existing || doc, 'Okulasi (Regrafting)', 'Dihapus')) {
         return;
       }
 

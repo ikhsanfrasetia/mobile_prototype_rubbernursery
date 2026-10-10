@@ -56,6 +56,14 @@ export function renderReceiptLanding() {
       return txDate === selectedReceiptDate;
     });
 
+  // Single-Read Batch Context untuk siklus render saat ini (O(1) storage read)
+  const preloadedReceiptContext = {
+    seedingTxs: storage.get('seeding_transactions', []),
+    dederTxs: storage.get('dederan_transactions', []),
+    indukDocs: storage.get('dederan_induk_documents', []),
+    selectionDocs: storage.get('pre_grafting_selection_documents', [])
+  };
+
   app.innerHTML = `
     <div class="page receipt-landing-page" style="display: flex; flex-direction: column; height: 100%; background: #FAFAFA; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; position: relative;">
       <!-- HEADER -->
@@ -183,9 +191,9 @@ export function renderReceiptLanding() {
           ` : `
             <div>
               ${filteredTxsWithIndex.map(({ tx, originalIndex }) => {
-                const lock = isReceiptLocked(tx, originalIndex);
+                const lock = isReceiptLocked(tx, originalIndex, preloadedReceiptContext);
                 const isLocked = lock.locked;
-                const isUsedRef = isReceiptUsedAsReference(tx, originalIndex);
+                const isUsedRef = lock.reason === 'REFERENTIAL_LOCK' || isReceiptUsedAsReference(tx, originalIndex, preloadedReceiptContext);
                 const docNo = tx.docNo || tx.nomorDokumen || formatStandardDocNo(2026, 'APR', originalIndex + 1);
 
                 const activeFlags = [];
@@ -435,6 +443,10 @@ export function renderReceiptLanding() {
             const docNo = tx?.docNo || tx?.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
             guardDependency(docNo, 'Penerimaan', 'Dihapus');
           }
+          return;
+        }
+
+        if (guardDependency(tx, 'Penerimaan', 'Dihapus')) {
           return;
         }
 

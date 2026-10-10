@@ -60,6 +60,7 @@ import {
   SELECTION_STORAGE_KEY,
   SELECTION_STATUS
 } from '../js/modules/selection/selection-manager.js';
+import { getEffectiveDate } from '../js/core/simulation-clock-service.js';
 
 console.log('======================================================================');
 console.log('INTEGRATION TEST: SELEKSI I BATCH + BEDENGAN SCOPE & LEGACY MIGRATION');
@@ -106,7 +107,7 @@ function resetAllStorage() {
       role: 'MANTRI_TANAMAN',
       attendanceType: 'DATANG',
       status: 'HADIR',
-      date: new Date().toISOString().slice(0, 10),
+      date: getEffectiveDate(),
       createdAt: new Date().toISOString()
     },
     {
@@ -117,8 +118,30 @@ function resetAllStorage() {
       position: 'Pekerja Bibitan',
       attendanceType: 'DATANG',
       status: 'HADIR',
-      date: new Date().toISOString().slice(0, 10),
+      date: getEffectiveDate(),
       createdAt: new Date().toISOString()
+    },
+    {
+      id: 'ATT-SUP-02',
+      type: 'SUPERVISOR',
+      userId: mockMantriUser.id,
+      name: mockMantriUser.name,
+      role: 'MANTRI_TANAMAN',
+      attendanceType: 'DATANG',
+      status: 'HADIR',
+      date: '2026-10-03',
+      createdAt: '2026-10-03T07:00:00Z'
+    },
+    {
+      id: 'ATT-WRK-02',
+      type: 'WORKER',
+      workerId: 'WRK-001',
+      workerName: 'Pekerja 1',
+      position: 'Pekerja Bibitan',
+      attendanceType: 'DATANG',
+      status: 'HADIR',
+      date: '2026-10-03',
+      createdAt: '2026-10-03T07:00:00Z'
     }
   ]);
 }
@@ -359,6 +382,8 @@ runTest('IT-BB-008', 'Execution on BED-001 does not reduce BED-002 remaining pol
     docNo: '2026/SOW/001',
     batchId: 'BTCH-001',
     batchCode: 'BTCH-001',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI',
     rows: [{ bedenganId: 'BED-001', bedenganCode: 'BED-001', polybag: 3000, disemai: 6000 }]
   };
   const sow2 = {
@@ -366,6 +391,8 @@ runTest('IT-BB-008', 'Execution on BED-001 does not reduce BED-002 remaining pol
     docNo: '2026/SOW/002',
     batchId: 'BTCH-001',
     batchCode: 'BTCH-001',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI',
     rows: [{ bedenganId: 'BED-002', bedenganCode: 'BED-002', polybag: 3450, disemai: 6900 }]
   };
   storage.set('seeding_transactions', [sow1, sow2]);
@@ -403,6 +430,8 @@ runTest('IT-BB-009', 'Execution on BED-002 does not reduce BED-001 remaining pol
     docNo: '2026/SOW/001',
     batchId: 'BTCH-001',
     batchCode: 'BTCH-001',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI',
     rows: [{ bedenganId: 'BED-001', bedenganCode: 'BED-001', polybag: 3000, disemai: 6000 }]
   };
   const sow2 = {
@@ -410,6 +439,8 @@ runTest('IT-BB-009', 'Execution on BED-002 does not reduce BED-001 remaining pol
     docNo: '2026/SOW/002',
     batchId: 'BTCH-001',
     batchCode: 'BTCH-001',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI',
     rows: [{ bedenganId: 'BED-002', bedenganCode: 'BED-002', polybag: 3450, disemai: 6900 }]
   };
   storage.set('seeding_transactions', [sow1, sow2]);

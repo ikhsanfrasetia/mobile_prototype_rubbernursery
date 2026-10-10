@@ -31,7 +31,7 @@ export function renderSeedingIssueSelector() {
             <polyline points="12 19 5 12 12 5"></polyline>
           </svg>
         </button>
-        <h1 style="font-size: 0.95rem; font-weight: 700; color: #111827; margin: 0 0 0 8px;">Pilih Issue Gudang Polybag</h1>
+        <h1 style="font-size: 0.95rem; font-weight: 700; color: #111827; margin: 0 0 0 8px;">Pilih Dokumen Issue Material</h1>
       </header>
 
       <!-- SEARCH BAR -->
@@ -69,7 +69,7 @@ export function renderSeedingIssueSelector() {
             <polyline points="14 2 14 8 20 8"></polyline>
           </svg>
           <div style="font-size: 0.84rem; font-weight: 600; margin-bottom: 4px;">Tidak Ada Item Tersedia</div>
-          <div style="font-size: 0.72rem; line-height: 1.4;">Semua Issue Gudang Polybag sudah habis digunakan atau tidak ditemukan.</div>
+          <div style="font-size: 0.72rem; line-height: 1.4;">Semua Dokumen Issue Material sudah habis digunakan atau tidak ditemukan.</div>
         </div>
       `;
       return;
@@ -80,7 +80,7 @@ export function renderSeedingIssueSelector() {
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
           <div style="flex: 1; min-width: 0;">
             <div style="font-size: 0.82rem; font-weight: 700; color: #1E293B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${item.issueDocNo}</div>
-            <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">${item.tanggal || '-'} ${'\\u2022'} ${item.kodeAlokasi || ''}</div>
+            <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">${item.tanggal || '-'} • ${item.kodeAlokasi || ''}</div>
           </div>
           <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #DCFCE7; color: #15803D; flex-shrink: 0; margin-left: 8px;">Tersedia</span>
         </div>

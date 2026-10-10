@@ -270,6 +270,123 @@ assert(illegalQtyEdit.blockingDocNo === '2026/SOW/001', 'Identifies 2026/SOW/001
 
 
 // ==========================================
+// TEST 6: RECEIPT Source Editability Guard
+// ==========================================
+console.log('\n--- TEST 6: RECEIPT Source Editability Guard ---');
+mockDb['dederan_induk_documents'] = [
+  {
+    id: 'DED-IND-001',
+    docNo: '2026/IND/DED/001',
+    sourceReceiptDocNo: '2026/APR/001',
+    totalDiterima: 1000,
+    totalDidederSDHI: 600
+  }
+];
+
+// Receipt reduction above 600 (e.g. 700) -> ALLOWED
+const receiptSafeEdit = validateSourceEditability('RECEIPT', '2026/APR/001', {
+  diterima: 700
+});
+assert(receiptSafeEdit.allowed === true, 'Receipt reduction above committed Deder is allowed');
+
+// Receipt reduction below 600 (e.g. 500) -> BLOCKED
+const receiptIllegalEdit = validateSourceEditability('RECEIPT', '2026/APR/001', {
+  diterima: 500
+});
+assert(receiptIllegalEdit.allowed === false, 'Receipt reduction below committed Deder is strictly blocked');
+assert(receiptIllegalEdit.blockingDocNo === '2026/IND/DED/001', 'Identifies 2026/IND/DED/001 as blocking document');
+
+
+// ==========================================
+// TEST 7: SEEDING Source Editability Guard
+// ==========================================
+console.log('\n--- TEST 7: SEEDING Source Editability Guard ---');
+mockDb['pre_grafting_selection_documents'] = [
+  {
+    id: 'SEL-001',
+    docNo: '2026/SEL/001',
+    sourceSeedingDocNo: '2026/SOW/001',
+    jumlahAfkirTotal: 150,
+    status: 'DISETUJUI'
+  }
+];
+
+// Seeding reduction above 150 (e.g. 200) -> ALLOWED
+const seedingSafeEdit = validateSourceEditability('SEEDING', '2026/SOW/001', {
+  jumlahBibitDipindahkan: 200
+});
+assert(seedingSafeEdit.allowed === true, 'Seeding reduction above approved downstream selection is allowed');
+
+// Seeding reduction below 150 (e.g. 100) -> BLOCKED
+const seedingIllegalEdit = validateSourceEditability('SEEDING', '2026/SOW/001', {
+  jumlahBibitDipindahkan: 100
+});
+assert(seedingIllegalEdit.allowed === false, 'Seeding reduction below approved downstream selection is strictly blocked');
+assert(seedingIllegalEdit.blockingDocNo === '2026/SEL/001', 'Identifies 2026/SEL/001 as blocking document');
+
+
+// ==========================================
+// TEST 8: BUDDING Source Editability Guard
+// ==========================================
+console.log('\n--- TEST 8: BUDDING Source Editability Guard ---');
+mockDb['inspection_transactions'] = [
+  {
+    id: 'INS-OKU-001',
+    docNo: '2026/INS/OKU/001',
+    buddingDocNo: '2026/GRF/001',
+    jumlahDiperiksa: 400,
+    status: 'DISETUJUI'
+  }
+];
+
+// Budding reduction above 400 (e.g. 450) -> ALLOWED
+const buddingSafeEdit = validateSourceEditability('BUDDING', '2026/GRF/001', {
+  jumlahOkulasi: 450
+});
+assert(buddingSafeEdit.allowed === true, 'Budding reduction above approved inspection is allowed');
+
+// Budding reduction below 400 (e.g. 350) -> BLOCKED
+const buddingIllegalEdit = validateSourceEditability('BUDDING', '2026/GRF/001', {
+  jumlahOkulasi: 350
+});
+assert(buddingIllegalEdit.allowed === false, 'Budding reduction below approved inspection is strictly blocked');
+assert(buddingIllegalEdit.blockingDocNo === '2026/INS/OKU/001', 'Identifies 2026/INS/OKU/001 as blocking document');
+
+
+// ==========================================
+// TEST 9: OKULASI_JANDA Regrafting Pool Consistency Gate
+// ==========================================
+console.log('\n--- TEST 9: OKULASI_JANDA Regrafting Pool Consistency Gate ---');
+mockDb['regrafting_pool'] = [
+  {
+    id: 'RGF-POOL-001',
+    docNo: '2026/RGF-POOL/001',
+    inspectionDocNo: '2026/INS/OKU/001',
+    batchNo: 'B-001',
+    availableQty: 50,
+    quantity: 50
+  }
+];
+
+const staleRegraftingTx = {
+  id: 'RGRF-001',
+  docNo: '2026/RGRF/001',
+  type: 'REGRAFTING',
+  isRegrafting: true,
+  sourceInspectionDocNo: '2026/INS/OKU/001',
+  batchNo: 'B-001',
+  jumlahOkulasi: 80, // Over-quota: 80 > 50!
+  status: 'MENUNGGU_VERIFIKASI_MANTRI',
+  stockMutated: false,
+  _storeKey: 'budding_transactions'
+};
+
+const regraftEval = evaluateRecordConsistency('BUDDING', staleRegraftingTx);
+assert(regraftEval.canApprove === false, 'Consistency Gate blocks over-quota Regrafting transaction');
+assert(regraftEval.errors.some(e => e.type === 'STALE_POOL_QUANTITY'), 'Error STALE_POOL_QUANTITY is present for over-quota Regrafting');
+
+
+// ==========================================
 // SUMMARY
 // ==========================================
 console.log('\n====================================================');

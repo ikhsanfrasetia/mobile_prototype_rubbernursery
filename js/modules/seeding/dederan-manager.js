@@ -19,6 +19,7 @@ import { isTransactionLockedForMantri } from '../verification/mantri-confirmatio
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
 import { applyTransactionActor, canUserAccessTransaction } from '../../core/transaction-actor.js';
+import { validateSourceEditability } from '../../core/dependency-guard.js';
 
 export const DEDERAN_STORAGE_KEYS = Object.freeze({
   INDUK: 'dederan_induk_documents',
@@ -137,6 +138,12 @@ export function syncDederanIndukDocuments() {
       }
       if (status === DEDERAN_INDUK_STATUS.COMPLETED && !induk.completedAt) {
         induk.completedAt = new Date().toISOString();
+        changed = true;
+      }
+      const progCode = rtx.program || rtx.programCode || rtx.programPembibitan || rtx.rawState?.programNurseryCode || 'PRG/NUR/01/2026';
+      if (!induk.program || induk.program !== progCode) {
+        induk.program = progCode;
+        induk.programCode = progCode;
         changed = true;
       }
       if (changed) hasChange = true;
@@ -342,12 +349,73 @@ export function deleteDederanTransaction(docNoOrId) {
 }
 
 /**
- * Gets all inspections performed for a specific bedengan dederan transaction
+ * Deterministically sorts inspection documents:
+ * 1. tanggalPemeriksaan ASC
+ * 2. createdAt ASC
+ * 3. docNo / id ASC
+ */
+export function sortInspectionsChronologically(inspections) {
+  if (!Array.isArray(inspections)) return [];
+  return [...inspections].sort((a, b) => {
+    const dateA = a.tanggalPemeriksaan || '';
+    const dateB = b.tanggalPemeriksaan || '';
+    if (dateA !== dateB) return dateA.localeCompare(dateB);
+    const createdA = a.createdAt || '';
+    const createdB = b.createdAt || '';
+    if (createdA !== createdB) return createdA.localeCompare(createdB);
+    const idA = a.docNo || a.id || '';
+    const idB = b.docNo || b.id || '';
+    return idA.localeCompare(idB);
+  });
+}
+
+/**
+ * Gets all active inspections performed for a specific bedengan dederan transaction
+ * Excludes BATAL, CANCELLED, and VOID documents (F-01)
  */
 export function getDederanInspectionsByDederTx(dederTxDocNo) {
   if (!dederTxDocNo) return [];
   const list = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
-  return list.filter(i => i.dederanTxDocNo === dederTxDocNo || i.dederanTxId === dederTxDocNo);
+  return list.filter(i => {
+    const isTarget = i.dederanTxDocNo === dederTxDocNo || i.dederanTxId === dederTxDocNo;
+    const isCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(i.status || '').toUpperCase());
+    return isTarget && !isCancelled;
+  });
+}
+
+/**
+ * Calculates max allowed inspection quota using Strict Chronological Prefix (AC-01)
+ * maxAllowed(k) = max(0, latestSourcePopulation - totalJumlahDiperiksaDokumenAktifSebelumnya)
+ */
+export function getInspectionChronologicalMaxAllowed(dederTx, targetInspection) {
+  if (!dederTx) return 0;
+  const totalPopulation = parseInt(dederTx.jumlahDeder || 0, 10);
+  const activeInspections = getDederanInspectionsByDederTx(dederTx.docNo);
+
+  // Filter out the target inspection if it's already in the storage list
+  const otherInspections = activeInspections.filter(i => {
+    if (targetInspection.id && i.id === targetInspection.id) return false;
+    if (targetInspection.docNo && i.docNo === targetInspection.docNo) return false;
+    return true;
+  });
+
+  // Combine other active inspections with target inspection and sort deterministically
+  const combined = [...otherInspections, targetInspection];
+  const sorted = sortInspectionsChronologically(combined);
+
+  // Find index of target in sorted list
+  const targetIdx = sorted.findIndex(i => {
+    if (targetInspection.id && i.id === targetInspection.id) return true;
+    if (targetInspection.docNo && i.docNo === targetInspection.docNo) return true;
+    return i === targetInspection;
+  });
+
+  let priorSum = 0;
+  for (let i = 0; i < targetIdx; i++) {
+    priorSum += parseInt(sorted[i].jumlahDiperiksa || 0, 10);
+  }
+
+  return Math.max(0, totalPopulation - priorSum);
 }
 
 /**
@@ -403,8 +471,18 @@ export function validateDederanInspection(payload) {
   if (isNaN(jumlahDiperiksa) || jumlahDiperiksa <= 0) {
     return { isValid: false, error: 'Jumlah Diperiksa harus lebih dari 0.' };
   }
-  if (jumlahDiperiksa > prevSummary.remainingToInspect) {
-    return { isValid: false, error: `Jumlah Diperiksa (${jumlahDiperiksa.toLocaleString('id-ID')}) melebihi sisa yang belum diperiksa (${prevSummary.remainingToInspect.toLocaleString('id-ID')}).` };
+
+  const tempInspection = {
+    tanggalPemeriksaan: payload.tanggalPemeriksaan || formatDate(new Date().toISOString()),
+    createdAt: new Date().toISOString(),
+    docNo: 'TEMP-NEW-DOC',
+    id: 'TEMP-NEW-ID',
+    jumlahDiperiksa
+  };
+  const maxAllowed = getInspectionChronologicalMaxAllowed(dederTx, tempInspection);
+
+  if (jumlahDiperiksa > maxAllowed) {
+    return { isValid: false, error: `Jumlah Diperiksa (${jumlahDiperiksa.toLocaleString('id-ID')}) melebihi sisa yang belum diperiksa (${maxAllowed.toLocaleString('id-ID')}).` };
   }
   if (isNaN(jumlahBerhasil) || jumlahBerhasil < 0) {
     return { isValid: false, error: 'Jumlah Berhasil tidak boleh bernilai negatif.' };
@@ -413,7 +491,7 @@ export function validateDederanInspection(payload) {
     return { isValid: false, error: 'Jumlah Berhasil tidak boleh melebihi Jumlah Diperiksa.' };
   }
 
-  return { isValid: true, dederTx, prevSummary };
+  return { isValid: true, dederTx, prevSummary, maxAllowed };
 }
 
 /**
@@ -533,6 +611,41 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
         storage.set('selection_pool', selectionPool);
       }
     }
+
+    // Also sync downstream selection_transactions to 0 if unapproved
+    let selTxs = storage.get('selection_transactions', []);
+    let selChanged = false;
+    selTxs = selTxs.map(tx => {
+      const isDeder = tx.originType === 'REJECT_DEDERAN' || tx.sourceModule === 'DEDERAN' || String(tx.stage || tx.selectionStage || '').includes('DEDERAN');
+      if (!isDeder) return tx;
+      const matchDoc = (existingItem?.selectionDocNo && (tx.docNo === existingItem.selectionDocNo || tx.selectionNo === existingItem.selectionDocNo)) ||
+                       (existingItem?.selectionTransactionId && (tx.id === existingItem.selectionTransactionId || tx.selectionId === existingItem.selectionTransactionId)) ||
+                       (tx.sourceTransactionId && (tx.sourceTransactionId === inspectionTx.id || tx.sourceTransactionId === inspectionTx.docNo || tx.sourceTransactionId === dederanTxDocNo)) ||
+                       (tx.sourceDocNo && (tx.sourceDocNo === inspectionTx.docNo || tx.sourceDocNo === dederanTxDocNo)) ||
+                       (tx.dederanDocNo && tx.dederanDocNo === dederanTxDocNo) ||
+                       (bedenganCode && (tx.bedenganCode === bedenganCode || tx.bedengan === bedenganCode));
+      if (matchDoc) {
+        const isApproved = String(tx.status || '').toUpperCase() === 'DISETUJUI' ||
+                           String(tx.status || '').toUpperCase() === 'TERVERIFIKASI' ||
+                           String(tx.status || '').toUpperCase() === 'APPROVED';
+        if (!isApproved) {
+          selChanged = true;
+          return {
+            ...tx,
+            jumlahAfkir: 0,
+            quantity: 0,
+            actualBibitSelectedQty: 0,
+            jumlahAfkirTotal: 0,
+            bibitReject: 0,
+            polybagCount: 0,
+            updatedAt: new Date().toISOString()
+          };
+        }
+      }
+      return tx;
+    });
+    if (selChanged) storage.set('selection_transactions', selTxs);
+
     return null;
   }
 
@@ -561,6 +674,10 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
     dederanIndukDocNo: inspectionTx.parentDederIndukDocNo || inspectionTx.dederanIndukDocNo || (existingItem?.dederanIndukDocNo || null),
     category: existingItem?.category || 'PENDING_DECLARATION', // Preserves declared state
     alasanDitolakCategory: existingItem?.alasanDitolakCategory || null,
+    jumlahDeder: inspectionTx.jumlahDeder || existingItem?.jumlahDeder || null,
+    jumlahDiperiksa: inspectionTx.jumlahDiperiksa || inspectionTx.jumlahDeder || existingItem?.jumlahDiperiksa || null,
+    jumlahBerhasil: inspectionTx.jumlahBerhasil || existingItem?.jumlahBerhasil || 0,
+    jumlahLayak: inspectionTx.jumlahBerhasil || existingItem?.jumlahLayak || 0,
     jumlahAfkir: qty,
     quantity: qty,
     alasan: `Hasil Pemeriksaan Dederan Tidak Berhasil (${inspectionTx.bedenganCode || (existingItem?.bedenganCode || '-')})`,
@@ -597,6 +714,49 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
   }
 
   storage.set('selection_pool', selectionPool);
+
+  // Synchronize linked selection_transactions so downstream culls reflect updated dederan rejection
+  let selTxs = storage.get('selection_transactions', []);
+  let selChanged = false;
+  selTxs = selTxs.map(tx => {
+    const isDeder = tx.originType === 'REJECT_DEDERAN' || tx.sourceModule === 'DEDERAN' || String(tx.stage || tx.selectionStage || '').includes('DEDERAN');
+    if (!isDeder) return tx;
+
+    const matchDoc = (existingItem?.selectionDocNo && (tx.docNo === existingItem.selectionDocNo || tx.selectionNo === existingItem.selectionDocNo)) ||
+                     (existingItem?.selectionTransactionId && (tx.id === existingItem.selectionTransactionId || tx.selectionId === existingItem.selectionTransactionId)) ||
+                     (poolEntry.docNo && (tx.docNo === poolEntry.docNo || tx.selectionNo === poolEntry.docNo || tx.selectionPoolDocNo === poolEntry.docNo)) ||
+                     (tx.sourceTransactionId && (tx.sourceTransactionId === inspectionTx.id || tx.sourceTransactionId === inspectionTx.docNo || tx.sourceTransactionId === dederanTxDocNo)) ||
+                     (tx.sourceDocNo && (tx.sourceDocNo === inspectionTx.docNo || tx.sourceDocNo === dederanTxDocNo)) ||
+                     (tx.dederanDocNo && tx.dederanDocNo === dederanTxDocNo) ||
+                     (bedenganCode && (tx.bedenganCode === bedenganCode || tx.bedengan === bedenganCode));
+
+    if (matchDoc) {
+      const isApproved = String(tx.status || '').toUpperCase() === 'DISETUJUI' ||
+                         String(tx.status || '').toUpperCase() === 'TERVERIFIKASI' ||
+                         String(tx.status || '').toUpperCase() === 'APPROVED';
+      if (!isApproved) {
+        selChanged = true;
+        return {
+          ...tx,
+          jumlahAfkir: qty,
+          quantity: qty,
+          actualBibitSelectedQty: qty,
+          jumlahAfkirTotal: qty,
+          bibitReject: qty,
+          jumlahDiperiksa: inspectionTx.jumlahDiperiksa !== undefined ? inspectionTx.jumlahDiperiksa : (tx.jumlahDiperiksa || qty),
+          jumlahBerhasil: inspectionTx.jumlahBerhasil !== undefined ? inspectionTx.jumlahBerhasil : (tx.jumlahBerhasil || 0),
+          polybagCount: Math.ceil(qty / 2),
+          updatedAt: new Date().toISOString()
+        };
+      }
+    }
+    return tx;
+  });
+
+  if (selChanged) {
+    storage.set('selection_transactions', selTxs);
+  }
+
   return poolEntry;
 }
 
@@ -751,24 +911,30 @@ export function updateDederanInspection(idOrDocNo, payload) {
   }
 
   const existing = inspections[idx];
-  if (isTransactionLockedForMantri(existing)) {
+  const isReturned = existing.status === 'DIKEMBALIKAN' || existing.verificationStatus === 'DIKEMBALIKAN' || existing.status === 'REVISION';
+  if (!isReturned && isTransactionLockedForMantri(existing)) {
     throw new Error('Data pemeriksaan tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
   }
 
   const dederTx = getDederanTransactionById(existing.dederanTxDocNo);
   if (!dederTx) throw new Error('Transaksi Dederan induk tidak ditemukan.');
 
-  const prevSummary = getBedenganInspectionSummary(dederTx);
-  const maxAllowed = prevSummary.remainingToInspect + parseInt(existing.jumlahDiperiksa || 0, 10);
-
+  const targetDate = payload.tanggalPemeriksaan || existing.tanggalPemeriksaan || formatDate(new Date().toISOString());
   const jumlahDiperiksa = parseInt(payload.jumlahDiperiksa || 0, 10);
   const jumlahBerhasil = parseInt(payload.jumlahBerhasil || 0, 10);
+
+  const tempInspection = {
+    ...existing,
+    tanggalPemeriksaan: targetDate,
+    jumlahDiperiksa
+  };
+  const maxAllowed = getInspectionChronologicalMaxAllowed(dederTx, tempInspection);
 
   if (isNaN(jumlahDiperiksa) || jumlahDiperiksa <= 0) {
     throw new Error('Jumlah Diperiksa harus lebih dari 0.');
   }
   if (jumlahDiperiksa > maxAllowed) {
-    throw new Error(`Jumlah Diperiksa (${jumlahDiperiksa.toLocaleString('id-ID')}) melebihi batas maksimal (${maxAllowed.toLocaleString('id-ID')}).`);
+    throw new Error(`Jumlah Diperiksa (${jumlahDiperiksa.toLocaleString('id-ID')}) melebihi batas maksimal kronologis (${maxAllowed.toLocaleString('id-ID')}).`);
   }
   if (isNaN(jumlahBerhasil) || jumlahBerhasil < 0) {
     throw new Error('Jumlah Berhasil tidak boleh bernilai negatif.');
@@ -784,6 +950,12 @@ export function updateDederanInspection(idOrDocNo, payload) {
     jumlahDiperiksa,
     jumlahBerhasil,
     jumlahTidakBerhasil,
+    status: isReturned ? 'MENUNGGU_VERIFIKASI_MANTRI' : existing.status,
+    verificationStatus: isReturned ? 'MENUNGGU_VERIFIKASI_MANTRI' : existing.verificationStatus,
+    isCorrected: isReturned ? true : Boolean(existing.isCorrected),
+    correctedAt: isReturned ? new Date().toISOString() : (existing.correctedAt || null),
+    lastReturnReason: existing.returnReason || existing.lastReturnReason || null,
+    returnReason: isReturned ? null : (existing.returnReason || null),
     photos: Array.isArray(payload.photos) ? payload.photos : existing.photos,
     inspectorName: payload.inspectorName || existing.inspectorName || 'Mantri Pembibitan',
     updatedAt: new Date().toISOString()
@@ -844,8 +1016,11 @@ export function updateDederanTransaction(idOrDocNo, payload) {
   if (newJumlah > maxAllowed) {
     throw new Error(`Jumlah di deder (${newJumlah.toLocaleString('id-ID')}) melebihi kuota sisa (${maxAllowed.toLocaleString('id-ID')}).`);
   }
-  if (inspections.length > 0 && newJumlah < totalDiperiksa) {
-    throw new Error(`Jumlah di deder (${newJumlah.toLocaleString('id-ID')}) tidak boleh lebih kecil dari jumlah yang sudah diperiksa (${totalDiperiksa.toLocaleString('id-ID')} Butir).`);
+
+  // AC-03 & AC-04 (Option B): Guard batas keras konsumsi fisik final (Pindah Semai + Seleksi Pra-Semai)
+  const sourceGuard = validateSourceEditability('DEDERAN', existing.docNo, payload);
+  if (!sourceGuard.allowed) {
+    throw new Error(sourceGuard.reason || 'Koreksi kuantitas Dederan melanggar batas konsumsi fisik final yang telah disetujui.');
   }
 
   let updatedRecord = {

@@ -1,7 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo, generateUniqueDocNo, esc } from '../../core/utils.js';
 import { getActiveKlons, normalizeKlonName } from '../../data/klon-master.js';
 import { getActiveBatches, getBatchById, getBatchByCode } from '../../data/batch-master.js';
 import { getActiveBedengan, getBedenganById, getBedenganByCode } from '../../data/bedengan-master.js';
@@ -11,6 +11,7 @@ import { getEligiblePindahSemaiSources, calculateRemainingIssueBalance } from '.
 import { toast } from '../../components/toast.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 import { applyTransactionActor } from '../../core/transaction-actor.js';
+import { validateSourceEditability } from '../../core/dependency-guard.js';
 
 export function renderSeedingForm() {
   const app = document.getElementById('app');
@@ -68,20 +69,13 @@ export function renderSeedingForm() {
     finalBedenganList[0] ||
     null;
 
-  // Batch determination
+  // Batch determination (Wajib dipilih oleh user, default null / Pilih Batch saat awal form dibuka)
   let defaultBatchId = null;
   let defaultBatchCode = null;
   if (editTx && (editTx.batchId || editTx.batchNo)) {
     const b = getBatchById(editTx.batchId) || getBatchByCode(editTx.batchNo);
     defaultBatchId = b ? b.id : editTx.batchId;
     defaultBatchCode = b ? b.batchCode : editTx.batchNo;
-  } else if (sourceTx.batchId || sourceTx.rawState?.batchId || sourceTx.batchCode || sourceTx.rawState?.batchCode) {
-    const b = getBatchById(sourceTx.batchId || sourceTx.rawState?.batchId) || getBatchByCode(sourceTx.batchCode || sourceTx.rawState?.batchCode);
-    defaultBatchId = b ? b.id : (sourceTx.batchId || sourceTx.rawState?.batchId);
-    defaultBatchCode = b ? b.batchCode : (sourceTx.batchCode || sourceTx.rawState?.batchCode);
-  } else if (finalBatchList.length > 0) {
-    defaultBatchId = finalBatchList[0].id;
-    defaultBatchCode = finalBatchList[0].batchCode;
   }
 
   const initialBedCode = initialBedObj ? (initialBedObj.bedenganCode || initialBedObj.name) : 'BED-001';
@@ -110,7 +104,7 @@ export function renderSeedingForm() {
         polybag: initialPolybag
       }
     ],
-    photos: editTx ? JSON.parse(JSON.stringify(editTx.photos)) : []
+    photos: (editTx && Array.isArray(editTx.photos)) ? JSON.parse(JSON.stringify(editTx.photos)) : []
   };
 
   const totalPenerimaan = parseInt(sourceTx.totalBerhasil !== undefined ? sourceTx.totalBerhasil : (sourceTx.qty || 0), 10);
@@ -156,9 +150,32 @@ export function renderSeedingForm() {
   });
 
   const previousBalance = Math.max(0, totalPenerimaan - accumulatedDisemai - accumulatedDitolak);
+  const isInitialBalanced = (parseInt(initialDisemai || 0, 10) >= previousBalance) && previousBalance > 0;
+  if (isInitialBalanced) {
+    state.ditolak = 0;
+    state.alasanDitolak = 'Tidak Ada';
+  }
 
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <style>
+        #inp-disemai::-webkit-outer-spin-button,
+        #inp-disemai::-webkit-inner-spin-button,
+        #inp-polybag::-webkit-outer-spin-button,
+        #inp-polybag::-webkit-inner-spin-button,
+        #input-ditolak::-webkit-outer-spin-button,
+        #input-ditolak::-webkit-inner-spin-button {
+          -webkit-appearance: none !important;
+          margin: 0 !important;
+        }
+        #inp-disemai,
+        #inp-polybag,
+        #input-ditolak {
+          -moz-appearance: textfield !important;
+          appearance: textfield !important;
+        }
+      </style>
       
       <!-- HEADER -->
       <header style="display: flex; align-items: center; justify-content: space-between; height: 50px; padding: 0 14px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
@@ -251,6 +268,7 @@ export function renderSeedingForm() {
             <div>
               <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 2px;">No. Batch</div>
               <select id="select-batch" style="width: 100%; height: 32px; border: 1px solid #D1D5DB; border-radius: 4px; outline: none; background: #FFFFFF; font-size: 0.78rem; font-weight: 600; color: #111827; cursor: pointer; padding: 0 6px; box-sizing: border-box;">
+                <option value="" ${(!state.batchId && !state.batchNo) ? 'selected' : ''}>Pilih Batch</option>
                 ${finalBatchList.map(b => `<option value="${b.id || b.batchId}" ${(state.batchId === (b.id || b.batchId) || state.batchNo === (b.batchCode || b.batchNo)) ? 'selected' : ''}>${b.batchCode || b.batchNo}</option>`).join('')}
               </select>
             </div>
@@ -303,7 +321,7 @@ export function renderSeedingForm() {
               </div>
             ` : `
               <div style="background: #FFFBEB; border: 1px dashed #FCD34D; border-radius: 4px; padding: 8px; text-align: center; color: #B45309; font-size: 0.72rem;">
-                Silakan pilih Dokumen Issue Gudang terlebih dahulu.
+                Silakan pilih Dokumen Issue Material terlebih dahulu.
               </div>
             `}
           </div>
@@ -312,16 +330,16 @@ export function renderSeedingForm() {
           <div style="margin-bottom: 10px;">
             <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 4px;">Bibit Pindah Semai</div>
             <div style="position: relative;">
-              <input type="number" id="inp-disemai" value="${state.tableRows[0].disemai}" placeholder="0" min="0" ${(!issueDocNo || remainingIssueQty <= 0) ? 'disabled' : ''} style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; outline: none; font-size: 0.82rem; font-weight: 700; text-align: left; background: ${(!issueDocNo || remainingIssueQty <= 0) ? '#F3F4F6' : '#FFFFFF'}; color: #111827; padding: 0 44px 0 8px; box-sizing: border-box;">
+              <input type="number" id="inp-disemai" value="${state.tableRows[0].disemai}" placeholder="0" min="0" ${(!issueDocNo || remainingIssueQty <= 0) ? 'disabled' : ''} style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; outline: none; font-size: 0.82rem; font-weight: 700; text-align: left; background: ${(!issueDocNo || remainingIssueQty <= 0) ? '#F3F4F6' : '#FFFFFF'}; color: #111827; padding: 0 44px 0 8px; box-sizing: border-box; -moz-appearance: textfield; appearance: textfield;">
               <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 0.72rem; color: #6B7280; font-weight: 600;">Butir</span>
             </div>
           </div>
 
           <!-- 2. Jlh Polybag (INPUT EDITABLE) -->
           <div style="margin-bottom: 10px;">
-            <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 4px;">Jlh Polybag</div>
+            <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 4px;">Input Jumlah Polybag Digunakan</div>
             <div style="position: relative;">
-              <input type="number" id="inp-polybag" value="${state.tableRows[0].polybag}" placeholder="0" min="0" ${(!issueDocNo || remainingIssueQty <= 0) ? 'disabled' : ''} style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; outline: none; font-size: 0.82rem; font-weight: 700; text-align: left; background: ${(!issueDocNo || remainingIssueQty <= 0) ? '#F3F4F6' : '#FFFFFF'}; color: #111827; padding: 0 44px 0 8px; box-sizing: border-box;">
+              <input type="number" id="inp-polybag" value="${state.tableRows[0].polybag}" placeholder="0" min="0" ${(!issueDocNo || remainingIssueQty <= 0) ? 'disabled' : ''} style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; outline: none; font-size: 0.82rem; font-weight: 700; text-align: left; background: ${(!issueDocNo || remainingIssueQty <= 0) ? '#F3F4F6' : '#FFFFFF'}; color: #111827; padding: 0 44px 0 8px; box-sizing: border-box; -moz-appearance: textfield; appearance: textfield;">
               <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 0.72rem; color: #6B7280; font-weight: 600;">${issueUom || 'LBR'}</span>
             </div>
           </div>
@@ -330,9 +348,9 @@ export function renderSeedingForm() {
           <div style="margin-top: 10px;">
             <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 4px; text-align: left;">Banyaknya Ditolak/Seleksi</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center;">
-              <input type="number" id="input-ditolak" value="${state.ditolak}" placeholder="0" min="0" style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; padding: 0 8px; text-align: left; font-size: 0.78rem; font-weight: 600; color: #111827; background: #FFFFFF; outline: none; box-sizing: border-box;">
+              <input type="number" id="input-ditolak" value="${state.ditolak}" placeholder="0" min="0" ${isInitialBalanced ? 'disabled' : ''} style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; padding: 0 8px; text-align: left; font-size: 0.78rem; font-weight: 600; color: ${isInitialBalanced ? '#9CA3AF' : '#111827'}; background: ${isInitialBalanced ? '#F3F4F6' : '#FFFFFF'}; outline: none; box-sizing: border-box; cursor: ${isInitialBalanced ? 'not-allowed' : 'text'}; -moz-appearance: textfield; appearance: textfield;">
               <div style="position: relative; width: 100%; height: 36px;">
-                <select id="select-alasan" style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; background: #FFFFFF; padding: 0 6px; font-size: 0.74rem; font-weight: 500; color: #374151; cursor: pointer; outline: none; box-sizing: border-box;" ${(!state.ditolak || parseInt(state.ditolak) === 0) ? 'disabled' : ''}>
+                <select id="select-alasan" style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; background: ${(isInitialBalanced || !state.ditolak || parseInt(state.ditolak) === 0) ? '#F3F4F6' : '#FFFFFF'}; padding: 0 6px; font-size: 0.74rem; font-weight: 500; color: ${(isInitialBalanced || !state.ditolak || parseInt(state.ditolak) === 0) ? '#9CA3AF' : '#374151'}; cursor: ${(isInitialBalanced || !state.ditolak || parseInt(state.ditolak) === 0) ? 'not-allowed' : 'pointer'}; outline: none; box-sizing: border-box;" ${(isInitialBalanced || !state.ditolak || parseInt(state.ditolak) === 0) ? 'disabled' : ''}>
                   <option value="Tidak Ada" ${state.alasanDitolak === 'Tidak Ada' || !state.ditolak || parseInt(state.ditolak) === 0 ? 'selected' : ''}>Tidak Ada</option>
                   <option value="Rusak" ${state.alasanDitolak === 'Rusak' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Rusak</option>
                   <option value="Mati" ${state.alasanDitolak === 'Mati' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Mati</option>
@@ -476,7 +494,8 @@ export function renderSeedingForm() {
     }
 
     // Validasi tidak boleh melebihi sisa Berhasil di Deder
-    if (disemaiTotal > previousBalance) {
+    const ditolakTotal = parseInt(state.ditolak || 0, 10);
+    if (disemaiTotal > previousBalance || (disemaiTotal + ditolakTotal > previousBalance)) {
       isValid = false;
     }
 
@@ -502,6 +521,66 @@ export function renderSeedingForm() {
       btnSimpan.style.background = '#E5E7EB';
       btnSimpan.style.color = '#9CA3AF';
       btnSimpan.style.cursor = 'not-allowed';
+    }
+  }
+
+  function updateDitolakState() {
+    const disemaiTotal = parseInt(state.tableRows[0]?.disemai || 0, 10);
+    const isBalanced = (disemaiTotal >= previousBalance) && (previousBalance > 0);
+
+    if (isBalanced) {
+      state.ditolak = 0;
+      state.alasanDitolak = 'Tidak Ada';
+      if (inputDitolak) {
+        inputDitolak.value = 0;
+        inputDitolak.disabled = true;
+        inputDitolak.style.background = '#F3F4F6';
+        inputDitolak.style.color = '#9CA3AF';
+        inputDitolak.style.cursor = 'not-allowed';
+      }
+      if (selectAlasan) {
+        selectAlasan.value = 'Tidak Ada';
+        selectAlasan.disabled = true;
+        selectAlasan.style.background = '#F3F4F6';
+        selectAlasan.style.color = '#9CA3AF';
+        selectAlasan.style.cursor = 'not-allowed';
+      }
+    } else {
+      const maxAllowedDitolak = Math.max(0, previousBalance - disemaiTotal);
+      if (inputDitolak) {
+        inputDitolak.disabled = false;
+        inputDitolak.style.background = '#FFFFFF';
+        inputDitolak.style.color = '#111827';
+        inputDitolak.style.cursor = 'text';
+
+        let currentDitolak = parseInt(inputDitolak.value || 0, 10);
+        if (currentDitolak > maxAllowedDitolak) {
+          currentDitolak = maxAllowedDitolak;
+          inputDitolak.value = maxAllowedDitolak || '';
+          state.ditolak = inputDitolak.value;
+        }
+      }
+
+      const currentDitolakVal = parseInt(state.ditolak || 0, 10);
+      if (selectAlasan) {
+        if (currentDitolakVal > 0) {
+          selectAlasan.disabled = false;
+          selectAlasan.style.background = '#FFFFFF';
+          selectAlasan.style.color = '#374151';
+          selectAlasan.style.cursor = 'pointer';
+          if (selectAlasan.value === 'Tidak Ada') {
+            selectAlasan.value = 'Rusak';
+            state.alasanDitolak = 'Rusak';
+          }
+        } else {
+          selectAlasan.value = 'Tidak Ada';
+          selectAlasan.disabled = true;
+          selectAlasan.style.background = '#F3F4F6';
+          selectAlasan.style.color = '#9CA3AF';
+          selectAlasan.style.cursor = 'not-allowed';
+          state.alasanDitolak = 'Tidak Ada';
+        }
+      }
     }
   }
 
@@ -534,11 +613,18 @@ export function renderSeedingForm() {
   if (selectBatch) {
     selectBatch.addEventListener('change', (e) => {
       const chosenId = e.target.value;
-      const bObj = getBatchById(chosenId) || getBatchByCode(chosenId) || finalBatchList.find(b => (b.id || b.batchId) === chosenId);
-      state.tableRows[0].batchId = bObj ? (bObj.id || bObj.batchId) : chosenId;
-      state.tableRows[0].batchNo = bObj ? (bObj.batchCode || bObj.batchNo) : chosenId;
-      state.batchId = state.tableRows[0].batchId;
-      state.batchNo = state.tableRows[0].batchNo;
+      if (!chosenId) {
+        state.tableRows[0].batchId = null;
+        state.tableRows[0].batchNo = null;
+        state.batchId = null;
+        state.batchNo = null;
+      } else {
+        const bObj = getBatchById(chosenId) || getBatchByCode(chosenId) || finalBatchList.find(b => (b.id || b.batchId) === chosenId);
+        state.tableRows[0].batchId = bObj ? (bObj.id || bObj.batchId) : chosenId;
+        state.tableRows[0].batchNo = bObj ? (bObj.batchCode || bObj.batchNo) : chosenId;
+        state.batchId = state.tableRows[0].batchId;
+        state.batchNo = state.tableRows[0].batchNo;
+      }
       validateForm();
     });
   }
@@ -572,6 +658,7 @@ export function renderSeedingForm() {
         inpPolybag.value = suggestedPolybag || '';
       }
 
+      updateDitolakState();
       calculateTotals();
       validateForm();
     });
@@ -609,6 +696,7 @@ export function renderSeedingForm() {
         inpDisemai.value = disemaiVal || '';
       }
 
+      updateDitolakState();
       calculateTotals();
       validateForm();
     });
@@ -622,14 +710,30 @@ export function renderSeedingForm() {
         e.target.value = 0;
         val = 0;
       }
+
+      const disemaiTotal = parseInt(state.tableRows[0]?.disemai || 0, 10);
+      const maxAllowedDitolak = Math.max(0, previousBalance - disemaiTotal);
+
+      if (val > maxAllowedDitolak) {
+        toast(`Banyaknya ditolak tidak boleh melebihi sisa hasil Deder (${maxAllowedDitolak.toLocaleString('id-ID')} Butir).`, 'error');
+        val = maxAllowedDitolak;
+        e.target.value = maxAllowedDitolak || '';
+      }
+
       state.ditolak = e.target.value;
 
       if (val === 0 || !e.target.value) {
         selectAlasan.value = 'Tidak Ada';
         state.alasanDitolak = 'Tidak Ada';
         selectAlasan.disabled = true;
+        selectAlasan.style.background = '#F3F4F6';
+        selectAlasan.style.color = '#9CA3AF';
+        selectAlasan.style.cursor = 'not-allowed';
       } else {
         selectAlasan.disabled = false;
+        selectAlasan.style.background = '#FFFFFF';
+        selectAlasan.style.color = '#374151';
+        selectAlasan.style.cursor = 'pointer';
         if (selectAlasan.value === 'Tidak Ada') {
           selectAlasan.value = 'Rusak';
           state.alasanDitolak = 'Rusak';
@@ -787,11 +891,22 @@ export function renderSeedingForm() {
       }
     }
 
+    const activeBatchId = state.tableRows[0]?.batchId || state.batchId;
+    const activeBatchNo = state.tableRows[0]?.batchNo || state.batchNo;
+    if (!activeBatchId && !activeBatchNo) {
+      toast('Silakan pilih No. Batch terlebih dahulu.', 'error');
+      return;
+    }
+
     let totalPolybag = parseInt(state.tableRows[0]?.polybag || 0, 10);
     let totalDisemai = parseInt(state.tableRows[0]?.disemai || (totalPolybag * 2), 10);
-
+    let totalDitolak = parseInt(state.ditolak || 0, 10);
     if (totalDisemai > previousBalance) {
       toast(`Jumlah bibit di Pindah Semai (${totalDisemai.toLocaleString('id-ID')} Butir) tidak boleh melebihi sisa hasil Deder (${previousBalance.toLocaleString('id-ID')} Butir).`, 'error');
+      return;
+    }
+    if (totalDisemai + totalDitolak > previousBalance) {
+      toast(`Total bibit disemai dan ditolak (${(totalDisemai + totalDitolak).toLocaleString('id-ID')} Butir) tidak boleh melebihi sisa hasil Deder (${previousBalance.toLocaleString('id-ID')} Butir).`, 'error');
       return;
     }
 
@@ -825,8 +940,6 @@ export function renderSeedingForm() {
     const seedingDocNo = (editTx && editTx.docNo) ? editTx.docNo : generateUniqueDocNo('seeding', txs, 2026);
 
     // Resolve Canonical References
-    const activeBatchId = state.tableRows[0]?.batchId || state.batchId;
-    const activeBatchNo = state.tableRows[0]?.batchNo || state.batchNo;
     const batchObj = (activeBatchId || activeBatchNo) ? (getBatchById(activeBatchId) || getBatchByCode(activeBatchNo)) : null;
     const finalBatchId = batchObj ? (batchObj.id || batchObj.batchId) : (activeBatchId || null);
     const finalBatchCode = batchObj ? (batchObj.batchCode || batchObj.batchNo) : (activeBatchNo || null);
@@ -923,6 +1036,17 @@ export function renderSeedingForm() {
       newTx.correctedAt = new Date().toISOString();
     }
 
+    if (editIdx !== null && editTx) {
+      const editGuard = validateSourceEditability('SEEDING', editTx.docNo || editTx.id, {
+        jumlahBibitDipindahkan: totalDisemai,
+        totalDisemai: totalDisemai
+      });
+      if (!editGuard.allowed) {
+        toast(editGuard.reason || 'Koreksi tidak dapat disimpan karena melanggar konsistensi dokumen hilir yang telah disetujui.', 'error');
+        return;
+      }
+    }
+
     const finalizedTx = applyTransactionActor(newTx, editIdx !== null ? 'UPDATE' : 'CREATE', userCtx);
 
     if (editIdx !== null) {
@@ -965,6 +1089,7 @@ export function renderSeedingForm() {
   });
 
   // Render initial
+  updateDitolakState();
   calculateTotals();
   renderPhotos();
   validateForm();

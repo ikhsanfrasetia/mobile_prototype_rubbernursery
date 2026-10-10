@@ -10,7 +10,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { formatStandardDocNo, todayDDMMYYYY, esc } from '../../core/utils.js';
-import { guardDependency } from '../../core/dependency-guard.js';
+import { guardDependency, findDownstreamDependency } from '../../core/dependency-guard.js';
 import {
   syncDederanIndukDocuments,
   getDederanIndukDocuments,
@@ -163,7 +163,7 @@ export function renderSeedingLanding() {
 /**
  * Render Content for Tab 1: Dederan
  */
-function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false, selectedDate = todayDDMMYYYY()) {
+export function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false, selectedDate = todayDDMMYYYY()) {
   if (indukDocs.length === 0) {
     return renderEmptyStateCard({
       title: 'Belum Ada Penerimaan Benih',
@@ -202,6 +202,21 @@ function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false,
       activeFlags.push({ key: 'DEDER_SISA', label: `Sisa ${sisa.toLocaleString('id-ID')} Butir` });
     }
 
+    // Resolusi Program dari data transaksi penerimaan
+    let programVal = induk.program || induk.programCode;
+    if (!programVal) {
+      const receiptTxs = storage.get('receipt_transactions', []);
+      const rtx = receiptTxs.find(r =>
+        r.docNo === induk.sourceReceiptDocNo ||
+        r.nomorDokumen === induk.sourceReceiptDocNo ||
+        r.id === induk.sourceReceiptDocNo
+      );
+      programVal = rtx?.program || rtx?.programCode || rtx?.programPembibitan || rtx?.rawState?.programNurseryCode;
+    }
+    if (!programVal) {
+      programVal = 'PRG/NUR/01/2026';
+    }
+
     return `
             <div class="card-dederan-induk" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 10px; min-width: 0;">
               
@@ -213,10 +228,16 @@ function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false,
                 </div>
               </div>
 
-              <!-- SUBTITLE METADATA -->
-              <div style="font-size: 0.74rem; color: #64748B; line-height: 1.4;">
-                <div>Asal Penerimaan: <strong style="color: #1E293B;">${induk.sourceReceiptDocNo}</strong></div>
-                <div style="margin-top: 2px;">Klon: <strong style="color: #116834;">${induk.klon || 'GT 1'}</strong> • Tgl: ${induk.tanggalPenerimaan || '-'}</div>
+              <!-- SUBTITLE METADATA (KIRI - KANAN) -->
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; line-height: 1.35;">
+                  <div style="min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px;">Program: <strong style="color: #0F172A; font-weight: 600;">${esc(programVal)}</strong></div>
+                  <div style="text-align: right; flex-shrink: 0;">Klon: <strong style="color: #0F172A; font-weight: 600;">${esc(induk.klon || 'GT 1')}</strong></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; line-height: 1.35;">
+                  <div style="min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px;">Asal Penerimaan: <strong style="color: #0F172A; font-weight: 600;">${esc(induk.sourceReceiptDocNo)}</strong></div>
+                  <div style="text-align: right; flex-shrink: 0;">Tgl: <span style="color: #334155; font-weight: 500;">${esc(induk.tanggalPenerimaan || '-')}</span></div>
+                </div>
               </div>
 
               <!-- METRIC GRID 3-KOLOM -->
@@ -282,44 +303,25 @@ function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false,
               return `
                 <div class="card-summary-wrapper card-returned-deder-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
                   
-                  <!-- BARIS 1: IDENTITAS DOKUMEN, STATUS BADGE & 3-DOTS ACTION -->
-                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-                    <div style="flex: 1; min-width: 0;">
-                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${tx.docNo}</span>
-                        <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px;">
-                          <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
-                          Dikembalikan
-                        </span>
-                      </div>
-                      
-                      <!-- BARIS 2 & 3: DOKUMEN INDUK, KLON, BEDENGAN & TANGGAL -->
-                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.3;">
-                        Dok. Induk: <strong style="color: #334155;">${tx.parentDederIndukDocNo || '-'}</strong> • Klon: <strong style="color: #116834;">${tx.klon || 'GT 1'}</strong>
-                      </div>
-                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.3;">
-                        Bedengan: <strong style="color: #0F172A;">${tx.bedenganCode || tx.bedengan || 'BED-001'}</strong> • Tgl: ${tx.tanggalDeder || tx.tanggal || '-'}
-                      </div>
+                  <!-- BARIS 1: IDENTITAS DOKUMEN & STATUS BADGE -->
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${tx.docNo}</span>
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px;">
+                        <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
+                        Dikembalikan
+                      </span>
                     </div>
-
-                    <!-- 3-DOTS ACTION TRIGGER -->
-                    <div style="position: relative; flex-shrink: 0; margin-left: 8px;">
-                      <button type="button" class="btn-tx-action-trigger" data-index="ret-${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                          <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
-                          <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
-                          <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
-                        </svg>
-                      </button>
-
-                      <!-- POPUP MENU -->
-                      <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
-                        <button type="button" class="menu-action-edit-deder" data-doc="${tx.docNo}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                          <span>Edit / Koreksi</span>
-                        </button>
-                      </div>
-                    </div>
+                  </div>
+                  
+                  <!-- METADATA HIRARKI RAPI (KIRI - KANAN) -->
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.35;">
+                    <div>Dok. Induk: <strong style="color: #0F172A; font-weight: 600;">${esc(tx.parentDederIndukDocNo || '-')}</strong></div>
+                    <div style="text-align: right;">Tgl: <span style="color: #334155; font-weight: 500;">${esc(tx.tanggalDeder || tx.tanggal || '-')}</span></div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; margin-top: 3px; line-height: 1.35;">
+                    <div>Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(tx.bedenganCode || tx.bedengan || 'BED-001')}</strong></div>
+                    <div style="text-align: right;">Klon: <strong style="color: #0F172A; font-weight: 600;">${esc(tx.klon || 'GT 1')}</strong></div>
                   </div>
 
                   <!-- BARIS 4: CATATAN PENGEMBALIAN -->
@@ -392,52 +394,20 @@ function renderDederanTabContent(indukDocs, dederanTxs = [], isFiltered = false,
     return `
                 <div class="card-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
                   
-                  <!-- IDENTITAS DOKUMEN & 3-DOTS ACTION -->
-                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-                    <div style="flex: 1; min-width: 0;">
-                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        ${renderStatusDots(activeDederFlags)}
-                        <span style="font-weight: 800; font-size: 0.92rem; color: #0F172A; letter-spacing: -0.01em;">${tx.docNo}</span>
-                      </div>
-                      
-                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.3;">
-                        Dok. Induk: <strong style="color: #334155;">${tx.parentDederIndukDocNo || '-'}</strong> • Klon: <strong style="color: #116834;">${tx.klon || 'GT 1'}</strong>
-                      </div>
-                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.3;">
-                        Bedengan: <strong style="color: #0F172A;">${tx.bedenganCode || tx.bedengan || 'BED-001'}</strong> • Tgl: ${tx.tanggalDeder || tx.tanggal || '-'}
-                      </div>
-                    </div>
-
-                    <!-- 3-DOTS ACTION TRIGGER -->
-                    <div style="position: relative; flex-shrink: 0; margin-left: 8px;">
-                      <button type="button" class="btn-tx-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                          <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
-                          <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
-                          <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
-                        </svg>
-                      </button>
-
-                      <!-- POPUP MENU -->
-                      <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
-                        ${!isLocked ? `
-                          <button type="button" class="menu-action-edit-deder" data-doc="${tx.docNo}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #2563EB; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F1F5F9;">
-                            <svg viewBox="0 0 24 24" width="13" height="13" stroke="#2563EB" stroke-width="2.2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                            <span>Edit</span>
-                          </button>
-                        ` : ''}
-                        ${hasInspection ? `
-                          <button type="button" class="menu-action-locked" style="width: 100%; padding: 8px 12px; text-align: left; background: #FAFAFA; border: none; font-size: 0.75rem; font-weight: 600; color: #9CA3AF; cursor: not-allowed;">
-                            <span>Hapus (Terkunci)</span>
-                          </button>
-                        ` : `
-                          <button type="button" class="menu-action-delete-deder" data-doc="${tx.docNo}" data-index="${idx}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <svg viewBox="0 0 24 24" width="13" height="13" stroke="#DC2626" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            <span>Hapus</span>
-                          </button>
-                        `}
-                      </div>
-                    </div>
+                  <!-- IDENTITAS DOKUMEN -->
+                  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                    ${renderStatusDots(activeDederFlags)}
+                    <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${tx.docNo}</span>
+                  </div>
+                  
+                  <!-- METADATA HIRARKI RAPI (KIRI - KANAN) -->
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.35;">
+                    <div>Dok. Induk: <strong style="color: #0F172A; font-weight: 600;">${esc(tx.parentDederIndukDocNo || '-')}</strong></div>
+                    <div style="text-align: right;">Tgl: <span style="color: #334155; font-weight: 500;">${esc(tx.tanggalDeder || tx.tanggal || '-')}</span></div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; margin-top: 3px; line-height: 1.35;">
+                    <div>Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(tx.bedenganCode || tx.bedengan || 'BED-001')}</strong></div>
+                    <div style="text-align: right;">Klon: <strong style="color: #0F172A; font-weight: 600;">${esc(tx.klon || 'GT 1')}</strong></div>
                   </div>
 
                   <!-- METRICS CONTAINER -->
@@ -517,33 +487,20 @@ export function renderPindahSemaiTabContent(eligibleSources = [], seedingTxs = [
               return `
                 <div class="card-summary-wrapper card-pindah-semai-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative; width: 100%; box-sizing: border-box;">
                   
-                  <!-- IDENTITAS DOKUMEN & 3-DOTS ACTION -->
-                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-                    <div style="flex: 1; min-width: 0;">
-                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        ${renderStatusDots([{ key: 'SELECTION_APPROVED', label: 'Disetujui Siap Pindah Semai' }])}
-                        <span style="font-weight: 800; font-size: 0.92rem; color: #0F172A; letter-spacing: -0.01em; word-break: break-word;">${esc(docNumber)}</span>
-                      </div>
-                      
-                      <!-- METADATA (BARIS KEDUA & KETIGA MENGIKUTI HIERARCHY GERMINASI) -->
-                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.35;">
-                        Dok. Induk: <strong style="color: #334155; font-weight: 600;">${esc(parentDoc)}</strong> • Klon: <strong style="color: #116834; font-weight: 600;">${esc(klonVal)}</strong>
-                      </div>
-                      <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.35;">
-                        Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(bedenganVal)}</strong> • Tgl: <span style="color: #475569; font-weight: 500;">${esc(tanggalVal)}</span>
-                      </div>
-                    </div>
-
-                    <!-- 3-DOTS ACTION TRIGGER -->
-                    <div style="position: relative; flex-shrink: 0; margin-left: 10px;">
-                      <button type="button" class="btn-tx-action-trigger" data-index="${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                          <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
-                          <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
-                          <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
-                        </svg>
-                      </button>
-                    </div>
+                  <!-- IDENTITAS DOKUMEN -->
+                  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                    ${renderStatusDots([{ key: 'SELECTION_APPROVED', label: 'Disetujui Siap Pindah Semai' }])}
+                    <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em; word-break: break-word;">${esc(docNumber)}</span>
+                  </div>
+                  
+                  <!-- METADATA HIRARKI RAPI (KIRI - KANAN) -->
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.35;">
+                    <div>Dok. Induk: <strong style="color: #0F172A; font-weight: 600;">${esc(parentDoc)}</strong></div>
+                    <div style="text-align: right;">Tgl: <span style="color: #334155; font-weight: 500;">${esc(tanggalVal)}</span></div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; margin-top: 3px; line-height: 1.35;">
+                    <div>Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(bedenganVal)}</strong></div>
+                    <div style="text-align: right;">Klon: <strong style="color: #0F172A; font-weight: 600;">${esc(klonVal)}</strong></div>
                   </div>
 
                   <!-- METRICS CONTAINER -->
@@ -780,6 +737,8 @@ export function renderPindahSemaiTabContent(eligibleSources = [], seedingTxs = [
           <div style="display: flex; flex-direction: column; gap: 10px;">
             ${filteredSeedingTxs.map((stx, idx) => {
               const isPindahLocked = isTransactionLockedForMantri(stx) || hasExistingCullDeclarationForSeeding(stx);
+              const pindahDownstream = findDownstreamDependency(stx);
+              const hasPindahDownstream = pindahDownstream !== null;
               const rawDitolak = (stx.ditolak !== undefined && stx.ditolak !== null && stx.ditolak !== '')
                 ? stx.ditolak
                 : (stx.jumlahDitolak !== undefined && stx.jumlahDitolak !== null && stx.jumlahDitolak !== '')
@@ -815,84 +774,52 @@ export function renderPindahSemaiTabContent(eligibleSources = [], seedingTxs = [
 
                       <!-- POPUP MENU -->
                       <div class="pindah-action-menu" style="display: none; position: absolute; right: 0; top: 36px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.18), 0 8px 10px -6px rgba(0,0,0,0.08); z-index: 1000; min-width: 140px; overflow: hidden;">
-                        <button type="button" class="menu-action-edit-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #1E293B; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F1F5F9; transition: background 0.15s ease;">
-                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="#2563EB" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                          </svg>
-                          <span>Edit</span>
-                        </button>
-                        <button type="button" class="menu-action-delete-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: background 0.15s ease;">
-                          <svg viewBox="0 0 24 24" width="14" height="14" stroke="#DC2626" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                          </svg>
-                          <span>Hapus</span>
-                        </button>
+                        ${hasPindahDownstream ? `
+                          <button type="button" class="menu-action-locked" style="width: 100%; padding: 10px 14px; text-align: left; background: #FAFAFA; border: none; font-size: 0.78rem; font-weight: 600; color: #9CA3AF; cursor: not-allowed; border-bottom: 1px solid #F1F5F9;">
+                            <span>Edit (Terkunci)</span>
+                          </button>
+                          <button type="button" class="menu-action-locked" style="width: 100%; padding: 10px 14px; text-align: left; background: #FAFAFA; border: none; font-size: 0.78rem; font-weight: 600; color: #9CA3AF; cursor: not-allowed;">
+                            <span>Hapus (Terkunci)</span>
+                          </button>
+                        ` : `
+                          <button type="button" class="menu-action-edit-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #1E293B; display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid #F1F5F9; transition: background 0.15s ease;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="#2563EB" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                            <span>Edit</span>
+                          </button>
+                          <button type="button" class="menu-action-delete-pindah" data-index="${idx}" data-doc="${esc(stx.docNo || '')}" style="width: 100%; padding: 10px 14px; text-align: left; background: #FFFFFF; border: none; font-size: 0.78rem; font-weight: 600; color: #DC2626; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: background 0.15s ease;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="#DC2626" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                            <span>Hapus</span>
+                          </button>
+                        `}
                       </div>
                     </div>
                   ` : ''}
                 </div>
 
-                <!-- HARMONIZED STRUCTURED METADATA (2-COLUMN GRID) -->
-                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
-                  
-                  <!-- GRID 2x2: Dederan, Klon, Bedengan, Batch -->
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 0.74rem;">
-                    <div style="min-width: 0;">
-                      <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Sumber Dederan</span>
-                      <strong style="color: #1E293B; font-size: 0.78rem; word-break: break-word;">${esc(stx.sourceDocNo || '-')}</strong>
-                    </div>
-                    <div style="min-width: 0;">
-                      <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Klon</span>
-                      <strong style="color: #116834; font-size: 0.78rem; word-break: break-word;">${esc(stx.klon || stx.klonAwal || stx.rows?.[0]?.klon || 'GT 1')}</strong>
-                    </div>
-                    <div style="min-width: 0;">
-                      <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Bedengan Semai</span>
-                      <strong style="color: #0F172A; font-size: 0.78rem; word-break: break-word;">${esc(stx.bedengan || '-')}</strong>
-                    </div>
-                    <div style="min-width: 0;">
-                      <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Kode Batch</span>
-                      <strong style="color: #0284C7; font-size: 0.78rem; word-break: break-word;">${esc(stx.batchCode || stx.batchNo || stx.rows?.[0]?.batchCode || stx.rows?.[0]?.batchNo || '-')}</strong>
-                    </div>
-                  </div>
-
-                  <!-- TGL TRANSAKSI & ISSUE SECTION -->
-                  <div style="border-top: 1px solid #E2E8F0; padding-top: 7px; display: flex; flex-direction: column; gap: 6px; font-size: 0.74rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                      <span style="font-size: 0.68rem; color: #64748B;">Tanggal Transaksi:</span>
-                      <strong style="color: #334155; font-size: 0.76rem;">${esc(stx.date || '-')}</strong>
-                    </div>
-
-                    ${stx.issueDocNo ? `
-                    <div>
-                      <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 0.68rem; color: #64748B;">Dokumen Issue:</span>
-                        <strong style="color: #0F766E; font-size: 0.76rem; font-family: monospace;">${esc(stx.issueDocNo)}</strong>
-                      </div>
-                      ${stx.itemCode ? `
-                        <div style="font-size: 0.70rem; color: #334155; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 5px; padding: 4px 8px; margin-top: 4px; line-height: 1.35; font-weight: 600;">
-                          ${esc(stx.itemName || stx.itemCode)}
-                        </div>
-                      ` : ''}
-                    </div>
-                    ` : ''}
-                  </div>
-
-                </div>
-
                 <!-- METRICS CONTAINER -->
                 <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div style="display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 8px; align-items: flex-start;">
                     <div>
-                      <span style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Bibit Disemai</span>
-                      <div style="font-size: 0.88rem; font-weight: 800; color: #116834; margin-top: 2px;">
+                      <span style="font-size: 0.68rem; color: #64748B; font-weight: 500; display: block;">Kode Batch</span>
+                      <div style="font-size: 0.84rem; font-weight: 800; color: #0284C7; margin-top: 2px; word-break: break-word;">
+                        ${esc(stx.batchCode || stx.batchNo || stx.rows?.[0]?.batchCode || stx.rows?.[0]?.batchNo || '-')}
+                      </div>
+                    </div>
+                    <div style="text-align: center;">
+                      <span style="font-size: 0.68rem; color: #64748B; font-weight: 500; display: block;">Bibit Disemai</span>
+                      <div style="font-size: 0.84rem; font-weight: 800; color: #116834; margin-top: 2px; white-space: nowrap;">
                         ${(stx.totalDisemai || 0).toLocaleString('id-ID')} Pkk
                       </div>
                     </div>
                     <div style="text-align: right;">
-                      <span style="font-size: 0.68rem; color: #64748B; font-weight: 500;">Polybag Terisi</span>
-                      <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 2px;">
+                      <span style="font-size: 0.68rem; color: #64748B; font-weight: 500; display: block;">Polybag Terisi</span>
+                      <div style="font-size: 0.84rem; font-weight: 800; color: #0F172A; margin-top: 2px; white-space: nowrap;">
                         ${(stx.totalPolybag || 0).toLocaleString('id-ID')} Ply
                       </div>
                     </div>
@@ -906,6 +833,56 @@ export function renderPindahSemaiTabContent(eligibleSources = [], seedingTxs = [
                       </div>
                     </div>
                   ` : ''}
+                </div>
+
+                <!-- EXPAND / COLLAPSE TOGGLE -->
+                <button type="button" class="btn-toggle-pindah-expand" aria-expanded="false" style="width: 100%; background: transparent; border: none; border-top: 1px dashed #E2E8F0; padding: 6px 0 2px 0; font-size: 0.72rem; color: #116834; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">
+                  <span class="toggle-text">Lihat Detail Transaksi</span>
+                  <svg class="toggle-icon" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease;">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+
+                <!-- EXPANDABLE CONTENT (STRUCTURED METADATA) -->
+                <div class="pindah-expandable-content" style="display: none; flex-direction: column; gap: 8px;">
+                  <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+                    
+                    <!-- GRID 2x2: Dederan, Tanggal, Bedengan, Klon -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 0.74rem;">
+                      <div style="min-width: 0;">
+                        <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Sumber Dederan</span>
+                        <strong style="color: #1E293B; font-size: 0.78rem; word-break: break-word;">${esc(stx.sourceDocNo || '-')}</strong>
+                      </div>
+                      <div style="min-width: 0; text-align: right;">
+                        <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Tanggal Transaksi</span>
+                        <strong style="color: #334155; font-size: 0.78rem; word-break: break-word;">${esc(stx.date || stx.tanggal || '-')}</strong>
+                      </div>
+                      <div style="min-width: 0;">
+                        <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Bedengan Semai</span>
+                        <strong style="color: #0F172A; font-size: 0.78rem; word-break: break-word;">${esc(stx.bedengan || '-')}</strong>
+                      </div>
+                      <div style="min-width: 0; text-align: right;">
+                        <span style="font-size: 0.67rem; color: #64748B; display: block; margin-bottom: 2px;">Klon</span>
+                        <strong style="color: #116834; font-size: 0.78rem; word-break: break-word;">${esc(stx.klon || stx.klonAwal || stx.rows?.[0]?.klon || 'GT 1')}</strong>
+                      </div>
+                    </div>
+
+                    <!-- DOKUMEN ISSUE SECTION -->
+                    ${stx.issueDocNo ? `
+                    <div style="border-top: 1px solid #E2E8F0; padding-top: 7px; display: flex; flex-direction: column; gap: 6px; font-size: 0.74rem;">
+                      <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.68rem; color: #64748B;">Dokumen Issue:</span>
+                        <strong style="color: #0F766E; font-size: 0.76rem; font-family: monospace;">${esc(stx.issueDocNo)}</strong>
+                      </div>
+                      ${stx.itemCode ? `
+                        <div style="font-size: 0.70rem; color: #334155; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 5px; padding: 4px 8px; margin-top: 2px; line-height: 1.35; font-weight: 600;">
+                          ${esc(stx.itemName || stx.itemCode)}
+                        </div>
+                      ` : ''}
+                    </div>
+                    ` : ''}
+
+                  </div>
                 </div>
 
               </div>
@@ -970,6 +947,9 @@ function attachDederanEvents(app) {
         toast('Transaksi Dederan sedang dalam proses verifikasi atau sudah disetujui.', 'error');
         return;
       }
+      if (guardDependency(tx || docNo, 'Dederan (Germinasi)', 'Diedit')) {
+        return;
+      }
       storage.set('editing_dederan_doc_no', docNo);
       storage.remove('scanned_dederan_bedengan_id');
       storage.remove('scanned_dederan_bedengan_code');
@@ -983,6 +963,13 @@ function attachDederanEvents(app) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const docNo = e.currentTarget.dataset.doc;
+      const allDederTxs = getDederanTransactions();
+      const tx = allDederTxs.find(t => t.docNo === docNo || t.id === docNo);
+
+      if (guardDependency(tx || docNo, 'Dederan (Germinasi)', 'Dihapus')) {
+        return;
+      }
+
       if (!confirm(`Apakah Anda yakin ingin menghapus transaksi Dederan '${docNo}'?`)) {
         return;
       }
@@ -1014,7 +1001,9 @@ function attachPindahSemaiEvents(app) {
   // Expand / Collapse Toggle Data
   app.querySelectorAll('.btn-toggle-pindah-expand').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const card = e.currentTarget.closest('.card-pindah-semai-wrapper');
+      e.preventDefault();
+      e.stopPropagation();
+      const card = e.currentTarget.closest('.card-pindah-summary-wrapper, .card-summary-wrapper, .card-pindah-semai-wrapper');
       const content = card?.querySelector('.pindah-expandable-content');
       const textSpan = e.currentTarget.querySelector('.toggle-text');
       const icon = e.currentTarget.querySelector('.toggle-icon');
@@ -1023,11 +1012,13 @@ function attachPindahSemaiEvents(app) {
         const isHidden = content.style.display === 'none' || !content.style.display;
         if (isHidden) {
           content.style.display = 'flex';
-          if (textSpan) textSpan.textContent = 'Tutup Rincian Data';
+          btn.setAttribute('aria-expanded', 'true');
+          if (textSpan) textSpan.textContent = 'Sembunyikan Detail Transaksi';
           if (icon) icon.style.transform = 'rotate(180deg)';
         } else {
           content.style.display = 'none';
-          if (textSpan) textSpan.textContent = 'Lihat Rincian Data';
+          btn.setAttribute('aria-expanded', 'false');
+          if (textSpan) textSpan.textContent = 'Lihat Detail Transaksi';
           if (icon) icon.style.transform = 'rotate(0deg)';
         }
       }
@@ -1099,6 +1090,10 @@ function attachPindahSemaiEvents(app) {
       return;
     }
 
+    if (guardDependency(stx || docNo, 'Pindah Semai', 'Diedit')) {
+      return;
+    }
+
     // Set edit mode session keys
     storage.set('editing_seeding_index', idx);
     storage.set('seeding_source_index', stx.sourceIndex || stx.sourceDederTxId || stx.sourceDocNo || stx.dederanTxDocNo);
@@ -1146,6 +1141,10 @@ function attachPindahSemaiEvents(app) {
 
       if (isTransactionLockedForMantri(stx) || hasExistingCullDeclarationForSeeding(stx)) {
         toast('Transaksi tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'error');
+        return;
+      }
+
+      if (guardDependency(stx || docNo, 'Pindah Semai', 'Dihapus')) {
         return;
       }
 

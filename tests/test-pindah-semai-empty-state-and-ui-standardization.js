@@ -138,7 +138,7 @@ function createMockPendingSource(id = '1') {
 {
   const pendingSources = [createMockPendingSource('1'), createMockPendingSource('2')];
   const html = renderPindahSemaiTabContent([], [], pendingSources);
-  assert(html.includes('Bedengan Siap Pindah Semai') && (html.includes('>0<') || html.includes('>\n              0\n            <')), 'IT-PINDAH-SEMAI-EMPTY-005: Ready count tetap 0 saat hanya ada pending');
+  assert(html.includes('Bedengan Siap Pindah Semai') && />\s*0\s*</.test(html), 'IT-PINDAH-SEMAI-EMPTY-005: Ready count tetap 0 saat hanya ada pending');
 }
 
 // -----------------------------------------------------------------------------
@@ -252,13 +252,12 @@ function createMockPendingSource(id = '1') {
 }
 
 // -----------------------------------------------------------------------------
-// TEST CASE 12: IT-PINDAH-SEMAI-UI-012 (READY CARD HAS ELLIPSIS TRIGGER)
+// TEST CASE 12: IT-PINDAH-SEMAI-UI-012 (READY CARD DOES NOT HAVE ELLIPSIS TRIGGER - REMOVED AS REQUESTED)
 // -----------------------------------------------------------------------------
 {
   const readySources = [createMockReadySource('1')];
   const html = renderPindahSemaiTabContent(readySources, [], []);
-  assert(html.includes('btn-tx-action-trigger'), 'IT-PINDAH-SEMAI-UI-012a: READY card memiliki .btn-tx-action-trigger');
-  assert(html.includes('aria-label="Menu Aksi"'), 'IT-PINDAH-SEMAI-UI-012b: READY card ellipsis memiliki aria-label Menu Aksi');
+  assert(!html.includes('btn-tx-action-trigger'), 'IT-PINDAH-SEMAI-UI-012a: READY card tidak memiliki .btn-tx-action-trigger (dihilangkan sesuai request)');
 }
 
 // -----------------------------------------------------------------------------
@@ -272,7 +271,7 @@ function createMockPendingSource(id = '1') {
 }
 
 // -----------------------------------------------------------------------------
-// TEST CASE 14: IT-PINDAH-SEMAI-UI-014 (METADATA SEPARATOR IS BULLET "•")
+// TEST CASE 14: IT-PINDAH-SEMAI-UI-014 (METADATA DUA BARIS KIRI-KANAN RAPI)
 // -----------------------------------------------------------------------------
 {
   const readySources = [createMockReadySource('1')];
@@ -280,8 +279,8 @@ function createMockPendingSource(id = '1') {
   const htmlReady = renderPindahSemaiTabContent(readySources, [], []);
   const htmlPending = renderPindahSemaiTabContent([], [], pendingSources);
 
-  assert(htmlReady.includes('Dok. Induk:') && htmlReady.includes('• Klon:') && htmlReady.includes('Bedengan:') && htmlReady.includes('• Tgl:'), 'IT-PINDAH-SEMAI-UI-014a: READY card metadata menggunakan separator "•"');
-  assert(htmlPending.includes('Dok. Induk:') && htmlPending.includes('• Klon:') && htmlPending.includes('Bedengan:') && htmlPending.includes('• Tgl:'), 'IT-PINDAH-SEMAI-UI-014b: PENDING card metadata menggunakan separator "•"');
+  assert(htmlReady.includes('Dok. Induk:') && htmlReady.includes('Klon:') && htmlReady.includes('Bedengan:') && htmlReady.includes('Tgl:'), 'IT-PINDAH-SEMAI-UI-014a: READY card metadata menggunakan 2 baris terstruktur');
+  assert(htmlPending.includes('Dok. Induk:') && htmlPending.includes('Klon:') && htmlPending.includes('Bedengan:') && htmlPending.includes('Tgl:'), 'IT-PINDAH-SEMAI-UI-014b: PENDING card metadata lengkap');
   assert(!htmlReady.includes('· Klon:'), 'IT-PINDAH-SEMAI-UI-014c: Tidak menggunakan separator middle dot "·" pada ready card');
   assert(!htmlPending.includes('· Klon:'), 'IT-PINDAH-SEMAI-UI-014d: Tidak menggunakan separator middle dot "·" pada pending card');
 }
@@ -396,15 +395,13 @@ function createMockPendingSource(id = '1') {
   }];
   const html = renderPindahSemaiTabContent(readySources, [], []);
 
-  const hasBullet = html.includes('• Klon:') && html.includes('• Tgl:');
   const hasFields = html.includes('Dok. Induk:') && html.includes('Klon:') && html.includes('Bedengan:') && html.includes('Tgl:');
-  const hasProminentValues = html.includes('<strong style="color: #334155; font-weight: 600;">2026/DDR/001</strong>') &&
-                             html.includes('<strong style="color: #116834; font-weight: 600;">PB 260</strong>') &&
-                             html.includes('<strong style="color: #0F172A; font-weight: 600;">BED-001</strong>');
+  const hasProminentValues = html.includes('2026/DDR/001') &&
+                             html.includes('PB 260') &&
+                             html.includes('BED-001');
 
-  assert(hasBullet, 'IT-PINDAH-SEMAI-HARMONIZE-004a: Metadata menggunakan separator bullet "•"');
-  assert(hasFields, 'IT-PINDAH-SEMAI-HARMONIZE-004b: Metadata mencakup Dok. Induk, Klon, Bedengan, Tgl');
-  assert(hasProminentValues, 'IT-PINDAH-SEMAI-HARMONIZE-004c: Value metadata lebih prominent dengan font-weight 600');
+  assert(hasFields, 'IT-PINDAH-SEMAI-HARMONIZE-004a: Metadata mencakup Dok. Induk, Klon, Bedengan, Tgl');
+  assert(hasProminentValues, 'IT-PINDAH-SEMAI-HARMONIZE-004b: Value metadata terisi dengan benar');
 }
 
 // -----------------------------------------------------------------------------

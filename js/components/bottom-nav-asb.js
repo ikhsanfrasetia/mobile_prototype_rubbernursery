@@ -12,6 +12,8 @@ import { storage } from '../core/storage.js';
 import { session } from '../core/session.js';
 import { getCurrentUserContext, resolveUserContext } from '../core/user-context.js';
 import { getVerifikasiSummary, getPemeriksaanSummary } from '../modules/verification/asb-summary-cards.js';
+import { checkAsbSelectionGate } from '../modules/verification/verification-manager.js';
+import { showAsbVerificationGateModal } from '../modules/verification/verification-landing.js';
 import { hasActionablePermintaan, hasActionablePenerimaan } from '../modules/dashboard/beranda.js';
 import { getActionableDispatchCount } from '../modules/dispatch/dispatch-landing.js';
 
@@ -161,6 +163,15 @@ export function attachAsbBottomNavEvents(container) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const route = btn.getAttribute('data-nav-route');
+      if (route === '/verification') {
+        const currentUser = session.getUser ? session.getUser() : (session.get ? session.get() : null);
+        const ctx = getCurrentUserContext() || resolveUserContext(currentUser);
+        const gate = checkAsbSelectionGate(ctx);
+        if (gate.isGated) {
+          showAsbVerificationGateModal(gate.pendingSelectionCount);
+          return;
+        }
+      }
       if (route) {
         navigate(route);
       }

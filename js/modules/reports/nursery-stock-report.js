@@ -315,6 +315,9 @@ export function renderNurseryStockReport() {
     return acc + bTotal;
   }, 0);
   const totalStokTersedia = filteredBatches.reduce((acc, b) => acc + (b.availableQty || 0), 0);
+  const totalSeleksiPct = totalStokAwal > 0
+    ? `${Math.round((totalSeleksiSummary / totalStokAwal) * 100)}%`
+    : '0%';
 
   // Render Page HTML
   app.innerHTML = `
@@ -336,61 +339,65 @@ export function renderNurseryStockReport() {
       <!-- BODY / CONTENT -->
       <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px 20px; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box;">
         
-        <!-- CARD SUMMARY & FILTER -->
+        <!-- CARD SUMMARY & FILTER (CORPORATE & ELEGAN) -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); box-sizing: border-box;">
           
-          <!-- FILTER DROPDOWNS -->
+          <!-- FILTER DATA LAPORAN (VERTIKAL: SEMUA PROGRAM & SEMUA TAHAPAN) -->
           <div style="margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #F1F5F9;">
-            <div style="font-size: 0.65rem; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;">
+            <div style="font-size: 0.65rem; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 8px;">
               Filter Data Laporan
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
               
               <!-- FILTER 1: PROGRAM PEMBIBITAN -->
               <div style="position: relative;">
-                <select id="select-stock-program" style="width: 100%; font-size: 0.72rem; font-weight: 700; color: #116834; border: 1px solid #A5D6A7; background: #E8F5E9; border-radius: 6px; padding: 6px 20px 6px 8px; outline: none; appearance: none; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; box-sizing: border-box;">
+                <select id="select-stock-program" style="width: 100%; font-size: 0.76rem; font-weight: 600; color: #1E293B; border: 1px solid #CBD5E1; background: #FFFFFF; border-radius: 6px; padding: 7px 24px 7px 10px; outline: none; appearance: none; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; box-sizing: border-box;">
                   <option value="ALL" ${selectedProgram === 'ALL' ? 'selected' : ''}>Semua Program</option>
                   ${availablePrograms.map(p => `<option value="${p}" ${selectedProgram === p ? 'selected' : ''}>${p}</option>`).join('')}
                 </select>
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="#116834" stroke-width="2.5" fill="none" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <svg viewBox="0 0 24 24" width="13" height="13" stroke="#64748B" stroke-width="2" fill="none" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
 
               <!-- FILTER 2: TAHAPAN PERTUMBUHAN -->
               <div style="position: relative;">
-                <select id="select-stock-stage" style="width: 100%; font-size: 0.72rem; font-weight: 700; color: #1E40AF; border: 1px solid #BFDBFE; background: #EFF6FF; border-radius: 6px; padding: 6px 20px 6px 8px; outline: none; appearance: none; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; box-sizing: border-box;">
+                <select id="select-stock-stage" style="width: 100%; font-size: 0.76rem; font-weight: 600; color: #1E293B; border: 1px solid #CBD5E1; background: #FFFFFF; border-radius: 6px; padding: 7px 24px 7px 10px; outline: none; appearance: none; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; box-sizing: border-box;">
                   <option value="ALL" ${selectedStage === 'ALL' ? 'selected' : ''}>Semua Tahapan</option>
                   <option value="Rubber Main Nursery" ${selectedStage === 'Rubber Main Nursery' ? 'selected' : ''}>Main Nursery</option>
                   <option value="Rubber Advance Planting Material" ${selectedStage === 'Rubber Advance Planting Material' ? 'selected' : ''}>Advance Planting</option>
                 </select>
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="#1E40AF" stroke-width="2.5" fill="none" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <svg viewBox="0 0 24 24" width="13" height="13" stroke="#64748B" stroke-width="2" fill="none" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
 
             </div>
           </div>
 
-          <!-- SUMMARY STRIP (3 METRIKS) -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #F8FAFC; border: 1px solid #F1F5F9; border-radius: 8px; padding: 8px 4px; text-align: center; box-sizing: border-box;">
-            <div style="min-width: 0;">
-              <div style="font-size: 0.58rem; color: #64748B; font-weight: 700; text-transform: uppercase;">Stok Awal</div>
-              <div style="font-size: 0.85rem; font-weight: 900; color: #1E293B; margin-top: 1px; white-space: nowrap;">
-                ${totalStokAwal.toLocaleString('id-ID')}
-              </div>
-              <div style="font-size: 0.55rem; color: #94A3B8;">Bibit</div>
+          <!-- SUMMARY STRIP (4 METRIKS SEJAJAR: STOK AWAL, TOTAL SELEKSI, SELEKSI (%), TERSEDIA) -->
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); row-gap: 3px; column-gap: 4px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 4px; text-align: center; box-sizing: border-box;">
+            <!-- BARIS 1: LABEL METRIK -->
+            <div style="font-size: 0.58rem; color: #64748B; font-weight: 700; text-transform: uppercase; line-height: 1.15; display: flex; align-items: center; justify-content: center; min-height: 22px;">Stok Awal</div>
+            <div style="font-size: 0.58rem; color: #64748B; font-weight: 700; text-transform: uppercase; line-height: 1.15; display: flex; align-items: center; justify-content: center; min-height: 22px;">Total Seleksi</div>
+            <div style="font-size: 0.58rem; color: #64748B; font-weight: 700; text-transform: uppercase; line-height: 1.15; display: flex; align-items: center; justify-content: center; min-height: 22px;">Seleksi (%)</div>
+            <div style="font-size: 0.58rem; color: #64748B; font-weight: 700; text-transform: uppercase; line-height: 1.15; display: flex; align-items: center; justify-content: center; min-height: 22px;">Tersedia</div>
+
+            <!-- BARIS 2: NILAI ANGKA (PASTI SEJAJAR SEMPURNA SECARA HORIZONTAL) -->
+            <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; white-space: nowrap; line-height: 1.2;">
+              ${totalStokAwal.toLocaleString('id-ID')}
             </div>
-            <div style="min-width: 0;">
-              <div style="font-size: 0.58rem; color: #DC2626; font-weight: 700; text-transform: uppercase;">Total Seleksi</div>
-              <div style="font-size: 0.85rem; font-weight: 900; color: #DC2626; margin-top: 1px; white-space: nowrap;">
-                (${totalSeleksiSummary.toLocaleString('id-ID')})
-              </div>
-              <div style="font-size: 0.55rem; color: #DC2626;">Bibit</div>
+            <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; white-space: nowrap; line-height: 1.2;">
+              (${totalSeleksiSummary.toLocaleString('id-ID')})
             </div>
-            <div style="min-width: 0;">
-              <div style="font-size: 0.58rem; color: #166534; font-weight: 800; text-transform: uppercase;">Tersedia</div>
-              <div style="font-size: 0.95rem; font-weight: 900; color: #116834; margin-top: 1px; white-space: nowrap;">
-                ${totalStokTersedia.toLocaleString('id-ID')}
-              </div>
-              <div style="font-size: 0.55rem; color: #15803D; font-weight: 700;">Bibit</div>
+            <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; white-space: nowrap; line-height: 1.2;">
+              ${totalSeleksiPct}
             </div>
+            <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; white-space: nowrap; line-height: 1.2;">
+              ${totalStokTersedia.toLocaleString('id-ID')}
+            </div>
+
+            <!-- BARIS 3: SATUAN -->
+            <div style="font-size: 0.54rem; color: #94A3B8; line-height: 1.2;">Bibit</div>
+            <div style="font-size: 0.54rem; color: #94A3B8; line-height: 1.2;">Bibit</div>
+            <div style="font-size: 0.54rem; color: #94A3B8; line-height: 1.2;">Persen</div>
+            <div style="font-size: 0.54rem; color: #94A3B8; line-height: 1.2;">Bibit</div>
           </div>
 
         </div>
@@ -401,7 +408,7 @@ export function renderNurseryStockReport() {
             <div style="font-size: 0.72rem; font-weight: 800; color: #1E293B; text-transform: uppercase; letter-spacing: 0.02em;">
               Daftar Ketersediaan Batch
             </div>
-            <span style="font-size: 0.65rem; color: #116834; font-weight: 700; background: #E8F5E9; padding: 2px 7px; border-radius: 4px;">
+            <span style="font-size: 0.65rem; color: #475569; font-weight: 700; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 2px 7px; border-radius: 4px;">
               ${filteredBatches.length} Batch
             </span>
           </div>
@@ -418,43 +425,44 @@ export function renderNurseryStockReport() {
                 return `
                   <div class="card-batch-stock" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); box-sizing: border-box;">
                     
-                    <!-- BARIS 1: NAMA BATCH & BADGES -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <!-- BARIS 1: NAMA BATCH & BADGES (CORPORATE & NETRAL) -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                       <div style="display: flex; align-items: center; gap: 6px;">
-                        <span style="font-weight: 800; font-size: 0.96rem; color: #111827; letter-spacing: -0.01em;">${b.batchCode}</span>
-                        <span style="font-size: 0.60rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: ${isAPM ? '#EFF6FF' : '#FAF5FF'}; color: ${isAPM ? '#1E40AF' : '#6B21A8'}; border: 1px solid ${isAPM ? '#BFDBFE' : '#E9D5FF'};">
+                        <span style="font-weight: 800; font-size: 0.96rem; color: #0F172A; letter-spacing: -0.01em;">${b.batchCode}</span>
+                        <span style="font-size: 0.62rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #F8FAFC; color: #475569; border: 1px solid #E2E8F0;">
                           ${isAPM ? 'APM' : 'Main Nursery'}
                         </span>
                       </div>
-                      <div style="font-size: 0.65rem; font-weight: 700; color: #4B5563; background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 4px; padding: 2px 7px;">
+                      <div style="font-size: 0.65rem; font-weight: 700; color: #475569; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 4px; padding: 2px 7px;">
                         ${b.bedengan}
                       </div>
                     </div>
 
-                    <!-- BARIS 2: UMUR BIBIT & KLON -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem; color: #64748B; margin-bottom: 8px;">
-                      <div>
-                        Umur: <strong style="color: #166534;">${ageWeeks} Minggu</strong> • Klon: <strong style="color: #334155;">${b.entresClone} / ${b.rootstockClone}</strong>
+                    <!-- BARIS 2 & 3: HIRARKI DATA BARU (KLON & SELEKSI DI ATAS, UMUR DI BAWAH) -->
+                    <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.74rem; color: #475569; margin-bottom: 10px;">
+                      <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Klon: <strong style="color: #0F172A;">${b.entresClone} / ${b.rootstockClone}</strong></span>
+                        <span>Seleksi: <strong style="color: #0F172A;">${seleksiPct}%</strong></span>
                       </div>
                       <div>
-                        Seleksi: <strong style="color: #DC2626;">${seleksiPct}%</strong>
+                        Umur: <strong style="color: #0F172A;">${ageWeeks} Minggu</strong>
                       </div>
                     </div>
 
-                    <!-- BARIS 3: STRIP STOK TERSEDIA -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; background: ${isEmpty ? '#FEF2F2' : '#F0FDF4'}; border: 1px solid ${isEmpty ? '#FEE2E2' : '#DCFCE7'}; border-radius: 6px; padding: 7px 10px; margin-bottom: 8px;">
-                      <span style="font-size: 0.65rem; font-weight: 700; color: ${isEmpty ? '#991B1B' : '#166534'}; text-transform: uppercase; letter-spacing: 0.02em;">
+                    <!-- BARIS 4: STRIP STOK TERSEDIA (CORPORATE ELEGAN) -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px;">
+                      <span style="font-size: 0.65rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.02em;">
                         ${isEmpty ? 'Stok Kosong' : 'Stok Tersedia'}
                       </span>
                       <div style="display: flex; align-items: baseline; gap: 3px;">
-                        <span style="font-size: 1.10rem; font-weight: 900; color: ${isEmpty ? '#DC2626' : '#116834'};">
+                        <span style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
                           ${b.availableQty.toLocaleString('id-ID')}
                         </span>
-                        <span style="font-size: 0.68rem; font-weight: 700; color: ${isEmpty ? '#DC2626' : '#15803D'};">Bibit</span>
+                        <span style="font-size: 0.68rem; font-weight: 600; color: #64748B;">Bibit</span>
                       </div>
                     </div>
 
-                    <!-- BARIS 4: ACTION BUTTON DETAIL -->
+                    <!-- BARIS 5: ACTION BUTTON DETAIL -->
                     <button type="button" class="btn-batch-detail" data-index="${idx}" style="width: 100%; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; height: 32px; font-size: 0.72rem; font-weight: 700; color: #334155; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">
                       <span>Lihat Rincian Lengkap</span>
                       <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none">

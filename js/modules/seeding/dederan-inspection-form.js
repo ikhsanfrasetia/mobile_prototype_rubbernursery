@@ -24,7 +24,8 @@ import {
   saveDederanInspection,
   updateDederanInspection,
   getDederanInspectionById,
-  getDederanIndukById
+  getDederanIndukById,
+  getInspectionChronologicalMaxAllowed
 } from './dederan-manager.js';
 
 export function renderDederanInspectionForm() {
@@ -42,11 +43,30 @@ export function renderDederanInspectionForm() {
   if (isEditing && editingInsp) {
     dederTxId = editingInsp.dederanTxDocNo || editingInsp.dederanTxId || dederTxId;
   }
-  const dederTx = getDederanTransactionById(dederTxId);
+  let dederTx = getDederanTransactionById(dederTxId);
 
   if (!dederTx) {
-    toast('Data transaksi Dederan tidak ditemukan untuk pemeriksaan.', 'error');
-    navigate('/inspection');
+    const allDederTxs = storage.get('dederan_transactions', []);
+    if (allDederTxs.length > 0) {
+      dederTx = allDederTxs.find(t => t.status !== 'BATAL' && t.status !== 'VOID') || allDederTxs[0];
+      if (dederTx) {
+        storage.set('active_dederan_inspection_tx_id', dederTx.docNo || dederTx.id);
+      }
+    }
+  }
+
+  if (!dederTx) {
+    app.innerHTML = `
+      <div class="page" style="padding: 24px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <h2 style="font-size: 1.1rem; color: #0F172A; margin-bottom: 8px;">Pemeriksaan Dederan</h2>
+        <p style="color: #64748B; font-size: 0.85rem; margin-bottom: 20px;">Belum ada data transaksi Dederan aktif untuk diperiksa.</p>
+        <button id="btn-to-inspection" type="button" style="background: #116834; color: #FFF; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 700; cursor: pointer;">
+          Kembali ke Menu Pemeriksaan
+        </button>
+      </div>
+    `;
+    const btn = document.getElementById('btn-to-inspection');
+    if (btn) btn.addEventListener('click', () => navigate('/inspection'));
     return;
   }
 
@@ -61,7 +81,18 @@ export function renderDederanInspectionForm() {
   const initialDiperiksa = isEditing ? (editingInsp.jumlahDiperiksa || 0) : 0;
   const initialBerhasil = isEditing ? (editingInsp.jumlahBerhasil || 0) : 0;
   const initialTidakBerhasil = isEditing ? (editingInsp.jumlahTidakBerhasil || 0) : 0;
-  const maxAllowedDiperiksa = isEditing ? (summary.sisaBelumDiperiksa + initialDiperiksa) : summary.sisaBelumDiperiksa;
+  
+  const targetInspectionForQuota = isEditing ? {
+    ...editingInsp,
+    tanggalPemeriksaan: editingInsp.tanggalPemeriksaan || today
+  } : {
+    tanggalPemeriksaan: today,
+    createdAt: new Date().toISOString(),
+    docNo: 'TEMP-NEW-DOC',
+    id: 'TEMP-NEW-ID'
+  };
+  const maxAllowedDiperiksa = getInspectionChronologicalMaxAllowed(dederTx, targetInspectionForQuota);
+  const isOverQuotaStored = isEditing && editingInsp && (initialDiperiksa > maxAllowedDiperiksa);
   const returnReasonNote = isEditing && editingInsp ? (editingInsp.returnReason || editingInsp.lastReturnReason || '') : '';
 
   app.innerHTML = `
@@ -108,6 +139,25 @@ export function renderDederanInspectionForm() {
             </div>
           </section>
         ` : ''}
+
+        <!-- OVER QUOTA WARNING BANNER (STRICT MANUAL RE-INSPECTION) -->
+        ${isOverQuotaStored ? `
+          <section style="margin: 12px 16px 0 16px; background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 8px; padding: 9px 12px;">
+            <div style="display: flex; align-items: flex-start; gap: 8px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="#D97706" stroke-width="2.2" fill="none" style="flex-shrink: 0; margin-top: 1px;">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #92400E; margin-bottom: 2px;">Perhatian: Sensus Melebihi Kuota Sumber</div>
+                <div style="font-size: 0.72rem; color: #B45309; line-height: 1.35;">
+                  Jumlah diperiksa tersimpan (${initialDiperiksa.toLocaleString('id-ID')}) melebihi kuota kronologis terbaru (${maxAllowedDiperiksa.toLocaleString('id-ID')} Butir). Harap sesuaikan jumlah diperiksa secara manual sebelum menyimpan.
+                </div>
+              </div>
+            </div>
+          </section>
+        ` : ''}
         
         <!-- INFORMASI OPERATOR / TANGGAL -->
         <section style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #F1F5F9; background: #FFFFFF;">
@@ -147,34 +197,23 @@ export function renderDederanInspectionForm() {
 
           <!-- REKAPITULASI PROGRES PEMERIKSAAN 3-KOLOM -->
           <div style="padding: 8px 4px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; display: grid; grid-template-columns: 1fr 1fr 1fr; text-align: center;">
-            <div style="padding: 0 4px;">
-              <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px; line-height: 1.2;">Populasi Deder</div>
+            <div style="padding: 0 4px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div style="font-size: 0.64rem; color: #64748B; line-height: 1.2; min-height: 26px; display: flex; align-items: center; justify-content: center;">Populasi Deder</div>
               <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; line-height: 1.2; margin: 2px 0;">${(dederTx.jumlahDeder || 0).toLocaleString('id-ID')}</div>
               <div style="font-size: 0.64rem; color: #64748B; line-height: 1;">Butir</div>
             </div>
-            <div style="padding: 0 4px; border-left: 1px solid #F1F5F9; border-right: 1px solid #F1F5F9;">
-              <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px; line-height: 1.2;">Sudah Diperiksa</div>
+            <div style="padding: 0 4px; border-left: 1px solid #F1F5F9; border-right: 1px solid #F1F5F9; display: flex; flex-direction: column; justify-content: space-between;">
+              <div style="font-size: 0.64rem; color: #64748B; line-height: 1.2; min-height: 26px; display: flex; align-items: center; justify-content: center;">Sudah Diperiksa</div>
               <div style="font-size: 0.88rem; font-weight: 800; color: #15803D; line-height: 1.2; margin: 2px 0;">${(summary.totalDiperiksa || 0).toLocaleString('id-ID')}</div>
               <div style="font-size: 0.64rem; color: #64748B; line-height: 1;">Butir</div>
             </div>
-            <div style="padding: 0 4px;">
-              <div style="font-size: 0.64rem; color: #64748B; margin-bottom: 1px; line-height: 1.2;">Sisa Belum Periksa</div>
+            <div style="padding: 0 4px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div style="font-size: 0.64rem; color: #64748B; line-height: 1.2; min-height: 26px; display: flex; align-items: center; justify-content: center;">Sisa Belum Periksa</div>
               <div id="lbl-sisa-belum-periksa" style="font-size: 0.88rem; font-weight: 800; color: ${summary.sisaBelumDiperiksa > 0 ? '#D97706' : '#15803D'}; line-height: 1.2; margin: 2px 0;">${(summary.sisaBelumDiperiksa || 0).toLocaleString('id-ID')}</div>
               <div style="font-size: 0.64rem; color: #64748B; line-height: 1;">Butir</div>
             </div>
           </div>
         </section>
-
-        <!-- CATATAN PENGEMBALIAN ASISTEN (JIKA STATUS DIKEMBALIKAN) -->
-        ${hasReturnReason ? `
-          <section style="margin: 12px 16px 0 16px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 12px; font-size: 0.74rem; color: #991B1B; line-height: 1.4; overflow-wrap: anywhere; word-break: normal;">
-            <div style="font-weight: 800; color: #DC2626; margin-bottom: 2px; display: flex; align-items: center; gap: 4px;">
-              <svg viewBox="0 0 24 24" width="14" height="14" stroke="#DC2626" stroke-width="2.5" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-              <span>Catatan Pengembalian Asisten:</span>
-            </div>
-            <div>${esc(editingInsp.returnReason.trim())}</div>
-          </section>
-        ` : ''}
 
         <!-- FORM INPUT AREA -->
         <section style="padding: 12px 16px 0 16px;">
@@ -578,6 +617,12 @@ export function renderDederanInspectionForm() {
       return;
     }
 
+    if (diperiksa > maxAllowedDiperiksa) {
+      toast(`Jumlah diperiksa (${diperiksa.toLocaleString('id-ID')}) melebihi batas maksimal kronologis (${maxAllowedDiperiksa.toLocaleString('id-ID')}).`, 'error');
+      inpDiperiksa.focus();
+      return;
+    }
+
     if (isNaN(berhasil) || berhasil < 0) {
       toast('Jumlah berhasil tidak boleh bernilai negatif.', 'error');
       inpBerhasil.focus();
@@ -613,8 +658,11 @@ export function renderDederanInspectionForm() {
         const idx = inspections.findIndex(i => (i.docNo && i.docNo === result.inspection.docNo) || i.id === result.inspection.id);
         if (idx !== -1) {
           inspections[idx].status = 'MENUNGGU_VERIFIKASI_MANTRI';
-          inspections[idx].returnReason = editingInsp.returnReason || null;
-          inspections[idx].lastReturnReason = editingInsp.lastReturnReason || editingInsp.returnReason || null;
+          inspections[idx].verificationStatus = 'MENUNGGU_VERIFIKASI_MANTRI';
+          inspections[idx].isCorrected = true;
+          inspections[idx].correctedAt = new Date().toISOString();
+          inspections[idx].lastReturnReason = editingInsp.returnReason || editingInsp.lastReturnReason || null;
+          inspections[idx].returnReason = null;
           inspections[idx].returnedAt = editingInsp.returnedAt || null;
           inspections[idx].returnedBy = editingInsp.returnedBy || null;
           storage.set('dederan_inspections', inspections);

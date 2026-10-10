@@ -16,6 +16,7 @@ import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.
 import { applyTransactionActor, canUserAccessTransaction } from '../../core/transaction-actor.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
+import { validateSourceEditability } from '../../core/dependency-guard.js';
 
 const MASTER_WORKERS = [
   { id: 'W001', name: 'Ahmad Rifai', code: '104521' },
@@ -144,11 +145,14 @@ export async function renderBuddingForm() {
     bedenganDisplay = batchBedengan.length > 0 ? Array.from(new Set(batchBedengan)).join(', ') : (formatBedenganCode(selectedBatchDoc.bedengan, selectedBatchDoc.bedenganCode) || 'BED-001');
   }
 
-  // Calculate accumulated budding (correctly excluding the currently edited transaction)
+  // Calculate accumulated budding (correctly excluding the currently edited transaction and cancelled txs)
   let totalDiokulasiSDHI = 0;
   allBuddingTxs.forEach((b, i) => {
     if (isEditing && i === parseInt(editingIdx)) return; // Exclude current transaction from quota calculation!
     if (b.type !== (isRegrafting ? 'REGRAFTING' : 'GRAFTING')) return;
+    const isCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(b.status || '').toUpperCase()) ||
+                        ['BATAL', 'CANCELLED', 'VOID'].includes(String(b.verificationStatus || '').toUpperCase());
+    if (isCancelled) return;
     
     const isMatch = isRegrafting 
       ? ((b.regraftPoolDocNo && b.regraftPoolDocNo === poolDocNo) || (b.inspectionDocNo && inspectionDocNo && b.inspectionDocNo === inspectionDocNo)) 
@@ -344,6 +348,11 @@ export async function renderBuddingForm() {
                     <div style="font-size: 0.70rem; color: #116834; font-weight: 600;">Ketuk "Pilih Pekerja Okulasi" di atas untuk memilih pekerja</div>
                   </div>
                 `}
+              </div>
+
+              <!-- REAL-TIME OVER-QUOTA WARNING BANNER -->
+              <div id="banner-worker-quota-warning" style="display: none; margin-top: 8px; padding: 8px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-left: 3px solid #DC2626; border-radius: 6px; font-size: 0.72rem; color: #991B1B; line-height: 1.35;">
+                <span id="banner-worker-quota-text" style="font-weight: 700;">⚠️ Total input realisasi melebihi sisa bibit batch.</span>
               </div>
 
               <!-- TOTAL REALISASI DARI SEMUA PEKERJA -->
@@ -729,6 +738,20 @@ export async function renderBuddingForm() {
       if (reconDitolak) reconDitolak.textContent = `${ditolak} Pkk`;
       if (reconTotalReal) reconTotalReal.textContent = `${totalRealisasi} Pkk`;
 
+      const bannerWorkerWarning = app.querySelector('#banner-worker-quota-warning');
+      const bannerWorkerText = app.querySelector('#banner-worker-quota-text');
+
+      if (sisaAkhir >= 0) {
+        if (bannerWorkerWarning) bannerWorkerWarning.style.display = 'none';
+      } else {
+        if (bannerWorkerWarning) {
+          bannerWorkerWarning.style.display = 'block';
+          if (bannerWorkerText) {
+            bannerWorkerText.textContent = `⚠️ Total input (${totalRealisasi} Pkk) melebihi sisa bibit batch (${sisaBelumDiokulasi} Pkk). Kelebihan: +${Math.abs(sisaAkhir)} Pkk.`;
+          }
+        }
+      }
+
       if (sisaAkhir === 0) {
         // Realisasi Selesai 100%
         if (reconStatusBox) {
@@ -944,6 +967,16 @@ export async function renderBuddingForm() {
 
       if (isEditing && txs[parseInt(editingIdx)]) {
         const existing = txs[parseInt(editingIdx)];
+        const editGuard = validateSourceEditability('BUDDING', existing.docNo || existing.id, {
+          jumlahOkulasi: totalDiokulasi,
+          totalOkulasi: totalDiokulasi,
+          jumlahBatangOkulasi: totalDiokulasi
+        });
+        if (!editGuard.allowed) {
+          toast(editGuard.reason || 'Koreksi tidak dapat disimpan karena melanggar konsistensi dokumen hilir yang telah disetujui.', 'error');
+          return;
+        }
+
         const updated = applyTransactionActor({
           ...existing,
           klonEntres: normalizeKlonName(selectedKlon),

@@ -18,6 +18,7 @@ import {
   DEDERAN_STORAGE_KEYS
 } from '../seeding/dederan-manager.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
+import { guardDependency } from '../../core/dependency-guard.js';
 import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
@@ -38,6 +39,22 @@ export function setSelectedInspectionDate(dateStr) {
 
 export function getSelectedInspectionDate() {
   return selectedInspectionDate;
+}
+
+export function isDederInspectionReturned(insp) {
+  if (!insp) return false;
+  if (insp.isCorrected || insp.status === 'MENUNGGU_VERIFIKASI_MANTRI' || insp.status === 'PENDING_SUBMISSION' || insp.status === 'APPROVED' || insp.status === 'DISETUJUI') {
+    return false;
+  }
+  return insp.status === 'DIKEMBALIKAN' || insp.verificationStatus === 'DIKEMBALIKAN' || insp.status === 'REVISION';
+}
+
+export function isOkulasiInspectionReturned(insp) {
+  if (!insp) return false;
+  if (insp.isCorrected || insp.status === 'MENUNGGU_VERIFIKASI_MANTRI' || insp.status === 'PENDING_SUBMISSION' || insp.status === 'APPROVED' || insp.status === 'DISETUJUI') {
+    return false;
+  }
+  return insp.status === 'DIKEMBALIKAN' || insp.verificationStatus === 'DIKEMBALIKAN' || insp.status === 'REVISION';
 }
 
 const ASB_INSP_ICONS = {
@@ -349,32 +366,12 @@ export function renderInspectionLanding() {
   const authorizedDederInspections = getAuthorizedTransactions(rawDederInspections, userCtx);
 
   // Separate returned vs normal Dederan inspections
-  const returnedDederInspections = authorizedDederInspections.filter(insp => 
-    (insp.status === 'DIKEMBALIKAN' || insp.verificationStatus === 'DIKEMBALIKAN' || insp.status === 'REVISION' || insp.returnReason || insp.lastReturnReason) &&
-    insp.status !== 'MENUNGGU_VERIFIKASI_MANTRI' &&
-    insp.status !== 'PENDING_SUBMISSION' &&
-    insp.status !== 'APPROVED' &&
-    insp.status !== 'DISETUJUI'
-  );
-  const normalDederInspections = authorizedDederInspections.filter(insp => 
-    insp.status !== 'DIKEMBALIKAN' && 
-    insp.verificationStatus !== 'DIKEMBALIKAN' && 
-    insp.status !== 'REVISION'
-  );
+  const returnedDederInspections = authorizedDederInspections.filter(insp => isDederInspectionReturned(insp));
+  const normalDederInspections = authorizedDederInspections.filter(insp => !isDederInspectionReturned(insp));
 
   // Separate returned vs normal Okulasi inspections
-  const returnedOkulasiInspections = authorizedInspectionTxs.filter(insp => 
-    (insp.status === 'DIKEMBALIKAN' || insp.verificationStatus === 'DIKEMBALIKAN' || insp.status === 'REVISION' || insp.returnReason || insp.lastReturnReason) &&
-    insp.status !== 'MENUNGGU_VERIFIKASI_MANTRI' &&
-    insp.status !== 'PENDING_SUBMISSION' &&
-    insp.status !== 'APPROVED' &&
-    insp.status !== 'DISETUJUI'
-  );
-  const normalOkulasiInspections = authorizedInspectionTxs.filter(insp => 
-    insp.status !== 'DIKEMBALIKAN' && 
-    insp.verificationStatus !== 'DIKEMBALIKAN' && 
-    insp.status !== 'REVISION'
-  );
+  const returnedOkulasiInspections = authorizedInspectionTxs.filter(insp => isOkulasiInspectionReturned(insp));
+  const normalOkulasiInspections = authorizedInspectionTxs.filter(insp => !isOkulasiInspectionReturned(insp));
 
   // Calculate pending Dederan inspection count
   let pendingDederInspCount = 0;
@@ -564,43 +561,23 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
             return `
               <div class="card-summary-wrapper card-returned-deder-insp-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
                 
-                <!-- BARIS 1: IDENTITAS DOKUMEN & BADGE DIKEMBALIKAN -->
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-                  <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(docNo)}</span>
-                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px;">
-                        <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
-                        Dikembalikan
-                      </span>
-                    </div>
-                    
-                    <!-- BARIS 2 & 3: METADATA -->
-                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.35;">
-                      Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(bedenganStr)}</strong> • Sumber Deder: <strong style="color: #116834; font-weight: 600;">${esc(dederTxDoc)}</strong>
-                    </div>
-                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.35;">
-                      Tanggal: <span style="color: #475569; font-weight: 500;">${esc(insp.tanggalPemeriksaan || insp.tanggal || '-')}</span>
-                    </div>
+                <!-- BARIS 1: IDENTITAS DOKUMEN & BADGE DIKEMBALIKAN (RATA KANAN) -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(docNo)}</span>
+                  <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                    <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
+                    Dikembalikan
+                  </span>
+                </div>
+                
+                <!-- METADATA HIRARKI RAPI (KIRI - KANAN) -->
+                <div style="display: flex; flex-direction: column; gap: 3px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; line-height: 1.35;">
+                    <div>Sumber Deder: <strong style="color: #0F172A; font-weight: 600;">${esc(dederTxDoc)}</strong></div>
+                    <div style="text-align: right;">Tgl: <span style="color: #334155; font-weight: 500;">${esc(insp.tanggalPemeriksaan || insp.tanggal || '-')}</span></div>
                   </div>
-
-                  <!-- 3-DOTS ACTION TRIGGER -->
-                  <div style="position: relative; flex-shrink: 0; margin-left: 8px;">
-                    <button type="button" class="btn-tx-action-trigger" data-index="ret-dinsp-${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
-                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
-                        <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
-                        <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
-                      </svg>
-                    </button>
-
-                    <!-- POPUP MENU -->
-                    <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
-                      <button type="button" class="menu-action-edit-deder-insp" data-doc="${esc(insp.docNo || '')}" data-tx="${esc(insp.dederanTxDocNo || insp.dederanTxId || '')}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        <span>Edit / Koreksi</span>
-                      </button>
-                    </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; line-height: 1.35;">
+                    <div>Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(bedenganStr)}</strong></div>
                   </div>
                 </div>
 
@@ -637,7 +614,7 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
                 </div>
 
                 <!-- BARIS 6: DIRECT ACTION BUTTON -->
-                <button type="button" class="btn-koreksi-deder-insp" data-doc="${esc(insp.docNo || '')}" data-tx="${esc(insp.dederanTxDocNo || insp.dederanTxId || '')}" style="width: 100%; height: 38px; margin-top: 10px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: all 0.15s ease;">
+                <button type="button" class="btn-koreksi-deder-insp" data-doc="${esc(insp.docNo || insp.id || docNo)}" data-tx="${esc(insp.dederanTxDocNo || insp.dederanTxId || '')}" style="width: 100%; height: 38px; margin-top: 10px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: all 0.15s ease;">
                   <svg viewBox="0 0 24 24" width="14" height="14" stroke="#FFFFFF" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                   <span>Edit / Koreksi Pemeriksaan Dederan</span>
                 </button>
@@ -693,20 +670,24 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
 
         return `
           <div class="card-deder-insp-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); box-sizing: border-box;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px;">
-              <div style="font-size: 0.95rem; font-weight: 800; color: #116834; letter-spacing: -0.01em;">
-                ${dtx.bedenganCode || 'Bedengan'}
+            <!-- BARIS 1: BEDENGAN & KLON (KIRI) | STATUS BADGE (KANAN) -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 8px;">
+              <div style="font-size: 0.95rem; font-weight: 800; color: #116834; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;">
+                <span>${esc(dtx.bedenganCode || 'Bedengan')}</span>
+                <span style="font-size: 0.74rem; font-weight: 600; color: #64748B;">• Klon: <strong style="color: #0F172A; font-weight: 700;">${esc(dtx.klon || 'GT 1')}</strong></span>
               </div>
-              <span style="background: ${statusBg}; color: ${statusColor}; font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; border: ${statusBorder};">
+              <span style="background: ${statusBg}; color: ${statusColor}; font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; white-space: nowrap; border: ${statusBorder}; flex-shrink: 0;">
                 ${statusText}
               </span>
             </div>
 
-            <div style="font-size: 0.78rem; font-weight: 700; color: #111827; margin-bottom: 2px;">
-              ${dtx.docNo}
-            </div>
-            <div style="font-size: 0.72rem; color: #888888; margin-bottom: 10px;">
-              Induk: ${dtx.parentDederIndukDocNo || '-'} • Klon: ${dtx.klon || 'GT 1'} • Tgl: ${dtx.tanggalDeder || '-'}
+            <!-- BARIS 2 & 3: DOK. INDUK (KIRI) & DOK DEDER (KIRI) | TGL (KANAN) -->
+            <div style="display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; font-size: 0.74rem; color: #64748B; line-height: 1.35;">
+              <div>Dok. Induk: <strong style="color: #0F172A; font-weight: 600;">${esc(dtx.parentDederIndukDocNo || '-')}</strong></div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div><strong style="color: #0F172A; font-weight: 800; font-size: 0.84rem;">${esc(dtx.docNo)}</strong></div>
+                <div style="text-align: right;">Tgl: <span style="color: #334155; font-weight: 500;">${esc(dtx.tanggalDeder || dtx.tanggal || '-')}</span></div>
+              </div>
             </div>
 
             <hr style="border: none; border-top: 1px solid #F3F4F6; margin: 0 0 10px 0;" />
@@ -754,7 +735,7 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
             return `
             <div class="card-deder-insp-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); position: relative;">
               
-              <!-- BARIS 1: JUDUL DOKUMEN & TANGGAL & 3-DOTS ACTION -->
+              <!-- BARIS 1: JUDUL DOKUMEN & 3-DOTS ACTION -->
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                   ${isReturned ? renderStatusDots([{
@@ -765,7 +746,6 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
                     label: insp.status === 'DISETUJUI' || insp.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi (Terkunci)'
                   }]) : '')}
                   <strong style="color: #116834; font-size: 0.90rem; font-weight: 800;">${insp.docNo}</strong>
-                  <span style="color: #6B7280; font-size: 0.70rem;">${insp.tanggalPemeriksaan || '-'}</span>
                 </div>
 
                 <!-- TOMBOL AKSI 3-DOTS (HANYA DITAMPILKAN JIKA BELUM LOCKED) -->
@@ -794,9 +774,15 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
                 ` : ''}
               </div>
 
-              <!-- BARIS 2: BEDENGAN & SUMBER DEDER -->
-              <div style="color: #4B5563; font-size: 0.72rem; margin-bottom: 8px;">
-                Bedengan: <strong style="color: #0F172A;">${insp.bedenganCode}</strong> • Sumber Deder: <strong>${insp.dederanTxDocNo}</strong>
+              <!-- BARIS 2: BEDENGAN -->
+              <div style="color: #4B5563; font-size: 0.72rem; margin-bottom: 2px;">
+                Bedengan: <strong style="color: #0F172A;">${insp.bedenganCode || '-'}</strong>
+              </div>
+
+              <!-- BARIS 3: SUMBER DEDER & TANGGAL -->
+              <div style="display: flex; justify-content: space-between; align-items: center; color: #4B5563; font-size: 0.72rem; margin-bottom: 8px;">
+                <div>Sumber Deder: <strong style="color: #0F172A;">${insp.dederanTxDocNo || '-'}</strong></div>
+                <span style="color: #6B7280; font-size: 0.70rem;">${insp.tanggalPemeriksaan || '-'}</span>
               </div>
 
               <!-- BARIS 2.5: CATATAN PENGEMBALIAN DARI ASISTEN (JIKA STATUS DIKEMBALIKAN) -->
@@ -869,46 +855,29 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
             return `
               <div class="card-summary-wrapper card-returned-okulasi-insp-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
                 
-                <!-- BARIS 1: IDENTITAS DOKUMEN & BADGE DIKEMBALIKAN -->
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-                  <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(docNo)}</span>
-                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px;">
-                        <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
-                        Dikembalikan
-                      </span>
-                      <span style="font-size: 0.62rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: ${isRegraftInsp ? '#FFFBEB' : '#F0FDF4'}; color: ${isRegraftInsp ? '#B45309' : '#116834'}; border: ${isRegraftInsp ? '1px solid #FDE68A' : '1px solid #BBF7D0'};">
-                        ${isRegraftInsp ? 'Regrafting' : 'Okulasi'}
-                      </span>
-                    </div>
-                    
-                    <!-- BARIS 2 & 3: METADATA -->
-                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.35;">
-                      Batch: <strong style="color: #334155; font-weight: 600;">${esc(batchStr)}</strong> • Klon: <strong style="color: #116834; font-weight: 600;">${esc(klonStr)}</strong>
-                    </div>
-                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.35;">
-                      Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(bedenganStr)}</strong> • Tgl: <span style="color: #475569; font-weight: 500;">${esc(insp.tanggal || insp.date || '-')}</span>
-                    </div>
+                <!-- BARIS 1: IDENTITAS DOKUMEN, TYPE & STATUS BADGE (RATA KANAN) -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(docNo)}</span>
+                    <span style="font-size: 0.62rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: ${isRegraftInsp ? '#FFFBEB' : '#F0FDF4'}; color: ${isRegraftInsp ? '#B45309' : '#116834'}; border: ${isRegraftInsp ? '1px solid #FDE68A' : '1px solid #BBF7D0'};">
+                      ${isRegraftInsp ? 'Regrafting' : 'Okulasi'}
+                    </span>
                   </div>
-
-                  <!-- 3-DOTS ACTION TRIGGER -->
-                  <div style="position: relative; flex-shrink: 0; margin-left: 8px;">
-                    <button type="button" class="btn-tx-action-trigger" data-index="ret-insp-${idx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
-                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
-                        <circle cx="19" cy="12" r="1.2" fill="currentColor"></circle>
-                        <circle cx="5" cy="12" r="1.2" fill="currentColor"></circle>
-                      </svg>
-                    </button>
-
-                    <!-- POPUP MENU -->
-                    <div class="tx-action-menu" style="display: none; position: absolute; right: 0; top: 32px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); z-index: 100; min-width: 140px; overflow: hidden;">
-                      <button type="button" class="menu-action-edit" data-doc="${esc(insp.docNo || '')}" style="width: 100%; padding: 8px 12px; text-align: left; background: transparent; border: none; font-size: 0.75rem; font-weight: 600; color: #116834; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        <span>Edit / Koreksi</span>
-                      </button>
-                    </div>
+                  <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                    <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
+                    Dikembalikan
+                  </span>
+                </div>
+                
+                <!-- METADATA HIRARKI RAPI (KIRI - KANAN) -->
+                <div style="display: flex; flex-direction: column; gap: 3px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; line-height: 1.35;">
+                    <div>Batch: <strong style="color: #0F172A; font-weight: 600;">${esc(batchStr)}</strong></div>
+                    <div style="text-align: right;">Klon: <strong style="color: #0F172A; font-weight: 600;">${esc(klonStr)}</strong></div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: #64748B; line-height: 1.35;">
+                    <div>Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(bedenganStr)}</strong></div>
+                    <div style="text-align: right;">Tgl: <span style="color: #334155; font-weight: 500;">${esc(insp.tanggal || insp.date || '-')}</span></div>
                   </div>
                 </div>
 
@@ -1240,6 +1209,8 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
  * Event listeners for Dederan Inspection
  */
 function attachDederanInspectionEvents(app) {
+  const userCtx = getCurrentUserContext() || resolveUserContext();
+
   // Action: Rekam Pemeriksaan Dederan (New)
   app.querySelectorAll('.btn-rekam-pemeriksaan-deder').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -1285,7 +1256,8 @@ function attachDederanInspectionEvents(app) {
       toast('Anda tidak memiliki otorisasi untuk mengedit transaksi ini.', 'error');
       return;
     }
-    if (isTransactionLockedForMantri(targetInsp)) {
+    const isReturned = isDederInspectionReturned(targetInsp);
+    if (!isReturned && isTransactionLockedForMantri(targetInsp)) {
       toast('Data pemeriksaan tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'warning');
       return;
     }
@@ -1330,6 +1302,9 @@ function attachDederanInspectionEvents(app) {
         toast.error('Data pemeriksaan tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
         return;
       }
+      if (guardDependency(targetInsp || pendingDeleteDederDocNo, 'Pemeriksaan Dederan', 'Dihapus')) {
+        return;
+      }
       if (dialogDeleteMsg) {
         dialogDeleteMsg.innerHTML = `Apakah Anda yakin ingin menghapus data pemeriksaan dederan <strong>${pendingDeleteDederDocNo}</strong>? Data yang terhubung ke Seleksi Bibit juga akan disinkronisasikan kembali.`;
       }
@@ -1356,6 +1331,8 @@ function attachDederanInspectionEvents(app) {
  * Event listeners for Okulasi Inspection
  */
 function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
+  const userCtx = getCurrentUserContext() || resolveUserContext();
+
   // Toggle detail expand
   app.querySelectorAll('.btn-toggle-expand-insp').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -1461,7 +1438,8 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
       toast('Anda tidak memiliki otorisasi untuk mengedit transaksi ini.', 'error');
       return;
     }
-    if (isTransactionLockedForMantri(targetInsp)) {
+    const isReturned = isOkulasiInspectionReturned(targetInsp);
+    if (!isReturned && isTransactionLockedForMantri(targetInsp)) {
       toast('Data pemeriksaan tidak dapat diubah karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.', 'warning');
       return;
     }
@@ -1511,6 +1489,9 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
       }
       if (isTransactionLockedForMantri(targetInsp)) {
         toast.error('Data pemeriksaan tidak dapat dihapus karena sedang dalam proses verifikasi Asisten Bibitan atau sudah disetujui.');
+        return;
+      }
+      if (guardDependency(targetInsp || pendingDeleteDocNo, 'Pemeriksaan Okulasi', 'Dihapus')) {
         return;
       }
       if (dialogDeleteMsg) {
@@ -1567,6 +1548,35 @@ export function getActionableInspectionCount(currentUser) {
   return count;
 }
 
+export function getReturnedInspectionCount(currentUser) {
+  const userCtx = currentUser || getCurrentUserContext();
+  const rawDederInspections = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
+  const authorizedDederInspections = getAuthorizedTransactions(rawDederInspections, userCtx);
+  const returnedDeder = authorizedDederInspections.filter(insp => {
+    if (userCtx?.divisionId && insp.divisionId && insp.divisionId !== userCtx.divisionId) return false;
+    if (insp.isCorrected || insp.status === 'MENUNGGU_VERIFIKASI_MANTRI' || insp.status === 'PENDING_SUBMISSION' || insp.status === 'APPROVED' || insp.status === 'DISETUJUI') {
+      return false;
+    }
+    return (insp.status === 'DIKEMBALIKAN' || insp.verificationStatus === 'DIKEMBALIKAN' || insp.status === 'REVISION');
+  });
+
+  const rawInspectionTxs = storage.get('inspection_transactions', []);
+  const authorizedInspectionTxs = getAuthorizedTransactions(rawInspectionTxs, userCtx);
+  const returnedOkulasi = authorizedInspectionTxs.filter(insp => {
+    if (userCtx?.divisionId && insp.divisionId && insp.divisionId !== userCtx.divisionId) return false;
+    if (insp.isCorrected || insp.status === 'MENUNGGU_VERIFIKASI_MANTRI' || insp.status === 'PENDING_SUBMISSION' || insp.status === 'APPROVED' || insp.status === 'DISETUJUI') {
+      return false;
+    }
+    return (insp.status === 'DIKEMBALIKAN' || insp.verificationStatus === 'DIKEMBALIKAN' || insp.status === 'REVISION');
+  });
+
+  return returnedDeder.length + returnedOkulasi.length;
+}
+
+export function hasReturnedInspection(currentUser) {
+  return getReturnedInspectionCount(currentUser) > 0;
+}
+
 export function hasActionableInspection(currentUser) {
-  return getActionableInspectionCount(currentUser) > 0;
+  return (getActionableInspectionCount(currentUser) + getReturnedInspectionCount(currentUser)) > 0;
 }

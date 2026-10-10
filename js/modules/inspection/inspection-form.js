@@ -49,13 +49,26 @@ export function renderInspectionForm() {
     ];
   }
 
-  // Accumulated inspection stats for this budding record (excluding this transaction if editing)
+  // Accumulated inspection stats for this budding record (excluding this transaction if editing, and excluding cancelled txs)
   let alreadyInspected = 0;
-  inspectionTxs.filter((insp, i) => {
+  const workerAlreadyInspectedMap = {};
+
+  const activePreviousInspections = inspectionTxs.filter((insp, i) => {
     if (isEditing && i === parseInt(editingIdx)) return false;
+    const isCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.status || '').toUpperCase()) ||
+                        ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.verificationStatus || '').toUpperCase());
+    if (isCancelled) return false;
     return insp.buddingDocNo === docNo;
-  }).forEach(insp => {
+  });
+
+  activePreviousInspections.forEach(insp => {
     alreadyInspected += parseInt(insp.totalDiperiksa || (parseInt(insp.jumlahJadi || 0) + parseInt(insp.jumlahGagal || 0)));
+    (insp.workers || []).forEach(w => {
+      const wKey = w.id || w.code;
+      if (wKey) {
+        workerAlreadyInspectedMap[wKey] = (workerAlreadyInspectedMap[wKey] || 0) + parseInt(w.jlhDiperiksa || 0);
+      }
+    });
   });
 
   const sisaBelumDiperiksa = Math.max(0, populasiDiokulasi - alreadyInspected);
@@ -236,16 +249,26 @@ export function renderInspectionForm() {
             <span style="font-size: 0.70rem; color: #6B7280; font-weight: 600;">${workerList.length} Pekerja</span>
           </div>
 
+          <!-- REAL-TIME OVER-QUOTA WARNING BANNER -->
+          <div id="banner-inspection-quota-warning" style="display: none; margin-bottom: 12px; padding: 10px 12px; background: #FEF2F2; border: 1px solid #FECACA; border-left: 4px solid #DC2626; border-radius: 6px; font-size: 0.74rem; color: #991B1B; line-height: 1.35;">
+            <div id="banner-inspection-quota-text" style="font-weight: 700;">⚠️ Jumlah pemeriksaan melebihi sisa kuota batch / okulator.</div>
+          </div>
+
           <div id="workers-inspection-container" style="display: flex; flex-direction: column; gap: 12px;">
             ${workerList.map((w) => {
-              const prevWorker = targetInsp && targetInsp.workers ? targetInsp.workers.find(pw => pw.id === w.id) : null;
-              const initDiperiksa = prevWorker ? prevWorker.jlhDiperiksa : (workerList.length === 1 ? sisaBelumDiperiksa : '');
+              const wKey = w.id || w.code;
+              const prevWorker = targetInsp && targetInsp.workers ? targetInsp.workers.find(pw => (pw.id && pw.id === w.id) || (pw.code && pw.code === w.code)) : null;
+              const alreadyInspectedWorker = workerAlreadyInspectedMap[wKey] || 0;
+              const wInitialMax = parseInt(w.qty || 0);
+              const wRemaining = Math.max(0, wInitialMax - alreadyInspectedWorker);
+
+              const initDiperiksa = prevWorker ? prevWorker.jlhDiperiksa : (workerList.length === 1 ? Math.min(sisaBelumDiperiksa, wRemaining) : '');
               const initBerhasil = prevWorker ? prevWorker.jlhBerhasil : '';
               const initGagal = prevWorker ? prevWorker.jlhTidakBerhasil : '';
               const initRegraft = prevWorker ? prevWorker.perluRegrafting !== false : true;
 
               return `
-                <div class="worker-inspection-card" data-id="${w.id}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); box-sizing: border-box;">
+                <div class="worker-inspection-card" data-id="${w.id}" data-max="${wInitialMax}" data-remaining="${wRemaining}" data-inspected-prev="${alreadyInspectedWorker}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); box-sizing: border-box;">
                   
                   <!-- NAMA PEKERJA & TOTAL POPULASI OKULASINYA -->
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -254,8 +277,8 @@ export function renderInspectionForm() {
                       <div style="font-size: 0.70rem; color: #6B7280;">NIK: ${w.code || '-'}</div>
                     </div>
                     <div style="text-align: right;">
-                      <span style="font-size: 0.68rem; color: #6B7280; display: block;">Total Diokulasi:</span>
-                      <span style="font-size: 0.80rem; font-weight: 800; color: #116834;">${w.qty || 0} Pkk</span>
+                      <span style="font-size: 0.68rem; color: #6B7280; display: block;">Total Diokulasi: <strong style="color: #111827;">${wInitialMax} Pkk</strong></span>
+                      <span style="font-size: 0.70rem; font-weight: 700; color: ${wRemaining > 0 ? '#116834' : '#6B7280'};">Sisa Kuota: ${wRemaining} Pkk</span>
                     </div>
                   </div>
 
@@ -479,11 +502,14 @@ export function renderInspectionForm() {
     let grandGagal = 0;
     let totalToRegrafting = 0;
     let totalToSelection = 0;
+    let hasWorkerOverQuota = false;
+    let overQuotaWorkerMsg = '';
 
     app.querySelectorAll('.worker-inspection-card').forEach(card => {
       const wid = card.dataset.id;
       const targetWorker = workerList.find(w => w.id === wid);
-      const wMax = parseInt(targetWorker?.qty || 0);
+      const wMax = parseInt(card.dataset.max !== undefined ? card.dataset.max : (targetWorker?.qty || 0));
+      const wRemaining = parseInt(card.dataset.remaining !== undefined ? card.dataset.remaining : wMax);
 
       const inpDiperiksa = card.querySelector('.inp-insp-diperiksa');
       const inpBerhasil = card.querySelector('.inp-insp-berhasil');
@@ -501,10 +527,14 @@ export function renderInspectionForm() {
       const berhasil = parseInt(berhasilVal || 0);
       const gagal = parseInt(gagalVal || 0);
 
-      // Highlight boundary errors
-      if (diperiksa > wMax && wMax > 0) {
+      // Highlight boundary errors (check against sisa kuota pekerja saat ini)
+      if (diperiksa > wRemaining && wRemaining >= 0 && diperiksaVal !== '') {
         inpDiperiksa.style.borderColor = '#D32F2F';
         inpDiperiksa.style.color = '#D32F2F';
+        hasWorkerOverQuota = true;
+        if (!overQuotaWorkerMsg) {
+          overQuotaWorkerMsg = `Jumlah diperiksa untuk ${targetWorker?.name || 'pekerja'} (${diperiksa} Pkk) melebihi sisa kuota pekerja (${wRemaining} Pkk).`;
+        }
       } else {
         inpDiperiksa.style.borderColor = '#D1D5DB';
         inpDiperiksa.style.color = '#111111';
@@ -567,6 +597,26 @@ export function renderInspectionForm() {
       }
     });
 
+    // Real-time sticky/top warning banner updates
+    const bannerInspWarning = app.querySelector('#banner-inspection-quota-warning');
+    const bannerInspText = app.querySelector('#banner-inspection-quota-text');
+
+    if (bannerInspWarning) {
+      if (grandDiperiksa > sisaBelumDiperiksa && sisaBelumDiperiksa > 0) {
+        bannerInspWarning.style.display = 'block';
+        if (bannerInspText) {
+          bannerInspText.textContent = `⚠️ Total pemeriksaan (${grandDiperiksa} Pkk) melebihi sisa bibit batch (${sisaBelumDiperiksa} Pkk). Kelebihan: +${grandDiperiksa - sisaBelumDiperiksa} Pkk.`;
+        }
+      } else if (hasWorkerOverQuota && overQuotaWorkerMsg) {
+        bannerInspWarning.style.display = 'block';
+        if (bannerInspText) {
+          bannerInspText.textContent = `⚠️ ${overQuotaWorkerMsg}`;
+        }
+      } else {
+        bannerInspWarning.style.display = 'none';
+      }
+    }
+
     // Overall summary updates
     const lblGrandDiperiksa = app.querySelector('#lbl-total-diperiksa');
     const lblGrandBerhasil = app.querySelector('#lbl-total-berhasil');
@@ -577,7 +627,10 @@ export function renderInspectionForm() {
     const persenGrand = grandDiperiksa > 0 ? Math.round((grandBerhasil / grandDiperiksa) * 100) : 0;
     const persenGagalGrand = grandDiperiksa > 0 ? Math.round((grandGagal / grandDiperiksa) * 100) : 0;
 
-    if (lblGrandDiperiksa) lblGrandDiperiksa.textContent = `${grandDiperiksa} Pkk`;
+    if (lblGrandDiperiksa) {
+      lblGrandDiperiksa.textContent = `${grandDiperiksa} Pkk`;
+      lblGrandDiperiksa.style.color = (grandDiperiksa > sisaBelumDiperiksa && sisaBelumDiperiksa > 0) ? '#DC2626' : '#111';
+    }
     if (lblGrandBerhasil) lblGrandBerhasil.textContent = `${grandBerhasil} Pkk (${persenGrand}%)`;
     if (lblGrandGagal) lblGrandGagal.textContent = `${grandGagal} Pkk (${persenGagalGrand}%)`;
     if (lblPersenTotal) lblPersenTotal.textContent = `${persenGrand}%`;
@@ -981,8 +1034,10 @@ export function renderInspectionForm() {
       const numBerhasil = parseInt(valBerhasil || 0);
       const numGagal = parseInt(valGagal || 0);
 
-      if (valDiperiksa !== '' && numDiperiksa > wMax && wMax > 0) {
-        validationErrors.push(`Jlh Diperiksa untuk ${wName} (${numDiperiksa} Pkk) melebihi total diokulasi pekerja (${wMax} Pkk).`);
+      const wRemaining = parseInt(card.dataset.remaining !== undefined ? card.dataset.remaining : wMax);
+
+      if (valDiperiksa !== '' && numDiperiksa > wRemaining && wRemaining >= 0) {
+        validationErrors.push(`Jlh Diperiksa untuk ${wName} (${numDiperiksa} Pkk) melebihi sisa kuota pekerja (${wRemaining} Pkk).`);
       }
 
       if (valDiperiksa !== '' && valBerhasil !== '' && valGagal !== '') {

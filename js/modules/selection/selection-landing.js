@@ -12,7 +12,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { formatDate, formatStandardDocNo, esc, todayDDMMYYYY } from '../../core/utils.js';
-import { getCurrentUserContext, resolveUserContext, normalizeRole, ROLES } from '../../core/user-context.js';
+import { getCurrentUserContext, resolveUserContext, normalizeRole, ROLES, ROLE_POSITION_MAP } from '../../core/user-context.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
@@ -25,7 +25,9 @@ import {
   attachDatePickerModalEvents
 } from '../../components/date-filter-modal.js';
 import {
-  syncAllDederanRejectionsToSelectionPool
+  syncAllDederanRejectionsToSelectionPool,
+  DEDERAN_STORAGE_KEYS,
+  getBedenganInspectionSummary
 } from '../seeding/dederan-manager.js';
 
 let selectedSelectionDate = todayDDMMYYYY();
@@ -72,10 +74,12 @@ import {
   returnPreGraftingSelectionDocument,
   validatePreGraftingSelectionCompletion,
   canCreatePreGraftingSelection1Document,
+  canPerformPreGraftingSelection1,
   canCreateSelection2Document,
   createSelection2DocumentFromSelection1,
   canCreateSelection3Document,
   createSelection3DocumentFromSelection2,
+  calculateEligibleSeedingTotalsForBedengan,
   syncAllSeedingsToPreGraftingSelectionDocuments,
   syncAllApprovedPreGraftingSelectionDocuments,
   getSeleksi1ExecutionsByDocument,
@@ -125,6 +129,7 @@ export {
   returnPreGraftingSelectionDocument,
   validatePreGraftingSelectionCompletion,
   canCreatePreGraftingSelection1Document,
+  canPerformPreGraftingSelection1,
   canCreateSelection2Document,
   createSelection2DocumentFromSelection1,
   canCreateSelection3Document,
@@ -294,7 +299,7 @@ function renderAsistenSelectionReview(app, currentUser) {
                   <!-- HEADER DOKUMEN -->
                   <div style="margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 5px;">
-                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #F1F5F9; color: #475569; border: 1px solid #E2E8F0; text-transform: uppercase; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                         ${stageBadgeText}
                       </span>
                     </div>
@@ -420,11 +425,52 @@ function renderAsistenSelectionReview(app, currentUser) {
     const sourceProcessName = isDederan ? 'Dederan' : 'Pindah Semai';
     const rejectUnit = isDederan ? 'Butir' : 'Pkk';
     const unit = isDederan ? 'Butir' : 'Pkk';
-    const checked = parseInt(item.jumlahDiperiksa || item.quantity || 0, 10);
-    const pass = parseInt(item.jumlahLayak || 0, 10);
     const cull = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+    let checked = parseInt(item.jumlahDiperiksa || 0, 10);
+    let pass = parseInt(item.jumlahLayak || 0, 10);
+
+    if (isDederan) {
+      const dederTxs = storage.get(DEDERAN_STORAGE_KEYS.TRANSACTIONS, []);
+      const dederTx = dederTxs.find(t => 
+        t.docNo === item.sourceDocNo || 
+        t.docNo === item.dederanDocNo || 
+        t.id === item.sourceTransactionId || 
+        t.docNo === item.sourceTransactionId ||
+        (item.bedenganCode && (t.bedenganCode === item.bedenganCode || t.bedengan === item.bedenganCode))
+      );
+      if (dederTx) {
+        const summary = getBedenganInspectionSummary(dederTx);
+        const totalPop = summary.totalDiperiksa > 0 ? summary.totalDiperiksa : (summary.totalDeder > 0 ? summary.totalDeder : parseInt(dederTx.jumlahDeder || 0, 10));
+        if (totalPop > 0) {
+          checked = totalPop;
+          pass = Math.max(0, checked - cull);
+        }
+      }
+    } else if (isPindahSemai) {
+      const seedingTxs = storage.get('seeding_transactions', []);
+      const sowTx = seedingTxs.find(t => 
+        t.docNo === item.sourceDocNo || 
+        t.seedingDocNo === item.sourceDocNo || 
+        t.id === item.sourceTransactionId ||
+        t.docNo === item.sourceTransactionId
+      );
+      if (sowTx) {
+        const totalPop = parseInt(sowTx.jumlahBibit || sowTx.jumlahKecambah || (sowTx.diterima + (sowTx.ditolak || 0)) || 0, 10);
+        if (totalPop > 0) {
+          checked = totalPop;
+          pass = Math.max(0, checked - cull);
+        }
+      }
+    }
+
+    if (checked <= 0 || checked < cull) {
+      checked = cull;
+      pass = 0;
+    }
+
     const passPct = checked > 0 ? Math.round((pass / checked) * 100) : 0;
     const cullPct = checked > 0 ? Math.round((cull / checked) * 100) : 0;
+    const categoryLabel = getSelectionCategoryLabel(item) || 'Afkir';
     const isActionable = canPerformAsistenSelectionAction(item, currentUser);
     const isApproved = item.status === SELECTION_STATUS.DISETUJUI;
     const isReturned = item.status === SELECTION_STATUS.DIKEMBALIKAN;
@@ -436,14 +482,23 @@ function renderAsistenSelectionReview(app, currentUser) {
       activePostFlags = [{ key: 'SELECTION_REJECTED', label: 'Dikembalikan' }];
     }
 
+    const creatorName = item.createdByName || item.mantri || 'Mantri';
+    const creatorRoleKey = item.createdByUserRole || item.role || item.actorRole || ROLES.MANTRI_TANAMAN;
+    const creatorRoleLabel = item.position || item.jabatan || ROLE_POSITION_MAP[creatorRoleKey] || 'Mantri Bibitan';
+    const creatorDisplay = creatorName.includes('-') ? creatorName : `${creatorName} - ${creatorRoleLabel}`;
+    const txDate = item.tanggalSeleksi || item.tanggal || todayDDMMYYYY();
+
     return `
                 <div class="card-selection-item" data-id="${esc(item.id)}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
                   
                   <!-- HEADER BARIS 1 -->
                   <div style="margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 5px;">
-                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; white-space: nowrap;">
+                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #F1F5F9; color: #475569; border: 1px solid #E2E8F0; text-transform: uppercase; letter-spacing: 0.02em; white-space: nowrap;">
                         ${esc(getSelectionStageLabel(item))}
+                      </span>
+                      <span style="font-size: 0.70rem; color: #64748B; font-weight: 500; white-space: nowrap;">
+                        ${esc(txDate)}
                       </span>
                     </div>
 
@@ -458,32 +513,39 @@ function renderAsistenSelectionReview(app, currentUser) {
                     </div>
                   </div>
 
-                  <!-- METADATA BARIS 2 -->
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 0.70rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;">
-                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                      <span style="color: #64748B;">Bedengan:</span> <strong style="color: #0F172A;">${esc(item.bedengan || (item.bedenganIds ? item.bedenganIds.join(', ') : '-'))}</strong>
-                    </div>
-                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <!-- METADATA BARIS 2: PROGRAM & BEDENGAN (2 BARIS) -->
+                  <div style="display: flex; flex-direction: column; gap: 3px; font-size: 0.72rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;">
+                    <div>
                       <span style="color: #64748B;">Program:</span> <strong style="color: #0F172A;">${esc(item.programName || item.programCode || item.programId || '-')}</strong>
+                    </div>
+                    <div>
+                      <span style="color: #64748B;">Bedengan:</span> <strong style="color: #0F172A;">${esc(item.bedengan || (item.bedenganIds ? item.bedenganIds.join(', ') : '-'))}</strong>
                     </div>
                   </div>
 
                   <!-- METRIK HASIL PENGAJUAN -->
                   ${isSingleRejectDeclaration ? `
-                    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px;">
-                      <div style="font-size: 0.62rem; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">
-                        Hasil Pengajuan Mantri
+                    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 5px;">
+                      <!-- HEADER: HASIL PENGAJUAN MANTRI & SATUAN -->
+                      <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.62rem; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">
+                          Hasil Pengajuan Mantri
+                        </span>
+                        <span style="font-size: 0.68rem; font-weight: 700; color: #64748B;">
+                          ${rejectUnit}
+                        </span>
                       </div>
+
+                      <!-- BARIS 1: DIPERIKSA DI DEDERAN & NILAI -->
                       <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem;">
-                        <span style="color: #64748B;">Diperiksa di ${sourceProcessName}</span>
-                        <strong style="color: #0F172A; font-weight: 800;">${checked.toLocaleString('id-ID')} ${rejectUnit}</strong>
+                        <span style="color: #64748B; white-space: nowrap;">Diperiksa di ${sourceProcessName}</span>
+                        <strong style="color: #0F172A; font-weight: 800; font-size: 0.85rem; white-space: nowrap;">${checked.toLocaleString('id-ID')}</strong>
                       </div>
+
+                      <!-- BARIS 2: (KATEGORI - %) & NILAI AFKIR -->
                       <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; padding-top: 4px; border-top: 1px dashed #CBD5E1;">
-                        <span style="color: #DC2626; font-weight: 700;">Diajukan sebagai Afkir</span>
-                        <div style="text-align: right;">
-                          <strong style="color: #DC2626; font-weight: 900; font-size: 0.88rem;">${cull.toLocaleString('id-ID')} ${rejectUnit}</strong>
-                          <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-left: 2px;">(${cullPct}%)</span>
-                        </div>
+                        <span style="color: #DC2626; font-weight: 700; white-space: nowrap;">(${esc(categoryLabel)} - ${cullPct}%)</span>
+                        <strong style="color: #DC2626; font-weight: 900; font-size: 0.90rem; white-space: nowrap;">${cull.toLocaleString('id-ID')}</strong>
                       </div>
                     </div>
                   ` : `
@@ -515,10 +577,7 @@ function renderAsistenSelectionReview(app, currentUser) {
                   <!-- METADATA SUBMISSION -->
                   <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: #64748B; margin-bottom: ${isActionable ? '8px' : '0'};">
                     <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                      Diajukan oleh: <strong style="color: #334155;">${esc(item.createdByName || item.mantri || 'Mantri')}</strong>
-                    </div>
-                    <div style="flex-shrink: 0;">
-                      ${esc(item.tanggalSeleksi || item.tanggal || '-')}
+                      Diajukan oleh: <strong style="color: #334155;">${esc(creatorDisplay)}</strong>
                     </div>
                   </div>
 
@@ -879,6 +938,19 @@ export function calculateBatchMetrics(batchGroup, stage = 'SELEKSI_1') {
       sourceBibit = stage === 'SELEKSI_1' ? sourcePoly * 2 : sourcePoly;
     }
 
+    // Selalu pastikan sourceBibit dan sourcePoly merefleksikan akumulasi seeding aktual
+    const liveBedTotals = calculateEligibleSeedingTotalsForBedengan(batchCode, bedCode);
+    if (liveBedTotals && liveBedTotals.totalDisemai > 0) {
+      if (liveBedTotals.totalDisemai > sourceBibit) {
+        sourceBibit = liveBedTotals.totalDisemai;
+        doc.sourceBibitQty = sourceBibit;
+      }
+      if (liveBedTotals.totalPolybag > sourcePoly) {
+        sourcePoly = liveBedTotals.totalPolybag;
+        doc.sourcePolybagQty = sourcePoly;
+      }
+    }
+
     if (!bedenganMap.has(compositeKey)) {
       bedenganMap.set(compositeKey, {
         bedenganCode: bedCode,
@@ -1079,6 +1151,8 @@ export function renderProgramBatchCompactView({
             ${prog.batches.map((batch, batchIdx) => {
               if (isPasca) {
                 const metrics = calculatePostGraftingBatchMetrics(batch);
+                const pascaDotKey = (metrics.totalAfkir > 0 && metrics.selectedPercent < 100) ? 'SELECTION_NEED_AFKIR' : (metrics.selectedPercent >= 100 ? 'SELECTION_APPROVED' : 'SELECTION_NEED_AFKIR');
+                const pascaDotLabel = (metrics.totalAfkir > 0 && metrics.selectedPercent < 100) ? 'Perlu Deklarasi Afkir' : (metrics.selectedPercent >= 100 ? 'Selesai Terseleksi' : 'Perlu Deklarasi Afkir');
                 return `
                   <div class="row-batch-item row-batch-pasca-clickable" 
                        data-program-code="${esc(prog.programCode)}" 
@@ -1089,9 +1163,12 @@ export function renderProgramBatchCompactView({
                     
                     <!-- ROW 1: BATCH & BEDENGAN COUNT + CHEVRON -->
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                      <span class="batch-code-title" style="font-weight: 800; font-size: 0.90rem; color: #0F172A;">
-                        ${esc(batch.batchCode)}
-                      </span>
+                      <div style="display: flex; align-items: center; gap: 6px;">
+                        ${renderStatusDots([{ key: pascaDotKey, label: pascaDotLabel }])}
+                        <span class="batch-code-title" style="font-weight: 800; font-size: 0.90rem; color: #0F172A;">
+                          ${esc(batch.batchCode)}
+                        </span>
+                      </div>
                       <span class="bedengan-count-label" style="font-size: 0.78rem; font-weight: 600; color: #64748B;">
                         ${metrics.bedenganCount} Bedengan &gt;
                       </span>
@@ -1112,20 +1189,50 @@ export function renderProgramBatchCompactView({
               }
 
               const metrics = calculateBatchMetrics(batch, stage);
+              let preDotKey;
+              let preDotLabel;
+              let isBatchLocked = false;
+
+              if (stage === 'SELEKSI_1' || stage === 'SELEKSI_I') {
+                const gateCheck = canPerformPreGraftingSelection1(batch.batchCode);
+                if (!gateCheck.canPerform) {
+                  isBatchLocked = true;
+                  preDotKey = 'TX_LOCKED_VERIF';
+                  preDotLabel = 'Menunggu Persetujuan ASB';
+                } else {
+                  const isPreDone = metrics.inspectedPercent >= 100;
+                  preDotKey = isPreDone ? 'SELECTION_APPROVED' : (metrics.inspectedPercent > 0 ? 'INSP_DEDER_PARTIAL' : 'SELECTION_NEED_AFKIR');
+                  preDotLabel = isPreDone ? 'Selesai Terseleksi' : (metrics.inspectedPercent > 0 ? 'Pemeriksaan Berjalan' : 'Perlu Seleksi');
+                }
+              } else {
+                const isPreDone = metrics.inspectedPercent >= 100;
+                preDotKey = isPreDone ? 'SELECTION_APPROVED' : (metrics.inspectedPercent > 0 ? 'INSP_DEDER_PARTIAL' : 'SELECTION_NEED_AFKIR');
+                preDotLabel = isPreDone ? 'Selesai Terseleksi' : (metrics.inspectedPercent > 0 ? 'Pemeriksaan Berjalan' : 'Perlu Seleksi');
+              }
+
               return `
                 <div class="row-batch-item row-batch-clickable" 
                      data-stage="${esc(stage)}" 
                      data-program-code="${esc(prog.programCode)}" 
                      data-batch-code="${esc(batch.batchCode)}" 
+                     data-is-locked="${isBatchLocked ? 'true' : 'false'}"
                      style="padding: 12px 14px; cursor: pointer; transition: background 0.15s ease; ${batchIdx > 0 ? 'border-top: 1px solid #F1F5F9;' : ''}"
                      onmouseover="this.style.background='#F8FAFC'" 
                      onmouseout="this.style.background='#FFFFFF'">
                   
                   <!-- ROW 1: BATCH & BEDENGAN COUNT + CHEVRON -->
                   <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span class="batch-code-title" style="font-weight: 800; font-size: 0.90rem; color: #0F172A;">
-                      ${esc(batch.batchCode)}
-                    </span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      ${renderStatusDots([{ key: preDotKey, label: preDotLabel }])}
+                      <span class="batch-code-title" style="font-weight: 800; font-size: 0.90rem; color: #0F172A;">
+                        ${esc(batch.batchCode)}
+                      </span>
+                      ${isBatchLocked ? `
+                        <span style="font-size: 0.65rem; font-weight: 700; background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center;">
+                          Menunggu Persetujuan
+                        </span>
+                      ` : ''}
+                    </div>
                     <span class="bedengan-count-label" style="font-size: 0.78rem; font-weight: 600; color: #64748B;">
                       ${metrics.bedenganCount} Bedengan &gt;
                     </span>
@@ -1137,8 +1244,10 @@ export function renderProgramBatchCompactView({
                   </div>
 
                   <!-- ROW 3: PROGRESS TEXT ONLY (NO PROGRESS BAR) -->
-                  <div class="batch-progress-text" style="font-size: 0.75rem; color: #64748B; margin-top: 3px;">
-                    Periksa ${metrics.inspectedPercent}% · Terseleksi ${metrics.selectedPercent}%
+                  <div class="batch-progress-text" style="font-size: 0.75rem; color: ${isBatchLocked ? '#B45309' : '#64748B'}; margin-top: 3px; font-weight: ${isBatchLocked ? '600' : '400'};">
+                    ${isBatchLocked 
+                      ? 'Menunggu Persetujuan ASB (Pindah Semai / Afkir)' 
+                      : `Periksa ${metrics.inspectedPercent}% · Terseleksi ${metrics.selectedPercent}%`}
                   </div>
 
                 </div>
@@ -1150,6 +1259,161 @@ export function renderProgramBatchCompactView({
       `).join('')}
     </div>
   `;
+}
+
+/**
+ * Modal Edukatif & Peringatan: Eksekusi Seleksi Pra-Okulasi Terkunci oleh Verifikasi ASB
+ */
+export function showExecutionGateBlockedModal({
+  stage = 'SELEKSI_1',
+  programCode = '',
+  batchCode = '',
+  bedenganCode = null,
+  doc = null,
+  gateCheck = {}
+}) {
+  const unapprovedSows = gateCheck?.unapprovedSows || [];
+  const unapprovedCulls = gateCheck?.unapprovedCulls || [];
+  const pendingPool = gateCheck?.pendingCullPool || [];
+
+  const stageTitle = (stage === 'SELEKSI_1' || stage === 'SELEKSI_I') ? 'Seleksi I (Pra-Okulasi)' : stage;
+
+  const bodyContent = `
+    <div style="font-size: 0.84rem; color: #334155; line-height: 1.5; display: flex; flex-direction: column; gap: 14px;">
+      
+      <!-- ALERT BANNER -->
+      <div style="background: #FFFBEB; border: 1.5px solid #FCD34D; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-weight: 800; color: #92400E; font-size: 0.92rem;">
+          Transaksi ${esc(stageTitle)} Menunggu Persetujuan
+        </div>
+        <div style="font-size: 0.78rem; color: #B45309; line-height: 1.45;">
+          Dokumen Pindah Semai dan Seleksi Ditolak Pindah Semai wajib dikonfirmasi dan disetujui verifikasinya oleh Asisten Bibitan (ASB) sebelum transaksi penyeleksian dapat dilakukan.
+        </div>
+      </div>
+
+      <!-- CONTEXT INFO CARD -->
+      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span style="font-size: 0.68rem; color: #64748B; display: block; font-weight: 600;">Target Batch & Bedengan</span>
+          <span style="font-size: 0.92rem; font-weight: 800; color: #0F172A;">
+            ${esc(batchCode || '-')} ${bedenganCode ? `· Bedengan ${esc(bedenganCode)}` : ''}
+          </span>
+        </div>
+        ${programCode ? `
+          <div style="text-align: right;">
+            <span style="font-size: 0.68rem; color: #64748B; display: block; font-weight: 600;">Program</span>
+            <span style="font-size: 0.80rem; font-weight: 700; color: #475569; font-family: monospace;">
+              ${esc(programCode)}
+            </span>
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- STATUS PERIKSA DOKUMEN -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-weight: 700; font-size: 0.80rem; color: #1E293B;">
+          Status Persetujuan Dokumen Sumber:
+        </div>
+
+        <!-- 1. DOKUMEN PINDAH SEMAI (SOW) -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-weight: 700; font-size: 0.80rem; color: #0F172A;">
+              Dokumen Pindah Semai (SOW)
+            </span>
+            ${unapprovedSows.length === 0 ? `
+              <span style="font-size: 0.70rem; font-weight: 700; background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 999px;">
+                ✓ Disetujui ASB
+              </span>
+            ` : `
+              <span style="font-size: 0.70rem; font-weight: 700; background: #FEF3C7; color: #B45309; padding: 2px 8px; border-radius: 999px;">
+                ⏳ Menunggu Persetujuan ASB
+              </span>
+            `}
+          </div>
+          ${unapprovedSows.length > 0 ? `
+            <div style="font-size: 0.75rem; color: #DC2626; display: flex; flex-direction: column; gap: 2px; margin-top: 4px;">
+              ${unapprovedSows.map(s => `
+                <div>• <strong>${esc(s.docNo)}</strong>: Status saat ini <em>${esc(s.status || 'MENUNGGU_VERIFIKASI')}</em></div>
+              `).join('')}
+            </div>
+          ` : `
+            <div style="font-size: 0.74rem; color: #64748B;">
+              Seluruh dokumen Pindah Semai telah diverifikasi dan disetujui ASB.
+            </div>
+          `}
+        </div>
+
+        <!-- 2. DOKUMEN SELEKSI DITOLAK PINDAH SEMAI (CULL) -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-weight: 700; font-size: 0.80rem; color: #0F172A;">
+              Seleksi Ditolak Pindah Semai (CULL)
+            </span>
+            ${(unapprovedCulls.length === 0 && pendingPool.length === 0) ? `
+              <span style="font-size: 0.70rem; font-weight: 700; background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 999px;">
+                ✓ Disetujui ASB
+              </span>
+            ` : `
+              <span style="font-size: 0.70rem; font-weight: 700; background: #FEE2E2; color: #B91C1C; padding: 2px 8px; border-radius: 999px;">
+                ⏳ Perlu Penyelesaian
+              </span>
+            `}
+          </div>
+          ${pendingPool.length > 0 ? `
+            <div style="font-size: 0.75rem; color: #DC2626; margin-top: 4px;">
+              ⚠️ Terdapat bibit afkir Pindah Semai yang belum dideklarasikan ke Seleksi Ditolak Pindah Semai (CULL).
+            </div>
+          ` : ''}
+          ${unapprovedCulls.length > 0 ? `
+            <div style="font-size: 0.75rem; color: #DC2626; display: flex; flex-direction: column; gap: 2px; margin-top: 4px;">
+              ${unapprovedCulls.map(c => `
+                <div>• <strong>${esc(c.docNo || c.selectionNo || c.id)}</strong>: Status saat ini <em>${esc(c.status || 'MENUNGGU_VERIFIKASI')}</em></div>
+              `).join('')}
+            </div>
+          ` : ''}
+          ${(unapprovedCulls.length === 0 && pendingPool.length === 0) ? `
+            <div style="font-size: 0.74rem; color: #64748B;">
+              Seluruh dokumen afkir telah dideklarasikan dan disetujui ASB.
+            </div>
+          ` : ''}
+        </div>
+
+      </div>
+
+      <!-- INSTRUKSI EDUKATIF -->
+      <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 12px; font-size: 0.76rem; color: #1E40AF; line-height: 1.45;">
+        <div style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">
+          💡 Petunjuk Penyelesaian:
+        </div>
+        <ol style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px;">
+          <li>Pastikan Mandor telah melakukan konfirmasi verifikasi pada transaksi Pindah Semai.</li>
+          <li>Asisten Bibitan (ASB) wajib menyetujui verifikasi Dokumen Pindah Semai dan Dokumen Seleksi Ditolak pada menu <strong>Verifikasi Transaksi</strong>.</li>
+          <li>Setelah disetujui ASB, total populasi bibit final akan terkunci secara sah dan transaksi Seleksi Pra-Okulasi otomatis terbuka.</li>
+        </ol>
+      </div>
+
+      <!-- BUTTON -->
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
+        <button type="button" class="btn-close-gate-modal" style="padding: 8px 18px; background: #0F172A; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer;">
+          Tutup
+        </button>
+      </div>
+
+    </div>
+  `;
+
+  openModal({
+    title: 'Peringatan: Verifikasi Belum Disetujui ASB',
+    body: bodyContent
+  });
+
+  const modalRoot = document.getElementById('modal-root');
+  if (modalRoot) {
+    modalRoot.querySelectorAll('.btn-close-gate-modal').forEach(btn => {
+      btn.addEventListener('click', () => closeModal());
+    });
+  }
 }
 
 /**
@@ -1201,39 +1465,121 @@ export function openBedenganSourceSelectorModal({
 
   const uniqueBedList = Array.from(uniqueBedMap.values());
 
+  const stageBadgeLabel = (stage === 'SELEKSI_3' || stage === 'SELEKSI_III') 
+    ? 'Seleksi III (Pra-Okulasi)' 
+    : (stage === 'SELEKSI_2' || stage === 'SELEKSI_II') 
+      ? 'Seleksi II (Pra-Okulasi)' 
+      : 'Seleksi I (Pra-Okulasi)';
+
+  const totalBatchPoly = uniqueBedList.reduce((sum, b) => sum + (b.sourcePoly || 0), 0);
+  const totalBatchBibit = uniqueBedList.reduce((sum, b) => {
+    const bibitQty = (b.doc.sourceBibitQty !== undefined && b.doc.sourceBibitQty > 0) ? b.doc.sourceBibitQty : ((b.sourcePoly || 0) * (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' ? 2 : 1));
+    return sum + bibitQty;
+  }, 0);
+
   const bodyContent = `
-    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
+    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 12px;">
       
-      <!-- BATCH CONTEXT INFO -->
-      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;">
-        <div style="font-size: 0.68rem; font-weight: 700; color: #64748B; text-transform: uppercase;">Batch</div>
-        <div style="font-size: 0.95rem; font-weight: 800; color: #0F172A;">${esc(batchCode)}</div>
-        <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">Program: <strong style="color: #334155;">${esc(programCode)}</strong></div>
+      <!-- BATCH & STAGE CONTEXT CARD -->
+      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.68rem; font-weight: 700; background: #E2E8F0; color: #334155; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">
+            ${esc(stageBadgeLabel)}
+          </span>
+          <span style="font-size: 0.72rem; font-weight: 600; color: #64748B;">
+            ${uniqueBedList.length} Bedengan Tersedia
+          </span>
+        </div>
+        
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px;">
+          <div>
+            <span style="font-size: 0.68rem; color: #64748B; display: block;">Kode Batch</span>
+            <div style="font-size: 1.05rem; font-weight: 800; color: #0284C7; letter-spacing: -0.01em;">
+              ${esc(batchCode)}
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <span style="font-size: 0.68rem; color: #64748B; display: block;">Akumulasi Batch</span>
+            <div style="font-size: 0.95rem; font-weight: 800; color: #116834;">
+              ${totalBatchBibit.toLocaleString('id-ID')} Bibit <span style="font-size: 0.75rem; color: #64748B; font-weight: 600;">(${totalBatchPoly.toLocaleString('id-ID')} Ply)</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-size: 0.72rem; color: #64748B; border-top: 1px dashed #CBD5E1; padding-top: 6px; margin-top: 2px;">
+          Program: <strong style="color: #1E293B; font-family: monospace;">${esc(programCode)}</strong>
+        </div>
       </div>
 
-      <!-- BEDENGAN LIST (DEDUPLICATED COMPOSITE SCOPE) -->
+      <!-- PETUNJUK SELEKSI BEDENGAN -->
+      <div style="font-size: 0.75rem; color: #64748B; display: flex; align-items: center; gap: 6px;">
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="#0284C7" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <span>Pilih bedengan target untuk mencatat pelaksanaan penyeleksian:</span>
+      </div>
+
+      <!-- BEDENGAN LIST (COMPOSITE SCOPE CARDS) -->
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        ${uniqueBedList.map(item => `
+        ${uniqueBedList.map(item => {
+          const bedBibit = (item.doc.sourceBibitQty !== undefined && item.doc.sourceBibitQty > 0) 
+            ? item.doc.sourceBibitQty 
+            : (item.sourcePoly * (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' ? 2 : 1));
+
+          const bedGate = (stage === 'SELEKSI_1' || stage === 'SELEKSI_I')
+            ? canPerformPreGraftingSelection1(item.doc, item.bedCode)
+            : { canPerform: true };
+          const isBedLocked = !bedGate.canPerform;
+
+          return `
           <div class="item-bedengan-selector" 
                data-doc-id="${esc(item.doc.id)}" 
                data-bedengan-code="${esc(item.bedCode)}" 
-               style="background: #FFFFFF; border: 1.5px solid #E2E8F0; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s ease;"
-               onmouseover="this.style.borderColor='#116834'; this.style.background='#F0FDF4';"
-               onmouseout="this.style.borderColor='#E2E8F0'; this.style.background='#FFFFFF';">
-            <div>
-              <div style="font-weight: 800; font-size: 0.88rem; color: #0F172A;">${esc(item.bedCode)}</div>
-              <div style="font-size: 0.78rem; font-weight: 600; color: #475569; margin-top: 2px;">
-                ${item.sourcePoly.toLocaleString('id-ID')} Ply
+               data-is-locked="${isBedLocked ? 'true' : 'false'}"
+               style="background: #FFFFFF; border: 1.5px solid ${isBedLocked ? '#FDE68A' : '#E2E8F0'}; border-radius: 10px; padding: 12px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02);"
+               onmouseover="this.style.borderColor='${isBedLocked ? '#D97706' : '#116834'}'; this.style.background='${isBedLocked ? '#FFFBEB' : '#F0FDF4'}'; this.style.boxShadow='0 2px 6px rgba(0,0,0,0.06)';"
+               onmouseout="this.style.borderColor='${isBedLocked ? '#FDE68A' : '#E2E8F0'}'; this.style.background='#FFFFFF'; this.style.boxShadow='0 1px 2px rgba(0,0,0,0.02)';">
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <span style="font-weight: 800; font-size: 0.92rem; color: #0F172A;">${esc(item.bedCode)}</span>
+                ${isBedLocked ? `
+                  <span style="font-size: 0.65rem; font-weight: 700; background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; padding: 2px 8px; border-radius: 999px;">
+                    Menunggu Persetujuan ASB
+                  </span>
+                ` : item.isFinished ? `
+                  <span style="font-size: 0.65rem; font-weight: 700; background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 999px;">
+                    Selesai Diperiksa
+                  </span>
+                ` : `
+                  <span style="font-size: 0.65rem; font-weight: 700; background: #EFF6FF; color: #1D4ED8; padding: 2px 8px; border-radius: 999px;">
+                    Siap Seleksi
+                  </span>
+                `}
               </div>
-              <div style="font-size: 0.72rem; color: ${item.isFinished ? '#15803D' : '#64748B'}; margin-top: 2px;">
-                Sisa: <strong style="color: ${item.isFinished ? '#15803D' : '#0F172A'};">${item.remainingPoly.toLocaleString('id-ID')} Ply</strong> ${item.isFinished ? '(Selesai Diperiksa)' : ''}
+              
+              <div style="font-size: 0.78rem; color: #475569; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span>Populasi: <strong style="color: #0F172A;">${bedBibit.toLocaleString('id-ID')} Bibit</strong> (${item.sourcePoly.toLocaleString('id-ID')} Ply)</span>
+                <span style="color: #CBD5E1;">•</span>
+                <span>Sisa: <strong style="color: ${item.isFinished ? '#15803D' : '#D97706'};">${item.remainingPoly.toLocaleString('id-ID')} Ply</strong></span>
               </div>
             </div>
-            <div style="color: #116834; font-weight: 700; font-size: 0.82rem;">
-              Pilih &gt;
+
+            <div style="margin-left: 10px; flex-shrink: 0;">
+              ${isBedLocked ? `
+                <span style="display: inline-flex; align-items: center; padding: 6px 12px; background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; border-radius: 6px; font-weight: 700; font-size: 0.75rem;">
+                  Menunggu Persetujuan
+                </span>
+              ` : `
+                <span style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; background: #116834; color: #FFFFFF; border-radius: 6px; font-weight: 700; font-size: 0.75rem;">
+                  Pilih &gt;
+                </span>
+              `}
             </div>
           </div>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
 
     </div>
@@ -1251,7 +1597,24 @@ export function openBedenganSourceSelectorModal({
     el.addEventListener('click', () => {
       const docId = el.dataset.docId;
       const bedCode = el.dataset.bedenganCode;
+      const isLocked = el.dataset.isLocked === 'true';
       const targetDoc = docs.find(d => d.id === docId);
+
+      if (isLocked) {
+        const bedGate = (stage === 'SELEKSI_1' || stage === 'SELEKSI_I')
+          ? canPerformPreGraftingSelection1(targetDoc || docId, bedCode)
+          : { canPerform: false, reason: 'Menunggu Persetujuan' };
+        showExecutionGateBlockedModal({
+          stage,
+          programCode,
+          batchCode,
+          bedenganCode: bedCode,
+          doc: targetDoc,
+          gateCheck: bedGate
+        });
+        return;
+      }
+
       closeModal();
       if (onSelect && targetDoc) {
         onSelect(targetDoc, bedCode);
@@ -1293,8 +1656,19 @@ export function handleBatchRowClick({ stage, programCode, batchCode, user, onSav
 
   const openExecution = (targetDoc, bedCode = null) => {
     if (stage === 'SELEKSI_1' || stage === 'SELEKSI_I') {
-      // Row berasal dari active Selection I document yang sudah valid.
-      // Tidak perlu re-check canCreatePreGraftingSelection1Document — langsung buka execution.
+      // VALIDASI GERBANG ASB: Cegah form input jika SOW / CULL belum disetujui ASB
+      const gateCheck = canPerformPreGraftingSelection1(targetDoc, bedCode);
+      if (!gateCheck.canPerform) {
+        showExecutionGateBlockedModal({
+          stage,
+          programCode,
+          batchCode,
+          bedenganCode: bedCode,
+          doc: targetDoc,
+          gateCheck
+        });
+        return;
+      }
       openSeleksi1ExecutionModal({ doc: targetDoc, bedenganCode: bedCode, user, onSaved });
     } else if (stage === 'SELEKSI_2' || stage === 'SELEKSI_II') {
       openSeleksi2ExecutionModal({ doc: targetDoc, user, onSaved });
@@ -1435,7 +1809,10 @@ export function handlePascaBatchRowClick({ programCode, batchCode, user, onSaved
                    onmouseover="this.style.borderColor='#116834'; this.style.background='#F0FDF4';"
                    onmouseout="this.style.borderColor='#E2E8F0'; this.style.background='#FFFFFF';">
                 <div>
-                  <div style="font-weight: 800; font-size: 0.88rem; color: #0F172A;">${esc(bedCode)}</div>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    ${renderStatusDots([{ key: 'SELECTION_NEED_AFKIR', label: 'Perlu Deklarasi Afkir' }])}
+                    <span style="font-weight: 800; font-size: 0.88rem; color: #0F172A;">${esc(bedCode)}</span>
+                  </div>
                   <div style="font-size: 0.78rem; color: #DC2626; font-weight: 700; margin-top: 2px;">
                     ${qty.toLocaleString('id-ID')} Pkk Afkir
                   </div>
@@ -1687,15 +2064,13 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
     poolItems.some(p => p.originType === 'REJECT_DEDERAN' || p.sourceModule === 'DEDERAN') ||
     allStageCulledTxs.some(t => t.originType === 'REJECT_DEDERAN' || t.sourceModule === 'DEDERAN');
 
-  const returnedSectionTitle = isDederanStage
-    ? 'Transaksi Seleksi Pra-Semai Perlu Perbaikan'
-    : 'Transaksi Seleksi Pindah Semai Perlu Perbaikan';
+  const returnedSectionTitle = 'Transaksi Perlu Perbaikan';
 
   // 1. Collect returned items from poolItems
   const returnedMap = new Map();
 
   poolItems.forEach(item => {
-    const isRet = item.status === SELECTION_STATUS.DIKEMBALIKAN || item.status === 'REVISION' || Boolean(item.returnReason);
+    const isRet = (item.status === SELECTION_STATUS.DIKEMBALIKAN || item.status === 'REVISION' || Boolean(item.returnReason)) && item.status !== SELECTION_STATUS.READY_TO_CONFIRM;
     if (isRet) {
       const key = String(item.docNo || item.selectionDocNo || item.id || item.sourceDocNo || '').trim();
       if (key) returnedMap.set(key, { ...item, status: SELECTION_STATUS.DIKEMBALIKAN });
@@ -1704,7 +2079,7 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
 
   // 2. Collect returned items from allStageCulledTxs (ensures immunity from date filter)
   allStageCulledTxs.forEach(tx => {
-    const isRet = tx.status === SELECTION_STATUS.DIKEMBALIKAN || tx.status === 'REVISION' || tx.verificationStatus === 'DIKEMBALIKAN' || Boolean(tx.returnReason);
+    const isRet = (tx.status === SELECTION_STATUS.DIKEMBALIKAN || tx.status === 'REVISION' || tx.verificationStatus === 'DIKEMBALIKAN' || Boolean(tx.returnReason)) && tx.status !== SELECTION_STATUS.READY_TO_CONFIRM;
     if (isRet) {
       const key = String(tx.docNo || tx.selectionNo || tx.id || tx.sourceDocNo || '').trim();
       if (key) {
@@ -1782,35 +2157,54 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
             const klonDisplay = item.clone || item.klon || null;
 
             return `
-              <div class="card-summary-wrapper card-returned-selection-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative; display: flex; flex-direction: column; gap: 8px;">
+              <div class="card-summary-wrapper card-returned-selection-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative; display: flex; flex-direction: column; gap: 10px;">
                 
                 <!-- BARIS 1: IDENTITAS DOKUMEN & BADGE DIKEMBALIKAN -->
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-                  <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(displayDocNo)}</span>
-                      <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px;">
-                        <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
-                        Dikembalikan
-                      </span>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid #F1F5F9;">
+                  <span style="font-weight: 800; font-size: 0.95rem; color: #0F172A; letter-spacing: -0.01em;">${esc(displayDocNo)}</span>
+                  <span style="font-size: 0.65rem; font-weight: 700; padding: 2.5px 8px; border-radius: 9999px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                    <span style="width: 5px; height: 5px; border-radius: 50%; background: #DC2626;"></span>
+                    Dikembalikan
+                  </span>
+                </div>
+                
+                <!-- BARIS 2: METADATA GRID HIRARKI (BERSIH, CORPORATE & TIDAK BERTABRAKAN) -->
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+                  <!-- Baris 1: Program (Kiri) & Klon (Rata Kanan) -->
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-size: 0.67rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Program</div>
+                      <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-top: 2px; white-space: nowrap;">${esc(prog)}</div>
                     </div>
-                    
-                    <!-- BARIS 2 & 3: METADATA -->
-                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 4px; line-height: 1.35;">
-                      ${isDederan ? `Program: <strong style="color: #334155;">${esc(prog)}</strong>` : `Batch: <strong style="color: #334155;">${esc(batch || '-')}</strong> • Program: <strong style="color: #334155;">${esc(prog)}</strong>`}
-                      ${klonDisplay ? ` • Klon: <strong style="color: #116834;">${esc(klonDisplay)}</strong>` : ''}
+                    <div style="text-align: right; flex-shrink: 0;">
+                      <div style="font-size: 0.67rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Klon</div>
+                      <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-top: 2px;">${esc(klonDisplay || '-')}</div>
                     </div>
-                    <div style="font-size: 0.74rem; color: #64748B; margin-top: 2px; line-height: 1.35;">
-                      Bedengan: <strong style="color: #0F172A; font-weight: 600;">${esc(bedDisplay)}</strong> • Dok. Asal: <strong style="color: #116834; font-weight: 600;">${esc(sourceDoc)}</strong>
+                  </div>
+
+                  <!-- Baris 2: Bedengan (Kiri) & Dok. Asal (Rata Kanan) -->
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-size: 0.67rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Bedengan</div>
+                      <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
+                        ${esc(bedDisplay)}${batch ? ` <span style="font-size: 0.70rem; font-weight: 500; color: #64748B;">• Batch: ${esc(batch)}</span>` : ''}
+                      </div>
                     </div>
-                    <div style="font-size: 0.70rem; color: #64748B; margin-top: 2px;">
-                      Tanggal: <span style="color: #475569; font-weight: 500;">${esc(itemDate)}</span>
+                    <div style="text-align: right; flex-shrink: 0;">
+                      <div style="font-size: 0.67rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Dok. Asal</div>
+                      <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-top: 2px;">${esc(sourceDoc)}</div>
                     </div>
+                  </div>
+
+                  <!-- TANGGAL SELEKSI -->
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px dashed #E2E8F0; font-size: 0.70rem; color: #64748B;">
+                    <span>Tanggal Seleksi</span>
+                    <span style="font-weight: 600; color: #334155;">${esc(itemDate)}</span>
                   </div>
                 </div>
 
-                <!-- BARIS 4: CATATAN PENGEMBALIAN -->
-                <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-left: 3px solid #DC2626; border-radius: 6px; padding: 7px 10px; font-size: 0.74rem;">
+                <!-- BARIS 3: CATATAN PENGEMBALIAN -->
+                <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-left: 3px solid #DC2626; border-radius: 6px; padding: 8px 10px; font-size: 0.74rem;">
                   <div style="font-size: 0.68rem; font-weight: 700; color: #991B1B; margin-bottom: 2px;">
                     Catatan Pengembalian Asisten:
                   </div>
@@ -1819,7 +2213,7 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
                   </div>
                 </div>
 
-                <!-- BARIS 5: METRICS KUANTITAS -->
+                <!-- BARIS 4: METRICS KUANTITAS -->
                 <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
                   <div>
                     <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B; text-transform: uppercase;">Jumlah Tidak Berhasil</span>
@@ -1831,7 +2225,7 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
                   </div>
                 </div>
 
-                <!-- BARIS 6: CTA HIJAU DEKLARASI ULANG / KOREKSI SELEKSI -->
+                <!-- BARIS 5: CTA HIJAU DEKLARASI ULANG / KOREKSI SELEKSI -->
                 <div style="margin-top: 2px;">
                   <button type="button" class="btn-koreksi-seleksi btn-perbaiki-cull" data-pool-id="${esc(item.id || item.docNo)}" data-cull-id="${esc(item.id || item.docNo)}" style="width: 100%; min-height: 38px; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2); transition: background 0.15s ease;">
                     Deklarasi Ulang / Koreksi Seleksi
@@ -1881,8 +2275,9 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
                       ${isDederan ? esc(prog) : `${esc(batch || '-')} • ${esc(prog)}`}
                     </span>
                   </div>
-                  <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-top: 1px;">
-                    ${esc(bedDisplay)}
+                  <div style="display: flex; align-items: center; gap: 6px; margin-top: 1px;">
+                    ${renderStatusDots([{ key: 'SELECTION_NEED_AFKIR', label: 'Perlu Deklarasi Afkir' }])}
+                    <span style="font-size: 0.88rem; font-weight: 800; color: #0F172A;">${esc(bedDisplay)}</span>
                   </div>
                 </div>
                 <div style="text-align: right;">
@@ -1946,39 +2341,38 @@ export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, t
             const txDate = normalizeDateStr(rawTxDate) || formatDate(rawTxDate) || rawTxDate;
             const bedDisplay = formatBedenganDisplayCode(tx);
 
-            let badgeText = 'Tercatat';
+            let badgeText = '';
             let badgeBg = '#F0FDF4';
             let badgeColor = '#15803D';
             let badgeBorder = '#BBF7D0';
+            let dotKey = 'SELECTION_WAIT_ASB';
+            let dotLabel = 'Menunggu';
 
             if (tx.status === SELECTION_STATUS.DISETUJUI || tx.verificationStatus === 'TERVERIFIKASI' || tx.verificationStatus === 'DATA_TERKONFIRMASI') {
-              badgeText = 'Disetujui';
-              badgeBg = '#F0FDF4';
-              badgeColor = '#15803D';
-              badgeBorder = '#BBF7D0';
+              dotKey = 'SELECTION_APPROVED';
+              dotLabel = 'Disetujui';
             } else if (tx.status === SELECTION_STATUS.DIKEMBALIKAN || tx.status === 'REVISION') {
               badgeText = 'Dikembalikan';
               badgeBg = '#FEF2F2';
               badgeColor = '#DC2626';
               badgeBorder = '#FECACA';
+              dotKey = 'SELECTION_REJECTED';
+              dotLabel = 'Dikembalikan';
             } else if (tx.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || tx.submissionStatus === 'SUBMITTED_TO_ASB') {
-              badgeText = 'Menunggu';
-              badgeBg = '#FEF3C7';
-              badgeColor = '#B45309';
-              badgeBorder = '#FDE68A';
+              dotKey = 'SELECTION_WAIT_ASB';
+              dotLabel = 'Menunggu';
             } else if (tx.status === SELECTION_STATUS.READY_TO_CONFIRM) {
-              badgeText = 'Siap Konfirmasi';
-              badgeBg = '#FEF3C7';
-              badgeColor = '#B45309';
-              badgeBorder = '#FDE68A';
+              dotKey = 'SELECTION_WAIT_ASB';
+              dotLabel = 'Siap Konfirmasi';
             }
 
             return `
               <div class="card-culled-tx" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                   <div style="display: flex; align-items: center; gap: 6px;">
+                    ${renderStatusDots([{ key: dotKey, label: dotLabel }])}
                     <strong style="color: #0F172A; font-size: 0.82rem;">${esc(tx.docNo || '-')}</strong>
-                    <span style="font-size: 0.65rem; font-weight: 700; color: ${badgeColor}; background: ${badgeBg}; border: 1px solid ${badgeBorder}; padding: 1px 6px; border-radius: 4px;">${badgeText}</span>
+                    ${badgeText ? `<span style="font-size: 0.65rem; font-weight: 700; color: ${badgeColor}; background: ${badgeBg}; border: 1px solid ${badgeBorder}; padding: 1px 6px; border-radius: 4px;">${badgeText}</span>` : ''}
                   </div>
                   <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
                     ${esc(bedDisplay)} • Sumber: <strong style="color: #334155;">${esc(tx.sourceDocNo || tx.sourceTransactionId || '-')}</strong>
@@ -2012,12 +2406,13 @@ export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, t
 function renderMantriSelectionLanding(app, user) {
   const today = formatDate(new Date().toISOString());
 
-  // Pastikan sinkronisasi dederan & seeding rejections selalu dilakukan saat render mantri view
+  // Pastikan sinkronisasi dederan, seeding rejections, dan dokumen seleksi pra-okulasi selalu dilakukan saat render mantri view
   try {
     syncAllDederanRejectionsToSelectionPool();
     syncAllSeedingsToSelectionPool();
+    syncAllSeedingsToPreGraftingSelectionDocuments(user);
   } catch (err) {
-    console.warn('[renderMantriSelectionLanding] Gagal sync rejections:', err);
+    console.warn('[renderMantriSelectionLanding] Gagal sync:', err);
   }
 
   function standardizeSelectionDocNo(rawDocNo, index = 1) {
@@ -2695,8 +3090,6 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
 
   let currentStream = null;
   let isCameraActive = false;
-  let capturedDataUrl = null;
-  let capturedPhotoRecord = null;
   let capturedLat = null;
   let capturedLon = null;
 
@@ -2714,7 +3107,6 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
           if (pos && pos.coords) {
             capturedLat = Number(pos.coords.latitude.toFixed(6));
             capturedLon = Number(pos.coords.longitude.toFixed(6));
-            updateOverlayWatermark();
           }
         },
         (err) => {
@@ -2733,96 +3125,70 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
     return { latDisplay, lonDisplay, text: `Lat: ${latDisplay} | Long: ${lonDisplay}` };
   };
 
-  const body = `
-    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45;">
-      <!-- TOP INFO BAR -->
-      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem;">
-        <div style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-          <span style="color: #64748B;">Dok:</span> <strong style="color: #0F172A;">${esc(displayDocNo)}</strong> • <strong style="color: #116834;">${esc(category)} (${qtyAfkir.toLocaleString('id-ID')} ${unit})</strong>
-        </div>
-        <div style="flex-shrink: 0; font-weight: 700; color: #334155; margin-left: 8px;">
-          ${esc(bedLabel)}
-        </div>
+  // Hapus overlay lama jika ada
+  const existingOverlay = document.getElementById('selection-camera-overlay');
+  if (existingOverlay) existingOverlay.remove();
+
+  const overlayEl = document.createElement('div');
+  overlayEl.id = 'selection-camera-overlay';
+  overlayEl.className = 'page camera-page';
+  overlayEl.style.cssText = 'position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #000000; z-index: 9999; display: flex; flex-direction: column; overflow: hidden;';
+
+  overlayEl.innerHTML = `
+    <!-- Topbar -->
+    <header style="display: flex; justify-content: space-between; align-items: center; padding: 16px; position: absolute; top: 0; left: 0; right: 0; z-index: 10;">
+      <button id="btn-back-camera" type="button" aria-label="Kembali" style="background: rgba(0,0,0,0.5); border: none; border-radius: 50%; width: 40px; height: 40px; display: flex; justify-content: center; align-items: center; cursor: pointer;">
+        <svg viewBox="0 0 24 24" width="24" height="24" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Video Feed -->
+    <main style="flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; position: relative;">
+      <video id="camera-video-stream" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+      <canvas id="camera-snapshot-canvas" style="display: none;"></canvas>
+      
+      <!-- Fallback Kamera (Persis Halaman Penerimaan Benih / Screenshot 2) -->
+      <div id="camera-fallback" style="display: none; width: 100%; height: 100%; background: #262626; color: #fff; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px;">
+        <svg viewBox="0 0 24 24" width="48" height="48" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 16px;">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <span style="font-weight: 600; font-size: 1.1rem; margin-bottom: 8px;">Kamera Tidak Tersedia</span>
+        <span style="font-size: 0.9rem; color: #aaa;">Browser mungkin memblokir akses atau perangkat tidak memiliki kamera yang sesuai.</span>
+        <span style="font-size: 0.9rem; color: #4A90E2; margin-top: 12px; font-weight: 600;">(Ketuk tombol rana putih untuk mengambil foto simulasi)</span>
       </div>
+      
+      <!-- Framing Guide (Garis Putus-Putus) -->
+      <div style="position: absolute; width: 80%; height: 60%; border: 2px dashed rgba(255,255,255,0.5); border-radius: 12px; pointer-events: none;"></div>
+    </main>
 
-      <!-- CAMERA / PREVIEW VIEWPORT (REUSE SIGMA CAMERA PATTERN) -->
-      <div style="position: relative; width: 100%; height: 260px; background: #0F172A; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">
-        
-        <video id="sel-camera-video" playsinline autoplay muted style="width: 100%; height: 100%; object-fit: cover; display: none;"></video>
-        
-        <canvas id="sel-camera-canvas" style="display: none;"></canvas>
-
-        <img id="sel-camera-preview-img" style="width: 100%; height: 100%; object-fit: cover; display: none;" alt="Preview Foto Dokumentasi">
-
-        <!-- FALLBACK NO CAMERA VIEW -->
-        <div id="sel-camera-fallback" style="text-align: center; color: #94A3B8; padding: 20px;">
-          <svg viewBox="0 0 24 24" width="40" height="40" stroke="#64748B" stroke-width="1.8" fill="none" style="margin: 0 auto 8px auto; display: block;">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-            <circle cx="12" cy="13" r="4"></circle>
-          </svg>
-          <div style="font-size: 0.78rem; font-weight: 600; color: #E2E8F0;">Kamera Aktif / Mode Simulasi SIGMA</div>
-          <div style="font-size: 0.68rem; color: #94A3B8; margin-top: 2px;">Gunakan tombol "Ambil Foto" untuk mengambil foto dokumentasi seleksi bibit.</div>
-        </div>
-
-        <!-- WATERMARK OVERLAY BAR -->
-        <div id="sel-camera-watermark-overlay" style="position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.72); color: #FFFFFF; padding: 6px 10px; font-size: 0.62rem; line-height: 1.35; display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none;">
-          <div>
-            <div style="font-weight: 700; color: #FFFFFF;">SIGMA | ${esc(bedLabel)}</div>
-            <div id="sel-watermark-time" style="color: #E2E8F0;">${currentTimestampStr}</div>
-            <div id="sel-watermark-coords" style="color: #CBD5E1;">${getLatLongDisplay().text}</div>
-          </div>
-          <div style="font-weight: 700; color: #BBF7D0; text-align: right; flex-shrink: 0;">DEKLARASI ${esc(category)}</div>
-        </div>
-      </div>
-    </div>
+    <!-- Bottom Bar (Tombol Rana Putih) -->
+    <footer style="padding: 24px; display: flex; justify-content: center; align-items: center; position: absolute; bottom: 0; left: 0; right: 0; z-index: 10; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);">
+      <button id="btn-shutter" type="button" aria-label="Ambil Foto" style="width: 70px; height: 70px; border-radius: 50%; background: transparent; border: 4px solid #ffffff; display: flex; justify-content: center; align-items: center; cursor: pointer;">
+        <div style="width: 54px; height: 54px; background: #ffffff; border-radius: 50%;"></div>
+      </button>
+    </footer>
   `;
 
-  const footer = `
-    <div style="display: flex; gap: 8px; width: 100%; align-items: stretch;">
-      <button type="button" class="btn btn-ghost" id="btn-camera-cancel" style="flex: 1; min-width: 60px; height: 38px; font-size: 0.78rem; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; background: #FFFFFF; color: #475569; cursor: pointer;">
-        Batal
-      </button>
-      <button type="button" class="btn" id="btn-camera-shutter" style="flex: 1.2; min-width: 85px; height: 38px; background: #1E293B; color: #FFFFFF; font-weight: 700; font-size: 0.78rem; border: none; border-radius: 6px; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center;">
-        Ambil Foto
-      </button>
-      <button type="button" class="btn btn-primary" id="btn-camera-save" style="flex: 2.2; min-width: 140px; height: 38px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.76rem; line-height: 1.2; border: none; border-radius: 6px; cursor: pointer; text-align: center; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.2);">
-        Simpan dan Kirim ke Asisten
-      </button>
-    </div>
-  `;
+  const appEl = document.getElementById('app') || document.body;
+  appEl.appendChild(overlayEl);
 
-  openModal({
-    title: 'Dokumentasi Foto Seleksi',
-    body,
-    footer,
-    onClose: () => {
-      if (currentStream) {
-        currentStream.getTracks().forEach(t => t.stop());
-        currentStream = null;
-      }
+  const videoEl = overlayEl.querySelector('#camera-video-stream');
+  const canvasEl = overlayEl.querySelector('#camera-snapshot-canvas');
+  const fallbackEl = overlayEl.querySelector('#camera-fallback');
+  const btnShutter = overlayEl.querySelector('#btn-shutter');
+  const btnBack = overlayEl.querySelector('#btn-back-camera');
+
+  function cleanupCamera() {
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
     }
-  });
-
-  const modalRoot = document.getElementById('modal-root');
-  if (!modalRoot) return;
-
-  const videoEl = modalRoot.querySelector('#sel-camera-video');
-  const canvasEl = modalRoot.querySelector('#sel-camera-canvas');
-  const previewImgEl = modalRoot.querySelector('#sel-camera-preview-img');
-  const fallbackEl = modalRoot.querySelector('#sel-camera-fallback');
-  const btnShutter = modalRoot.querySelector('#btn-camera-shutter');
-  const btnSave = modalRoot.querySelector('#btn-camera-save');
-  const btnCancel = modalRoot.querySelector('#btn-camera-cancel');
-  const watermarkTimeEl = modalRoot.querySelector('#sel-watermark-time');
-  const watermarkCoordsEl = modalRoot.querySelector('#sel-watermark-coords');
-
-  function updateOverlayWatermark(timestampText = null) {
-    if (timestampText && watermarkTimeEl) {
-      watermarkTimeEl.textContent = timestampText;
-    }
-    if (watermarkCoordsEl) {
-      watermarkCoordsEl.textContent = getLatLongDisplay().text;
-    }
+    overlayEl.remove();
   }
 
   async function initCameraStream() {
@@ -2830,11 +3196,12 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         try {
           currentStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+            video: { facingMode: 'environment', width: { ideal: 720 }, height: { ideal: 960 } }
           });
         } catch (errRear) {
           currentStream = await navigator.mediaDevices.getUserMedia({
-            video: true
+            video: true,
+            audio: false
           });
         }
         if (videoEl) {
@@ -2844,12 +3211,14 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
           videoEl.style.display = 'block';
           if (fallbackEl) fallbackEl.style.display = 'none';
         }
+      } else {
+        throw new Error('Camera API tidak didukung');
       }
     } catch (e) {
-      console.info('[Selection Camera] Using canvas/simulation mode:', e?.message || e);
+      console.info('[Selection Camera] Fallback mode:', e?.message || e);
       isCameraActive = false;
       if (videoEl) videoEl.style.display = 'none';
-      if (fallbackEl) fallbackEl.style.display = 'block';
+      if (fallbackEl) fallbackEl.style.display = 'flex';
     }
   }
 
@@ -2858,7 +3227,7 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
   function generateTimestampedCanvas(sourceImgOrVideo = null, captureTimestampStr = null) {
     if (!canvasEl) return '';
     const w = 480;
-    const h = 360;
+    const h = 640;
     canvasEl.width = w;
     canvasEl.height = h;
     const ctx = canvasEl.getContext('2d');
@@ -2889,11 +3258,11 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
       }
 
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`DOKUMENTASI BIBIT ${category.toUpperCase()}`, w / 2, h / 2 - 20);
 
-      ctx.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.fillStyle = '#D1FAE5';
       ctx.fillText(`${bedLabel} • ${qtyAfkir.toLocaleString('id-ID')} ${unit}`, w / 2, h / 2 + 10);
       ctx.fillText(`Ref: ${displayDocNo}`, w / 2, h / 2 + 32);
@@ -2905,41 +3274,33 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
     ctx.fillRect(0, h - barHeight, w, barHeight);
 
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`SIGMA | ${bedLabel}`, 10, h - 42);
+    ctx.fillText(`SIGMA | ${bedLabel}`, 10, h - 40);
 
-    ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = '#E2E8F0';
-    ctx.fillText(`${ts}`, 10, h - 28);
-    ctx.fillText(`Lat: ${latDisplay} | Long: ${lonDisplay}`, 10, h - 14);
+    ctx.fillText(`${ts}`, 10, h - 25);
+    ctx.fillText(`Lat: ${latDisplay} | Long: ${lonDisplay}`, 10, h - 10);
 
     ctx.fillStyle = '#BBF7D0';
-    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(`DEKLARASI ${category.toUpperCase()}`, w - 10, h - 42);
+    ctx.fillText(`DEKLARASI ${category.toUpperCase()}`, w - 10, h - 40);
 
     return canvasEl.toDataURL('image/jpeg', 0.85);
   }
 
   btnShutter?.addEventListener('click', () => {
-    // Generate snapshot timestamp at exact capture moment
+    btnShutter.disabled = true;
     const captureDate = new Date();
     const captureDateFormatted = formatDate(captureDate.toISOString());
     const captureTimeFormatted = captureDate.toTimeString().split(' ')[0];
     const captureTimestampStr = `${captureDateFormatted} ${captureTimeFormatted} WIB`;
-    currentTimestampStr = captureTimestampStr;
 
-    if (isCameraActive && videoEl && videoEl.videoWidth) {
-      capturedDataUrl = generateTimestampedCanvas(videoEl, captureTimestampStr);
-    } else {
-      capturedDataUrl = generateTimestampedCanvas(null, captureTimestampStr);
-    }
-
-    updateOverlayWatermark(captureTimestampStr);
-
+    const capturedDataUrl = generateTimestampedCanvas(isCameraActive && videoEl?.videoWidth ? videoEl : null, captureTimestampStr);
     const photoRecordId = `PHOTO-SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    capturedPhotoRecord = {
+    const capturedPhotoRecord = {
       id: photoRecordId,
       dataUrl: capturedDataUrl,
       capturedAt: captureDate.toISOString(),
@@ -2949,53 +3310,15 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
       source: 'CAMERA'
     };
 
-    if (previewImgEl) {
-      previewImgEl.src = capturedDataUrl;
-      previewImgEl.style.display = 'block';
-    }
-    if (videoEl) videoEl.style.display = 'none';
-    if (fallbackEl) fallbackEl.style.display = 'none';
+    cleanupCamera();
     toast('Foto dokumentasi seleksi berhasil diambil.', 'success');
-  });
-
-  btnSave?.addEventListener('click', () => {
-    if (!capturedPhotoRecord) {
-      const captureDate = new Date();
-      const captureDateFormatted = formatDate(captureDate.toISOString());
-      const captureTimeFormatted = captureDate.toTimeString().split(' ')[0];
-      const captureTimestampStr = `${captureDateFormatted} ${captureTimeFormatted} WIB`;
-      currentTimestampStr = captureTimestampStr;
-
-      capturedDataUrl = generateTimestampedCanvas(isCameraActive && videoEl?.videoWidth ? videoEl : null, captureTimestampStr);
-      const photoRecordId = `PHOTO-SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      capturedPhotoRecord = {
-        id: photoRecordId,
-        dataUrl: capturedDataUrl,
-        capturedAt: captureDate.toISOString(),
-        capturedAtLabel: captureTimestampStr,
-        latitude: capturedLat,
-        longitude: capturedLon,
-        source: 'CAMERA'
-      };
-    }
-
-    if (currentStream) {
-      currentStream.getTracks().forEach(t => t.stop());
-      currentStream = null;
-    }
-
-    closeModal();
     if (onCaptureSuccess) {
       onCaptureSuccess(capturedPhotoRecord);
     }
   });
 
-  btnCancel?.addEventListener('click', () => {
-    if (currentStream) {
-      currentStream.getTracks().forEach(t => t.stop());
-      currentStream = null;
-    }
-    closeModal();
+  btnBack?.addEventListener('click', () => {
+    cleanupCamera();
     if (onCaptureCancel) {
       onCaptureCancel();
     }

@@ -68,6 +68,7 @@ import { renderMantriConfirmationLanding } from './modules/verification/mantri-c
 import { renderMantriOverdueLanding } from './modules/verification/mantri-overdue-landing.js';
 import { renderReportsLanding } from './modules/reports/reports-landing.js';
 import { renderNurseryStockReport } from './modules/reports/nursery-stock-report.js';
+import { renderReturnedDocumentsReport } from './modules/reports/returned-documents-report.js';
 import { renderAnalysisPlaceholder } from './modules/placeholder/analysis-placeholder.js';
 import { renderProfile } from './modules/profile/profile.js';
 import { seedDatabase } from './db/seed.js';
@@ -166,6 +167,7 @@ registerRoute('/mantri-confirmation', renderMantriConfirmationLanding);
 registerRoute('/mantri-confirmation/overdue', renderMantriOverdueLanding);
 registerRoute('/reports', renderReportsLanding);
 registerRoute('/reports/stock', renderNurseryStockReport);
+registerRoute('/reports/returned-docs', renderReturnedDocumentsReport);
 registerRoute('/profile', renderProfile);
 
 /* Fallback Not Found */

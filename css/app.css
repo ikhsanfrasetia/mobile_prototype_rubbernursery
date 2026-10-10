@@ -331,3 +331,15 @@ a {
   box-shadow: 0 0 0 1.5px rgba(100, 116, 139, 0.25);
 }
 
+/* Hilangkan spinner / stepper atas-bawah pada input type number */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+

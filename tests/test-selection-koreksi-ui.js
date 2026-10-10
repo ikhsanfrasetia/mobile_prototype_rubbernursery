@@ -60,7 +60,7 @@ const htmlDederan = renderStandardizedRejectList(
   culledTxsDederan
 );
 
-console.assert(htmlDederan.includes('Transaksi Seleksi Pra-Semai Perlu Perbaikan'), 'Must contain Transaksi Seleksi Pra-Semai Perlu Perbaikan header');
+console.assert(htmlDederan.includes('Transaksi Perlu Perbaikan'), 'Must contain Transaksi Perlu Perbaikan header');
 console.assert(htmlDederan.includes('1 dokumen menunggu koreksi'), 'Must display 1 dokumen menunggu koreksi counter');
 console.assert(htmlDederan.includes('2026/CULL/001'), 'Must display returned doc 2026/CULL/001 in returned section');
 console.assert(htmlDederan.includes('Catatan Pengembalian Asisten:'), 'Must display Catatan Pengembalian Asisten banner');
@@ -99,7 +99,7 @@ const htmlPindahSemai = renderStandardizedRejectList(
   []
 );
 
-console.assert(htmlPindahSemai.includes('Transaksi Seleksi Pindah Semai Perlu Perbaikan'), 'Must contain Transaksi Seleksi Pindah Semai Perlu Perbaikan header');
+console.assert(htmlPindahSemai.includes('Transaksi Perlu Perbaikan'), 'Must contain Transaksi Perlu Perbaikan header');
 console.assert(htmlPindahSemai.includes('1 dokumen menunggu koreksi'), 'Must display 1 dokumen menunggu koreksi');
 console.assert(htmlPindahSemai.includes('Hitung ulang bibit patah'), 'Must display returnReason');
 console.assert(htmlPindahSemai.includes('Pkk'), 'Unit for Pindah Semai must be Pkk');

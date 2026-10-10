@@ -17,7 +17,7 @@ import { openDrawer } from '../../components/drawer.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { navigate } from '../../core/router.js';
 import { toast } from '../../components/toast.js';
-import { todayDDMMYYYY, esc } from '../../core/utils.js';
+import { todayISO, todayDDMMYYYY, esc } from '../../core/utils.js';
 import { getCurrentUserContext, resolveUserContext, ROLES } from '../../core/user-context.js';
 import { renderAsbBottomNav, attachAsbBottomNavEvents } from '../../components/bottom-nav-asb.js';
 import { renderVerifikasiSummaryCardHtml } from './asb-summary-cards.js';
@@ -25,6 +25,7 @@ import {
   VERIFICATION_10_MODULES,
   VERIFICATION_STATUS,
   REFERENCE_TYPE_LABELS,
+  checkAsbSelectionGate,
   getActionableRecordsForAsb,
   getVerificationRecordsByScope,
   getVerifiedTransactionsByScope,
@@ -34,13 +35,19 @@ import {
   approveVerification,
   returnVerification,
   findSourceRecord,
-  getVerificationDetailData
+  getVerificationDetailData,
+  getAllVerifications
 } from './verification-manager.js';
 
 // State Halaman
-let currentVerifView = 'MODULE_GRID'; // 'MODULE_GRID' | 'TRANSACTION_LIST' | 'TRANSACTION_DETAIL' | 'TINJAU_FILTER' | 'TINJAU_SUMMARY' | 'TINJAU_DETAIL'
+let currentVerifView = 'MODULE_GRID'; // 'MODULE_GRID' | 'TRANSACTION_LIST' | 'TRANSACTION_DETAIL' | 'TINJAU_FILTER' | 'TINJAU_SUMMARY' | 'TINJAU_DETAIL' | 'SYNC_CONFIRMATION' | 'SYNC_SUCCESS' | 'SYNC_HISTORY'
+let previousVerifView = 'MODULE_GRID'; // 'MODULE_GRID' | 'TINJAU_SUMMARY'
 let activeModuleId = null; // e.g. 'TIDAK_HADIR', 'OKULASI', etc.
 let selectedTxItem = null; // Transaksi yang dibuka di detail (berisi normalizedData)
+let lastSyncResult = null; // Menyimpan hasil sinkronisasi terakhir untuk SYNC_SUCCESS
+let syncHistoryDate = todayISO(); // Filter tanggal untuk halaman riwayat pengiriman
+let syncHistoryStatusFilter = 'ALL'; // 'ALL' | 'BERHASIL' | 'GAGAL'
+let syncHistorySourceView = 'TINJAU_SUMMARY'; // Halaman asal sebelum membuka riwayat
 let activeFilterDate = todayDDMMYYYY();
 let tinjauFilter = {
   date: todayDDMMYYYY(),
@@ -141,6 +148,121 @@ const MODULE_ICONS = {
   `
 };
 
+/**
+ * Menampilkan modal dialog bahwa ASB wajib menyelesaikan
+ * Pemeriksaan Hasil Seleksi terlebih dahulu sebelum dapat melanjutkan verifikasi.
+ */
+export function showAsbVerificationGateModal(pendingCount = 1) {
+  openModal({
+    title: 'Pemeriksaan Seleksi Diperlukan',
+    body: `
+      <div style="text-align: center; padding: 10px 4px 4px;">
+        <div style="width: 56px; height: 56px; background: #FEF3C7; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px; color: #D97706; box-shadow: 0 4px 12px rgba(217, 119, 6, 0.12);">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </div>
+        <div style="font-size: 0.98rem; font-weight: 800; color: #1E293B; margin-bottom: 8px;">
+          Selesaikan Pemeriksaan Terlebih Dahulu
+        </div>
+        <p style="font-size: 0.84rem; color: #64748B; line-height: 1.5; margin: 0 0 16px 0;">
+          Terdapat <strong style="color: #D97706;">${pendingCount} dokumen</strong> Pemeriksaan Hasil Seleksi yang belum diselesaikan. Harap selesaikan seluruh pemeriksaan hasil seleksi terlebih dahulu baru dapat lanjut verifikasi.
+        </p>
+        <div style="display: flex; gap: 8px; width: 100%;">
+          <button id="gate-modal-home-btn" type="button" style="flex: 1; height: 40px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 8px; font-weight: 600; font-size: 0.82rem; color: #475569; cursor: pointer;">
+            Kembali ke Beranda
+          </button>
+          <button id="gate-modal-selection-btn" type="button" style="flex: 1.2; height: 40px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.82rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>Buka Pemeriksaan</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        </div>
+      </div>
+    `,
+    onClose: () => {
+      if (window.location.hash.includes('/verification')) {
+        navigate('/home');
+      }
+    }
+  });
+
+  const selBtn = document.getElementById('gate-modal-selection-btn');
+  const homeBtn = document.getElementById('gate-modal-home-btn');
+  if (selBtn) {
+    selBtn.addEventListener('click', () => {
+      closeModal();
+      navigate('/selection');
+    });
+  }
+  if (homeBtn) {
+    homeBtn.addEventListener('click', () => {
+      closeModal();
+      navigate('/home');
+    });
+  }
+}
+
+/**
+ * Tampilan placeholder saat verifikasi terkunci karena ASB belum menyelesaikan pemeriksaan seleksi
+ */
+function renderGatedVerificationPlaceholder(app, userCtx, pendingCount) {
+  app.innerHTML = `
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button id="verif-drawer-btn" type="button" aria-label="Menu" style="background: transparent; border: none; padding: 4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0; letter-spacing: -0.01em;">Verifikasi</h1>
+        </div>
+      </header>
+
+      <!-- CONTENT: LOCKED PLACEHOLDER -->
+      <main style="flex: 1; overflow-y: auto; padding: 32px 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+        <div style="width: 68px; height: 68px; background: #FEF3C7; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; color: #D97706; box-shadow: 0 4px 16px rgba(217, 119, 6, 0.18);">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <h2 style="font-size: 1.1rem; font-weight: 800; color: #1E293B; margin: 0 0 8px 0;">Halaman Verifikasi Terkunci</h2>
+        <p style="font-size: 0.86rem; color: #64748B; max-width: 320px; line-height: 1.55; margin: 0 0 22px 0;">
+          Terdapat <strong style="color: #D97706;">${pendingCount} dokumen</strong> Pemeriksaan Hasil Seleksi yang masih menunggu konfirmasi Anda. Selesaikan seluruh pemeriksaan seleksi untuk membuka halaman verifikasi.
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 280px;">
+          <button id="gated-go-selection-btn" type="button" style="background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; padding: 12px 20px; border-radius: 10px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 6px rgba(17, 104, 52, 0.25);">
+            <span>Selesaikan Pemeriksaan</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+          <button id="gated-go-home-btn" type="button" style="background: #F1F5F9; color: #475569; font-weight: 600; font-size: 0.84rem; padding: 10px 16px; border-radius: 10px; border: 1px solid #CBD5E1; cursor: pointer;">
+            Kembali ke Beranda
+          </button>
+        </div>
+      </main>
+
+      <!-- BOTTOM NAV ASB -->
+      ${renderAsbBottomNav('verifikasi', userCtx)}
+    </div>
+  `;
+
+  attachAsbBottomNavEvents(app);
+  app.querySelector('#verif-drawer-btn')?.addEventListener('click', () => openDrawer());
+  app.querySelector('#gated-go-selection-btn')?.addEventListener('click', () => navigate('/selection'));
+  app.querySelector('#gated-go-home-btn')?.addEventListener('click', () => navigate('/home'));
+}
+
 export function renderVerificationLanding() {
   const app = document.getElementById('main-content') || document.getElementById('app');
   if (!app) return;
@@ -152,6 +274,15 @@ export function renderVerificationLanding() {
     tinjauFilter.date = todayDDMMYYYY();
     tinjauFilter.estateId = userCtx.estateName || userCtx.estateId || '';
     tinjauFilter.divisionId = userCtx.divisionName || userCtx.divisionId || '';
+  }
+
+  // Gate Check untuk Asisten Bibitan (ASB):
+  // ASB wajib menyelesaikan seluruh dokumen Pemeriksaan Hasil Seleksi terlebih dahulu
+  const gateCheck = checkAsbSelectionGate(userCtx);
+  if (gateCheck.isGated) {
+    showAsbVerificationGateModal(gateCheck.pendingSelectionCount);
+    renderGatedVerificationPlaceholder(app, userCtx, gateCheck.pendingSelectionCount);
+    return;
   }
 
   if (currentVerifView === 'MODULE_GRID') {
@@ -166,6 +297,12 @@ export function renderVerificationLanding() {
     renderTinjauSummaryView(app, userCtx);
   } else if (currentVerifView === 'TINJAU_DETAIL') {
     renderTinjauDetailView(app, userCtx);
+  } else if (currentVerifView === 'SYNC_CONFIRMATION') {
+    renderSyncConfirmationView(app, userCtx);
+  } else if (currentVerifView === 'SYNC_SUCCESS') {
+    renderSyncSuccessView(app, userCtx);
+  } else if (currentVerifView === 'SYNC_HISTORY') {
+    renderSyncHistoryView(app, userCtx);
   }
 }
 
@@ -268,6 +405,7 @@ function renderModuleGridView(app, userCtx) {
   app.querySelectorAll('.verif-grid-card').forEach((card) => {
     card.addEventListener('click', () => {
       activeModuleId = card.dataset.moduleId;
+      previousVerifView = 'MODULE_GRID';
       currentVerifView = 'TRANSACTION_LIST';
       renderVerificationLanding();
     });
@@ -275,6 +413,7 @@ function renderModuleGridView(app, userCtx) {
 
   // Open Tinjau Data -> Langsung Final Review (TINJAU_SUMMARY)
   app.querySelector('#btn-open-tinjau')?.addEventListener('click', () => {
+    previousVerifView = 'MODULE_GRID';
     currentVerifView = 'TINJAU_SUMMARY';
     renderVerificationLanding();
   });
@@ -348,29 +487,29 @@ function renderTransactionListView(app, userCtx) {
             <div style="font-size: 0.74rem; margin-top: 4px;">Transaksi dari Mantri akan muncul di sini setelah dikirim via Central Hub.</div>
           </div>
         ` : combinedList.map(item => {
-          const isVerified = item.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || item.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI;
-          const isReturned = item.verificationStatus === VERIFICATION_STATUS.DIKEMBALIKAN || item.currentStatus === 'DIKEMBALIKAN' || item.currentStatus === 'REVISION' || item.rawRecord?.status === 'DIKEMBALIKAN';
-          
-          let badgeText = 'Menunggu';
-          let badgeBg = '#FEF3C7';
-          let badgeColor = '#92400E';
+    const isVerified = item.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || item.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI;
+    const isReturned = item.verificationStatus === VERIFICATION_STATUS.DIKEMBALIKAN || item.currentStatus === 'DIKEMBALIKAN' || item.currentStatus === 'REVISION' || item.rawRecord?.status === 'DIKEMBALIKAN';
 
-          if (isVerified) {
-            badgeText = 'Terverifikasi';
-            badgeBg = '#DEF7EC';
-            badgeColor = '#03543F';
-          } else if (isReturned) {
-            badgeText = 'Dikembalikan';
-            badgeBg = '#FEF2F2';
-            badgeColor = '#DC2626';
-          }
+    let badgeText = 'Menunggu';
+    let badgeBg = '#FEF3C7';
+    let badgeColor = '#92400E';
 
-          const docNo = item.referenceDocNo || item.docNo || item.id;
-          const dateStr = item.date ? String(item.date).substring(0, 10) : activeFilterDate;
-          const workerName = item.submittedByName || item.rawRecord?.mantri || item.rawRecord?.actorName || 'Mantri Bibitan';
-          const summaryText = item.normalizedData?.summary || item.summary || '';
+    if (isVerified) {
+      badgeText = 'Terverifikasi';
+      badgeBg = '#DEF7EC';
+      badgeColor = '#03543F';
+    } else if (isReturned) {
+      badgeText = 'Dikembalikan';
+      badgeBg = '#FEF2F2';
+      badgeColor = '#DC2626';
+    }
 
-          return `
+    const docNo = item.referenceDocNo || item.docNo || item.id;
+    const dateStr = item.date ? String(item.date).substring(0, 10) : activeFilterDate;
+    const workerName = item.submittedByName || item.rawRecord?.mantri || item.rawRecord?.actorName || 'Mantri Bibitan';
+    const summaryText = item.normalizedData?.summary || item.summary || '';
+
+    return `
             <div class="verif-tx-item" data-ref-type="${item.referenceType}" data-ref-id="${item.referenceId}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.02); gap: 10px;">
               <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
                 <div style="width: 36px; height: 36px; border-radius: 8px; background: #E8F5E9; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
@@ -403,7 +542,7 @@ function renderTransactionListView(app, userCtx) {
               </div>
             </div>
           `;
-        }).join('')}
+  }).join('')}
       </main>
 
       <!-- BOTTOM NAVIGATION (4 ITEMS) -->
@@ -414,7 +553,7 @@ function renderTransactionListView(app, userCtx) {
 
   // Back button
   app.querySelector('#btn-back-to-grid')?.addEventListener('click', () => {
-    currentVerifView = 'MODULE_GRID';
+    currentVerifView = previousVerifView || 'MODULE_GRID';
     renderVerificationLanding();
   });
 
@@ -806,7 +945,7 @@ function renderTinjauSummaryView(app, userCtx) {
   app.innerHTML = `
     <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
-      <!-- HEADER -->
+      <!-- HEADER: DENGAN ICON DOKUMEN RIWAYAT SEJAJAR TINJAU DATA HARI INI -->
       <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
         <div style="display: flex; align-items: center; gap: 10px;">
           <button id="btn-back-to-filter" type="button" aria-label="Kembali" style="background: transparent; border: none; padding: 4px; margin-left: -4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
@@ -817,6 +956,15 @@ function renderTinjauSummaryView(app, userCtx) {
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0;">Tinjau Data Hari Ini</h1>
         </div>
+        <button id="btn-sync-history-from-tinjau" type="button" aria-label="Riwayat Pengiriman Server" title="Lihat Riwayat Pengiriman Data ke Server" style="background: transparent; border: none; padding: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834; border-radius: 8px;">
+          <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </button>
       </header>
 
       <!-- BODY -->
@@ -835,16 +983,14 @@ function renderTinjauSummaryView(app, userCtx) {
             </div>
             <div style="font-size: 0.95rem; font-weight: 800; color: #111827;">Semua transaksi sudah diverifikasi</div>
             <div style="font-size: 0.74rem; color: #64748B; margin-bottom: 8px;">Data siap dikirim ke server.</div>
-            <button id="btn-send-to-server" type="button" style="width: 100%; height: 44px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.86rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
-              <svg viewBox="0 0 24 24" width="18" height="18" stroke="#FFFFFF" stroke-width="2.2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-              <span>Kirim Data ke Server</span>
+            <button id="btn-send-to-server" type="button" style="width: 100%; height: 44px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 700; cursor: pointer; text-align: center; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+              Kirim Data ke Server
             </button>
           ` : `
             <div style="font-size: 0.84rem; font-weight: 700; color: #B45309;">Masih ada transaksi yang belum selesai diverifikasi</div>
             <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 8px;">Selesaikan verifikasi seluruh modul sebelum mengirim ke server.</div>
-            <button id="btn-send-to-server" type="button" disabled style="width: 100%; height: 44px; background: #E2E8F0; color: #94A3B8; border: none; border-radius: 8px; font-size: 0.86rem; font-weight: 700; cursor: not-allowed; display: flex; align-items: center; justify-content: center; gap: 8px;">
-              <svg viewBox="0 0 24 24" width="18" height="18" stroke="#94A3B8" stroke-width="2.2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-              <span>Kirim Data ke Server</span>
+            <button id="btn-send-to-server" type="button" disabled style="width: 100%; height: 44px; background: #E2E8F0; color: #94A3B8; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 700; cursor: not-allowed; text-align: center;">
+              Kirim Data ke Server
             </button>
           `}
         </div>
@@ -863,35 +1009,687 @@ function renderTinjauSummaryView(app, userCtx) {
     renderVerificationLanding();
   });
 
-  // Click module row -> open Screen 9 if verified items exist
+  // Click module row -> ALWAYS open Daftar Transaksi (Screen 5) for this module
   app.querySelectorAll('.tinjau-mod-row').forEach((row) => {
     row.addEventListener('click', () => {
       const modId = row.dataset.modId;
       const modSummary = summary10.find(m => m.id === modId);
-      if (modSummary && modSummary.verifiedItems.length > 0) {
-        selectedTxItem = modSummary.verifiedItems[0];
-        currentVerifView = 'TINJAU_DETAIL';
+      if (modSummary && (modSummary.verifiedCount > 0 || modSummary.pendingCount > 0)) {
+        activeModuleId = modId;
+        previousVerifView = 'TINJAU_SUMMARY';
+        currentVerifView = 'TRANSACTION_LIST';
         renderVerificationLanding();
       } else {
-        toast(`Belum ada transaksi terverifikasi untuk modul ini`, 'info');
+        toast(`Belum ada transaksi untuk modul ini`, 'info');
       }
     });
   });
 
-  // Kirim ke server
+  // Kirim ke server -> Pindah ke Full Screen Konfirmasi Pengiriman
   app.querySelector('#btn-send-to-server')?.addEventListener('click', () => {
     if (!canSend) return;
-    try {
-      const result = submitFinalVerificationToServer(userCtx);
-      toast(result.message || 'Data berhasil dikirim ke server!', 'success');
-      currentVerifView = 'MODULE_GRID';
-      renderVerificationLanding();
-    } catch (err) {
-      toast(err.message || 'Gagal mengirim data ke server', 'error');
-    }
+    currentVerifView = 'SYNC_CONFIRMATION';
+    renderVerificationLanding();
+  });
+
+  // Icon dokumen riwayat pengiriman data ke server
+  app.querySelector('#btn-sync-history-from-tinjau')?.addEventListener('click', () => {
+    syncHistorySourceView = 'TINJAU_SUMMARY';
+    currentVerifView = 'SYNC_HISTORY';
+    renderVerificationLanding();
   });
 
   attachAsbBottomNavEvents(app);
+}
+
+/**
+ * Helper format tanggal & waktu penuh dengan detik (DD/MM/YYYY HH:mm:ss WIB)
+ */
+function formatSyncTimestamp(dateIso = null) {
+  const d = dateIso ? new Date(dateIso) : new Date();
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds} WIB`;
+}
+
+/**
+ * TAMPILAN FULL SCREEN: Konfirmasi & Proses Pengiriman Dokumen ke Server
+ * Dilengkapi animasi loading berurutan per dokumen, centang hijau sukses,
+ * dan timestamp pengiriman. Tombol dan header tetap clean text tanpa icon tambahan.
+ */
+function renderSyncConfirmationView(app, userCtx) {
+  const verifiedList = getVerifiedTransactionsByScope(userCtx);
+  if (!verifiedList || verifiedList.length === 0) {
+    toast('Tidak ada transaksi terverifikasi untuk dikirim', 'warning');
+    currentVerifView = 'TINJAU_SUMMARY';
+    renderVerificationLanding();
+    return;
+  }
+
+  // Siapkan item terverifikasi yang akan dikirim
+  const itemsToSend = verifiedList.map(v => {
+    const mod = VERIFICATION_10_MODULES.find(m => m.id === v.moduleCategory || m.types.includes(v.referenceType));
+    const docNo = v.referenceDocNo || v.docNo || v.id;
+    return {
+      docNo,
+      moduleLabel: mod ? mod.label : (v.referenceType || 'Transaksi'),
+      submittedByName: v.submittedByName || v.rawRecord?.mantri || userCtx?.name || 'Mantri Bibitan',
+      referenceType: v.referenceType,
+      referenceId: v.referenceId,
+      syncedAt: null
+    };
+  });
+
+  app.innerHTML = `
+    <style>
+      @keyframes syncSpin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER BERSIH TANPA ICON TAMBAHAN -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-back-sync-confirm" type="button" aria-label="Kembali" style="background: transparent; border: none; padding: 4px; margin-left: -4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 id="sync-header-title" style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0;">Kirim Data ke Server</h1>
+        </div>
+      </header>
+
+      <!-- BODY SCROLLABLE -->
+      <main id="sync-main-container" style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px;">
+        
+        <!-- CARD RINGKASAN & STATUS PROGRESS -->
+        <div id="sync-banner-card" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: all 0.3s ease;">
+          <div id="sync-banner-title" style="font-size: 1.05rem; font-weight: 800; color: #111827; margin-bottom: 4px;">
+            ${itemsToSend.length} Dokumen Terverifikasi
+          </div>
+          <div id="sync-banner-sub" style="font-size: 0.78rem; color: #64748B; line-height: 1.45;">
+            Seluruh dokumen di bawah ini telah selesai diverifikasi dan siap untuk di kirim ke server.
+          </div>
+          <!-- Progress bar animatif -->
+          <div id="sync-progress-bar-container" style="display: none; margin-top: 12px; width: 100%; background: #E2E8F0; height: 6px; border-radius: 999px; overflow: hidden;">
+            <div id="sync-progress-bar" style="background: #116834; height: 100%; width: 0%; transition: width 0.25s ease;"></div>
+          </div>
+          <div id="sync-progress-label" style="display: none; margin-top: 5px; font-size: 0.68rem; font-weight: 700; color: #116834; text-align: right;"></div>
+        </div>
+
+        <!-- LIST NOMOR DOKUMEN -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div id="sync-list-header-label" style="font-size: 0.82rem; font-weight: 700; color: #475569;">
+            Rincian Nomor Dokumen yang Dikirim:
+          </div>
+
+          <div id="sync-doc-list" style="display: flex; flex-direction: column; gap: 8px;">
+            ${itemsToSend.map((item, idx) => `
+              <div id="sync-item-${idx}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); transition: all 0.25s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <div style="font-size: 0.88rem; font-weight: 800; color: #116834; word-break: break-all;">
+                    ${esc(item.docNo)}
+                  </div>
+                  <div id="sync-badge-container-${idx}">
+                    <span style="font-size: 0.7rem; font-weight: 700; background: #DEF7EC; color: #03543F; padding: 4px 10px; border-radius: 6px; white-space: nowrap;">
+                      Siap Kirim
+                    </span>
+                  </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 2px;">
+                  <span style="min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; color: #64748B;">${esc(item.moduleLabel)} &bull; ${esc(item.submittedByName)}</span>
+                  <span id="sync-time-${idx}" style="font-size: 0.64rem; font-weight: 600; color: #64748B; white-space: nowrap; flex-shrink: 0; letter-spacing: -0.2px;"></span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+      </main>
+
+      <!-- BOTTOM ACTION BAR: TOMBOL BERSIH TANPA ICON TAMBAHAN -->
+      <footer id="sync-footer-bar" style="padding: 12px 16px; background: #FFFFFF; border-top: 1px solid #E2E8F0; display: flex; gap: 10px; flex-shrink: 0;">
+        <button id="btn-cancel-sync-screen" type="button" style="flex: 1; height: 46px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 8px; font-weight: 700; font-size: 0.88rem; color: #475569; cursor: pointer; text-align: center;">
+          Batal
+        </button>
+        <button id="btn-confirm-sync-screen" type="button" style="flex: 1.5; height: 46px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.88rem; cursor: pointer; text-align: center; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+          Kirim Sekarang
+        </button>
+      </footer>
+
+    </div>
+  `;
+
+  // Listener Batal & Kembali
+  const backBtn = app.querySelector('#btn-back-sync-confirm');
+  const cancelBtn = app.querySelector('#btn-cancel-sync-screen');
+  const confirmBtn = app.querySelector('#btn-confirm-sync-screen');
+
+  backBtn?.addEventListener('click', () => {
+    currentVerifView = 'TINJAU_SUMMARY';
+    renderVerificationLanding();
+  });
+  cancelBtn?.addEventListener('click', () => {
+    currentVerifView = 'TINJAU_SUMMARY';
+    renderVerificationLanding();
+  });
+
+  // Listener Kirim Sekarang dengan Animasi Loading Berurutan per Dokumen
+  confirmBtn?.addEventListener('click', async () => {
+    // Kunci tombol tindakan agar proses tidak terinterupsi
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Sedang Mengirim...';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (backBtn) backBtn.style.visibility = 'hidden';
+
+    const headerTitle = app.querySelector('#sync-header-title');
+    const bannerTitle = app.querySelector('#sync-banner-title');
+    const bannerSub = app.querySelector('#sync-banner-sub');
+    const progressBarContainer = app.querySelector('#sync-progress-bar-container');
+    const progressBar = app.querySelector('#sync-progress-bar');
+    const progressLabel = app.querySelector('#sync-progress-label');
+    const footerBar = app.querySelector('#sync-footer-bar');
+    const listHeaderLabel = app.querySelector('#sync-list-header-label');
+
+    if (headerTitle) headerTitle.textContent = 'Mengirim Data ke Server...';
+    if (progressBarContainer) progressBarContainer.style.display = 'block';
+    if (progressLabel) {
+      progressLabel.style.display = 'block';
+      progressLabel.textContent = `0/${itemsToSend.length} berhasil`;
+    }
+    if (listHeaderLabel) listHeaderLabel.textContent = 'Proses Pengiriman Dokumen Berurutan:';
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const delayPerDoc = Math.max(240, Math.min(420, Math.round(5000 / itemsToSend.length)));
+
+    // Proses pengiriman berurutan dari dokumen paling awal sampai akhir
+    for (let i = 0; i < itemsToSend.length; i++) {
+      const item = itemsToSend[i];
+      const itemEl = app.querySelector(`#sync-item-${i}`);
+      const badgeContainer = app.querySelector(`#sync-badge-container-${i}`);
+      const timeEl = app.querySelector(`#sync-time-${i}`);
+
+      // Update informasi progress di banner
+      if (bannerTitle) {
+        bannerTitle.textContent = `Mengirim Dokumen (${i + 1}/${itemsToSend.length})`;
+      }
+      if (bannerSub) {
+        bannerSub.textContent = `Sedang memproses ${esc(item.docNo)} (${esc(item.moduleLabel)})...`;
+      }
+      if (progressBar) {
+        progressBar.style.width = `${Math.round(((i) / itemsToSend.length) * 100)}%`;
+      }
+
+      // Highlight item yang sedang dikirim & scroll ke posisinya
+      if (itemEl) {
+        itemEl.style.borderColor = '#CBD5E1';
+        itemEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.06)';
+        itemEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      // Tampilkan animasi loading spinner pada dokumen aktif
+      if (badgeContainer) {
+        badgeContainer.innerHTML = `
+          <span style="font-size: 0.7rem; font-weight: 700; background: #FEF3C7; color: #92400E; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
+            <span style="display: inline-block; width: 11px; height: 11px; border: 2px solid #D97706; border-top-color: transparent; border-radius: 50%; animation: syncSpin 0.65s linear infinite;"></span>
+            Mengirim...
+          </span>
+        `;
+      }
+
+      // Tunggu jeda animasi dokumen saat ini
+      await sleep(delayPerDoc);
+
+      // Selesai pengiriman untuk dokumen ini: centang hijau + badge terkirim + timestamp
+      const nowIso = new Date().toISOString();
+      const docTimestamp = formatSyncTimestamp(nowIso);
+      item.syncedAt = nowIso;
+
+      if (itemEl) {
+        itemEl.style.borderColor = '#E2E8F0';
+        itemEl.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)';
+      }
+
+      if (badgeContainer) {
+        badgeContainer.innerHTML = `
+          <span style="font-size: 0.7rem; font-weight: 700; background: #DEF7EC; color: #03543F; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
+            <svg viewBox="0 0 24 24" width="13" height="13" stroke="#03543F" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Terkirim
+          </span>
+        `;
+      }
+
+      if (timeEl) {
+        timeEl.textContent = docTimestamp;
+      }
+
+      if (progressBar) {
+        progressBar.style.width = `${Math.round(((i + 1) / itemsToSend.length) * 100)}%`;
+      }
+      if (progressLabel) {
+        progressLabel.textContent = `${i + 1}/${itemsToSend.length} berhasil`;
+      }
+    }
+
+    // Seluruh dokumen selesai dikirim: submit final ke storage
+    try {
+      const result = submitFinalVerificationToServer(userCtx);
+      lastSyncResult = {
+        ...result,
+        items: itemsToSend
+      };
+    } catch (err) {
+      toast(err.message || 'Gagal merekam sinkronisasi ke storage', 'warning');
+    }
+
+    // Update status header & banner menjadi Pengiriman Berhasil
+    if (headerTitle) headerTitle.textContent = 'Pengiriman Berhasil';
+    if (bannerTitle) {
+      bannerTitle.style.color = '#116834';
+      bannerTitle.textContent = 'Data Berhasil Dikirim ke Server';
+    }
+    if (bannerSub) {
+      bannerSub.innerHTML = `Sebanyak <strong>${itemsToSend.length} dokumen</strong> telah terkirim ke server.`;
+    }
+    if (listHeaderLabel) {
+      listHeaderLabel.textContent = 'Bukti & Timestamp Pengiriman per Dokumen:';
+    }
+    if (progressBar) {
+      progressBar.style.width = '100%';
+      progressBar.style.background = '#116834';
+    }
+    if (progressLabel) {
+      progressLabel.textContent = `${itemsToSend.length}/${itemsToSend.length} berhasil`;
+    }
+
+    // Update tombol bawah: Hanya 2 tombol (Kembali ke Beranda & Kirim Ulang)
+    if (footerBar) {
+      footerBar.innerHTML = `
+        <button id="btn-sync-finish-home-screen" type="button" style="flex: 1; height: 46px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 8px; font-weight: 700; font-size: 0.88rem; color: #475569; cursor: pointer; text-align: center;">
+          Kembali ke Beranda
+        </button>
+        <button id="btn-sync-retry-screen" type="button" style="flex: 1; height: 46px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.88rem; cursor: pointer; text-align: center; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+          Kirim Ulang
+        </button>
+      `;
+
+      footerBar.querySelector('#btn-sync-finish-home-screen')?.addEventListener('click', () => {
+        navigate('/home');
+      });
+
+      footerBar.querySelector('#btn-sync-retry-screen')?.addEventListener('click', () => {
+        currentVerifView = 'SYNC_CONFIRMATION';
+        renderVerificationLanding();
+      });
+    }
+  });
+}
+
+/**
+ * TAMPILAN FULL SCREEN: Bukti Pengiriman Berhasil
+ * Tanpa icon tambahan pada tombol dan header,
+ * dilengkapi centang hijau dan timestamp per masing-masing nomor dokumen.
+ */
+function renderSyncSuccessView(app, userCtx) {
+  const syncRes = lastSyncResult || {};
+  const syncTimestamp = formatSyncTimestamp(syncRes.syncedAt);
+  const items = syncRes.items || [];
+  const syncedCount = syncRes.syncedCount || items.length;
+
+  app.innerHTML = `
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER BERSIH TANPA ICON TAMBAHAN -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0;">Pengiriman Berhasil</h1>
+      </header>
+
+      <!-- BODY SCROLLABLE -->
+      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px;">
+        
+        <!-- CARD SUKSES (BERSIH, TANPA ICON TAMBAHAN) -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="font-size: 1.05rem; font-weight: 800; color: #116834; margin-bottom: 4px;">
+            Data Berhasil Dikirim ke Server
+          </div>
+          <div style="font-size: 0.78rem; color: #64748B; line-height: 1.45;">
+            Sebanyak <strong>${syncedCount} dokumen</strong> telah terkirim ke server.
+          </div>
+          <!-- Progress bar -->
+          <div style="margin-top: 12px; width: 100%; background: #E2E8F0; height: 6px; border-radius: 999px; overflow: hidden;">
+            <div style="background: #116834; height: 100%; width: 100%;"></div>
+          </div>
+          <div style="margin-top: 5px; font-size: 0.68rem; font-weight: 700; color: #116834; text-align: right;">
+            ${syncedCount}/${syncedCount} berhasil
+          </div>
+        </div>
+
+        <!-- LIST NOMOR DOKUMEN DENGAN CENTANG HIJAU & TIMESTAMP -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 0.82rem; font-weight: 700; color: #475569;">
+            Bukti & Timestamp Pengiriman per Dokumen:
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${items.map((item, idx) => `
+              <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 0.88rem; font-weight: 800; color: #116834; word-break: break-all;">
+                    ${esc(item.docNo)}
+                  </span>
+                  <span style="font-size: 0.7rem; font-weight: 700; background: #DEF7EC; color: #03543F; padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0;">
+                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="#03543F" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Terkirim
+                  </span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 2px;">
+                  <span style="min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; color: #64748B;">
+                    ${esc(item.moduleLabel)} &bull; ${esc(item.submittedByName || 'Mantri')}
+                  </span>
+                  <span style="font-size: 0.64rem; font-weight: 600; color: #64748B; white-space: nowrap; flex-shrink: 0; letter-spacing: -0.2px;">
+                    ${formatSyncTimestamp(item.syncedAt || syncRes.syncedAt)}
+                  </span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+      </main>
+
+      <!-- BOTTOM ACTION BAR: 2 TOMBOL BERSIH TANPA ICON TAMBAHAN -->
+      <footer style="padding: 12px 16px; background: #FFFFFF; border-top: 1px solid #E2E8F0; display: flex; gap: 10px; flex-shrink: 0;">
+        <button id="btn-sync-finish-home-screen" type="button" style="flex: 1; height: 46px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 8px; font-weight: 700; font-size: 0.88rem; color: #475569; cursor: pointer; text-align: center;">
+          Kembali ke Beranda
+        </button>
+        <button id="btn-sync-retry-screen" type="button" style="flex: 1; height: 46px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.88rem; cursor: pointer; text-align: center; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+          Kirim Ulang
+        </button>
+      </footer>
+
+    </div>
+  `;
+
+  app.querySelector('#btn-sync-finish-home-screen')?.addEventListener('click', () => {
+    navigate('/home');
+  });
+
+  app.querySelector('#btn-sync-retry-screen')?.addEventListener('click', () => {
+    currentVerifView = 'SYNC_CONFIRMATION';
+    renderVerificationLanding();
+  });
+}
+
+/**
+ * Helper ekstraksi tanggal YYYY-MM-DD dari berbagai format
+ */
+function extractDateYMD(dateVal) {
+  if (!dateVal) return '';
+  const str = String(dateVal).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.substring(0, 10);
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+    const parts = str.split('/');
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  const d = new Date(dateVal);
+  if (!isNaN(d.getTime())) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return '';
+}
+
+/**
+ * Mengambil seluruh data riwayat pengiriman data ke server
+ */
+function getSyncHistoryRecords(userCtx) {
+  const allVerifs = getAllVerifications();
+  const historyList = [];
+  const seenDocNos = new Set();
+
+  allVerifs.forEach(v => {
+    const isSynced = v.serverSyncStatus === 'SYNCED' || !!v.syncedAt;
+    const isFailed = v.serverSyncStatus === 'FAILED';
+    if (!isSynced && !isFailed) return;
+
+    if (userCtx?.estateId && v.estateId && v.estateId !== userCtx.estateId) return;
+    if (userCtx?.divisionId && v.divisionId && v.divisionId !== userCtx.divisionId) return;
+
+    const docNo = v.referenceDocNo || v.docNo || v.id;
+    if (!docNo || seenDocNos.has(docNo)) return;
+    seenDocNos.add(docNo);
+
+    const mod = VERIFICATION_10_MODULES.find(m => m.id === v.moduleCategory || m.types?.includes(v.referenceType));
+    const syncTime = v.syncedAt || v.verifiedAt || v.createdAt || new Date().toISOString();
+
+    historyList.push({
+      docNo,
+      moduleLabel: mod ? mod.label : (v.referenceType || 'Transaksi'),
+      submittedByName: v.submittedByName || v.rawRecord?.mantri || userCtx?.name || 'Wagiman',
+      syncedAt: syncTime,
+      dateYMD: extractDateYMD(syncTime),
+      status: isFailed ? 'GAGAL' : 'BERHASIL'
+    });
+  });
+
+  if (lastSyncResult?.items) {
+    lastSyncResult.items.forEach(item => {
+      const docNo = item.docNo;
+      const syncTime = item.syncedAt || lastSyncResult.syncedAt || new Date().toISOString();
+      const isFailed = item.status === 'GAGAL' || item.serverSyncStatus === 'FAILED';
+
+      if (!seenDocNos.has(docNo)) {
+        seenDocNos.add(docNo);
+        historyList.push({
+          docNo,
+          moduleLabel: item.moduleLabel || 'Transaksi',
+          submittedByName: item.submittedByName || userCtx?.name || 'Wagiman',
+          syncedAt: syncTime,
+          dateYMD: extractDateYMD(syncTime),
+          status: isFailed ? 'GAGAL' : 'BERHASIL'
+        });
+      } else {
+        const existing = historyList.find(h => h.docNo === docNo);
+        if (existing) {
+          existing.syncedAt = syncTime;
+          existing.dateYMD = extractDateYMD(syncTime);
+          existing.status = isFailed ? 'GAGAL' : 'BERHASIL';
+        }
+      }
+    });
+  }
+
+  return historyList.sort((a, b) => new Date(b.syncedAt) - new Date(a.syncedAt));
+}
+
+/**
+ * TAMPILAN FULL SCREEN: Riwayat Pengiriman Data ke Server
+ * Filter tanggal pengiriman data beserta status label per masing-masing dokumen berhasil/gagal terkirim.
+ */
+function renderSyncHistoryView(app, userCtx) {
+  const allHistory = getSyncHistoryRecords(userCtx);
+
+  // Filter berdasarkan tanggal jika dipilih
+  const dateFiltered = syncHistoryDate
+    ? allHistory.filter(item => item.dateYMD === syncHistoryDate)
+    : allHistory;
+
+  // Hitung jumlah status pada tanggal yang dipilih
+  const countAll = dateFiltered.length;
+  const countSuccess = dateFiltered.filter(item => item.status === 'BERHASIL').length;
+  const countFailed = dateFiltered.filter(item => item.status === 'GAGAL').length;
+
+  // Filter lanjutan berdasarkan status label
+  const displayedItems = dateFiltered.filter(item => {
+    if (syncHistoryStatusFilter === 'BERHASIL') return item.status === 'BERHASIL';
+    if (syncHistoryStatusFilter === 'GAGAL') return item.status === 'GAGAL';
+    return true;
+  });
+
+  app.innerHTML = `
+    <div class="page verif-page" style="display: flex; flex-direction: column; height: 100%; min-height: 0; background: #F8FAFC; position: relative; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-back-sync-history" type="button" aria-label="Kembali" style="background: transparent; border: none; padding: 4px; margin-left: -4px; cursor: pointer; display: flex; align-items: center; color: #116834;">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <h1 style="font-size: 1.05rem; font-weight: 800; color: #111827; margin: 0;">Riwayat Pengiriman Server</h1>
+        </div>
+      </header>
+
+      <!-- BODY SCROLLABLE -->
+      <main style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+        
+        <!-- CARD FILTER TANGGAL & STATUS LABEL -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label for="sync-history-date-input" style="font-size: 0.76rem; font-weight: 700; color: #475569;">
+              Filter Tanggal Pengiriman Data:
+            </label>
+            <input type="date" id="sync-history-date-input" value="${syncHistoryDate}"
+              style="height: 40px; padding: 0 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.84rem; font-weight: 600; color: #0F172A; background: #FFFFFF; width: 100%; box-sizing: border-box;" />
+          </div>
+
+          <!-- STATUS LABEL FILTER PILLS -->
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button class="history-status-pill" data-status="ALL" type="button"
+              style="flex: 1; padding: 7px 4px; border-radius: 6px; font-size: 0.74rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; border: 1px solid ${syncHistoryStatusFilter === 'ALL' ? '#116834' : '#E2E8F0'}; background: ${syncHistoryStatusFilter === 'ALL' ? '#116834' : '#F8FAFC'}; color: ${syncHistoryStatusFilter === 'ALL' ? '#FFFFFF' : '#475569'}; text-align: center;">
+              Semua (${countAll})
+            </button>
+            <button class="history-status-pill" data-status="BERHASIL" type="button"
+              style="flex: 1; padding: 7px 4px; border-radius: 6px; font-size: 0.74rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; border: 1px solid ${syncHistoryStatusFilter === 'BERHASIL' ? '#116834' : '#E2E8F0'}; background: ${syncHistoryStatusFilter === 'BERHASIL' ? '#116834' : '#F8FAFC'}; color: ${syncHistoryStatusFilter === 'BERHASIL' ? '#FFFFFF' : '#475569'}; text-align: center;">
+              Berhasil (${countSuccess})
+            </button>
+            <button class="history-status-pill" data-status="GAGAL" type="button"
+              style="flex: 1; padding: 7px 4px; border-radius: 6px; font-size: 0.74rem; font-weight: 700; cursor: pointer; transition: all 0.2s ease; border: 1px solid ${syncHistoryStatusFilter === 'GAGAL' ? '#991B1B' : '#E2E8F0'}; background: ${syncHistoryStatusFilter === 'GAGAL' ? '#991B1B' : '#F8FAFC'}; color: ${syncHistoryStatusFilter === 'GAGAL' ? '#FFFFFF' : '#475569'}; text-align: center;">
+              Gagal (${countFailed})
+            </button>
+          </div>
+        </div>
+
+        <!-- DAFTAR DOKUMEN RIWAYAT -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 2px;">
+            <span style="font-size: 0.8rem; font-weight: 700; color: #475569;">
+              Daftar Dokumen (${displayedItems.length}):
+            </span>
+            <span style="font-size: 0.7rem; color: #64748B;">
+              ${syncHistoryDate || 'Semua Tanggal'}
+            </span>
+          </div>
+
+          ${displayedItems.length === 0 ? `
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 28px 16px; text-align: center; color: #64748B;">
+              <div style="font-size: 0.86rem; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                Tidak Ada Riwayat Pengiriman
+              </div>
+              <div style="font-size: 0.76rem; color: #94A3B8;">
+                Tidak ada dokumen dengan status <strong>${syncHistoryStatusFilter}</strong> pada tanggal terpilih.
+              </div>
+            </div>
+          ` : `
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              ${displayedItems.map((item, idx) => `
+                <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.88rem; font-weight: 800; color: ${item.status === 'GAGAL' ? '#B91C1C' : '#116834'}; word-break: break-all;">
+                      ${esc(item.docNo)}
+                    </span>
+                    ${item.status === 'BERHASIL' ? `
+                      <span style="font-size: 0.7rem; font-weight: 700; background: #DEF7EC; color: #03543F; padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#03543F" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        Berhasil Terkirim
+                      </span>
+                    ` : `
+                      <span style="font-size: 0.7rem; font-weight: 700; background: #FEE2E2; color: #991B1B; padding: 3px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="#991B1B" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                        Gagal Terkirim
+                      </span>
+                    `}
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 2px;">
+                    <span style="min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; color: #64748B;">
+                      ${esc(item.moduleLabel)} &bull; ${esc(item.submittedByName || 'Mantri')}
+                    </span>
+                    <span style="font-size: 0.64rem; font-weight: 600; color: #64748B; white-space: nowrap; flex-shrink: 0; letter-spacing: -0.2px;">
+                      ${formatSyncTimestamp(item.syncedAt)}
+                    </span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+
+      </main>
+
+      <!-- BOTTOM ACTION BAR: 2 TOMBOL BERSIH TANPA ICON TAMBAHAN -->
+      <footer style="padding: 12px 16px; background: #FFFFFF; border-top: 1px solid #E2E8F0; display: flex; gap: 10px; flex-shrink: 0;">
+        <button id="btn-sync-history-back" type="button" style="flex: 1; height: 46px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 8px; font-weight: 700; font-size: 0.88rem; color: #475569; cursor: pointer; text-align: center;">
+          Kembali
+        </button>
+        <button id="btn-sync-history-home" type="button" style="flex: 1; height: 46px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.88rem; cursor: pointer; text-align: center; box-shadow: 0 2px 4px rgba(17,104,52,0.2);">
+          Kembali ke Beranda
+        </button>
+      </footer>
+
+    </div>
+  `;
+
+  // Event handler tombol kembali
+  const goBackFromHistory = () => {
+    currentVerifView = syncHistorySourceView || 'TINJAU_SUMMARY';
+    renderVerificationLanding();
+  };
+
+  app.querySelector('#btn-back-sync-history')?.addEventListener('click', goBackFromHistory);
+  app.querySelector('#btn-sync-history-back')?.addEventListener('click', goBackFromHistory);
+
+  // Event handler kembali ke beranda
+  app.querySelector('#btn-sync-history-home')?.addEventListener('click', () => {
+    navigate('/home');
+  });
+
+  // Event handler filter tanggal
+  const dateInput = app.querySelector('#sync-history-date-input');
+  dateInput?.addEventListener('change', (e) => {
+    syncHistoryDate = e.target.value;
+    renderVerificationLanding();
+  });
+
+  // Event handler filter status pill
+  app.querySelectorAll('.history-status-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const status = btn.getAttribute('data-status');
+      syncHistoryStatusFilter = status;
+      renderVerificationLanding();
+    });
+  });
 }
 
 /**

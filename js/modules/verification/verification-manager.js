@@ -12,6 +12,7 @@
  */
 
 import { storage } from '../../core/storage.js';
+import { session } from '../../core/session.js';
 import { normalizeRole, ROLES, getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
 import { getConsolidatedData, runConsistencyCheck, buildTraceabilityChain } from '../consolidation/consolidation-manager.js';
 import { getAllBatches } from '../../data/batch-master.js';
@@ -23,8 +24,11 @@ import {
   getSelectionStageLabel,
   createSelection2DocumentFromSelection1,
   createSelection3DocumentFromSelection2,
-  validateSelectionTransactionAgainstSource
+  validateSelectionTransactionAgainstSource,
+  getActionableSelectionCount,
+  syncAllSeedingsToPreGraftingSelectionDocuments
 } from '../selection/selection-manager.js';
+import { getInspectionChronologicalMaxAllowed, syncAllDederanRejectionsToSelectionPool } from '../seeding/dederan-manager.js';
 
 export const VERIFICATION_STORAGE_KEY = 'verification_transactions';
 
@@ -947,6 +951,7 @@ export function evaluateRecordConsistency(referenceType, record, fullDataset = n
       errors.push({ type: 'ORPHAN_RECEIPT', severity: 'ERROR', message: `Dispatch referensi (${record.dispatchId}) tidak ditemukan.` });
     }
   } else if (referenceType === REFERENCE_TYPES.SELECTION || referenceType === REFERENCE_TYPES.DESTRUCTION || referenceType === 'PENYELEKSIAN' || referenceType === 'SELECTION') {
+    try { syncAllDederanRejectionsToSelectionPool(); } catch (_) {}
     const dataset = fullDataset || getConsolidatedData(null);
     const bId = record.batchId || record.batchCode || record.batchNo;
     const batchExists = dataset.batches.some(b => b.id === bId || b.batchCode === bId || b.batchNo === bId);
@@ -969,13 +974,63 @@ export function evaluateRecordConsistency(referenceType, record, fullDataset = n
       const dederTxs = storage.get('dederan_transactions', []);
       const parentDeder = dederTxs.find(t => (t.docNo && t.docNo === dederTxDocNo) || t.id === dederTxDocNo);
       if (parentDeder) {
-        const maxDeder = parseInt(parentDeder.jumlahDeder !== undefined ? parentDeder.jumlahDeder : (parentDeder.jumlahKecambahDitanam || 0), 10);
         const diperiksa = parseInt(record.jumlahDiperiksa || 0, 10);
-        if (maxDeder > 0 && diperiksa > maxDeder) {
+        const maxAllowed = getInspectionChronologicalMaxAllowed(parentDeder, record);
+        if (maxAllowed >= 0 && diperiksa > maxAllowed) {
           errors.push({
             type: 'STALE_SOURCE_QUANTITY',
             severity: 'ERROR',
-            message: `Jumlah diperiksa (${diperiksa.toLocaleString('id-ID')}) melebihi populasi Dederan sumber terbaru (${maxDeder.toLocaleString('id-ID')}).`
+            message: `Jumlah diperiksa (${diperiksa.toLocaleString('id-ID')}) melebihi kuota kronologis terbaru (${maxAllowed.toLocaleString('id-ID')}).`
+          });
+        }
+      }
+    }
+  } else if (referenceType === REFERENCE_TYPES.PENYEMAIAN || referenceType === 'PENYEMAIAN' || referenceType === 'SEEDING') {
+    const dederDocNo = record.dederanTxDocNo || record.sourceDocNo || record.sourceReceiptDocNo;
+    if (dederDocNo) {
+      const dederTxs = storage.get('dederan_transactions', []);
+      const parentDeder = dederTxs.find(t => (t.docNo && t.docNo === dederDocNo) || t.id === dederDocNo);
+      if (parentDeder) {
+        const parentQty = parseInt(parentDeder.jumlahDeder || parentDeder.jumlahKecambahDitanam || 0, 10);
+        const seedingTxs = storage.get('seeding_transactions', []);
+        let otherApprovedQty = 0;
+        seedingTxs.forEach(s => {
+          if (!s || s.id === record.id || s.docNo === record.docNo) return;
+          const isRef = (s.dederanTxDocNo && s.dederanTxDocNo === dederDocNo) || (s.sourceDocNo && s.sourceDocNo === dederDocNo);
+          const isApproved = String(s.status || '').toUpperCase() === 'DISETUJUI' || String(s.status || '').toUpperCase() === 'TERVERIFIKASI';
+          if (isRef && isApproved) {
+            otherApprovedQty += parseInt(s.jumlahBibitDipindahkan || s.totalDisemai || s.qty || 0, 10);
+          }
+        });
+        const maxAvailable = Math.max(0, parentQty - otherApprovedQty);
+        const thisQty = parseInt(record.jumlahBibitDipindahkan || record.totalDisemai || record.qty || 0, 10);
+        if (thisQty > maxAvailable) {
+          errors.push({
+            type: 'STALE_SOURCE_QUANTITY',
+            severity: 'ERROR',
+            message: `Jumlah bibit dipindahkan (${thisQty.toLocaleString('id-ID')}) melebihi sisa kuota Dederan sumber terbaru (${maxAvailable.toLocaleString('id-ID')}).`
+          });
+        }
+      }
+    }
+  } else if (referenceType === REFERENCE_TYPES.BUDDING || referenceType === 'BUDDING' || referenceType === 'OKULASI') {
+    const isRegrafting = record.isRegrafting || record.type === 'REGRAFTING' || record.jenisOkulasi === 'OKULASI_JANDA' || record.jenisOkulasi === 'Regrafting' || (record.docNo && String(record.docNo).includes('RGRF'));
+    if (isRegrafting) {
+      const poolList = storage.get('regrafting_pool', []);
+      const refPool = poolList.find(p => 
+        (record.sourceInspectionDocNo && (p.inspectionDocNo === record.sourceInspectionDocNo || p.docNo === record.sourceInspectionDocNo)) ||
+        (record.poolId && p.id === record.poolId) ||
+        (record.batchId && (p.batchId === record.batchId || p.batchNo === record.batchNo)) ||
+        (record.bedenganCode && (p.bedenganCode === record.bedenganCode || p.bedenganName === record.bedenganCode))
+      );
+      if (refPool) {
+        const availablePoolQty = parseInt(refPool.quantity !== undefined ? refPool.quantity : (refPool.availableQty !== undefined ? refPool.availableQty : refPool.sisa || 0), 10);
+        const reqQty = parseInt(record.jumlahOkulasi !== undefined ? record.jumlahOkulasi : (record.totalOkulasi !== undefined ? record.totalOkulasi : record.jumlahBatangOkulasi || 0), 10);
+        if (reqQty > availablePoolQty && availablePoolQty >= 0) {
+          errors.push({
+            type: 'STALE_POOL_QUANTITY',
+            severity: 'ERROR',
+            message: `Kuantitas Okulasi Janda (${reqQty.toLocaleString('id-ID')}) melebihi saldo Regrafting Pool yang tersedia (${availablePoolQty.toLocaleString('id-ID')}).`
           });
         }
       }
@@ -1001,6 +1056,10 @@ export function evaluateRecordConsistency(referenceType, record, fullDataset = n
  * EXCLUDE: REQUEST
  */
 export function getActionableRecordsForAsb(currentUser, filters = {}) {
+  try {
+    syncAllDederanRejectionsToSelectionPool();
+  } catch (_) {}
+
   const allVerifRecords = getAllVerifications();
 
   // Deduplicate: ambil verifikasi terbaru per (referenceType:referenceId)
@@ -1283,9 +1342,37 @@ export function get10ModulesSummary(currentUser, periodDate = null) {
 }
 
 /**
+ * Memeriksa apakah ASB terhalang (gated) dari melakukan Verifikasi
+ * karena masih terdapat dokumen Pemeriksaan Hasil Seleksi yang belum selesai.
+ * @param {Object} [user]
+ * @returns {{ isGated: boolean, pendingSelectionCount: number }}
+ */
+export function checkAsbSelectionGate(user = null) {
+  const currentUser = user || (session.getUser ? session.getUser() : (session.get ? session.get() : null));
+  const userCtx = user ? resolveUserContext(user) : (getCurrentUserContext() || resolveUserContext(currentUser));
+  if (!userCtx) {
+    return { isGated: false, pendingSelectionCount: 0 };
+  }
+
+  const role = normalizeRole(userCtx.role || userCtx.rawRole);
+  if (role !== ROLES.ASISTEN_BIBITAN && role !== ROLES.ASISTEN && role !== 'ASISTEN_BIBITAN' && role !== 'ASISTEN') {
+    return { isGated: false, pendingSelectionCount: 0 };
+  }
+
+  const pendingSelectionCount = getActionableSelectionCount(null, userCtx);
+  return {
+    isGated: pendingSelectionCount > 0,
+    pendingSelectionCount
+  };
+}
+
+/**
  * Cek apakah Tinjau Data Hari Ini sudah siap dikirim ke server
  */
 export function canSubmitFinalVerificationToServer(currentUser, periodDate = null) {
+  const gate = checkAsbSelectionGate(currentUser);
+  if (gate.isGated) return false;
+
   const pendingList = getActionableRecordsForAsb(currentUser, { date: periodDate });
   const verifiedList = getVerifiedTransactionsByScope(currentUser, { periodDate });
 
@@ -1297,6 +1384,11 @@ export function canSubmitFinalVerificationToServer(currentUser, periodDate = nul
  * Kirim Data ke Server (Final submit pada Tinjau Data Hari Ini)
  */
 export function submitFinalVerificationToServer(currentUser, periodDate = null) {
+  const gate = checkAsbSelectionGate(currentUser);
+  if (gate.isGated) {
+    throw new Error(`Pengiriman ke server diblokir: Harap selesaikan ${gate.pendingSelectionCount} dokumen Pemeriksaan Hasil Seleksi terlebih dahulu.`);
+  }
+
   if (!canSubmitFinalVerificationToServer(currentUser, periodDate)) {
     throw new Error('Pengiriman ke server belum dapat dilakukan: Masih ada transaksi yang belum selesai diverifikasi.');
   }
@@ -1304,6 +1396,7 @@ export function submitFinalVerificationToServer(currentUser, periodDate = null) 
   const allVerifs = getAllVerifications();
   const nowIso = new Date().toISOString();
   let updatedCount = 0;
+  const syncedItems = [];
 
   allVerifs.forEach(v => {
     if (v.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || v.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI) {
@@ -1315,6 +1408,10 @@ export function submitFinalVerificationToServer(currentUser, periodDate = null) 
       v.syncedByUserId = currentUser?.userId || currentUser?.id;
       v.syncedByName = currentUser?.name || 'Asisten Bibitan';
       updatedCount++;
+      syncedItems.push({
+        ...v,
+        syncedAt: nowIso
+      });
     }
   });
 
@@ -1324,6 +1421,7 @@ export function submitFinalVerificationToServer(currentUser, periodDate = null) 
     success: true,
     syncedCount: updatedCount,
     syncedAt: nowIso,
+    syncedItems,
     message: `Sebanyak ${updatedCount} transaksi terverifikasi berhasil dikirim ke server.`
   };
 }
@@ -1392,6 +1490,11 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
 
   if (!currentUser) {
     throw new Error('Otorisasi gagal: User aktif tidak ditemukan.');
+  }
+
+  const gateCheck = checkAsbSelectionGate(currentUser);
+  if (gateCheck.isGated) {
+    throw new Error(`Verifikasi diblokir: Harap selesaikan ${gateCheck.pendingSelectionCount} dokumen Pemeriksaan Hasil Seleksi terlebih dahulu.`);
   }
 
   // 1. Ambil source record
@@ -1496,6 +1599,15 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
           }
         } catch (genErr) {
           console.warn('[approveVerification] Downstream generation notice:', genErr.message);
+        }
+      }
+
+      // Auto-reconcile Dokumen Seleksi Pra-Okulasi jika Pindah Semai (SEEDING) atau CULL baru disetujui ASB
+      if (referenceType === 'PENYEMAIAN' || referenceType === 'SEEDING' || referenceType === 'SELEKSI' || sourceRecord._storeKey === 'seeding_transactions' || sourceRecord._storeKey === 'selection_transactions') {
+        try {
+          syncAllSeedingsToPreGraftingSelectionDocuments(currentUser);
+        } catch (syncErr) {
+          console.warn('[approveVerification] Auto-reconcile pre-grafting notice:', syncErr.message);
         }
       }
     }
