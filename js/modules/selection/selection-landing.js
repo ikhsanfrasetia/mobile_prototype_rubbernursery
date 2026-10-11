@@ -104,6 +104,7 @@ import { guardDependency } from '../../core/dependency-guard.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { getBatchById, getBatchByCode } from '../../data/batch-master.js';
 import { getBedenganById } from '../../data/bedengan-master.js';
+import { resolveProgram } from '../../data/program-master.js';
 
 export {
   SELECTION_STATUS,
@@ -157,7 +158,7 @@ export {
 };
 
 let activeAsbTab = 'PENDING'; // 'PENDING' | 'HISTORY'
-let activeMantriTab = 'PRE_SOWING'; // 'PRE_SOWING' | 'PINDAH_SEMAI_REJECT' | 'PRE_GRAFTING' | 'POST_GRAFTING'
+let activeMantriTab = 'PRE_GRAFTING'; // 'PRE_GRAFTING' | 'PINDAH_SEMAI_REJECT' | 'POST_GRAFTING'
 let activePreGraftingTab = 'SELEKSI_1'; // 'SELEKSI_1' | 'SELEKSI_2' | 'SELEKSI_3'
 let activeFilterProgram = 'ALL';
 
@@ -431,10 +432,10 @@ function renderAsistenSelectionReview(app, currentUser) {
 
     if (isDederan) {
       const dederTxs = storage.get(DEDERAN_STORAGE_KEYS.TRANSACTIONS, []);
-      const dederTx = dederTxs.find(t => 
-        t.docNo === item.sourceDocNo || 
-        t.docNo === item.dederanDocNo || 
-        t.id === item.sourceTransactionId || 
+      const dederTx = dederTxs.find(t =>
+        t.docNo === item.sourceDocNo ||
+        t.docNo === item.dederanDocNo ||
+        t.id === item.sourceTransactionId ||
         t.docNo === item.sourceTransactionId ||
         (item.bedenganCode && (t.bedenganCode === item.bedenganCode || t.bedengan === item.bedenganCode))
       );
@@ -448,9 +449,9 @@ function renderAsistenSelectionReview(app, currentUser) {
       }
     } else if (isPindahSemai) {
       const seedingTxs = storage.get('seeding_transactions', []);
-      const sowTx = seedingTxs.find(t => 
-        t.docNo === item.sourceDocNo || 
-        t.seedingDocNo === item.sourceDocNo || 
+      const sowTx = seedingTxs.find(t =>
+        t.docNo === item.sourceDocNo ||
+        t.seedingDocNo === item.sourceDocNo ||
         t.id === item.sourceTransactionId ||
         t.docNo === item.sourceTransactionId
       );
@@ -767,8 +768,8 @@ function renderAsistenSelectionReview(app, currentUser) {
               ${isDederan
             ? `Apakah Anda yakin ingin menyetujui hasil seleksi Dederan <strong>${esc(target.docNo)}</strong> (${esc(target.bedengan || target.bedenganCode || '-')})?`
             : (isPindahSemai
-                ? `Apakah Anda yakin ingin menyetujui hasil seleksi Pindah Semai <strong>${esc(target.docNo)}</strong> (${esc(target.bedengan || target.bedenganCode || '-')})?`
-                : `Apakah Anda yakin ingin menyetujui hasil seleksi bibit untuk batch <strong>${esc(target.batchCode)}</strong>?`)}
+              ? `Apakah Anda yakin ingin menyetujui hasil seleksi Pindah Semai <strong>${esc(target.docNo)}</strong> (${esc(target.bedengan || target.bedenganCode || '-')})?`
+              : `Apakah Anda yakin ingin menyetujui hasil seleksi bibit untuk batch <strong>${esc(target.batchCode)}</strong>?`)}
             </p>
             <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.78rem;">
               ${isSingleRejectDeclaration ? `
@@ -830,8 +831,8 @@ function renderAsistenSelectionReview(app, currentUser) {
               ${isDederan
             ? `Kembalikan hasil seleksi Dederan <strong>${esc(target.docNo)}</strong> (${esc(target.bedengan || target.bedenganCode || '-')}) ke Mantri untuk perbaikan atau deklarasi ulang.`
             : (isPindahSemai
-                ? `Kembalikan hasil seleksi Pindah Semai <strong>${esc(target.docNo)}</strong> (${esc(target.bedengan || target.bedenganCode || '-')}) ke Mantri untuk perbaikan atau deklarasi ulang.`
-                : `Kembalikan hasil seleksi batch <strong>${esc(target.batchCode)}</strong> ke Mantri untuk perbaikan atau penghitungan ulang.`)}
+              ? `Kembalikan hasil seleksi Pindah Semai <strong>${esc(target.docNo)}</strong> (${esc(target.bedengan || target.bedenganCode || '-')}) ke Mantri untuk perbaikan atau deklarasi ulang.`
+              : `Kembalikan hasil seleksi batch <strong>${esc(target.batchCode)}</strong> ke Mantri untuk perbaikan atau penghitungan ulang.`)}
             </p>
             <div style="margin-bottom: 14px;">
               <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">Alasan Pengembalian (Wajib) <span style="color: #DC2626;">*</span></label>
@@ -1131,138 +1132,232 @@ export function renderProgramBatchCompactView({
     });
   }
 
-  return `
-    <div class="program-batch-compact-container" style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px;">
-      ${programGroups.map(prog => `
-        <div class="card-program-group" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-          
-          <!-- PROGRAM HEADER (RENDERED EXACTLY ONCE PER GROUP) -->
-          <div class="program-group-header" style="background: #F8FAFC; border-bottom: 1px solid #E2E8F0; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 0.70rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">
-              PROGRAM PEMBIBITAN
+  // PASCA-OKULASI: Maintain existing grouped layout
+  if (isPasca) {
+    return `
+      <div class="program-batch-compact-container" style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px;">
+        ${programGroups.map(prog => `
+          <div class="card-program-group" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+            <div class="program-group-header" style="background: #F8FAFC; border-bottom: 1px solid #E2E8F0; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
+              <div style="font-size: 0.70rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">
+                PROGRAM PEMBIBITAN
+              </div>
+              <div class="program-code-display" style="font-size: 0.82rem; font-weight: 800; color: #0F172A; font-family: monospace;">
+                ${esc(prog.programCode)}
+              </div>
             </div>
-            <div class="program-code-display" style="font-size: 0.82rem; font-weight: 800; color: #0F172A; font-family: monospace;">
-              ${esc(prog.programCode)}
-            </div>
-          </div>
-
-          <!-- BATCH LIST (COMPACT ROWS) -->
-          <div class="batch-compact-list" style="display: flex; flex-direction: column;">
-            ${prog.batches.map((batch, batchIdx) => {
-              if (isPasca) {
-                const metrics = calculatePostGraftingBatchMetrics(batch);
-                const pascaDotKey = (metrics.totalAfkir > 0 && metrics.selectedPercent < 100) ? 'SELECTION_NEED_AFKIR' : (metrics.selectedPercent >= 100 ? 'SELECTION_APPROVED' : 'SELECTION_NEED_AFKIR');
-                const pascaDotLabel = (metrics.totalAfkir > 0 && metrics.selectedPercent < 100) ? 'Perlu Deklarasi Afkir' : (metrics.selectedPercent >= 100 ? 'Selesai Terseleksi' : 'Perlu Deklarasi Afkir');
-                return `
+            <div class="batch-compact-list" style="display: flex; flex-direction: column;">
+              ${prog.batches.map((batch, batchIdx) => {
+      const metrics = calculatePostGraftingBatchMetrics(batch);
+      const pascaDotKey = (metrics.totalAfkir > 0 && metrics.selectedPercent < 100) ? 'SELECTION_NEED_AFKIR' : (metrics.selectedPercent >= 100 ? 'SELECTION_APPROVED' : 'SELECTION_NEED_AFKIR');
+      const pascaDotLabel = (metrics.totalAfkir > 0 && metrics.selectedPercent < 100) ? 'Perlu Deklarasi Afkir' : (metrics.selectedPercent >= 100 ? 'Selesai Terseleksi' : 'Perlu Deklarasi Afkir');
+      return `
                   <div class="row-batch-item row-batch-pasca-clickable" 
                        data-program-code="${esc(prog.programCode)}" 
                        data-batch-code="${esc(batch.batchCode)}" 
                        style="padding: 12px 14px; cursor: pointer; transition: background 0.15s ease; ${batchIdx > 0 ? 'border-top: 1px solid #F1F5F9;' : ''}"
                        onmouseover="this.style.background='#F8FAFC'" 
                        onmouseout="this.style.background='#FFFFFF'">
-                    
-                    <!-- ROW 1: BATCH & BEDENGAN COUNT + CHEVRON -->
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                       <div style="display: flex; align-items: center; gap: 6px;">
                         ${renderStatusDots([{ key: pascaDotKey, label: pascaDotLabel }])}
                         <span class="batch-code-title" style="font-weight: 800; font-size: 0.90rem; color: #0F172A;">
                           ${esc(batch.batchCode)}
                         </span>
+                        <span class="batch-clone-tag" style="font-size: 0.68rem; font-weight: 700; color: #334155; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 1px 6px; border-radius: 4px;">
+                          Klon: ${esc(batch.clone || 'GT 1')}
+                        </span>
                       </div>
                       <span class="bedengan-count-label" style="font-size: 0.78rem; font-weight: 600; color: #64748B;">
                         ${metrics.bedenganCount} Bedengan &gt;
                       </span>
                     </div>
-
-                    <!-- ROW 2: BATCH POPULATION -->
                     <div class="batch-population-label" style="font-size: 0.82rem; font-weight: 700; color: #1E293B; margin-top: 3px;">
                       ${metrics.totalBibitAwal.toLocaleString('id-ID')} Bibit
                     </div>
-
-                    <!-- ROW 3: PROGRESS TEXT ONLY (NO PROGRESS BAR) -->
                     <div class="batch-progress-text" style="font-size: 0.75rem; color: #64748B; margin-top: 3px;">
                       Terseleksi ${metrics.selectedPercent}% (${metrics.totalAfkir.toLocaleString('id-ID')} Pkk)
                     </div>
-
                   </div>
                 `;
-              }
-
-              const metrics = calculateBatchMetrics(batch, stage);
-              let preDotKey;
-              let preDotLabel;
-              let isBatchLocked = false;
-
-              if (stage === 'SELEKSI_1' || stage === 'SELEKSI_I') {
-                const gateCheck = canPerformPreGraftingSelection1(batch.batchCode);
-                if (!gateCheck.canPerform) {
-                  isBatchLocked = true;
-                  preDotKey = 'TX_LOCKED_VERIF';
-                  preDotLabel = 'Menunggu Persetujuan ASB';
-                } else {
-                  const isPreDone = metrics.inspectedPercent >= 100;
-                  preDotKey = isPreDone ? 'SELECTION_APPROVED' : (metrics.inspectedPercent > 0 ? 'INSP_DEDER_PARTIAL' : 'SELECTION_NEED_AFKIR');
-                  preDotLabel = isPreDone ? 'Selesai Terseleksi' : (metrics.inspectedPercent > 0 ? 'Pemeriksaan Berjalan' : 'Perlu Seleksi');
-                }
-              } else {
-                const isPreDone = metrics.inspectedPercent >= 100;
-                preDotKey = isPreDone ? 'SELECTION_APPROVED' : (metrics.inspectedPercent > 0 ? 'INSP_DEDER_PARTIAL' : 'SELECTION_NEED_AFKIR');
-                preDotLabel = isPreDone ? 'Selesai Terseleksi' : (metrics.inspectedPercent > 0 ? 'Pemeriksaan Berjalan' : 'Perlu Seleksi');
-              }
-
-              return `
-                <div class="row-batch-item row-batch-clickable" 
-                     data-stage="${esc(stage)}" 
-                     data-program-code="${esc(prog.programCode)}" 
-                     data-batch-code="${esc(batch.batchCode)}" 
-                     data-is-locked="${isBatchLocked ? 'true' : 'false'}"
-                     style="padding: 12px 14px; cursor: pointer; transition: background 0.15s ease; ${batchIdx > 0 ? 'border-top: 1px solid #F1F5F9;' : ''}"
-                     onmouseover="this.style.background='#F8FAFC'" 
-                     onmouseout="this.style.background='#FFFFFF'">
-                  
-                  <!-- ROW 1: BATCH & BEDENGAN COUNT + CHEVRON -->
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                      ${renderStatusDots([{ key: preDotKey, label: preDotLabel }])}
-                      <span class="batch-code-title" style="font-weight: 800; font-size: 0.90rem; color: #0F172A;">
-                        ${esc(batch.batchCode)}
-                      </span>
-                      ${isBatchLocked ? `
-                        <span style="font-size: 0.65rem; font-weight: 700; background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center;">
-                          Menunggu Persetujuan
-                        </span>
-                      ` : ''}
-                    </div>
-                    <span class="bedengan-count-label" style="font-size: 0.78rem; font-weight: 600; color: #64748B;">
-                      ${metrics.bedenganCount} Bedengan &gt;
-                    </span>
-                  </div>
-
-                  <!-- ROW 2: BATCH POPULATION -->
-                  <div class="batch-population-label" style="font-size: 0.82rem; font-weight: 700; color: #1E293B; margin-top: 3px;">
-                    ${metrics.totalSourceBibit.toLocaleString('id-ID')} Bibit
-                  </div>
-
-                  <!-- ROW 3: PROGRESS TEXT ONLY (NO PROGRESS BAR) -->
-                  <div class="batch-progress-text" style="font-size: 0.75rem; color: ${isBatchLocked ? '#B45309' : '#64748B'}; margin-top: 3px; font-weight: ${isBatchLocked ? '600' : '400'};">
-                    ${isBatchLocked 
-                      ? 'Menunggu Persetujuan ASB (Pindah Semai / Afkir)' 
-                      : `Periksa ${metrics.inspectedPercent}% · Terseleksi ${metrics.selectedPercent}%`}
-                  </div>
-
-                </div>
-              `;
-            }).join('')}
+    }).join('')}
+            </div>
           </div>
+        `).join('')}
+      </div>
+    `;
+  }
 
-        </div>
-      `).join('')}
+  // PRA-OKULASI (SELEKSI I, II, III): Standardized Clean Card Dokumen Batch
+  return `
+    <div class="program-batch-compact-container" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+      ${programGroups.map(prog => prog.batches.map(batch => {
+    const metrics = calculateBatchMetrics(batch, stage);
+    let isBatchLocked = false;
+    let badgeText = 'Menunggu Persetujuan';
+    let badgeBg = '#FEF3C7';
+    let badgeColor = '#92400E';
+    let badgeBorder = '#FDE68A';
+    let progressText = '';
+    let progressTextColor = '#64748B';
+
+    if (stage === 'SELEKSI_1' || stage === 'SELEKSI_I') {
+      const gateCheck = canPerformPreGraftingSelection1(batch.batchCode);
+      if (!gateCheck.canPerform) {
+        isBatchLocked = true;
+        badgeText = 'Menunggu Persetujuan';
+        badgeBg = '#FEF3C7';
+        badgeColor = '#92400E';
+        badgeBorder = '#FDE68A';
+        progressText = 'Menunggu Persetujuan ASB (Pindah Semai / Afkir)';
+        progressTextColor = '#B45309';
+      } else {
+        const isPreDone = metrics.inspectedPercent >= 100;
+        if (isPreDone) {
+          badgeText = 'Selesai Terseleksi';
+          badgeBg = '#DCFCE7';
+          badgeColor = '#15803D';
+          badgeBorder = '#BBF7D0';
+        } else if (metrics.inspectedPercent > 0) {
+          badgeText = 'Pemeriksaan Berjalan';
+          badgeBg = '#EFF6FF';
+          badgeColor = '#1D4ED8';
+          badgeBorder = '#BFDBFE';
+        } else {
+          badgeText = 'Siap Seleksi';
+          badgeBg = '#F1F5F9';
+          badgeColor = '#334155';
+          badgeBorder = '#E2E8F0';
+        }
+        progressText = `Periksa ${metrics.inspectedPercent}% · Terseleksi ${metrics.selectedPercent}%`;
+        progressTextColor = '#64748B';
+      }
+    } else {
+      const isPreDone = metrics.inspectedPercent >= 100;
+      if (isPreDone) {
+        badgeText = 'Selesai Terseleksi';
+        badgeBg = '#DCFCE7';
+        badgeColor = '#15803D';
+        badgeBorder = '#BBF7D0';
+      } else if (metrics.inspectedPercent > 0) {
+        badgeText = 'Pemeriksaan Berjalan';
+        badgeBg = '#EFF6FF';
+        badgeColor = '#1D4ED8';
+        badgeBorder = '#BFDBFE';
+      } else {
+        badgeText = 'Siap Seleksi';
+        badgeBg = '#F1F5F9';
+        badgeColor = '#334155';
+        badgeBorder = '#E2E8F0';
+      }
+      progressText = `Periksa ${metrics.inspectedPercent}% · Terseleksi ${metrics.selectedPercent}%`;
+      progressTextColor = '#64748B';
+    }
+
+    const batchClone = (() => {
+      if (batch.clone && batch.clone !== '-') return batch.clone;
+      const fromDoc = (batch.docs || []).find(d => d.clone || d.klon || d.namaKlon || d.klonAwal || d.klonRootstock);
+      if (fromDoc) return fromDoc.clone || fromDoc.klon || fromDoc.namaKlon || fromDoc.klonAwal || fromDoc.klonRootstock;
+      const batches = storage.get('nursery_batches', []);
+      const foundBatch = batches.find(b => b.code === batch.batchCode || b.id === batch.batchCode || b.batchNo === batch.batchCode);
+      if (foundBatch && (foundBatch.clone || foundBatch.klon || foundBatch.rootstockClone || foundBatch.variety)) {
+        return foundBatch.clone || foundBatch.klon || foundBatch.rootstockClone || foundBatch.variety;
+      }
+      const sows = storage.get('seeding_transactions', []);
+      const foundSow = sows.find(s => s.batchCode === batch.batchCode || s.batchNo === batch.batchCode);
+      if (foundSow && (foundSow.clone || foundSow.klon || foundSow.klonRootstock || foundSow.namaKlon)) {
+        return foundSow.clone || foundSow.klon || foundSow.klonRootstock || foundSow.namaKlon;
+      }
+      return 'GT 1';
+    })();
+
+    return `
+          <div class="card-program-group card-batch-document row-batch-item row-batch-clickable" 
+               data-stage="${esc(stage)}" 
+               data-program-code="${esc(prog.programCode)}" 
+               data-batch-code="${esc(batch.batchCode)}" 
+               data-is-locked="${isBatchLocked ? 'true' : 'false'}"
+               style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; overflow: hidden; cursor: pointer; transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02);"
+               onmouseover="this.style.borderColor='#CBD5E1'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.05)';"
+               onmouseout="this.style.borderColor='#E2E8F0'; this.style.boxShadow='0 1px 2px rgba(0,0,0,0.02)';">
+            
+            <!-- HEADER CARD: PROGRAM PEMBIBITAN & KODE PROGRAM -->
+            <div class="program-group-header" style="background: #FFFFFF; border-bottom: 1px solid #F1F5F9; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.4px;">
+                PROGRAM PEMBIBITAN
+              </span>
+              <div class="program-code-display" style="font-size: 0.76rem; font-weight: 700; color: #1E293B;">
+                ${esc(prog.programCode)}
+              </div>
+            </div>
+
+            <!-- KONTEN BATCH -->
+            <div style="padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+              
+              <!-- BARIS 1: KODE BATCH, KLON & BADGE STATUS -->
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="batch-code-title" style="font-size: 0.88rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em;">
+                    ${esc(batch.batchCode)}
+                  </span>
+                  <span class="batch-clone-tag" style="font-size: 0.68rem; font-weight: 700; color: #334155; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 1px 6px; border-radius: 4px;">
+                    Klon: ${esc(batchClone)}
+                  </span>
+                </div>
+                <span class="badge-status-selection" style="font-size: 0.64rem; font-weight: 600; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; padding: 2px 8px; border-radius: 999px; display: inline-flex; align-items: center;">
+                  ${esc(badgeText)}
+                </span>
+              </div>
+
+              <!-- THIN DIVIDER -->
+              <div style="height: 1px; background: #F1F5F9;"></div>
+
+              <!-- BARIS 2: JUMLAH BIBIT | LOKASI BEDENGAN & CHEVRON -->
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 14px;">
+                  <!-- KOLOM 1: JUMLAH BIBIT -->
+                  <div>
+                    <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 1px;">Jumlah Bibit</div>
+                    <div class="batch-population-label" style="font-size: 0.82rem; font-weight: 800; color: #0F172A;">
+                      ${metrics.totalSourceBibit.toLocaleString('id-ID')} Bibit
+                    </div>
+                  </div>
+
+                  <!-- VERTICAL DIVIDER -->
+                  <div style="width: 1px; height: 22px; background: #E2E8F0;"></div>
+
+                  <!-- KOLOM 2: LOKASI BEDENGAN -->
+                  <div>
+                    <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 1px;">Lokasi Bedengan</div>
+                    <div class="bedengan-count-label" style="font-size: 0.82rem; font-weight: 800; color: #0F172A;">
+                      ${metrics.bedenganCount} Bedengan
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CHEVRON ICON (>) -->
+                <div style="color: #94A3B8; display: flex; align-items: center; padding-left: 6px;">
+                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#94A3B8" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- BARIS 3: KETERANGAN STATUS PERSETUJUAN ASB (HIDDEN PER USER REQUEST) -->
+              <div class="batch-progress-text" style="display: none; font-size: 0.70rem; color: ${progressTextColor}; font-weight: 500; line-height: 1.35; word-break: break-word;">
+                ${progressText}
+              </div>
+
+            </div>
+          </div>
+        `;
+  }).join('')).join('')}
     </div>
   `;
 }
 
 /**
- * Modal Edukatif & Peringatan: Eksekusi Seleksi Pra-Okulasi Terkunci oleh Verifikasi ASB
+ * Modal Edukatif & Peringatan: Eksekusi Seleksi Pra-Okulasi Terkunci oleh Verifikasi ASB (Clean Corporate UI)
  */
 export function showExecutionGateBlockedModal({
   stage = 'SELEKSI_1',
@@ -1278,134 +1373,199 @@ export function showExecutionGateBlockedModal({
 
   const stageTitle = (stage === 'SELEKSI_1' || stage === 'SELEKSI_I') ? 'Seleksi I (Pra-Okulasi)' : stage;
 
+  // Resolusi jumlah bibit secara akurat dari doc atau cache dokumen seleksi
+  let bibitCount = 0;
+  if (doc) {
+    bibitCount = (doc.sourceBibitQty !== undefined && doc.sourceBibitQty > 0)
+      ? parseInt(doc.sourceBibitQty, 10)
+      : ((doc.sourcePolybagQty ? parseInt(doc.sourcePolybagQty, 10) : 0) * (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' ? 2 : 1));
+    if (!bibitCount) {
+      bibitCount = parseInt(doc.totalBibit || doc.initialQty || 0, 10);
+    }
+  }
+  if (!bibitCount && batchCode) {
+    const allPreDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
+    const matching = allPreDocs.filter(d => (d.batchCode || d.batchNo) === batchCode);
+    if (bedenganCode) {
+      const bedMatch = matching.find(d => {
+        const rawBed = d.bedenganCode || d.bedengan || (d.rows && d.rows[0]?.bedenganCode) || '';
+        return formatBedenganDisplayCode(rawBed).toUpperCase() === formatBedenganDisplayCode(bedenganCode).toUpperCase();
+      });
+      if (bedMatch) {
+        bibitCount = parseInt(bedMatch.sourceBibitQty || ((bedMatch.sourcePolybagQty || 0) * 2), 10);
+      }
+    }
+    if (!bibitCount && matching.length > 0) {
+      bibitCount = matching.reduce((sum, d) => sum + parseInt(d.sourceBibitQty || ((d.sourcePolybagQty || 0) * 2), 10), 0);
+    }
+  }
+  const formattedBibit = bibitCount > 0 ? `${bibitCount.toLocaleString('id-ID')} Bibit` : '-';
+
+  const isSowApproved = unapprovedSows.length === 0;
+  const isCullApproved = (unapprovedCulls.length === 0 && pendingPool.length === 0);
+
+  const formatDocStatus = (st) => {
+    if (st === 'MENUNGGU_KONFIRMASI_VERIFIKASI') {
+      return 'Data belum dikirim ke Asisten Bibitan';
+    }
+    return st || 'MENUNGGU_VERIFIKASI';
+  };
+
+  const renderStatusInfoIcon = (statusText, variant = 'amber') => {
+    const isGreen = variant === 'green';
+    const bg = isGreen ? '#DCFCE7' : '#FEF3C7';
+    const border = isGreen ? '#BBF7D0' : '#FDE68A';
+    const color = isGreen ? '#166534' : '#92400E';
+
+    return `
+      <div class="status-tooltip-container" style="position: relative; display: inline-flex; align-items: center;">
+        <button type="button" class="btn-status-info" aria-label="${esc(statusText)}" title="${esc(statusText)}"
+                style="width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: ${bg}; border: 1px solid ${border}; color: ${color}; cursor: pointer; padding: 0; outline: none; transition: transform 0.12s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
+          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </button>
+        <div class="status-tooltip-popup" style="display: none; position: absolute; right: 0; bottom: calc(100% + 6px); background: #0F172A; color: #FFFFFF; font-size: 0.70rem; font-weight: 600; padding: 5px 9px; border-radius: 6px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.18); z-index: 50; pointer-events: none; animation: fade-in 0.15s ease;">
+          ${esc(statusText)}
+          <div style="position: absolute; right: 7px; top: 100%; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #0F172A;"></div>
+        </div>
+      </div>
+    `;
+  };
+
   const bodyContent = `
-    <div style="font-size: 0.84rem; color: #334155; line-height: 1.5; display: flex; flex-direction: column; gap: 14px;">
+    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 10px;">
       
-      <!-- ALERT BANNER -->
-      <div style="background: #FFFBEB; border: 1.5px solid #FCD34D; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 4px;">
-        <div style="font-weight: 800; color: #92400E; font-size: 0.92rem;">
-          Transaksi ${esc(stageTitle)} Menunggu Persetujuan
-        </div>
-        <div style="font-size: 0.78rem; color: #B45309; line-height: 1.45;">
-          Dokumen Pindah Semai dan Seleksi Ditolak Pindah Semai wajib dikonfirmasi dan disetujui verifikasinya oleh Asisten Bibitan (ASB) sebelum transaksi penyeleksian dapat dilakukan.
-        </div>
+      <!-- SUBTITLE PENJELAS -->
+      <div style="font-size: 0.78rem; color: #64748B; line-height: 1.4; margin-bottom: 2px;">
+        Transaksi belum dapat dilanjutkan karena menunggu persetujuan Asisten Bibitan.
       </div>
 
-      <!-- CONTEXT INFO CARD -->
-      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;">
-        <div>
-          <span style="font-size: 0.68rem; color: #64748B; display: block; font-weight: 600;">Target Batch & Bedengan</span>
-          <span style="font-size: 0.92rem; font-weight: 800; color: #0F172A;">
-            ${esc(batchCode || '-')} ${bedenganCode ? `· Bedengan ${esc(bedenganCode)}` : ''}
-          </span>
-        </div>
-        ${programCode ? `
-          <div style="text-align: right;">
-            <span style="font-size: 0.68rem; color: #64748B; display: block; font-weight: 600;">Program</span>
-            <span style="font-size: 0.80rem; font-weight: 700; color: #475569; font-family: monospace;">
-              ${esc(programCode)}
-            </span>
+      <!-- CARD 1: RINGKASAN TRANSAKSI & INFORMASI BATCH -->
+      <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span style="font-size: 0.66rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.03em; display: block;">Jenis Transaksi</span>
+            <span style="font-size: 0.86rem; font-weight: 700; color: #0F172A;">${esc(stageTitle)}</span>
           </div>
-        ` : ''}
+          ${renderStatusInfoIcon('Menunggu Persetujuan', 'amber')}
+        </div>
+
+        <div style="border-top: 1px solid #F1F5F9;"></div>
+
+        <!-- GRID INFORMASI BATCH (2 KOLOM) -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px;">
+          <div>
+            <span style="font-size: 0.66rem; color: #64748B; display: block;">Kode Batch</span>
+            <span style="font-size: 0.82rem; font-weight: 700; color: #0F172A;">${esc(batchCode || '-')}</span>
+          </div>
+          <div>
+            <span style="font-size: 0.66rem; color: #64748B; display: block;">Lokasi Bedengan</span>
+            <span style="font-size: 0.82rem; font-weight: 700; color: #0F172A;">${esc(bedenganCode || '-')}</span>
+          </div>
+          <div>
+            <span style="font-size: 0.66rem; color: #64748B; display: block;">Program Pembibitan</span>
+            <span style="font-size: 0.78rem; font-weight: 600; color: #334155; font-family: monospace;">${esc(programCode || '-')}</span>
+          </div>
+          <div>
+            <span style="font-size: 0.66rem; color: #64748B; display: block;">Jumlah Bibit</span>
+            <span style="font-size: 0.82rem; font-weight: 700; color: #116834;">${esc(formattedBibit)}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- STATUS PERIKSA DOKUMEN -->
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        <div style="font-weight: 700; font-size: 0.80rem; color: #1E293B;">
-          Status Persetujuan Dokumen Sumber:
+      <!-- CARD 2: STATUS DOKUMEN SUMBER -->
+      <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-size: 0.70rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em;">
+          Status Persetujuan Dokumen Sumber
         </div>
 
         <!-- 1. DOKUMEN PINDAH SEMAI (SOW) -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <span style="font-weight: 700; font-size: 0.80rem; color: #0F172A;">
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 2px;">
+            <span style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">
               Dokumen Pindah Semai (SOW)
             </span>
-            ${unapprovedSows.length === 0 ? `
-              <span style="font-size: 0.70rem; font-weight: 700; background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 999px;">
-                ✓ Disetujui ASB
-              </span>
-            ` : `
-              <span style="font-size: 0.70rem; font-weight: 700; background: #FEF3C7; color: #B45309; padding: 2px 8px; border-radius: 999px;">
-                ⏳ Menunggu Persetujuan ASB
-              </span>
-            `}
+            ${isSowApproved ? renderStatusInfoIcon('Disetujui Asisten Bibitan', 'green') : renderStatusInfoIcon('Menunggu Persetujuan', 'amber')}
           </div>
-          ${unapprovedSows.length > 0 ? `
-            <div style="font-size: 0.75rem; color: #DC2626; display: flex; flex-direction: column; gap: 2px; margin-top: 4px;">
+          ${!isSowApproved ? `
+            <div style="font-size: 0.74rem; color: #64748B; margin-top: 3px; display: flex; flex-direction: column; gap: 4px;">
               ${unapprovedSows.map(s => `
-                <div>• <strong>${esc(s.docNo)}</strong>: Status saat ini <em>${esc(s.status || 'MENUNGGU_VERIFIKASI')}</em></div>
+                <div>
+                  <div>• <strong style="color: #334155; font-family: monospace;">${esc(s.docNo)}</strong></div>
+                  <div style="padding-left: 10px; font-size: 0.72rem; color: #92400E; font-weight: 600; margin-top: 1px;">
+                    Status saat ini: ${esc(formatDocStatus(s.status))}
+                  </div>
+                </div>
               `).join('')}
             </div>
           ` : `
-            <div style="font-size: 0.74rem; color: #64748B;">
-              Seluruh dokumen Pindah Semai telah diverifikasi dan disetujui ASB.
+            <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
+              Seluruh dokumen Pindah Semai telah diverifikasi dan disetujui Asisten Bibitan.
             </div>
           `}
         </div>
 
         <!-- 2. DOKUMEN SELEKSI DITOLAK PINDAH SEMAI (CULL) -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <span style="font-weight: 700; font-size: 0.80rem; color: #0F172A;">
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 2px;">
+            <span style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">
               Seleksi Ditolak Pindah Semai (CULL)
             </span>
-            ${(unapprovedCulls.length === 0 && pendingPool.length === 0) ? `
-              <span style="font-size: 0.70rem; font-weight: 700; background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 999px;">
-                ✓ Disetujui ASB
-              </span>
-            ` : `
-              <span style="font-size: 0.70rem; font-weight: 700; background: #FEE2E2; color: #B91C1C; padding: 2px 8px; border-radius: 999px;">
-                ⏳ Perlu Penyelesaian
-              </span>
-            `}
+            ${isCullApproved ? renderStatusInfoIcon('Disetujui Asisten Bibitan', 'green') : renderStatusInfoIcon('Perlu Penyelesaian', 'amber')}
           </div>
           ${pendingPool.length > 0 ? `
-            <div style="font-size: 0.75rem; color: #DC2626; margin-top: 4px;">
-              ⚠️ Terdapat bibit afkir Pindah Semai yang belum dideklarasikan ke Seleksi Ditolak Pindah Semai (CULL).
+            <div style="font-size: 0.73rem; color: #92400E; margin-top: 3px;">
+              Terdapat bibit afkir Pindah Semai yang belum dideklarasikan ke Seleksi Ditolak Pindah Semai.
             </div>
           ` : ''}
           ${unapprovedCulls.length > 0 ? `
-            <div style="font-size: 0.75rem; color: #DC2626; display: flex; flex-direction: column; gap: 2px; margin-top: 4px;">
+            <div style="font-size: 0.74rem; color: #64748B; margin-top: 3px; display: flex; flex-direction: column; gap: 4px;">
               ${unapprovedCulls.map(c => `
-                <div>• <strong>${esc(c.docNo || c.selectionNo || c.id)}</strong>: Status saat ini <em>${esc(c.status || 'MENUNGGU_VERIFIKASI')}</em></div>
+                <div>
+                  <div>• <strong style="color: #334155; font-family: monospace;">${esc(c.docNo || c.selectionNo || c.id)}</strong></div>
+                  <div style="padding-left: 10px; font-size: 0.72rem; color: #92400E; font-weight: 600; margin-top: 1px;">
+                    Status saat ini: ${esc(formatDocStatus(c.status))}
+                  </div>
+                </div>
               `).join('')}
             </div>
           ` : ''}
-          ${(unapprovedCulls.length === 0 && pendingPool.length === 0) ? `
-            <div style="font-size: 0.74rem; color: #64748B;">
-              Seluruh dokumen afkir telah dideklarasikan dan disetujui ASB.
+          ${isCullApproved ? `
+            <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px;">
+              Seluruh dokumen afkir telah dideklarasikan dan disetujui Asisten Bibitan.
             </div>
           ` : ''}
         </div>
-
       </div>
 
-      <!-- INSTRUKSI EDUKATIF -->
-      <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px; padding: 12px; font-size: 0.76rem; color: #1E40AF; line-height: 1.45;">
-        <div style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">
-          💡 Petunjuk Penyelesaian:
+      <!-- CARD 3: PETUNJUK PENYELESAIAN -->
+      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+        <div style="font-size: 0.70rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 5px;">
+          Petunjuk Penyelesaian
         </div>
-        <ol style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px;">
-          <li>Pastikan Mandor telah melakukan konfirmasi verifikasi pada transaksi Pindah Semai.</li>
-          <li>Asisten Bibitan (ASB) wajib menyetujui verifikasi Dokumen Pindah Semai dan Dokumen Seleksi Ditolak pada menu <strong>Verifikasi Transaksi</strong>.</li>
-          <li>Setelah disetujui ASB, total populasi bibit final akan terkunci secara sah dan transaksi Seleksi Pra-Okulasi otomatis terbuka.</li>
+        <ol style="margin: 0; padding-left: 16px; font-size: 0.75rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 3px;">
+          <li>Pastikan verifikasi transaksi Pindah Semai telah dikonfirmasi oleh Mantri Bibitan.</li>
+          <li>Selesaikan persetujuan dokumen sumber oleh Asisten Bibitan pada menu Verifikasi Transaksi.</li>
+          <li>Setelah seluruh persyaratan terpenuhi, lanjutkan proses Seleksi Pra-Okulasi sesuai alur aplikasi.</li>
         </ol>
-      </div>
-
-      <!-- BUTTON -->
-      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
-        <button type="button" class="btn-close-gate-modal" style="padding: 8px 18px; background: #0F172A; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer;">
-          Tutup
-        </button>
       </div>
 
     </div>
   `;
 
+  const footerContent = `
+    <button type="button" class="btn-close-gate-modal" style="width: 100%; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.82rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s ease;" onmouseover="this.style.background='#0D5229'" onmouseout="this.style.background='#116834'">
+      Tutup
+    </button>
+  `;
+
   openModal({
-    title: 'Peringatan: Verifikasi Belum Disetujui ASB',
-    body: bodyContent
+    title: 'Verifikasi Belum Disetujui Asisten Bibitan',
+    body: bodyContent,
+    footer: footerContent
   });
 
   const modalRoot = document.getElementById('modal-root');
@@ -1413,6 +1573,26 @@ export function showExecutionGateBlockedModal({
     modalRoot.querySelectorAll('.btn-close-gate-modal').forEach(btn => {
       btn.addEventListener('click', () => closeModal());
     });
+
+    // Toggle status tooltip on click of icon "i"
+    modalRoot.querySelectorAll('.btn-status-info').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const popup = btn.parentElement?.querySelector('.status-tooltip-popup');
+        if (!popup) return;
+        const isShown = popup.style.display === 'block';
+        modalRoot.querySelectorAll('.status-tooltip-popup').forEach(p => { p.style.display = 'none'; });
+        popup.style.display = isShown ? 'none' : 'block';
+      });
+    });
+
+    // Close open tooltip on click outside
+    const handleModalRootClick = (e) => {
+      if (!e.target.closest('.status-tooltip-container')) {
+        modalRoot.querySelectorAll('.status-tooltip-popup').forEach(p => { p.style.display = 'none'; });
+      }
+    };
+    modalRoot.addEventListener('click', handleModalRootClick);
   }
 }
 
@@ -1465,10 +1645,10 @@ export function openBedenganSourceSelectorModal({
 
   const uniqueBedList = Array.from(uniqueBedMap.values());
 
-  const stageBadgeLabel = (stage === 'SELEKSI_3' || stage === 'SELEKSI_III') 
-    ? 'Seleksi III (Pra-Okulasi)' 
-    : (stage === 'SELEKSI_2' || stage === 'SELEKSI_II') 
-      ? 'Seleksi II (Pra-Okulasi)' 
+  const stageBadgeLabel = (stage === 'SELEKSI_3' || stage === 'SELEKSI_III')
+    ? 'Seleksi III (Pra-Okulasi)'
+    : (stage === 'SELEKSI_2' || stage === 'SELEKSI_II')
+      ? 'Seleksi II (Pra-Okulasi)'
       : 'Seleksi I (Pra-Okulasi)';
 
   const totalBatchPoly = uniqueBedList.reduce((sum, b) => sum + (b.sourcePoly || 0), 0);
@@ -1524,16 +1704,16 @@ export function openBedenganSourceSelectorModal({
       <!-- BEDENGAN LIST (COMPOSITE SCOPE CARDS) -->
       <div style="display: flex; flex-direction: column; gap: 8px;">
         ${uniqueBedList.map(item => {
-          const bedBibit = (item.doc.sourceBibitQty !== undefined && item.doc.sourceBibitQty > 0) 
-            ? item.doc.sourceBibitQty 
-            : (item.sourcePoly * (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' ? 2 : 1));
+    const bedBibit = (item.doc.sourceBibitQty !== undefined && item.doc.sourceBibitQty > 0)
+      ? item.doc.sourceBibitQty
+      : (item.sourcePoly * (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' ? 2 : 1));
 
-          const bedGate = (stage === 'SELEKSI_1' || stage === 'SELEKSI_I')
-            ? canPerformPreGraftingSelection1(item.doc, item.bedCode)
-            : { canPerform: true };
-          const isBedLocked = !bedGate.canPerform;
+    const bedGate = (stage === 'SELEKSI_1' || stage === 'SELEKSI_I')
+      ? canPerformPreGraftingSelection1(item.doc, item.bedCode)
+      : { canPerform: true };
+    const isBedLocked = !bedGate.canPerform;
 
-          return `
+    return `
           <div class="item-bedengan-selector" 
                data-doc-id="${esc(item.doc.id)}" 
                data-bedengan-code="${esc(item.bedCode)}" 
@@ -1579,7 +1759,7 @@ export function openBedenganSourceSelectorModal({
             </div>
           </div>
         `;
-        }).join('')}
+  }).join('')}
       </div>
 
     </div>
@@ -1671,9 +1851,9 @@ export function handleBatchRowClick({ stage, programCode, batchCode, user, onSav
       }
       openSeleksi1ExecutionModal({ doc: targetDoc, bedenganCode: bedCode, user, onSaved });
     } else if (stage === 'SELEKSI_2' || stage === 'SELEKSI_II') {
-      openSeleksi2ExecutionModal({ doc: targetDoc, user, onSaved });
+      openSeleksi2ExecutionModal({ doc: targetDoc, bedenganCode: bedCode, user, onSaved });
     } else if (stage === 'SELEKSI_3' || stage === 'SELEKSI_III') {
-      openSeleksi3ExecutionModal({ doc: targetDoc, user, onSaved });
+      openSeleksi3ExecutionModal({ doc: targetDoc, bedenganCode: bedCode, user, onSaved });
     }
   };
 
@@ -1689,9 +1869,9 @@ export function handleBatchRowClick({ stage, programCode, batchCode, user, onSav
   });
 
   if (uniqueBedMap.size === 1) {
-    // CASE A: Exactly 1 Unique Bedengan -> auto-select Bedengan -> open execution modal directly
+    // CASE A: Exactly 1 Unique Bedengan -> open execution modal directly without auto-selecting bedengan
     const single = uniqueBedMap.values().next().value;
-    openExecution(single.doc, single.bedCode);
+    openExecution(single.doc, null);
   } else {
     // CASE B: >1 Unique Bedengans -> open modal "Pilih Bedengan Sumber"
     openBedenganSourceSelectorModal({
@@ -1700,7 +1880,7 @@ export function handleBatchRowClick({ stage, programCode, batchCode, user, onSav
       programCode,
       docs: batchDocs,
       user,
-      onSelect: (targetDoc, bedCode) => openExecution(targetDoc, bedCode)
+      onSelect: (targetDoc, bedCode) => openExecution(targetDoc, null)
     });
   }
 }
@@ -1800,9 +1980,9 @@ export function handlePascaBatchRowClick({ programCode, batchCode, user, onSaved
         </div>
         <div style="display: flex; flex-direction: column; gap: 8px;">
           ${batchItems.map(item => {
-            const bedCode = item.bedenganCode || item.bedengan || 'BED-001';
-            const qty = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
-            return `
+      const bedCode = item.bedenganCode || item.bedengan || 'BED-001';
+      const qty = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+      return `
               <div class="item-pasca-selector" 
                    data-item-id="${esc(item.id || item.docNo)}" 
                    style="background: #FFFFFF; border: 1.5px solid #E2E8F0; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s ease;"
@@ -1825,7 +2005,7 @@ export function handlePascaBatchRowClick({ programCode, batchCode, user, onSaved
                 </div>
               </div>
             `;
-          }).join('')}
+    }).join('')}
         </div>
       </div>
     `;
@@ -1869,85 +2049,85 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
       </div>
 
       ${txs.length === 0 ? renderEmptyStateCard({
-        title: 'Belum ada transaksi pelaksanaan',
-        description: `Belum ada pemeriksaan yang dicatat untuk ${stageLabel}.`
-      }) : `
+    title: 'Belum ada transaksi pelaksanaan',
+    description: `Belum ada pemeriksaan yang dicatat untuk ${stageLabel}.`
+  }) : `
         <div style="display: flex; flex-direction: column; gap: 10px;">
           ${txs.map((tx, txIdx) => {
-            const parentDoc = docs.find(d =>
-              d.id === tx.parentSelectionDocumentId ||
-              d.id === tx.selectionDocumentId ||
-              d.docNo === tx.parentSelectionDocNo ||
-              d.docNo === tx.selectionDocNo ||
-              d.docNo === tx.sourceDocNo
-            ) || {};
-            const polyChecked = tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope || tx.initialPolybagCount || 0);
-            const bibitAfkir = tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.bibitReject || tx.jumlahAfkir || 0);
+    const parentDoc = docs.find(d =>
+      d.id === tx.parentSelectionDocumentId ||
+      d.id === tx.selectionDocumentId ||
+      d.docNo === tx.parentSelectionDocNo ||
+      d.docNo === tx.selectionDocNo ||
+      d.docNo === tx.sourceDocNo
+    ) || {};
+    const polyChecked = tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope || tx.initialPolybagCount || 0);
+    const bibitAfkir = tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.bibitReject || tx.jumlahAfkir || 0);
 
-            // Reconcile Bibit Diperiksa: 1 Polybag = 2 Bibit in Seleksi I
-            const isStage1 = (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' || tx.transactionType === 'PELAKSANAAN_SELEKSI_I');
-            const expectedInspectedBibit = isStage1 ? (polyChecked * 2) : polyChecked;
+    // Reconcile Bibit Diperiksa: 1 Polybag = 2 Bibit in Seleksi I
+    const isStage1 = (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' || tx.transactionType === 'PELAKSANAAN_SELEKSI_I');
+    const expectedInspectedBibit = isStage1 ? (polyChecked * 2) : polyChecked;
 
-            let bibitAwal = tx.bibitAwal !== undefined && tx.bibitAwal !== null ? tx.bibitAwal : (tx.jumlahDiperiksa !== undefined ? tx.jumlahDiperiksa : expectedInspectedBibit);
-            // Historical fallback: guard against legacy record where bibitAwal was saved as actualBibitSelectedQty (Afkir)
-            if (bibitAwal === bibitAfkir && polyChecked > 0 && expectedInspectedBibit > bibitAfkir) {
-              bibitAwal = expectedInspectedBibit;
-            } else if (bibitAwal <= 0 && polyChecked > 0) {
-              bibitAwal = expectedInspectedBibit;
-            }
+    let bibitAwal = tx.bibitAwal !== undefined && tx.bibitAwal !== null ? tx.bibitAwal : (tx.jumlahDiperiksa !== undefined ? tx.jumlahDiperiksa : expectedInspectedBibit);
+    // Historical fallback: guard against legacy record where bibitAwal was saved as actualBibitSelectedQty (Afkir)
+    if (bibitAwal === bibitAfkir && polyChecked > 0 && expectedInspectedBibit > bibitAfkir) {
+      bibitAwal = expectedInspectedBibit;
+    } else if (bibitAwal <= 0 && polyChecked > 0) {
+      bibitAwal = expectedInspectedBibit;
+    }
 
-            // Reconcile Bibit Layak: Inspected Bibit - Afkir
-            let bibitLayak = tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan !== undefined ? tx.bibitDipertahankan : tx.jumlahLayak);
-            if (bibitLayak === undefined || bibitLayak === null || bibitLayak > bibitAwal || (bibitAwal === expectedInspectedBibit && (bibitLayak + bibitAfkir !== bibitAwal))) {
-              bibitLayak = Math.max(0, bibitAwal - bibitAfkir);
-            }
+    // Reconcile Bibit Layak: Inspected Bibit - Afkir
+    let bibitLayak = tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan !== undefined ? tx.bibitDipertahankan : tx.jumlahLayak);
+    if (bibitLayak === undefined || bibitLayak === null || bibitLayak > bibitAwal || (bibitAwal === expectedInspectedBibit && (bibitLayak + bibitAfkir !== bibitAwal))) {
+      bibitLayak = Math.max(0, bibitAwal - bibitAfkir);
+    }
 
-            const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
-            const txDate = tx.tanggalSeleksi || tx.tanggal || tx.createdAt || '-';
+    const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
+    const txDate = tx.tanggalSeleksi || tx.tanggal || tx.createdAt || '-';
 
-            const pStatus = String(parentDoc.status || '').toUpperCase();
-            const isFinal = Boolean(parentDoc.isFinal);
-            const isCompleted = Boolean(parentDoc.isCompleted);
+    const pStatus = String(parentDoc.status || '').toUpperCase();
+    const isFinal = Boolean(parentDoc.isFinal);
+    const isCompleted = Boolean(parentDoc.isCompleted);
 
-            let statusBadgeHtml = '';
-            if (pStatus === SELECTION_STATUS.DISETUJUI && isFinal) {
-              statusBadgeHtml = `
+    let statusBadgeHtml = '';
+    if (pStatus === SELECTION_STATUS.DISETUJUI && isFinal) {
+      statusBadgeHtml = `
                 <span style="font-size: 0.65rem; font-weight: 700; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 2px 6px; border-radius: 4px;">
                   Disetujui Final
                 </span>
               `;
-            } else if (
-              pStatus === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
-              pStatus === 'MENUNGGU_VERIFIKASI' ||
-              pStatus === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
-              pStatus === 'DIAJUKAN'
-            ) {
-              statusBadgeHtml = `
+    } else if (
+      pStatus === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
+      pStatus === 'MENUNGGU_VERIFIKASI' ||
+      pStatus === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' ||
+      pStatus === 'DIAJUKAN'
+    ) {
+      statusBadgeHtml = `
                 <span style="font-size: 0.65rem; font-weight: 700; color: #D97706; background: #FFFBEB; border: 1px solid #FDE68A; padding: 2px 6px; border-radius: 4px;">
                   Menunggu Asisten
                 </span>
               `;
-            } else if (pStatus === 'COMPLETED' || isCompleted) {
-              statusBadgeHtml = `
+    } else if (pStatus === 'COMPLETED' || isCompleted) {
+      statusBadgeHtml = `
                 <span style="font-size: 0.65rem; font-weight: 700; color: #2563EB; background: #EFF6FF; border: 1px solid #BFDBFE; padding: 2px 6px; border-radius: 4px;">
                   Siap Konfirmasi Mantri
                 </span>
               `;
-            } else if (pStatus === 'IN_PROGRESS' || tx.status === 'RECORDED') {
-              statusBadgeHtml = `
+    } else if (pStatus === 'IN_PROGRESS' || tx.status === 'RECORDED') {
+      statusBadgeHtml = `
                 <span style="font-size: 0.65rem; font-weight: 700; color: #475569; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 6px; border-radius: 4px;">
                   Tercatat Parsial
                 </span>
               `;
-            } else {
-              statusBadgeHtml = `
+    } else {
+      statusBadgeHtml = `
                 <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px;">
                   Tercatat
                 </span>
               `;
-            }
+    }
 
-            return `
+    return `
               <div class="card-child-tx" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
                 
                 <div class="btn-toggle-child-tx" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; cursor: pointer; user-select: none;">
@@ -2002,7 +2182,7 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
 
               </div>
             `;
-          }).join('')}
+  }).join('')}
         </div>
       `}
     </div>
@@ -2143,20 +2323,20 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
 
         <div style="display: flex; flex-direction: column; gap: 10px;">
           ${returnedItems.map((item, idx) => {
-            const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
-            const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN' || isDederanStage;
-            const unit = isDederan ? 'Butir' : 'Pkk';
-            const prog = item.programCode || item.programName || item.program || '-';
-            const batch = isDederan ? null : (item.batchCode || item.batchNo || null);
-            const bedDisplay = formatBedenganDisplayCode(item);
-            const sourceDoc = item.sourceDocNo || item.dederanDocNo || item.seedingDocNo || item.buddingDocNo || item.sourceTransactionId || '-';
-            const displayDocNo = item.docNo || standardizeSelectionDocNo(item.docNo, idx + 1);
-            const rawItemDate = item.tanggalAfkir || item.tanggalSeleksi || item.tanggal || item.createdAt || today;
-            const itemDate = normalizeDateStr(rawItemDate) || formatDate(rawItemDate) || rawItemDate;
-            const returnNote = item.returnReason || item.lastReturnReason || 'Perlu perbaikan data.';
-            const klonDisplay = item.clone || item.klon || null;
+    const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+    const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN' || isDederanStage;
+    const unit = isDederan ? 'Butir' : 'Pkk';
+    const prog = item.programCode || item.programName || item.program || '-';
+    const batch = isDederan ? null : (item.batchCode || item.batchNo || null);
+    const bedDisplay = formatBedenganDisplayCode(item);
+    const sourceDoc = item.sourceDocNo || item.dederanDocNo || item.seedingDocNo || item.buddingDocNo || item.sourceTransactionId || '-';
+    const displayDocNo = item.docNo || standardizeSelectionDocNo(item.docNo, idx + 1);
+    const rawItemDate = item.tanggalAfkir || item.tanggalSeleksi || item.tanggal || item.createdAt || today;
+    const itemDate = normalizeDateStr(rawItemDate) || formatDate(rawItemDate) || rawItemDate;
+    const returnNote = item.returnReason || item.lastReturnReason || 'Perlu perbaikan data.';
+    const klonDisplay = item.clone || item.klon || null;
 
-            return `
+    return `
               <div class="card-summary-wrapper card-returned-selection-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative; display: flex; flex-direction: column; gap: 10px;">
                 
                 <!-- BARIS 1: IDENTITAS DOKUMEN & BADGE DIKEMBALIKAN -->
@@ -2234,7 +2414,7 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
 
               </div>
             `;
-          }).join('')}
+  }).join('')}
         </div>
       </div>
     ` : ''}
@@ -2245,26 +2425,26 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
     </div>
 
     ${pendingPoolItems.length === 0 && returnedItems.length === 0 ? renderEmptyStateCard({
-      title: emptyTitle,
-      description: emptyDesc
-    }) : pendingPoolItems.length === 0 ? `
+    title: emptyTitle,
+    description: emptyDesc
+  }) : pendingPoolItems.length === 0 ? `
       <div style="background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 8px; padding: 14px; text-align: center; color: #64748B; font-size: 0.76rem; margin-bottom: 16px;">
         Semua data bibit afkir telah dideklarasikan atau sedang dalam proses perbaikan.
       </div>
     ` : `
       <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
         ${pendingPoolItems.map(item => {
-          const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
-          const unit = item.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
-          const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN';
-          const prog = item.programCode || item.programName || item.program || '-';
-          const batch = isDederan ? null : (item.batchCode || item.batchNo || null);
-          const bedDisplay = formatBedenganDisplayCode(item);
-          const sourceDoc = item.sourceDocNo || item.dederanDocNo || item.seedingDocNo || item.buddingDocNo || item.docNo || '-';
-          const rawItemDate = item.tanggalAfkir || item.tanggal || item.createdAt || today;
-          const itemDate = normalizeDateStr(rawItemDate) || formatDate(rawItemDate) || rawItemDate;
+    const qtyAfkir = parseInt(item.jumlahAfkir || item.quantity || 0, 10);
+    const unit = item.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
+    const isDederan = item.originType === 'REJECT_DEDERAN' || item.sourceModule === 'DEDERAN';
+    const prog = item.programCode || item.programName || item.program || '-';
+    const batch = isDederan ? null : (item.batchCode || item.batchNo || null);
+    const bedDisplay = formatBedenganDisplayCode(item);
+    const sourceDoc = item.sourceDocNo || item.dederanDocNo || item.seedingDocNo || item.buddingDocNo || item.docNo || '-';
+    const rawItemDate = item.tanggalAfkir || item.tanggal || item.createdAt || today;
+    const itemDate = normalizeDateStr(rawItemDate) || formatDate(rawItemDate) || rawItemDate;
 
-          return `
+    return `
             <div class="card-pool-item" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 6px;">
               
               <!-- TOP ROW: TITLE & QTY -->
@@ -2305,7 +2485,7 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
 
             </div>
           `;
-        }).join('')}
+  }).join('')}
       </div>
     `}
 
@@ -2330,43 +2510,43 @@ export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, t
       </div>
 
       ${culledTxs.length === 0 ? renderEmptyStateCard({
-        title: emptyTitle,
-        description: emptyDesc
-      }) : `
+    title: emptyTitle,
+    description: emptyDesc
+  }) : `
         <div style="display: flex; flex-direction: column; gap: 8px;">
           ${culledTxs.map(tx => {
-            const qty = parseInt(tx.jumlahAfkir || tx.quantity || 0, 10);
-            const unit = tx.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
-            const rawTxDate = tx.tanggalSeleksi || tx.tanggal || tx.createdAt || today;
-            const txDate = normalizeDateStr(rawTxDate) || formatDate(rawTxDate) || rawTxDate;
-            const bedDisplay = formatBedenganDisplayCode(tx);
+    const qty = parseInt(tx.jumlahAfkir || tx.quantity || 0, 10);
+    const unit = tx.originType === 'REJECT_DEDERAN' ? 'Butir' : 'Pkk';
+    const rawTxDate = tx.tanggalSeleksi || tx.tanggal || tx.createdAt || today;
+    const txDate = normalizeDateStr(rawTxDate) || formatDate(rawTxDate) || rawTxDate;
+    const bedDisplay = formatBedenganDisplayCode(tx);
 
-            let badgeText = '';
-            let badgeBg = '#F0FDF4';
-            let badgeColor = '#15803D';
-            let badgeBorder = '#BBF7D0';
-            let dotKey = 'SELECTION_WAIT_ASB';
-            let dotLabel = 'Menunggu';
+    let badgeText = '';
+    let badgeBg = '#F0FDF4';
+    let badgeColor = '#15803D';
+    let badgeBorder = '#BBF7D0';
+    let dotKey = 'SELECTION_WAIT_ASB';
+    let dotLabel = 'Menunggu';
 
-            if (tx.status === SELECTION_STATUS.DISETUJUI || tx.verificationStatus === 'TERVERIFIKASI' || tx.verificationStatus === 'DATA_TERKONFIRMASI') {
-              dotKey = 'SELECTION_APPROVED';
-              dotLabel = 'Disetujui';
-            } else if (tx.status === SELECTION_STATUS.DIKEMBALIKAN || tx.status === 'REVISION') {
-              badgeText = 'Dikembalikan';
-              badgeBg = '#FEF2F2';
-              badgeColor = '#DC2626';
-              badgeBorder = '#FECACA';
-              dotKey = 'SELECTION_REJECTED';
-              dotLabel = 'Dikembalikan';
-            } else if (tx.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || tx.submissionStatus === 'SUBMITTED_TO_ASB') {
-              dotKey = 'SELECTION_WAIT_ASB';
-              dotLabel = 'Menunggu';
-            } else if (tx.status === SELECTION_STATUS.READY_TO_CONFIRM) {
-              dotKey = 'SELECTION_WAIT_ASB';
-              dotLabel = 'Siap Konfirmasi';
-            }
+    if (tx.status === SELECTION_STATUS.DISETUJUI || tx.verificationStatus === 'TERVERIFIKASI' || tx.verificationStatus === 'DATA_TERKONFIRMASI') {
+      dotKey = 'SELECTION_APPROVED';
+      dotLabel = 'Disetujui';
+    } else if (tx.status === SELECTION_STATUS.DIKEMBALIKAN || tx.status === 'REVISION') {
+      badgeText = 'Dikembalikan';
+      badgeBg = '#FEF2F2';
+      badgeColor = '#DC2626';
+      badgeBorder = '#FECACA';
+      dotKey = 'SELECTION_REJECTED';
+      dotLabel = 'Dikembalikan';
+    } else if (tx.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || tx.submissionStatus === 'SUBMITTED_TO_ASB') {
+      dotKey = 'SELECTION_WAIT_ASB';
+      dotLabel = 'Menunggu';
+    } else if (tx.status === SELECTION_STATUS.READY_TO_CONFIRM) {
+      dotKey = 'SELECTION_WAIT_ASB';
+      dotLabel = 'Siap Konfirmasi';
+    }
 
-            return `
+    return `
               <div class="card-culled-tx" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                   <div style="display: flex; align-items: center; gap: 6px;">
@@ -2391,7 +2571,7 @@ export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, t
                 </div>
               </div>
             `;
-          }).join('')}
+  }).join('')}
         </div>
       `}
     </div>
@@ -2500,6 +2680,34 @@ function renderMantriSelectionLanding(app, user) {
   const seleksi3ProgGroups = groupPreGraftingDocsByProgram(seleksi3Docs);
   const postGraftingProgGroups = groupPostGraftingDocsByProgram(postGraftingSelectionPool);
 
+  const activePreGraftingDocs = activePreGraftingTab === 'SELEKSI_2'
+    ? seleksi2Docs
+    : activePreGraftingTab === 'SELEKSI_3'
+      ? seleksi3Docs
+      : seleksi1Docs;
+
+  const availableProgramsSet = new Set();
+  activePreGraftingDocs.forEach(d => {
+    const p = d.programCode || d.programId || d.programName;
+    if (p) availableProgramsSet.add(p);
+  });
+  if (availableProgramsSet.size === 0) {
+    availableProgramsSet.add('2026/TB/RNUR/001');
+  }
+  const allAvailablePrograms = Array.from(availableProgramsSet);
+  if (!activeFilterProgram || (activeFilterProgram !== 'ALL' && !allAvailablePrograms.includes(activeFilterProgram))) {
+    activeFilterProgram = allAvailablePrograms[0];
+  }
+
+  const filterGroupsByProgram = (groups) => {
+    if (!activeFilterProgram || activeFilterProgram === 'ALL') return groups;
+    return groups.filter(g => g.programCode === activeFilterProgram);
+  };
+
+  const displaySeleksi1ProgGroups = filterGroupsByProgram(seleksi1ProgGroups);
+  const displaySeleksi2ProgGroups = filterGroupsByProgram(seleksi2ProgGroups);
+  const displaySeleksi3ProgGroups = filterGroupsByProgram(seleksi3ProgGroups);
+
   // Child Transactions per Stage
   // Seleksi I/II/III execution transactions diambil dari scopedAllTxs (bukan scopedCulledTxs)
   // karena execution tx inherently punya selectionDocumentId dan selectionType PRA_OKULASI
@@ -2573,30 +2781,32 @@ function renderMantriSelectionLanding(app, user) {
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 0 6px; letter-spacing: -0.01em;">Penyeleksian Bibitan</h1>
+          <div>
+            <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 0 6px; letter-spacing: -0.01em;">Penyeleksian Bibitan</h1>
+          </div>
         </div>
         <div>
           ${renderCalendarHeaderButton('btn-open-date-filter', selectedSelectionDate)}
         </div>
       </header>
 
-      <!-- TAB NAVIGATION MANTRI: PRA-SEMAI (DEDERAN) vs DITOLAK PINDAH SEMAI vs PRA-OKULASI vs PASCA-OKULASI -->
-      <div class="no-scrollbar" style="display: flex; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 16px; gap: 14px; overflow-x: auto; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none;">
-        <button id="tab-mantri-pre-sowing" type="button" style="padding: 12px 2px; font-size: 0.80rem; font-weight: ${activeMantriTab === 'PRE_SOWING' ? '700' : '600'}; color: ${activeMantriTab === 'PRE_SOWING' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeMantriTab === 'PRE_SOWING' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
-          <span>Seleksi Pra-Semai (Dederan)</span>
-          ${preSowingSelectionPool.length > 0 ? `<span style="background: #DC2626; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${preSowingSelectionPool.length}</span>` : ''}
+      <!-- TAB NAVIGATION MANTRI (4 TABS): DEDERAN, PINDAH SEMAI, SELEKSI PRA-OKULASI, SELEKSI PASCA-OKULASI -->
+      <div class="no-scrollbar" style="display: flex; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 12px; gap: 14px; overflow-x: auto; flex-shrink: 0; scrollbar-width: none; -ms-overflow-style: none;">
+        <button id="tab-mantri-pre-sowing" type="button" style="padding: 10px 4px; font-size: 0.78rem; font-weight: ${activeMantriTab === 'PRE_SOWING' ? '700' : '600'}; color: ${activeMantriTab === 'PRE_SOWING' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeMantriTab === 'PRE_SOWING' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+          <span>Dederan</span>
+          ${preSowingSelectionPool.length > 0 ? `<span style="background: #DC2626; color: #FFFFFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${preSowingSelectionPool.length}</span>` : ''}
         </button>
-        <button id="tab-mantri-pindah-semai-reject" type="button" style="padding: 12px 2px; font-size: 0.80rem; font-weight: ${activeMantriTab === 'PINDAH_SEMAI_REJECT' ? '700' : '600'}; color: ${activeMantriTab === 'PINDAH_SEMAI_REJECT' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeMantriTab === 'PINDAH_SEMAI_REJECT' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
-          <span>Seleksi Ditolak Pindah Semai</span>
-          ${pindahSemaiSelectionPool.length > 0 ? `<span style="background: #DC2626; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${pindahSemaiSelectionPool.length}</span>` : ''}
+        <button id="tab-mantri-pindah-semai-reject" type="button" style="padding: 10px 4px; font-size: 0.78rem; font-weight: ${activeMantriTab === 'PINDAH_SEMAI_REJECT' ? '700' : '600'}; color: ${activeMantriTab === 'PINDAH_SEMAI_REJECT' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeMantriTab === 'PINDAH_SEMAI_REJECT' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+          <span>Pindah Semai</span>
+          ${pindahSemaiSelectionPool.length > 0 ? `<span style="background: #DC2626; color: #FFFFFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${pindahSemaiSelectionPool.length}</span>` : ''}
         </button>
-        <button id="tab-mantri-pre-grafting" type="button" style="padding: 12px 2px; font-size: 0.80rem; font-weight: ${activeMantriTab === 'PRE_GRAFTING' ? '700' : '600'}; color: ${activeMantriTab === 'PRE_GRAFTING' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeMantriTab === 'PRE_GRAFTING' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+        <button id="tab-mantri-pre-grafting" type="button" style="padding: 10px 4px; font-size: 0.78rem; font-weight: ${activeMantriTab === 'PRE_GRAFTING' ? '700' : '600'}; color: ${activeMantriTab === 'PRE_GRAFTING' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeMantriTab === 'PRE_GRAFTING' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
           <span>Seleksi Pra-Okulasi</span>
-          ${preGraftingDocs.length > 0 ? `<span style="background: #116834; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${preGraftingDocs.length}</span>` : ''}
+          ${preGraftingDocs.length > 0 ? `<span style="background: #116834; color: #FFFFFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${preGraftingDocs.length}</span>` : ''}
         </button>
-        <button id="tab-mantri-post-grafting" type="button" style="padding: 12px 2px; font-size: 0.80rem; font-weight: ${activeMantriTab === 'POST_GRAFTING' ? '700' : '600'}; color: ${activeMantriTab === 'POST_GRAFTING' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeMantriTab === 'POST_GRAFTING' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+        <button id="tab-mantri-post-grafting" type="button" style="padding: 10px 4px; font-size: 0.78rem; font-weight: ${activeMantriTab === 'POST_GRAFTING' ? '700' : '600'}; color: ${activeMantriTab === 'POST_GRAFTING' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeMantriTab === 'POST_GRAFTING' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
           <span>Seleksi Pasca-Okulasi</span>
-          ${postGraftingSelectionPool.length > 0 ? `<span style="background: #64748B; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${postGraftingSelectionPool.length}</span>` : ''}
+          ${postGraftingSelectionPool.length > 0 ? `<span style="background: #64748B; color: #FFFFFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${postGraftingSelectionPool.length}</span>` : ''}
         </button>
       </div>
 
@@ -2605,65 +2815,110 @@ function renderMantriSelectionLanding(app, user) {
         
         ${activeMantriTab === 'PRE_GRAFTING' ? `
           <!-- SUB-TAB SELEKSI PRA-OKULASI: SELEKSI I vs SELEKSI II vs SELEKSI III -->
-          <div style="display: flex; background: #F1F5F9; border-radius: 8px; padding: 4px; margin-bottom: 14px; gap: 4px;">
-            <button id="subtab-seleksi-1" type="button" style="flex: 1; padding: 8px 4px; font-size: 0.78rem; font-weight: ${activePreGraftingTab === 'SELEKSI_1' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_1' ? '#FFFFFF' : 'transparent'}; border: none; border-radius: 6px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_1' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'}; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <div style="display: flex; background: #F1F5F9; border-radius: 999px; padding: 3px; margin-bottom: 12px; gap: 3px;">
+            <button id="subtab-seleksi-1" type="button" style="flex: 1; min-width: 0; padding: 5px 6px; font-size: 0.74rem; font-weight: ${activePreGraftingTab === 'SELEKSI_1' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_1' ? '#FFFFFF' : 'transparent'}; border: 1px solid ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : 'transparent'}; border-radius: 999px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_1' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'}; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; transition: all 0.15s ease;">
               <span>Seleksi I</span>
-              <span style="background: ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : '#94A3B8'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${seleksi1Docs.length}</span>
+              <span style="background: ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : '#94A3B8'}; color: #FFF; font-size: 0.62rem; font-weight: 700; padding: 1px 5px; border-radius: 999px; line-height: 1; min-width: 14px; text-align: center;">${seleksi1Docs.length}</span>
             </button>
-            <button id="subtab-seleksi-2" type="button" style="flex: 1; padding: 8px 4px; font-size: 0.78rem; font-weight: ${activePreGraftingTab === 'SELEKSI_2' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_2' ? '#FFFFFF' : 'transparent'}; border: none; border-radius: 6px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_2' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'}; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <button id="subtab-seleksi-2" type="button" style="flex: 1; min-width: 0; padding: 5px 6px; font-size: 0.74rem; font-weight: ${activePreGraftingTab === 'SELEKSI_2' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_2' ? '#FFFFFF' : 'transparent'}; border: 1px solid ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : 'transparent'}; border-radius: 999px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_2' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'}; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; transition: all 0.15s ease;">
               <span>Seleksi II</span>
-              <span style="background: ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : '#94A3B8'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${seleksi2Docs.length}</span>
+              <span style="background: ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : '#94A3B8'}; color: #FFF; font-size: 0.62rem; font-weight: 700; padding: 1px 5px; border-radius: 999px; line-height: 1; min-width: 14px; text-align: center;">${seleksi2Docs.length}</span>
             </button>
-            <button id="subtab-seleksi-3" type="button" style="flex: 1; padding: 8px 4px; font-size: 0.78rem; font-weight: ${activePreGraftingTab === 'SELEKSI_3' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_3' ? '#FFFFFF' : 'transparent'}; border: none; border-radius: 6px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_3' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'}; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <button id="subtab-seleksi-3" type="button" style="flex: 1; min-width: 0; padding: 5px 6px; font-size: 0.74rem; font-weight: ${activePreGraftingTab === 'SELEKSI_3' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_3' ? '#FFFFFF' : 'transparent'}; border: 1px solid ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : 'transparent'}; border-radius: 999px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_3' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'}; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; transition: all 0.15s ease;">
               <span>Seleksi III</span>
-              <span style="background: ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : '#94A3B8'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${seleksi3Docs.length}</span>
+              <span style="background: ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : '#94A3B8'}; color: #FFF; font-size: 0.62rem; font-weight: 700; padding: 1px 5px; border-radius: 999px; line-height: 1; min-width: 14px; text-align: center;">${seleksi3Docs.length}</span>
+            </button>
+          </div>
+
+          <!-- CONTROLS: PROGRAM PEMBIBITAN SELECTOR & SEARCH/FILTER BAR -->
+          <div style="margin-bottom: 10px;">
+            <label style="display: block; font-size: 0.72rem; font-weight: 600; color: #64748B; margin-bottom: 4px;">
+              Program Pembibitan
+            </label>
+            <div style="position: relative;">
+              <select id="select-filter-program" style="width: 100%; box-sizing: border-box; height: 38px; padding: 0 32px 0 12px; font-size: 0.78rem; font-weight: 600; color: #1E293B; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; cursor: pointer; outline: none; appearance: none; -webkit-appearance: none;">
+                ${allAvailablePrograms.map(p => `
+                  <option value="${esc(p)}" ${activeFilterProgram === p ? 'selected' : ''}>${esc(p)}</option>
+                `).join('')}
+                ${allAvailablePrograms.length > 1 ? `<option value="ALL" ${activeFilterProgram === 'ALL' ? 'selected' : ''}>Semua Program</option>` : ''}
+              </select>
+              <div style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748B;">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEARCH & QUICK FILTER ACTIONS -->
+          <div style="display: flex; gap: 6px; margin-bottom: 12px; align-items: center;">
+            <div style="flex: 1; min-width: 0; position: relative;">
+              <div style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #94A3B8;">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </div>
+              <input id="input-search-selection" type="text" placeholder="Cari kode batch atau lokasi bedengan" style="width: 100%; box-sizing: border-box; height: 36px; padding: 0 10px 0 30px; font-size: 0.74rem; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; color: #0F172A; outline: none;">
+            </div>
+            <button id="btn-filter-selection" type="button" style="height: 36px; padding: 0 9px; font-size: 0.72rem; font-weight: 600; color: #475569; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
+              <span>Filter</span>
+              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <button id="btn-sort-selection" type="button" style="height: 36px; padding: 0 9px; font-size: 0.72rem; font-weight: 600; color: #475569; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0;">
+              <span>Urutkan</span>
+              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
             </button>
           </div>
 
           ${activePreGraftingTab === 'SELEKSI_1' ? `
-            <!-- VIEW 1: SELEKSI I PRA-OKULASI (COMPACT PROGRAM/BATCH VIEW) -->
-            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-              <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">Dokumen Seleksi I (Pra-Okulasi) (${seleksi1Docs.length})</h2>
+            <!-- VIEW 1: SELEKSI I PRA-OKULASI (CARD DOKUMEN BATCH) -->
+            <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+              <h2 style="font-size: 0.84rem; font-weight: 700; color: #0F172A; margin: 0; letter-spacing: -0.01em;">Dokumen Seleksi I (Pra-Okulasi) (${seleksi1Docs.length})</h2>
             </div>
 
             ${renderProgramBatchCompactView({
-              programGroups: seleksi1ProgGroups,
-              stage: 'SELEKSI_1',
-              emptyTitle: 'Belum Ada Dokumen Seleksi I',
-              emptyDesc: 'Dokumen seleksi pra-okulasi otomatis dibentuk saat transaksi Penyemaian dicatat.'
-            })}
+    programGroups: displaySeleksi1ProgGroups,
+    stage: 'SELEKSI_1',
+    emptyTitle: 'Belum Ada Dokumen Seleksi I',
+    emptyDesc: 'Dokumen seleksi pra-okulasi otomatis dibentuk saat transaksi Penyemaian dicatat.'
+  })}
 
             <!-- SUMMARY TRANSAKSI PELAKSANAAN SELEKSI I -->
             ${renderGlobalChildTransactionsSection(filteredSeleksi1Txs, seleksi1Docs, 'SELEKSI_1', user)}
 
           ` : activePreGraftingTab === 'SELEKSI_2' ? `
-            <!-- VIEW 2: SELEKSI II PRA-OKULASI (COMPACT PROGRAM/BATCH VIEW) -->
-            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-              <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">Dokumen Seleksi II (Pra-Okulasi) (${seleksi2Docs.length})</h2>
+            <!-- VIEW 2: SELEKSI II PRA-OKULASI (CARD DOKUMEN BATCH) -->
+            <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+              <h2 style="font-size: 0.84rem; font-weight: 700; color: #0F172A; margin: 0; letter-spacing: -0.01em;">Dokumen Seleksi II (Pra-Okulasi) (${seleksi2Docs.length})</h2>
             </div>
 
             ${renderProgramBatchCompactView({
-              programGroups: seleksi2ProgGroups,
-              stage: 'SELEKSI_2',
-              emptyTitle: 'Belum Ada Dokumen Seleksi II',
-              emptyDesc: 'Dokumen Seleksi II akan dibuat setelah Dokumen Seleksi I berstatus FINAL disetujui oleh Asisten Bibitan.'
-            })}
+    programGroups: displaySeleksi2ProgGroups,
+    stage: 'SELEKSI_2',
+    emptyTitle: 'Belum Ada Dokumen Seleksi II',
+    emptyDesc: 'Dokumen Seleksi II akan dibuat setelah Dokumen Seleksi I berstatus FINAL disetujui oleh Asisten Bibitan.'
+  })}
 
             <!-- SUMMARY TRANSAKSI PELAKSANAAN SELEKSI II -->
             ${renderGlobalChildTransactionsSection(filteredSeleksi2Txs, seleksi2Docs, 'SELEKSI_2', user)}
 
           ` : `
-            <!-- VIEW 3: SELEKSI III PRA-OKULASI (COMPACT PROGRAM/BATCH VIEW) -->
-            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-              <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">Dokumen Seleksi III (Pra-Okulasi) (${seleksi3Docs.length})</h2>
+            <!-- VIEW 3: SELEKSI III PRA-OKULASI (CARD DOKUMEN BATCH) -->
+            <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+              <h2 style="font-size: 0.84rem; font-weight: 700; color: #0F172A; margin: 0; letter-spacing: -0.01em;">Dokumen Seleksi III (Pra-Okulasi) (${seleksi3Docs.length})</h2>
             </div>
 
             ${renderProgramBatchCompactView({
-              programGroups: seleksi3ProgGroups,
-              stage: 'SELEKSI_3',
-              emptyTitle: 'Belum Ada Dokumen Seleksi III',
-              emptyDesc: 'Dokumen Seleksi III akan dibuat setelah Dokumen Seleksi II berstatus FINAL disetujui oleh Asisten Bibitan.'
-            })}
+    programGroups: displaySeleksi3ProgGroups,
+    stage: 'SELEKSI_3',
+    emptyTitle: 'Belum Ada Dokumen Seleksi III',
+    emptyDesc: 'Dokumen Seleksi III akan dibuat setelah Dokumen Seleksi II berstatus FINAL disetujui oleh Asisten Bibitan.'
+  })}
 
             <!-- SUMMARY TRANSAKSI PELAKSANAAN SELEKSI III -->
             ${renderGlobalChildTransactionsSection(filteredSeleksi3Txs, seleksi3Docs, 'SELEKSI_3', user)}
@@ -2682,12 +2937,12 @@ function renderMantriSelectionLanding(app, user) {
           </div>
 
           ${renderProgramBatchCompactView({
-            programGroups: postGraftingProgGroups,
-            stage: 'POST_GRAFTING',
-            emptyTitle: 'Belum Ada Data Afkir Pasca-Okulasi',
-            emptyDesc: 'Data bibit afkir akan muncul saat terdapat bibit yang ditolak pada transaksi Okulasi, Pemeriksaan Okulasi, atau Okulasi Janda.',
-            isPasca: true
-          })}
+    programGroups: postGraftingProgGroups,
+    stage: 'POST_GRAFTING',
+    emptyTitle: 'Belum Ada Data Afkir Pasca-Okulasi',
+    emptyDesc: 'Data bibit afkir akan muncul saat terdapat bibit yang ditolak pada transaksi Okulasi, Pemeriksaan Okulasi, atau Okulasi Janda.',
+    isPasca: true
+  })}
 
           <!-- RIWAYAT DEKLARASI PASCA-OKULASI -->
           ${renderCulledHistoryList(filteredPostGraftingCulledTxs, 'Belum ada riwayat seleksi pasca-okulasi', 'Riwayat deklarasi seleksi pasca-okulasi akan tercatat di sini.', 'Riwayat Deklarasi Pasca-Okulasi', today)}
@@ -2739,6 +2994,30 @@ function renderMantriSelectionLanding(app, user) {
     activePreGraftingTab = 'SELEKSI_3';
     renderMantriSelectionLanding(app, user);
   });
+
+  // Program dropdown filter change
+  app.querySelector('#select-filter-program')?.addEventListener('change', (e) => {
+    activeFilterProgram = e.target.value;
+    renderMantriSelectionLanding(app, user);
+  });
+
+  // Client-side quick search filtering
+  const searchInput = app.querySelector('#input-search-selection');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      app.querySelectorAll('.card-batch-document').forEach(card => {
+        const batchCode = (card.dataset.batchCode || '').toLowerCase();
+        const progCode = (card.dataset.programCode || '').toLowerCase();
+        const text = card.textContent.toLowerCase();
+        if (!q || batchCode.includes(q) || progCode.includes(q) || text.includes(q)) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    });
+  }
 
   // Batch row click for Seleksi I, II, III
   app.querySelectorAll('.row-batch-clickable').forEach(row => {
@@ -2889,6 +3168,23 @@ function renderMantriSelectionLanding(app, user) {
       const targetCullItem = scopedPool.find(s => (s.id && String(s.id) === String(cullId)) || (s.docNo && String(s.docNo) === String(cullId))) ||
         scopedAllTxs.find(s => (s.id && String(s.id) === String(cullId)) || (s.docNo && String(s.docNo) === String(cullId)) || (s.selectionNo && String(s.selectionNo) === String(cullId)));
       if (!targetCullItem) return;
+
+      // Reconcile kuantitas afkir dengan dokumen sumber terbaru jika sumbernya adalah Penyemaian
+      if (targetCullItem.sourceModule === 'PENYEMAIAN' || targetCullItem.originType === 'REJECT_PENYEMAIAN') {
+        const sDoc = targetCullItem.sourceDocNo || targetCullItem.seedingDocNo;
+        if (sDoc) {
+          const allSows = storage.get('seeding_transactions', []);
+          const sow = allSows.find(s => (s.docNo && s.docNo === sDoc) || s.id === sDoc);
+          if (sow && (sow.ditolak !== undefined || sow.jumlahDitolak !== undefined)) {
+            const latestDitolak = parseInt(sow.ditolak !== undefined ? sow.ditolak : sow.jumlahDitolak, 10);
+            if (!isNaN(latestDitolak) && latestDitolak > 0) {
+              targetCullItem.jumlahAfkir = latestDitolak;
+              targetCullItem.quantity = latestDitolak;
+              targetCullItem.jumlahDiperiksa = latestDitolak;
+            }
+          }
+        }
+      }
 
       const displayDocNo = targetCullItem.docNo || standardizeSelectionDocNo(targetCullItem.docNo, 1);
 
@@ -3132,7 +3428,7 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
   const overlayEl = document.createElement('div');
   overlayEl.id = 'selection-camera-overlay';
   overlayEl.className = 'page camera-page';
-  overlayEl.style.cssText = 'position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #000000; z-index: 9999; display: flex; flex-direction: column; overflow: hidden;';
+  overlayEl.style.cssText = 'position: absolute; inset: 0; width: 100%; height: 100%; background: #000000; z-index: 1000; display: flex; flex-direction: column; overflow: hidden; border-radius: inherit;';
 
   overlayEl.innerHTML = `
     <!-- Topbar -->
@@ -3174,8 +3470,8 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
     </footer>
   `;
 
-  const appEl = document.getElementById('app') || document.body;
-  appEl.appendChild(overlayEl);
+  const containerEl = document.getElementById('device-screen') || document.getElementById('app') || document.body;
+  containerEl.appendChild(overlayEl);
 
   const videoEl = overlayEl.querySelector('#camera-video-stream');
   const canvasEl = overlayEl.querySelector('#camera-snapshot-canvas');
@@ -3323,6 +3619,301 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
       onCaptureCancel();
     }
   });
+}
+
+/**
+ * =============================================================================
+ * MODAL KAMERA PELAKSANAAN SELEKSI I/II/III DENGAN WATERMARK GPS REAL-TIME
+ * Wajib 1 foto per transaksi bedengan, tidak menerima foto simulasi / dummy.
+ * =============================================================================
+ */
+export function openExecutionCameraModal({ batchCode, bedenganCode, stageLabel = 'Pelaksanaan Seleksi', onCaptureSuccess, onCancel }) {
+  let currentStream = null;
+  let isCameraReady = false;
+  let capturedLat = null;
+  let capturedLon = null;
+  let gpsAccuracy = null;
+
+  // Hapus overlay lama jika ada
+  const existingOverlay = document.getElementById('execution-camera-overlay');
+  if (existingOverlay) existingOverlay.remove();
+
+  const overlayEl = document.createElement('div');
+  overlayEl.id = 'execution-camera-overlay';
+  overlayEl.className = 'page camera-page';
+  overlayEl.style.cssText = 'position: absolute; inset: 0; width: 100%; height: 100%; background: #000000; z-index: 1000; display: flex; flex-direction: column; overflow: hidden; border-radius: inherit;';
+
+  overlayEl.innerHTML = `
+    <!-- Topbar -->
+    <header style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; position: absolute; top: 0; left: 0; right: 0; z-index: 30; background: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent);">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <button id="btn-exec-cam-back" type="button" aria-label="Kembali" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; width: 38px; height: 38px; display: flex; justify-content: center; align-items: center; cursor: pointer;">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </button>
+        <div>
+          <div style="color: #FFFFFF; font-size: 0.84rem; font-weight: 700; line-height: 1.2;">Foto Bukti ${stageLabel}</div>
+          <div style="color: #CBD5E1; font-size: 0.70rem; line-height: 1.2;">Batch: ${batchCode || '-'} • Bedengan: ${bedenganCode || '-'}</div>
+        </div>
+      </div>
+      
+      <!-- GPS Status Pill -->
+      <div id="exec-cam-gps-badge" style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px; font-size: 0.68rem; font-weight: 600; background: rgba(245, 158, 11, 0.25); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.4); max-width: 50%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+        <span>📡</span>
+        <span id="exec-cam-gps-text">Mengambil GPS...</span>
+      </div>
+    </header>
+
+    <!-- Video Feed & Framing -->
+    <main style="flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; position: relative;">
+      <video id="exec-camera-video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+      <canvas id="exec-camera-canvas" style="display: none;"></canvas>
+
+      <!-- Panel Kamera Error / Ditolak -->
+      <div id="exec-camera-error-panel" style="display: none; position: absolute; inset: 0; background: #0F172A; color: #FFFFFF; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 24px; z-index: 25;">
+        <svg viewBox="0 0 24 24" width="48" height="48" stroke="#EF4444" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px;">
+          <line x1="1" y1="1" x2="23" y2="23"></line>
+          <path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+        <div style="font-weight: 700; font-size: 1.05rem; margin-bottom: 6px;">Kamera Tidak Dapat Diakses</div>
+        <div id="exec-camera-error-msg" style="font-size: 0.78rem; color: #94A3B8; max-width: 320px; margin-bottom: 16px; line-height: 1.4;">
+          Akses kamera diperlukan untuk mengambil foto bukti lapangan. Pastikan browser memiliki izin mengakses kamera.
+        </div>
+        <button id="btn-exec-cam-retry" type="button" style="background: #116834; color: #FFFFFF; border: none; border-radius: 6px; padding: 8px 18px; font-size: 0.78rem; font-weight: 600; cursor: pointer;">
+          Coba Buka Kamera Lagi
+        </button>
+      </div>
+
+      <!-- Framing Guide -->
+      <div style="position: absolute; width: 85%; height: 65%; border: 2px dashed rgba(255,255,255,0.45); border-radius: 12px; pointer-events: none;"></div>
+    </main>
+
+    <!-- Bottom Bar (Tombol Rana) -->
+    <footer style="padding: 20px 16px 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: absolute; bottom: 0; left: 0; right: 0; z-index: 30; background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);">
+      <button id="btn-exec-cam-shutter" type="button" aria-label="Ambil Foto" disabled style="width: 68px; height: 68px; border-radius: 50%; background: transparent; border: 4px solid #ffffff; display: flex; justify-content: center; align-items: center; cursor: not-allowed; opacity: 0.4; transition: opacity 0.2s ease, transform 0.1s ease;">
+        <div style="width: 52px; height: 52px; background: #ffffff; border-radius: 50%;"></div>
+      </button>
+      <div id="exec-cam-shutter-hint" style="color: #CBD5E1; font-size: 0.72rem; margin-top: 8px; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">
+        Menunggu sinyal GPS dan kamera siap...
+      </div>
+    </footer>
+  `;
+
+  const containerEl = document.getElementById('device-screen') || document.getElementById('app') || document.body;
+  containerEl.appendChild(overlayEl);
+
+  const videoEl = overlayEl.querySelector('#exec-camera-video');
+  const canvasEl = overlayEl.querySelector('#exec-camera-canvas');
+  const errorPanel = overlayEl.querySelector('#exec-camera-error-panel');
+  const errorMsgEl = overlayEl.querySelector('#exec-camera-error-msg');
+  const btnRetryCam = overlayEl.querySelector('#btn-exec-cam-retry');
+  const btnBack = overlayEl.querySelector('#btn-exec-cam-back');
+  const btnShutter = overlayEl.querySelector('#btn-exec-cam-shutter');
+  const shutterHint = overlayEl.querySelector('#exec-cam-shutter-hint');
+  const gpsBadge = overlayEl.querySelector('#exec-cam-gps-badge');
+  const gpsText = overlayEl.querySelector('#exec-cam-gps-text');
+
+  function cleanupCamera() {
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+    overlayEl.remove();
+  }
+
+  function updateShutterState() {
+    const hasGps = (capturedLat !== null && capturedLon !== null);
+    const canCapture = isCameraReady && hasGps;
+
+    btnShutter.disabled = !canCapture;
+    btnShutter.style.opacity = canCapture ? '1' : '0.4';
+    btnShutter.style.cursor = canCapture ? 'pointer' : 'not-allowed';
+
+    if (!isCameraReady && !hasGps) {
+      shutterHint.textContent = 'Menunggu izin kamera dan koordinat GPS...';
+    } else if (!isCameraReady) {
+      shutterHint.textContent = 'Kamera tidak aktif. Buka izin kamera untuk melanjutkan.';
+    } else if (!hasGps) {
+      shutterHint.textContent = 'Menunggu koordinat GPS aktual...';
+    } else {
+      shutterHint.textContent = 'Ketuk tombol rana untuk mengambil foto bukti';
+    }
+  }
+
+  function fetchGpsPosition() {
+    gpsBadge.style.background = 'rgba(245, 158, 11, 0.25)';
+    gpsBadge.style.color = '#FBBF24';
+    gpsBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+    gpsText.textContent = 'Mencari lokasi GPS...';
+    updateShutterState();
+
+    if (!navigator.geolocation) {
+      onGpsFailed('Geolocation tidak didukung pada browser ini.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (pos && pos.coords && typeof pos.coords.latitude === 'number' && typeof pos.coords.longitude === 'number') {
+          capturedLat = Number(pos.coords.latitude.toFixed(6));
+          capturedLon = Number(pos.coords.longitude.toFixed(6));
+          gpsAccuracy = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
+
+          gpsBadge.style.background = 'rgba(16, 185, 129, 0.25)';
+          gpsBadge.style.color = '#34D399';
+          gpsBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+          gpsText.textContent = `GPS: ${capturedLat}, ${capturedLon}`;
+          updateShutterState();
+        } else {
+          onGpsFailed('Koordinat GPS tidak valid.');
+        }
+      },
+      (err) => {
+        let errDesc = 'Gagal memperoleh GPS.';
+        if (err.code === 1) errDesc = 'Izin lokasi GPS ditolak.';
+        else if (err.code === 2) errDesc = 'Posisi GPS tidak tersedia.';
+        else if (err.code === 3) errDesc = 'Pencarian GPS timeout.';
+        onGpsFailed(errDesc);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  function onGpsFailed(msg) {
+    capturedLat = null;
+    capturedLon = null;
+    gpsBadge.style.background = 'rgba(239, 68, 68, 0.25)';
+    gpsBadge.style.color = '#F87171';
+    gpsBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+    gpsText.innerHTML = `⚠️ ${msg} <span id="btn-exec-cam-retry-gps" style="text-decoration: underline; cursor: pointer; margin-left: 4px; font-weight: 700;">Ulangi</span>`;
+    overlayEl.querySelector('#btn-exec-cam-retry-gps')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fetchGpsPosition();
+    });
+    updateShutterState();
+  }
+
+  async function initCameraStream() {
+    isCameraReady = false;
+    errorPanel.style.display = 'none';
+    videoEl.style.display = 'block';
+    updateShutterState();
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('MediaDevices / Camera API tidak didukung pada browser ini.');
+      }
+
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+      } catch (errRear) {
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+      }
+
+      videoEl.srcObject = currentStream;
+      await videoEl.play();
+      isCameraReady = true;
+      updateShutterState();
+    } catch (err) {
+      console.warn('[Execution Camera] Gagal inisialisasi kamera:', err);
+      isCameraReady = false;
+      videoEl.style.display = 'none';
+      errorPanel.style.display = 'flex';
+      errorMsgEl.textContent = err.message || 'Browser memblokir akses atau perangkat tidak memiliki kamera yang sesuai.';
+      updateShutterState();
+    }
+  }
+
+  btnRetryCam?.addEventListener('click', initCameraStream);
+
+  btnBack?.addEventListener('click', () => {
+    cleanupCamera();
+    if (onCancel) onCancel();
+  });
+
+  btnShutter?.addEventListener('click', () => {
+    if (btnShutter.disabled || !isCameraReady || capturedLat === null || capturedLon === null) return;
+    btnShutter.disabled = true;
+
+    const now = new Date();
+    const captureDateFormatted = formatDate(now.toISOString());
+    const timeFormatter = new Intl.DateTimeFormat('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: 'Asia/Jakarta',
+      hour12: false
+    });
+    const captureTimeFormatted = `${timeFormatter.format(now).replace(/\\./g, ':')} WIB`;
+
+    const vWidth = videoEl.videoWidth || 720;
+    const vHeight = videoEl.videoHeight || 960;
+    const targetW = 720;
+    const targetH = Math.round((vHeight / vWidth) * targetW);
+
+    canvasEl.width = targetW;
+    canvasEl.height = targetH;
+    const ctx = canvasEl.getContext('2d');
+
+    // Draw video feed
+    ctx.drawImage(videoEl, 0, 0, targetW, targetH);
+
+    // Burn-in watermark bar at bottom of image
+    const barH = 74;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+    ctx.fillRect(0, targetH - barH, targetW, barH);
+
+    // Top accent border
+    ctx.fillStyle = '#10B981';
+    ctx.fillRect(0, targetH - barH, targetW, 3);
+
+    // Watermark text
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Tanggal: ${captureDateFormatted} | Waktu: ${captureTimeFormatted}`, 16, targetH - barH + 22);
+
+    ctx.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#E2E8F0';
+    ctx.fillText(`Batch: ${batchCode || '-'} | Bedengan: ${bedenganCode || '-'}`, 16, targetH - barH + 42);
+
+    ctx.fillStyle = '#A7F3D0';
+    ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(`GPS: ${capturedLat.toFixed(6)}, ${capturedLon.toFixed(6)} • ${stageLabel}`, 16, targetH - barH + 62);
+
+    const dataUrl = canvasEl.toDataURL('image/jpeg', 0.85);
+
+    const photoRecord = {
+      id: `PHOTO-SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      dataUrl,
+      capturedAt: now.toISOString(),
+      capturedAtLabel: `${captureDateFormatted} ${captureTimeFormatted}`,
+      latitude: capturedLat,
+      longitude: capturedLon,
+      batchCode: batchCode || '',
+      bedenganCode: bedenganCode || '',
+      source: 'CAMERA'
+    };
+
+    cleanupCamera();
+    toast('Foto bukti pemeriksaan berhasil diambil.', 'success');
+    if (onCaptureSuccess) {
+      onCaptureSuccess(photoRecord);
+    }
+  });
+
+  // Start processes
+  fetchGpsPosition();
+  initCameraStream();
 }
 
 /**
@@ -3716,304 +4307,926 @@ function renderAfkirPoolList(poolItems, culledItems, emptyTitle, emptyDesc, pool
  */
 export function openSeleksi1ExecutionModal({ doc, bedenganCode = null, user, onSaved }) {
   const today = formatDate(new Date().toISOString());
-  const bedScopeList = getBedenganScopeStatusForSeleksi1(doc);
-  
-  // Resolve target bedengan code
-  const rawBed = bedenganCode || doc.bedenganCode || doc.bedengan || (bedScopeList[0] && bedScopeList[0].bedenganCode) || (doc.rows && doc.rows[0] ? doc.rows[0].bedenganCode : 'BED-001');
-  const bedNorm = formatBedenganDisplayCode(rawBed);
-  
-  let targetScope = bedScopeList.find(scope => formatBedenganDisplayCode(scope.bedenganCode || scope.bedenganId).toUpperCase() === bedNorm.toUpperCase());
-  
-  if (!targetScope && bedScopeList.length === 1 && !bedenganCode) {
-    targetScope = bedScopeList[0];
-  }
+  let currentDoc = doc;
+  let currentBedScopeList = getBedenganScopeStatusForSeleksi1(currentDoc);
 
-  if (!targetScope) {
-    toast(`Scope bedengan ${bedNorm} tidak ditemukan pada dokumen ini.`, 'error');
+  // Check if all bedengans in document are already completed
+  const availableBeds = currentBedScopeList.filter(b => b.remainingPolybag > 0);
+  if (currentBedScopeList.length > 0 && availableBeds.length === 0) {
+    toast('Seluruh populasi polybag pada dokumen ini telah selesai diperiksa.', 'warning');
     return;
   }
 
-  const sourcePolybag = parseInt(targetScope.initialPolybag || 0, 10);
-  const sourceBibit = parseInt(targetScope.initialBibit !== undefined ? targetScope.initialBibit : (sourcePolybag * 2), 10);
-  const inspectedPolybag = parseInt(targetScope.inspectedPolybag || 0, 10);
-  const inspectedBibit = parseInt(targetScope.inspectedBibit || 0, 10);
-  const remainingPolybag = parseInt(targetScope.remainingPolybag !== undefined ? targetScope.remainingPolybag : Math.max(0, sourcePolybag - inspectedPolybag), 10);
-  const initialRetained = parseInt(targetScope.remainingBibit !== undefined ? targetScope.remainingBibit : Math.max(0, sourceBibit - inspectedBibit), 10);
-
-  if (remainingPolybag <= 0 && sourcePolybag > 0) {
-    toast('Seluruh populasi polybag pada bedengan ini telah selesai diperiksa.', 'warning');
-    return;
+  // Resolve initial selected bedengan (if provided and valid)
+  let initialBedCode = '';
+  if (bedenganCode) {
+    const match = currentBedScopeList.find(b =>
+      formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === formatBedenganDisplayCode(bedenganCode).toUpperCase()
+    );
+    if (match && match.remainingPolybag > 0) {
+      initialBedCode = formatBedenganDisplayCode(match.bedenganCode || match.bedenganId);
+    }
   }
-
-  const existingBibitSelected = inspectedBibit;
 
   // Canonical Display Resolvers
-  const displayDocNo = doc.docNo ? doc.docNo.replace(/^2026\/CULL\//i, '2026/SEL/').replace(/^CULL\//i, 'SEL/') : '-';
-  const sourceSowDisplay = doc.sourceSeedingDocNo || doc.sourceDocNo || doc.seedingDocNo || (Array.isArray(doc.sourceSeedingDocNos) && doc.sourceSeedingDocNos[0]) || '-';
-  const batchDisplay = `${doc.batchCode || doc.batchNo || doc.batchId || '-'} • ${doc.clone || doc.klon || '-'}`;
-  const bedenganDisplay = formatBedenganDisplayCode(targetScope.bedenganCode || bedNorm);
-  const bedenganId = targetScope.bedenganId || targetScope.bedenganCode || bedenganDisplay;
+  const progObj = resolveProgram(currentDoc.programCode || currentDoc.programId || currentDoc.program);
+  const displayProgram = progObj?.code || currentDoc.programCode || currentDoc.programName || '-';
+  const displayGrowthStage = currentDoc.growthStage || currentDoc.tahapan || '-';
+  const displayDocNo = currentDoc.docNo ? currentDoc.docNo.replace(/^2026\/CULL\//i, '2026/SEL/').replace(/^CULL\//i, 'SEL/') : '-';
+  const displaySourceDoc = (Array.isArray(currentDoc.sourceSeedingDocNos) && currentDoc.sourceSeedingDocNos.length > 0)
+    ? currentDoc.sourceSeedingDocNos.join(', ')
+    : (currentDoc.sourceSeedingDocNo || currentDoc.sourceDocNo || currentDoc.seedingDocNo || '-');
+  const sourceSowDisplay = displaySourceDoc;
+  const displayBatch = currentDoc.batchCode || currentDoc.batchNo || currentDoc.batchId || '-';
+  const displayClone = currentDoc.clone || currentDoc.klon || currentDoc.klonAwal || '-';
+  const batchCode = currentDoc.batchCode || currentDoc.batchNo || currentDoc.batchId || '-';
+
+  // Akumulasi Total Populasi Batch dari seluruh bedengan yang melekat ke batch
+  const curBatch = String(currentDoc.batchCode || currentDoc.batchNo || currentDoc.batchId || '').trim().toUpperCase();
+  const curProg = String(currentDoc.programCode || currentDoc.programId || currentDoc.programName || currentDoc.program || '').trim().toUpperCase();
+
+  let totalBatchBibit = 0;
+  try {
+    const rawPreDocs = getPreGraftingSelectionDocuments({ selectionStage: 'SELEKSI_1' }, user) || [];
+    const batchDocs = rawPreDocs.filter(d => {
+      if (d.isSplit || d.isLegacyAggregateSplit) return false;
+      const b = String(d.batchCode || d.batchNo || d.batchId || '').trim().toUpperCase();
+      const p = String(d.programCode || d.programId || d.programName || d.program || '').trim().toUpperCase();
+      return b === curBatch && (!curProg || !p || p === curProg);
+    });
+    if (batchDocs.length > 0) {
+      const batchMetrics = calculateBatchMetrics({ batchCode: curBatch, docs: batchDocs }, 'SELEKSI_1');
+      totalBatchBibit = batchMetrics.totalSourceBibit || batchMetrics.totalBibitAwal || 0;
+    }
+  } catch (err) {
+    console.warn('Failed to calculate batch metrics for modal sel1:', err);
+  }
+  if (!totalBatchBibit || totalBatchBibit <= 0) {
+    totalBatchBibit = parseInt(currentDoc.batchTotalBibit || 0, 10);
+  }
+  if (!totalBatchBibit || totalBatchBibit <= 0) {
+    totalBatchBibit = parseInt(currentDoc.sourceBibitQty || 0, 10);
+  }
 
   const bodyContent = `
-    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 0.78rem; color: #334155; line-height: 1.4; display: flex; flex-direction: column; gap: 12px;">
       
-      <!-- INFORMASI DOKUMEN (READ-ONLY CONTEXT) -->
-      <div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
-          Informasi Dokumen
+      <!-- INFORMASI PEMERIKSAAN -->
+      <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="font-size: 0.82rem; font-weight: 700; color: #0F172A;">
+            Informasi Pemeriksaan
+          </div>
+          <div style="font-size: 0.78rem; font-weight: 600; color: #64748B;">
+            ${esc(today)}
+          </div>
         </div>
-        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px;">
           <div>
-            <div style="font-size: 0.68rem; color: #64748B;">Dok. Seleksi</div>
-            <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A;">${esc(displayDocNo)}</div>
+            <div style="font-size: 0.65rem; color: #64748B;">Program Pembibitan</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-all;">${esc(displayProgram)}</div>
           </div>
-          
           <div>
-            <div style="font-size: 0.68rem; color: #64748B;">Dok. Asal (Penyemaian)</div>
-            <div style="font-size: 0.85rem; font-weight: 700; color: #0F172A;">${esc(sourceSowDisplay)}</div>
+            <div style="font-size: 0.65rem; color: #64748B;">Tahapan Pertumbuhan</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-word;">${esc(displayGrowthStage)}</div>
           </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 2px; padding-top: 6px; border-top: 1px dashed #E2E8F0;">
-            <div>
-              <div style="font-size: 0.68rem; color: #64748B;">Batch</div>
-              <div style="font-size: 0.82rem; font-weight: 700; color: #0F172A;">${esc(batchDisplay)}</div>
-            </div>
-            <div>
-              <div style="font-size: 0.68rem; color: #64748B;">Bedengan</div>
-              <div style="font-size: 0.82rem; font-weight: 700; color: #0F172A;">${esc(bedenganDisplay)}</div>
-            </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Dok. Seleksi</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-all;">${esc(displayDocNo)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Dok. Asal</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-all;">${esc(displaySourceDoc)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Batch</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">${esc(displayBatch)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Klon</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">${esc(displayClone)}</div>
           </div>
         </div>
       </div>
 
-      <!-- BEDENGAN PEMERIKSAAN (READ-ONLY) -->
+      <!-- BEDENGAN PEMERIKSAAN -->
       <div>
-        <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-          Bedengan Pemeriksaan
+        <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">
+          Bedengan Pemeriksaan <span style="color: #DC2626;">*</span>
         </label>
-        <input type="text" value="${esc(bedenganDisplay)} (Sisa: ${remainingPolybag.toLocaleString('id-ID')} / ${sourcePolybag.toLocaleString('id-ID')} Ply)" 
-               readonly disabled 
-               style="width: 100%; height: 38px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 10px; font-size: 0.82rem; background: #F1F5F9; color: #475569; font-weight: 600; cursor: not-allowed; box-sizing: border-box;">
+        <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 6px;">
+          Pilih bedengan yang akan diperiksa.
+        </div>
+        <div style="position: relative;">
+          <select id="modal-sel1-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 32px 0 10px; font-size: 0.80rem; background: #FFFFFF; color: #0F172A; font-weight: 600; appearance: none; -webkit-appearance: none; cursor: pointer; box-sizing: border-box;">
+            <option value="" disabled ${!initialBedCode ? 'selected' : ''}>-- Pilih Bedengan Pemeriksaan --</option>
+            ${currentBedScopeList.map(bed => {
+    const bCode = formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId);
+    const isCompleted = bed.remainingPolybag === 0;
+    const suffix = isCompleted ? '(Selesai)' : `(Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} Ply)`;
+    const isSelected = initialBedCode && bCode.toUpperCase() === initialBedCode.toUpperCase();
+    return `
+                <option value="${esc(bCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" ${isCompleted ? 'disabled' : ''} ${isSelected ? 'selected' : ''}>
+                  ${esc(bCode)} ${suffix}
+                </option>
+              `;
+  }).join('')}
+          </select>
+          <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748B; display: flex; align-items: center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+        </div>
+
+        <!-- STATS SISA POLYBAG & POPULASI BIBIT LANGSUNG DI BAWAH BEDENGAN -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B;">Sisa polybag</div>
+            <div id="modal-sel1-ref-polybag" style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
+              —
+            </div>
+          </div>
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B;">Populasi bibit</div>
+            <div id="modal-sel1-ref-bibit" style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
+              —
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- REFERENCE -->
+      <!-- HASIL PEMERIKSAAN -->
       <div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
-          Reference
+        <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">
+          Hasil Pemeriksaan <span style="color: #DC2626;">*</span>
+        </label>
+        <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 8px;">
+          Masukkan jumlah hasil pemeriksaan pada bedengan terpilih.
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #0F172A; margin-bottom: 3px;">
+              Polybag diperiksa <span style="color: #DC2626;">*</span>
+            </label>
+            <div style="display: flex; align-items: stretch; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; overflow: hidden; background: #FFFFFF;">
+              <input id="modal-sel1-polybag-inspected" type="number" min="0" value="" placeholder="Masukkan jumlah" disabled style="flex: 1; border: none; padding: 0 10px; font-size: 0.82rem; font-weight: 600; color: #0F172A; outline: none; box-sizing: border-box; background: transparent;">
+              <div style="background: #F8FAFC; border-left: 1px solid #CBD5E1; padding: 0 12px; display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 600; color: #64748B; min-width: 42px;">
+                Ply
+              </div>
+            </div>
+            <div style="font-size: 0.65rem; color: #94A3B8; margin-top: 2px;">Masukkan bilangan bulat, minimal 0.</div>
+            <div id="error-modal-sel1-polybag" style="color: #DC2626; font-size: 0.68rem; font-weight: 600; margin-top: 3px; display: none;"></div>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #0F172A; margin-bottom: 3px;">
+              Bibit Diseleksi <span style="color: #DC2626;">*</span>
+            </label>
+            <div style="display: flex; align-items: stretch; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; overflow: hidden; background: #FFFFFF;">
+              <input id="modal-sel1-bibit-selected" type="number" min="0" value="" placeholder="Masukkan jumlah" disabled style="flex: 1; border: none; padding: 0 10px; font-size: 0.82rem; font-weight: 600; color: #0F172A; outline: none; box-sizing: border-box; background: transparent;">
+              <div style="background: #F8FAFC; border-left: 1px solid #CBD5E1; padding: 0 12px; display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 600; color: #64748B; min-width: 42px;">
+                Pkk
+              </div>
+            </div>
+            <div style="font-size: 0.65rem; color: #94A3B8; margin-top: 2px;">Masukkan bilangan bulat, minimal 0.</div>
+            <div id="error-modal-sel1-bibit" style="color: #DC2626; font-size: 0.68rem; font-weight: 600; margin-top: 3px; display: none;"></div>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #0F172A; margin-bottom: 3px;">
+              Alasan Diseleksi <span id="modal-sel1-alasan-required" style="color: #DC2626; display: none;">*</span>
+            </label>
+            <select id="modal-sel1-alasan" disabled style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.80rem; font-weight: 600; color: #0F172A; outline: none; background: #F8FAFC; box-sizing: border-box; transition: all 0.15s ease;">
+              <option value="" disabled selected>-- Pilih Alasan --</option>
+              <option value="Busuk">Busuk</option>
+              <option value="Fomes">Fomes</option>
+              <option value="Jamur Lainnya">Jamur Lainnya</option>
+              <option value="Kerdil">Kerdil</option>
+              <option value="Mati">Mati</option>
+              <option value="Patah">Patah</option>
+              <option value="Rusak">Rusak</option>
+            </select>
+            <div style="font-size: 0.65rem; color: #94A3B8; margin-top: 2px;">Wajib dipilih jika ada bibit diseleksi.</div>
+            <div id="error-modal-sel1-alasan" style="color: #DC2626; font-size: 0.68rem; font-weight: 600; margin-top: 3px; display: none;"></div>
+          </div>
+
+          <div id="modal-sel1-quota-warning" style="display: none; margin-top: 2px; padding: 6px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; color: #DC2626; font-size: 0.70rem; font-weight: 600;"></div>
+        </div>
+      </div>
+
+      <!-- PERKIRAAN HASIL -->
+      <div id="modal-sel1-calculator-card" style="display: none; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;">
+          <span style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">Perkiraan Hasil</span>
+          <span style="display: none;">Real-time</span>
+        </div>
+        <div id="modal-sel1-calc-instruction" style="font-size: 0.68rem; color: #64748B; margin-bottom: 8px;">
+          Pilih bedengan pemeriksaan terlebih dahulu untuk melihat perkiraan hasil.
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
-            <div id="modal-sel1-ref-polybag" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
-              ${remainingPolybag.toLocaleString('id-ID')} Ply
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 4px;">Sisa polybag setelah input</div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span id="modal-sel1-calc-rem-poly" style="font-size: 1.15rem; font-weight: 700; color: #0F172A;">—</span>
+              <span id="modal-sel1-calc-rem-poly-unit" style="font-size: 0.72rem; color: #64748B; display: none;">Ply</span>
             </div>
-            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Sisa Polybag Bedengan</div>
           </div>
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
-            <div id="modal-sel1-ref-bibit" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
-              ${sourceBibit.toLocaleString('id-ID')} Pkk
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 4px;">Sisa bibit setelah input</div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span id="modal-sel1-calc-retained-bibit" style="font-size: 1.15rem; font-weight: 700; color: #0F172A;">—</span>
+              <span id="modal-sel1-calc-retained-bibit-unit" style="font-size: 0.72rem; color: #64748B; display: none;">Pkk</span>
             </div>
-            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Bibit Awal (Batch)</div>
           </div>
         </div>
       </div>
 
-      <!-- INPUT PEMERIKSAAN MANTRI -->
-      <div style="display: flex; flex-direction: column; gap: 10px;">
-        <div style="font-size: 0.74rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em;">
-          INPUT PEMERIKSAAN MANTRI
+      <!-- RINGKASAN PEMERIKSAAN -->
+      <div id="modal-sel1-summary-panel" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+          <span style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">Ringkasan Pemeriksaan</span>
+          <span id="modal-sel1-summary-bed-name" style="display: none;">Bedengan: —</span>
+        </div>
+        <div id="modal-sel1-summary-instruction" style="font-size: 0.68rem; color: #64748B; margin-bottom: 10px;">
+          Pilih bedengan pemeriksaan untuk menampilkan ringkasan.
         </div>
 
-        <!-- 1. Jlh Polybag Diperiksa -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Polybag Diperiksa <span style="color: #DC2626;">*</span>
-          </label>
-          <input id="modal-sel1-polybag-inspected" type="number" min="1" max="${remainingPolybag}" value="" placeholder="Masukkan jlh polybag diperiksa..." style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
-        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Baris 1: Polybag diperiksa & progress -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="font-size: 0.70rem; color: #64748B;">Polybag diperiksa</span>
+              <span id="sum-sel1-poly-ratio" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="flex: 1; height: 6px; background: #E2E8F0; border-radius: 3px; overflow: hidden;">
+                <div id="sum-sel1-poly-progress-bar" style="width: 0%; height: 100%; background: #16A34A; transition: width 0.2s ease;"></div>
+              </div>
+              <span id="sum-sel1-poly-pct" style="font-size: 0.65rem; font-weight: 600; color: #64748B; min-width: 28px; text-align: right;">—</span>
+            </div>
+          </div>
 
-        <!-- 2. Jlh Bibit Diseleksi -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
-          </label>
-          <input id="modal-sel1-bibit-selected" type="number" min="0" value="" placeholder="Masukkan jlh bibit diseleksi (afkir)..." style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #DC2626; background: #FFFFFF;">
-        </div>
+          <!-- Baris 2: Bibit Diseleksi -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Bibit Diseleksi</span>
+            <span id="sum-sel1-bibit-afkir" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
 
-        <!-- 3. Jlh Bibit Dipertahankan (READONLY / OTOMATIS) -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Bibit Dipertahankan <span style="font-size: 0.68rem; color: #15803D; font-weight: normal;">(Otomatis Dihitung)</span>
-          </label>
-          <input id="modal-sel1-bibit-retained" type="number" value="${initialRetained}" readonly disabled style="width: 100%; height: 38px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 10px; font-weight: 800; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #F1F5F9; cursor: not-allowed;">
+          <!-- Baris 3: Alasan Diseleksi -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Alasan Diseleksi</span>
+            <span id="sum-sel1-alasan-afkir" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+
+          <!-- Baris 4: Sisa polybag -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Sisa polybag</span>
+            <span id="sum-sel1-poly-sisa" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+
+          <!-- Baris 5: Sisa bibit tersedia -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Sisa bibit tersedia</span>
+            <span id="sum-sel1-bibit-sisa" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
         </div>
       </div>
 
-      <!-- RINGKASAN -->
+      <!-- FOTO BUKTI PEMERIKSAAN (WAJIB DENGAN WATERMARK GPS) -->
       <div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
-          RINGKASAN
+        <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">
+          Foto Bukti Pemeriksaan <span style="color: #DC2626;">*</span>
+        </label>
+        <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 8px;">
+          Ambil satu foto bukti dengan kamera dan lokasi aktual.
         </div>
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
-            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
-              <div style="font-size: 0.68rem; color: #64748B;">Polybag Diperiksa</div>
-              <div id="modal-sel1-sum-inspected-poly" style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin-top: 1px;">0 Ply</div>
-            </div>
-            <div style="padding: 8px 10px;">
-              <div style="font-size: 0.68rem; color: #64748B;">Bibit Diseleksi</div>
-              <div id="modal-sel1-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Pkk</div>
-            </div>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr;">
-            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
-              <div style="font-size: 0.68rem; color: #64748B;">Bibit Dipertahankan</div>
-              <div id="modal-sel1-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRetained.toLocaleString('id-ID')} Pkk</div>
-            </div>
-            <div style="padding: 8px 10px;">
-              <div style="font-size: 0.68rem; color: #64748B;">Sisa Polybag Bedengan</div>
-              <div id="modal-sel1-sum-remaining-poly" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">${remainingPolybag.toLocaleString('id-ID')} Ply</div>
-            </div>
+
+        <!-- Area Belum Ada Foto (Tombol Ambil Foto) -->
+        <div id="modal-sel1-photo-empty" style="border: 1.5px dashed #CBD5E1; border-radius: 8px; padding: 14px 12px; text-align: center; background: #F8FAFC;">
+          <button type="button" id="btn-modal-sel1-take-photo" style="display: inline-flex; align-items: center; gap: 6px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; padding: 7px 14px; font-size: 0.76rem; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: background 0.15s ease;">
+            <svg viewBox="0 0 24 24" width="15" height="15" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            Ambil Foto Seleksi
+          </button>
+          <div style="font-size: 0.65rem; color: #64748B; margin-top: 6px;">
+            Wajib 1 foto bukti untuk menyimpan transaksi.
           </div>
         </div>
-        <div id="modal-sel1-quota-warning" style="display: none; margin-top: 8px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
-      </div>
 
-      <!-- TANGGAL & CATATAN -->
-      <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
-        <div>
-          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal</label>
-          <input id="modal-sel1-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
+        <!-- Area Preview Foto (Jika Foto Sudah Diambil - Kartu Horizontal Ringkas) -->
+        <div id="modal-sel1-photo-preview-wrap" style="display: none; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 12px; align-items: center; justify-content: space-between; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; flex: 1;">
+            <img id="modal-sel1-photo-img" src="" alt="Bukti Seleksi I" style="width: 48px; height: 48px; border-radius: 6px; object-fit: cover; border: 1px solid #CBD5E1; flex-shrink: 0;" />
+            <div style="overflow: hidden; flex: 1;">
+              <div style="font-size: 0.64rem; color: #64748B;">Foto terpilih</div>
+              <div id="modal-sel1-photo-name" style="font-size: 0.75rem; font-weight: 700; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">IMG_Bukti.jpg</div>
+              <div id="modal-sel1-photo-meta" style="font-size: 0.64rem; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+            </div>
+          </div>
+          <button type="button" id="btn-modal-sel1-remove-photo" style="background: #FFFFFF; color: #EF4444; border: 1px solid #FCA5A5; border-radius: 6px; padding: 5px 12px; font-size: 0.72rem; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: all 0.15s ease;">
+            Hapus
+          </button>
         </div>
-        <div>
-          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan</label>
-          <input id="modal-sel1-notes" type="text" placeholder="Catatan mantri..." style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
-        </div>
-      </div>
-
-      <!-- BUTTONS -->
-      <div style="display: flex; gap: 8px; margin-top: 4px;">
-        <button id="btn-modal-cancel-sel1" type="button" style="flex: 1; height: 38px; background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer;">
-          Batal
-        </button>
-        <button id="btn-modal-save-sel1" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25);">
-          Simpan Transaksi
-        </button>
       </div>
 
     </div>
   `;
 
+  const footerContent = `
+    <div style="display: flex; gap: 8px; width: 100%;">
+      <button id="btn-modal-cancel-sel1" type="button" style="flex: 1; height: 38px; background: #FFFFFF; color: #0F172A; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer; transition: background 0.15s ease;">
+        Batal
+      </button>
+      <button id="btn-modal-save-sel1" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.2); transition: background 0.15s ease; opacity: 0.5;" disabled>
+        Simpan Transaksi
+      </button>
+    </div>
+  `;
+
   openModal({
     title: 'Pelaksanaan Seleksi I',
-    body: bodyContent
+    body: bodyContent,
+    footer: footerContent,
+    isFullScreen: true
   });
 
+  const selBed = document.getElementById('modal-sel1-bedengan');
   const inputInspectedPoly = document.getElementById('modal-sel1-polybag-inspected');
   const inputSelectedBibit = document.getElementById('modal-sel1-bibit-selected');
-  const inputRetainedBibit = document.getElementById('modal-sel1-bibit-retained');
-  const inputNotes = document.getElementById('modal-sel1-notes');
-
-  const sumInspectedPoly = document.getElementById('modal-sel1-sum-inspected-poly');
-  const sumSelectedBibit = document.getElementById('modal-sel1-sum-selected-bibit');
-  const sumRetainedBibit = document.getElementById('modal-sel1-sum-retained-bibit');
-  const sumRemainingPoly = document.getElementById('modal-sel1-sum-remaining-poly');
+  const selAlasan = document.getElementById('modal-sel1-alasan');
+  const alasanReqEl = document.getElementById('modal-sel1-alasan-required');
+  const refPolybagEl = document.getElementById('modal-sel1-ref-polybag');
+  const refBibitEl = document.getElementById('modal-sel1-ref-bibit');
   const warningEl = document.getElementById('modal-sel1-quota-warning');
   const saveBtn = document.getElementById('btn-modal-save-sel1');
 
-  function updateCalculations() {
-    const inspectedPoly = parseInt(inputInspectedPoly?.value || 0, 10);
-    const selectedBibit = parseInt(inputSelectedBibit?.value || 0, 10);
+  // Photo State & Elements
+  let currentPhoto = null;
+  const photoEmptyEl = document.getElementById('modal-sel1-photo-empty');
+  const photoPreviewWrap = document.getElementById('modal-sel1-photo-preview-wrap');
+  const photoImg = document.getElementById('modal-sel1-photo-img');
+  const photoMeta = document.getElementById('modal-sel1-photo-meta');
+  const photoNameEl = document.getElementById('modal-sel1-photo-name');
+  const btnTakePhoto = document.getElementById('btn-modal-sel1-take-photo');
+  const btnRemovePhoto = document.getElementById('btn-modal-sel1-remove-photo');
 
-    const totalSelectedAfter = existingBibitSelected + (isNaN(selectedBibit) ? 0 : selectedBibit);
-    const cumulativeRetained = Math.max(0, sourceBibit - totalSelectedAfter);
-
-    if (inputRetainedBibit) inputRetainedBibit.value = cumulativeRetained;
-    if (sumInspectedPoly) sumInspectedPoly.textContent = `${(isNaN(inspectedPoly) ? 0 : inspectedPoly).toLocaleString('id-ID')} Ply`;
-    if (sumSelectedBibit) sumSelectedBibit.textContent = `${(isNaN(selectedBibit) ? 0 : selectedBibit).toLocaleString('id-ID')} Pkk`;
-    if (sumRetainedBibit) sumRetainedBibit.textContent = `${cumulativeRetained.toLocaleString('id-ID')} Pkk`;
-    if (sumRemainingPoly) sumRemainingPoly.textContent = `${Math.max(0, remainingPolybag - (isNaN(inspectedPoly) ? 0 : inspectedPoly)).toLocaleString('id-ID')} Ply`;
-
-    let errorMsg = null;
-
-    if (inputInspectedPoly && inputInspectedPoly.value.trim() !== '' && (isNaN(inspectedPoly) || inspectedPoly <= 0)) {
-      errorMsg = 'Jumlah polybag diperiksa harus lebih besar dari 0.';
-    } else if (inspectedPoly > remainingPolybag) {
-      errorMsg = `Jumlah polybag diperiksa (${inspectedPoly.toLocaleString('id-ID')}) melebihi sisa scope polybag bedengan (${remainingPolybag.toLocaleString('id-ID')}).`;
-    } else if (inputSelectedBibit && inputSelectedBibit.value.trim() !== '' && (isNaN(selectedBibit) || selectedBibit < 0)) {
-      errorMsg = 'Jumlah bibit diseleksi tidak boleh negatif.';
-    }
-
-    const isCriticalError = isNaN(inspectedPoly) || inspectedPoly <= 0 || inspectedPoly > remainingPolybag || isNaN(selectedBibit) || selectedBibit < 0;
-
-    if (errorMsg) {
-      if (warningEl) {
-        warningEl.textContent = errorMsg;
-        warningEl.style.display = 'block';
+  function renderPhotoState() {
+    if (currentPhoto && currentPhoto.dataUrl) {
+      if (photoEmptyEl) photoEmptyEl.style.display = 'none';
+      if (photoPreviewWrap) photoPreviewWrap.style.display = 'flex';
+      if (photoImg) photoImg.src = currentPhoto.dataUrl;
+      if (photoNameEl) {
+        photoNameEl.textContent = currentPhoto.fileName || `IMG_${today.replace(/[^0-9]/g, '')}_${currentPhoto.capturedAt ? new Date(currentPhoto.capturedAt).toTimeString().slice(0, 8).replace(/:/g, '') : '102530'}.jpg`;
+      }
+      if (photoMeta) {
+        photoMeta.textContent = currentPhoto.capturedAtLabel || today;
       }
     } else {
-      if (warningEl) {
+      if (photoEmptyEl) photoEmptyEl.style.display = 'block';
+      if (photoPreviewWrap) photoPreviewWrap.style.display = 'none';
+      if (photoImg) photoImg.src = '';
+      if (photoMeta) photoMeta.textContent = '';
+    }
+  }
+
+  function launchCamera() {
+    if (!currentBedenganDisplay) {
+      toast('Silakan pilih bedengan pemeriksaan terlebih dahulu.', 'warning');
+      selBed?.focus();
+      return;
+    }
+    openExecutionCameraModal({
+      batchCode: batchCode,
+      bedenganCode: currentBedenganDisplay,
+      stageLabel: 'Seleksi I',
+      onCaptureSuccess: (photoRecord) => {
+        currentPhoto = photoRecord;
+        renderPhotoState();
+        updateCalculations();
+      },
+      onCancel: () => {
+        // Form state remains intact
+      }
+    });
+  }
+
+  btnTakePhoto?.addEventListener('click', launchCamera);
+  btnRemovePhoto?.addEventListener('click', () => {
+    currentPhoto = null;
+    renderPhotoState();
+    updateCalculations();
+  });
+
+  let currentBedenganDisplay = '';
+  let currentBedenganId = '';
+  let currentRemainingPolybag = 0;
+  let currentInitialPolybag = 0;
+  let currentSourceBibit = 0;
+  let existingPolyInspected = 0;
+  let existingBibitSelected = 0;
+  let isSubmitting = false;
+
+  function renderBedenganOptions(scopeList) {
+    if (!selBed) return;
+    selBed.innerHTML = `
+      <option value="" disabled ${!currentBedenganDisplay ? 'selected' : ''}>-- Pilih Bedengan Pemeriksaan --</option>
+      ${scopeList.map(bed => {
+      const bCode = formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId);
+      const isCompleted = (bed.remainingPolybag === 0);
+      const suffix = isCompleted ? '(Selesai)' : `(Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} Ply)`;
+      const isSelected = currentBedenganDisplay && bCode.toUpperCase() === currentBedenganDisplay.toUpperCase();
+      return `
+          <option value="${esc(bCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" ${isCompleted ? 'disabled' : ''} ${isSelected ? 'selected' : ''}>
+            ${esc(bCode)} ${suffix}
+          </option>
+        `;
+    }).join('')}
+    `;
+    selBed.value = currentBedenganDisplay || '';
+  }
+
+  function resetCalculatorAndSummary() {
+    const calcInstructionEl = document.getElementById('modal-sel1-calc-instruction');
+    if (calcInstructionEl) calcInstructionEl.textContent = 'Pilih bedengan pemeriksaan terlebih dahulu untuk melihat perkiraan hasil.';
+
+    const calcRemPolyEl = document.getElementById('modal-sel1-calc-rem-poly');
+    const calcRetainedBibitEl = document.getElementById('modal-sel1-calc-retained-bibit');
+    const calcRemPolyUnit = document.getElementById('modal-sel1-calc-rem-poly-unit');
+    const calcRetainedBibitUnit = document.getElementById('modal-sel1-calc-retained-bibit-unit');
+
+    if (calcRemPolyEl) { calcRemPolyEl.textContent = '—'; calcRemPolyEl.style.color = '#0F172A'; }
+    if (calcRetainedBibitEl) { calcRetainedBibitEl.textContent = '—'; calcRetainedBibitEl.style.color = '#0F172A'; }
+    if (calcRemPolyUnit) calcRemPolyUnit.style.display = 'none';
+    if (calcRetainedBibitUnit) calcRetainedBibitUnit.style.display = 'none';
+
+    const sumBedNameEl = document.getElementById('modal-sel1-summary-bed-name');
+    if (sumBedNameEl) sumBedNameEl.textContent = 'Bedengan: —';
+
+    const sumInstructionEl = document.getElementById('modal-sel1-summary-instruction');
+    if (sumInstructionEl) sumInstructionEl.textContent = 'Pilih bedengan pemeriksaan untuk menampilkan ringkasan.';
+
+    const sumPolyRatio = document.getElementById('sum-sel1-poly-ratio');
+    if (sumPolyRatio) sumPolyRatio.textContent = '—';
+
+    const sumPolyBar = document.getElementById('sum-sel1-poly-progress-bar');
+    if (sumPolyBar) sumPolyBar.style.width = '0%';
+
+    const sumPolyPct = document.getElementById('sum-sel1-poly-pct');
+    if (sumPolyPct) sumPolyPct.textContent = '—';
+
+    const sumBibitAfkir = document.getElementById('sum-sel1-bibit-afkir');
+    if (sumBibitAfkir) sumBibitAfkir.textContent = '—';
+
+    const sumAlasanAfkir = document.getElementById('sum-sel1-alasan-afkir');
+    if (sumAlasanAfkir) sumAlasanAfkir.textContent = '—';
+
+    const sumPolySisa = document.getElementById('sum-sel1-poly-sisa');
+    if (sumPolySisa) { sumPolySisa.textContent = '—'; sumPolySisa.style.color = '#0F172A'; }
+
+    const sumBibitSisa = document.getElementById('sum-sel1-bibit-sisa');
+    if (sumBibitSisa) { sumBibitSisa.textContent = '—'; sumBibitSisa.style.color = '#0F172A'; }
+  }
+
+  function applySelectedBedengan(bCode) {
+    if (!bCode) {
+      currentBedenganDisplay = '';
+      currentBedenganId = '';
+      currentRemainingPolybag = 0;
+      currentInitialPolybag = 0;
+      currentSourceBibit = 0;
+      existingPolyInspected = 0;
+      existingBibitSelected = 0;
+
+      if (selBed) selBed.value = '';
+      if (refPolybagEl) refPolybagEl.textContent = '—';
+      if (refBibitEl) refBibitEl.textContent = '—';
+
+      if (inputInspectedPoly) {
+        inputInspectedPoly.value = '';
+        inputInspectedPoly.disabled = true;
+        inputInspectedPoly.placeholder = 'Masukkan jumlah';
+      }
+      if (inputSelectedBibit) {
+        inputSelectedBibit.value = '';
+        inputSelectedBibit.disabled = true;
+        inputSelectedBibit.placeholder = 'Masukkan jumlah';
+      }
+      if (selAlasan) {
+        selAlasan.value = '';
+        selAlasan.disabled = true;
+        selAlasan.style.background = '#F8FAFC';
+      }
+      if (alasanReqEl) alasanReqEl.style.display = 'none';
+
+      currentPhoto = null;
+      renderPhotoState();
+      updateCalculations();
+      return;
+    }
+
+    const matchedBed = currentBedScopeList.find(b =>
+      formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === bCode.toUpperCase()
+    );
+
+    if (!matchedBed) {
+      applySelectedBedengan('');
+      return;
+    }
+
+    const prevBed = currentBedenganDisplay;
+    currentBedenganDisplay = formatBedenganDisplayCode(matchedBed.bedenganCode || matchedBed.bedenganId);
+    currentBedenganId = matchedBed.bedenganId || matchedBed.bedenganCode || currentBedenganDisplay;
+    currentRemainingPolybag = matchedBed.remainingPolybag !== undefined ? matchedBed.remainingPolybag : 0;
+    currentInitialPolybag = matchedBed.initialPolybag !== undefined ? matchedBed.initialPolybag : 0;
+    currentSourceBibit = matchedBed.initialBibit !== undefined
+      ? matchedBed.initialBibit
+      : (currentInitialPolybag * 2);
+    existingPolyInspected = matchedBed.inspectedPolybag || 0;
+    existingBibitSelected = matchedBed.inspectedBibit || 0;
+
+    if (selBed) selBed.value = currentBedenganDisplay;
+
+    if (refPolybagEl) refPolybagEl.textContent = `${currentRemainingPolybag.toLocaleString('id-ID')} Ply`;
+    if (refBibitEl) refBibitEl.textContent = `${currentSourceBibit.toLocaleString('id-ID')} Pkk`;
+
+    if (inputInspectedPoly) {
+      inputInspectedPoly.disabled = false;
+      inputInspectedPoly.placeholder = 'Masukkan jumlah';
+      inputInspectedPoly.max = currentRemainingPolybag;
+      inputInspectedPoly.value = '';
+    }
+    if (inputSelectedBibit) {
+      inputSelectedBibit.disabled = false;
+      inputSelectedBibit.placeholder = 'Masukkan jumlah';
+      inputSelectedBibit.value = '';
+    }
+    if (selAlasan) {
+      selAlasan.value = '';
+      selAlasan.disabled = true;
+      selAlasan.style.background = '#F8FAFC';
+    }
+    if (alasanReqEl) alasanReqEl.style.display = 'none';
+
+    // Reset photo if bedengan changed to enforce 1 photo per bedengan
+    if (currentPhoto && currentPhoto.bedenganCode !== currentBedenganDisplay) {
+      currentPhoto = null;
+      renderPhotoState();
+      if (prevBed && prevBed !== currentBedenganDisplay) {
+        toast(`Bedengan berganti ke ${currentBedenganDisplay}. Silakan ambil foto bukti untuk bedengan baru.`, 'info');
+      }
+    }
+
+    updateCalculations();
+  }
+
+  selBed?.addEventListener('change', () => {
+    applySelectedBedengan(selBed.value);
+  });
+
+  function updateCalculations() {
+    const polyErrEl = document.getElementById('error-modal-sel1-polybag');
+    const bibitErrEl = document.getElementById('error-modal-sel1-bibit');
+    const alasanErrEl = document.getElementById('error-modal-sel1-alasan');
+
+    if (!currentBedenganDisplay) {
+      if (polyErrEl) { polyErrEl.textContent = ''; polyErrEl.style.display = 'none'; }
+      if (bibitErrEl) { bibitErrEl.textContent = ''; bibitErrEl.style.display = 'none'; }
+      if (alasanErrEl) { alasanErrEl.textContent = ''; alasanErrEl.style.display = 'none'; }
+      if (warningEl) { warningEl.style.display = 'none'; }
+      resetCalculatorAndSummary();
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+      return;
+    }
+
+    const rawPolyStr = inputInspectedPoly?.value !== undefined ? String(inputInspectedPoly.value).trim() : '';
+    const rawBibitStr = inputSelectedBibit?.value !== undefined ? String(inputSelectedBibit.value).trim() : '';
+
+    let polyError = null;
+    let pVal = null;
+    if (rawPolyStr !== '') {
+      pVal = Number(rawPolyStr);
+      if (isNaN(pVal)) {
+        polyError = 'Jumlah polybag diperiksa harus berupa angka yang valid.';
+      } else if (!Number.isInteger(pVal) || rawPolyStr.includes('.')) {
+        polyError = 'Jumlah polybag diperiksa harus berupa bilangan bulat.';
+      } else if (pVal < 0) {
+        polyError = 'Jumlah polybag diperiksa tidak boleh negatif (minimum 0).';
+      } else if (pVal > currentRemainingPolybag) {
+        polyError = `Jumlah polybag diperiksa (${pVal.toLocaleString('id-ID')}) melebihi sisa scope bedengan (${currentRemainingPolybag.toLocaleString('id-ID')}).`;
+      }
+    }
+
+    const sisaBibitBedengan = Math.max(0, currentSourceBibit - existingBibitSelected);
+
+    let bibitError = null;
+    let bVal = null;
+    if (rawBibitStr !== '') {
+      bVal = Number(rawBibitStr);
+      if (isNaN(bVal)) {
+        bibitError = 'Jumlah bibit afkir harus berupa angka yang valid.';
+      } else if (!Number.isInteger(bVal) || rawBibitStr.includes('.')) {
+        bibitError = 'Jumlah bibit afkir harus berupa bilangan bulat.';
+      } else if (bVal < 0) {
+        bibitError = 'Jumlah bibit afkir tidak boleh negatif (minimum 0).';
+      } else if (bVal > sisaBibitBedengan) {
+        bibitError = `Jumlah bibit afkir (${bVal.toLocaleString('id-ID')}) melebihi sisa bibit tersedia (${sisaBibitBedengan.toLocaleString('id-ID')}).`;
+      }
+    }
+
+    // Alasan afkir control & validation
+    let alasanError = null;
+    if (bVal !== null && bVal > 0 && !bibitError) {
+      if (selAlasan) {
+        selAlasan.disabled = false;
+        selAlasan.style.background = '#FFFFFF';
+      }
+      if (alasanReqEl) alasanReqEl.style.display = 'inline';
+      if (!selAlasan?.value) {
+        alasanError = 'Alasan wajib dipilih jika ada bibit afkir.';
+      }
+    } else {
+      if (selAlasan) {
+        selAlasan.disabled = true;
+        selAlasan.style.background = '#F8FAFC';
+        selAlasan.value = '';
+      }
+      if (alasanReqEl) alasanReqEl.style.display = 'none';
+      alasanError = null;
+    }
+
+    // Render inline error elements
+    if (polyErrEl) {
+      polyErrEl.textContent = polyError || '';
+      polyErrEl.style.display = polyError ? 'block' : 'none';
+    }
+    if (inputInspectedPoly) {
+      inputInspectedPoly.style.borderColor = polyError ? '#DC2626' : '#CBD5E1';
+    }
+
+    if (bibitErrEl) {
+      bibitErrEl.textContent = bibitError || '';
+      bibitErrEl.style.display = bibitError ? 'block' : 'none';
+    }
+    if (inputSelectedBibit) {
+      inputSelectedBibit.style.borderColor = bibitError ? '#DC2626' : '#CBD5E1';
+    }
+
+    if (alasanErrEl) {
+      alasanErrEl.textContent = alasanError || '';
+      alasanErrEl.style.display = alasanError ? 'block' : 'none';
+    }
+    if (selAlasan) {
+      selAlasan.style.borderColor = alasanError ? '#DC2626' : '#CBD5E1';
+    }
+
+    if (warningEl) {
+      const topError = polyError || bibitError || alasanError;
+      if (topError) {
+        warningEl.textContent = topError;
+        warningEl.style.display = 'block';
+      } else {
         warningEl.style.display = 'none';
       }
     }
 
+    const validP = (pVal !== null && !isNaN(pVal) && pVal >= 0 && !polyError) ? pVal : null;
+    const validB = (bVal !== null && !isNaN(bVal) && bVal >= 0 && !bibitError) ? bVal : null;
+
+    const activeP = validP !== null ? validP : 0;
+    const activeB = validB !== null ? validB : 0;
+
+    const totalInspectedPoly = existingPolyInspected + activeP;
+    const remPolyAfter = currentRemainingPolybag - activeP;
+    const pctPoly = currentInitialPolybag > 0 ? Math.min(100, Math.round((totalInspectedPoly / currentInitialPolybag) * 100)) : 0;
+
+    const totalAfkirBibit = existingBibitSelected + activeB;
+    const sisaBibitTersedia = Math.max(0, currentSourceBibit - totalAfkirBibit);
+
+    // Section 4: Perkiraan Hasil
+    const calcInstructionEl = document.getElementById('modal-sel1-calc-instruction');
+    if (calcInstructionEl) calcInstructionEl.textContent = 'Perkiraan sisa setelah input pada bedengan ini.';
+
+    const calcRemPolyEl = document.getElementById('modal-sel1-calc-rem-poly');
+    const calcRetainedBibitEl = document.getElementById('modal-sel1-calc-retained-bibit');
+    const calcRemPolyUnit = document.getElementById('modal-sel1-calc-rem-poly-unit');
+    const calcRetainedBibitUnit = document.getElementById('modal-sel1-calc-retained-bibit-unit');
+
+    if (calcRemPolyUnit) calcRemPolyUnit.style.display = 'inline';
+    if (calcRetainedBibitUnit) calcRetainedBibitUnit.style.display = 'inline';
+
+    if (calcRemPolyEl) {
+      calcRemPolyEl.textContent = validP !== null ? remPolyAfter.toLocaleString('id-ID') : currentRemainingPolybag.toLocaleString('id-ID');
+      calcRemPolyEl.style.color = remPolyAfter < 0 ? '#DC2626' : '#116834';
+    }
+
+    if (calcRetainedBibitEl) {
+      calcRetainedBibitEl.textContent = sisaBibitTersedia.toLocaleString('id-ID');
+      calcRetainedBibitEl.style.color = '#116834';
+    }
+
+    // Section 5: Ringkasan Pemeriksaan
+    const sumBedNameEl = document.getElementById('modal-sel1-summary-bed-name');
+    if (sumBedNameEl) {
+      sumBedNameEl.textContent = `Bedengan: ${currentBedenganDisplay}`;
+    }
+
+    const sumInstructionEl = document.getElementById('modal-sel1-summary-instruction');
+    if (sumInstructionEl) {
+      sumInstructionEl.textContent = 'Rekapitulasi hasil input pada bedengan ini.';
+    }
+
+    const sumPolyRatio = document.getElementById('sum-sel1-poly-ratio');
+    if (sumPolyRatio) {
+      sumPolyRatio.textContent = validP !== null
+        ? `${totalInspectedPoly.toLocaleString('id-ID')} / ${currentInitialPolybag.toLocaleString('id-ID')} Ply`
+        : `- / ${currentInitialPolybag.toLocaleString('id-ID')} Ply`;
+    }
+
+    const sumPolyBar = document.getElementById('sum-sel1-poly-progress-bar');
+    if (sumPolyBar) {
+      sumPolyBar.style.width = `${pctPoly}%`;
+    }
+
+    const sumPolyPct = document.getElementById('sum-sel1-poly-pct');
+    if (sumPolyPct) {
+      sumPolyPct.textContent = `${pctPoly}%`;
+    }
+
+    const sumBibitAfkir = document.getElementById('sum-sel1-bibit-afkir');
+    if (sumBibitAfkir) {
+      sumBibitAfkir.textContent = validB !== null ? `${totalAfkirBibit.toLocaleString('id-ID')} Pkk` : '-';
+    }
+
+    const sumAlasanAfkir = document.getElementById('sum-sel1-alasan-afkir');
+    if (sumAlasanAfkir) {
+      sumAlasanAfkir.textContent = (validB !== null && validB > 0 && selAlasan?.value) ? selAlasan.value : '-';
+    }
+
+    const sumPolySisa = document.getElementById('sum-sel1-poly-sisa');
+    if (sumPolySisa) {
+      sumPolySisa.textContent = `${remPolyAfter.toLocaleString('id-ID')} Ply`;
+      sumPolySisa.style.color = remPolyAfter < 0 ? '#DC2626' : '#116834';
+    }
+
+    const sumBibitSisa = document.getElementById('sum-sel1-bibit-sisa');
+    if (sumBibitSisa) {
+      sumBibitSisa.textContent = `${sisaBibitTersedia.toLocaleString('id-ID')} Pkk`;
+    }
+
+    const hasExplicitError = Boolean(polyError || bibitError || alasanError);
     if (saveBtn) {
-      saveBtn.disabled = isCriticalError;
-      saveBtn.style.opacity = isCriticalError ? '0.5' : '1';
-      saveBtn.style.cursor = isCriticalError ? 'not-allowed' : 'pointer';
+      saveBtn.disabled = hasExplicitError;
+      saveBtn.style.opacity = hasExplicitError ? '0.5' : '1';
+      saveBtn.style.cursor = hasExplicitError ? 'not-allowed' : 'pointer';
     }
   }
 
-  // Initial calculation trigger
-  updateCalculations();
+  // Initial setup: render options and apply initial selection
+  renderBedenganOptions(currentBedScopeList);
+  applySelectedBedengan(initialBedCode);
 
   inputInspectedPoly?.addEventListener('input', updateCalculations);
   inputSelectedBibit?.addEventListener('input', updateCalculations);
+  selAlasan?.addEventListener('change', updateCalculations);
 
   document.getElementById('btn-modal-cancel-sel1')?.addEventListener('click', closeModal);
 
   document.getElementById('btn-modal-save-sel1')?.addEventListener('click', () => {
-    const inspectedPoly = parseInt(inputInspectedPoly?.value || 0, 10);
-    const selectedBibit = parseInt(inputSelectedBibit?.value || 0, 10);
-    const tanggalSeleksi = today;
-    const catatan = inputNotes?.value || '';
+    if (isSubmitting) return;
 
-    // Validations
-    if (isNaN(inspectedPoly) || inspectedPoly <= 0) {
-      toast('Jumlah polybag diperiksa harus lebih besar dari 0.', 'error');
+    if (!currentBedenganDisplay) {
+      toast('Silakan pilih bedengan pemeriksaan terlebih dahulu.', 'error');
+      selBed?.focus();
       return;
     }
-    if (inspectedPoly > remainingPolybag) {
-      toast(`Jumlah polybag diperiksa (${inspectedPoly.toLocaleString('id-ID')}) melebihi sisa scope bedengan ${bedenganDisplay} (${remainingPolybag.toLocaleString('id-ID')}).`, 'error');
+
+    const rawPolyStr = inputInspectedPoly?.value !== undefined ? String(inputInspectedPoly.value).trim() : '';
+    const rawBibitStr = inputSelectedBibit?.value !== undefined ? String(inputSelectedBibit.value).trim() : '';
+
+    if (rawPolyStr === '') {
+      const polyErrEl = document.getElementById('error-modal-sel1-polybag');
+      if (polyErrEl) {
+        polyErrEl.textContent = 'Jumlah polybag diperiksa wajib diisi.';
+        polyErrEl.style.display = 'block';
+      }
+      toast('Jumlah polybag diperiksa wajib diisi.', 'error');
+      inputInspectedPoly?.focus();
       return;
     }
-    if (isNaN(selectedBibit) || selectedBibit < 0) {
-      toast('Jumlah bibit diseleksi tidak valid.', 'error');
+    if (rawBibitStr === '') {
+      const bibitErrEl = document.getElementById('error-modal-sel1-bibit');
+      if (bibitErrEl) {
+        bibitErrEl.textContent = 'Jumlah bibit afkir wajib diisi.';
+        bibitErrEl.style.display = 'block';
+      }
+      toast('Jumlah bibit afkir wajib diisi.', 'error');
+      inputSelectedBibit?.focus();
       return;
     }
+
+    const inspectedPoly = Number(rawPolyStr);
+    const selectedBibit = Number(rawBibitStr);
+
+    if (isNaN(inspectedPoly) || !Number.isInteger(inspectedPoly) || inspectedPoly < 0 || inspectedPoly > currentRemainingPolybag) {
+      updateCalculations();
+      toast('Periksa kembali input jumlah polybag diperiksa.', 'error');
+      return;
+    }
+
+    const sisaBibitBedengan = Math.max(0, currentSourceBibit - existingBibitSelected);
+    if (isNaN(selectedBibit) || !Number.isInteger(selectedBibit) || selectedBibit < 0 || selectedBibit > sisaBibitBedengan) {
+      updateCalculations();
+      toast('Periksa kembali input jumlah bibit afkir.', 'error');
+      return;
+    }
+
+    if (selectedBibit > 0 && !selAlasan?.value) {
+      const alasanErrEl = document.getElementById('error-modal-sel1-alasan');
+      if (alasanErrEl) {
+        alasanErrEl.textContent = 'Alasan wajib dipilih jika ada bibit afkir.';
+        alasanErrEl.style.display = 'block';
+      }
+      toast('Alasan wajib dipilih jika ada bibit afkir.', 'error');
+      selAlasan?.focus();
+      return;
+    }
+
+    // Photo Evidence Mandatory Validation
+    if (!currentPhoto || !currentPhoto.dataUrl) {
+      toast('Foto bukti pemeriksaan seleksi wajib dilampirkan (minimal 1 foto dengan koordinat GPS aktual).', 'error');
+      return;
+    }
+
+    isSubmitting = true;
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.5';
+    saveBtn.textContent = 'Menyimpan...';
 
     const totalSelectedAfter = existingBibitSelected + selectedBibit;
-    const cumulativeRetained = Math.max(0, sourceBibit - totalSelectedAfter);
+    const cumulativeRetained = Math.max(0, currentSourceBibit - totalSelectedAfter);
+    const chosenAlasan = selectedBibit > 0 ? (selAlasan?.value || '') : '';
 
     try {
       const res = createSeleksi1ExecutionTransaction({
-        selectionDocumentId: doc.id,
-        selectionDocNo: doc.docNo,
-        bedenganId: bedenganId,
-        bedenganCode: bedenganDisplay,
+        selectionDocumentId: currentDoc.id,
+        selectionDocNo: currentDoc.docNo,
+        bedenganId: currentBedenganId,
+        bedenganCode: currentBedenganDisplay,
         sourceSeedingDocNo: sourceSowDisplay,
         actualPolybagInspectedQty: inspectedPoly,
         actualBibitSelectedQty: selectedBibit,
         actualBibitRetainedQty: cumulativeRetained,
-        tanggalSeleksi,
-        catatan
+        alasan: chosenAlasan,
+        category: chosenAlasan,
+        alasanAfkir: chosenAlasan,
+        alasanDitolakCategory: chosenAlasan,
+        tanggalSeleksi: today,
+        catatan: '',
+        photo: currentPhoto,
+        requirePhoto: true,
+        requireAlasan: true,
+        fromUI: true
       }, user);
 
-      closeModal();
-      toast(`Transaksi Seleksi I (${res.transaction.docNo}) pada ${bedenganDisplay} berhasil dicatat. (${res.transaction.actualPolybagInspectedQty} Polybag, ${res.transaction.actualBibitSelectedQty} Bibit Diseleksi)`, 'success');
+      toast(`Transaksi Seleksi I (${res.transaction.docNo}) pada ${currentBedenganDisplay} berhasil dicatat. (${res.transaction.actualPolybagInspectedQty} Polybag, ${res.transaction.actualBibitSelectedQty} Bibit Diseleksi)`, 'success');
       if (onSaved) onSaved(res);
+
+      // Verify scope completion on refreshed document
+      const freshDoc = getPreGraftingSelectionDocumentById(currentDoc.id) || currentDoc;
+      const freshBedScopeList = getBedenganScopeStatusForSeleksi1(freshDoc);
+      const isAllCompleted = freshBedScopeList.length > 0 && freshBedScopeList.every(b => b.remainingPolybag === 0);
+
+      if (isAllCompleted) {
+        toast('Seluruh bedengan pada dokumen ini telah selesai diperiksa.', 'success');
+        closeModal();
+        return;
+      }
+
+      // Continuous transaction loop: modal stays open, form reset
+      currentDoc = freshDoc;
+      currentBedScopeList = freshBedScopeList;
+      renderBedenganOptions(freshBedScopeList);
+      applySelectedBedengan('');
+
+      isSubmitting = false;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Simpan Transaksi';
+      saveBtn.style.opacity = '0.5';
+
+      toast('Form telah di-reset. Silakan pilih bedengan berikutnya untuk melanjutkan input.', 'info');
     } catch (err) {
       console.error('[Seleksi 1 Save Error]', err);
       toast(err.message || 'Gagal menyimpan transaksi Seleksi I', 'error');
+      isSubmitting = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Simpan Transaksi';
+      saveBtn.style.opacity = '1';
     }
   });
 }
@@ -4023,307 +5236,923 @@ export function openSeleksi1ExecutionModal({ doc, bedenganCode = null, user, onS
  * MODAL PELAKSANAAN TRANSAKSI SELEKSI II (TASK-06 / TASK-26)
  * =============================================================================
  */
-export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
+export function openSeleksi2ExecutionModal({ doc, bedenganCode = null, user, onSaved }) {
   const today = formatDate(new Date().toISOString());
-  const bedScopeList = getBedenganScopeStatusForSeleksi2(doc);
-  const executions = getSeleksi2ExecutionsByDocument(doc.id || doc.docNo);
-  const sourcePolybag = parseInt(doc.sourcePolybagQty || 0, 10);
-  const sourceBibit = parseInt(doc.sourceBibitQty !== undefined ? doc.sourceBibitQty : sourcePolybag, 10);
+  let currentDoc = doc;
+  let currentBedScopeList = getBedenganScopeStatusForSeleksi2(currentDoc);
 
-  // Check if any bedengan has remaining uninspected polybag
-  const availableBeds = bedScopeList.filter(b => b.remainingPolybag > 0);
-  if (bedScopeList.length > 0 && availableBeds.length === 0) {
-    toast('Seluruh populasi polybag telah diperiksa.', 'warning');
+  // Check if all bedengans in document are already completed
+  const availableBeds = currentBedScopeList.filter(b => b.remainingPolybag > 0);
+  if (currentBedScopeList.length > 0 && availableBeds.length === 0) {
+    toast('Seluruh populasi polybag pada dokumen ini telah selesai diperiksa.', 'warning');
     return;
   }
 
-  // Find first bedengan with remaining polybag
-  const initialBed = availableBeds[0] || bedScopeList[0] || {
-    bedenganCode: 'BED-001',
-    remainingPolybag: doc.sourcePolybagQty || 0,
-    initialPolybag: doc.sourcePolybagQty || 0
-  };
+  // Resolve initial selected bedengan (if provided and valid)
+  let initialBedCode = '';
+  if (bedenganCode) {
+    const match = currentBedScopeList.find(b =>
+      formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === formatBedenganDisplayCode(bedenganCode).toUpperCase()
+    );
+    if (match && match.remainingPolybag > 0) {
+      initialBedCode = formatBedenganDisplayCode(match.bedenganCode || match.bedenganId);
+    }
+  }
 
-  const initialRemainingPolybag = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
+  const progObj = resolveProgram(currentDoc.programCode || currentDoc.programId || currentDoc.program);
+  const displayProgram = progObj?.code || currentDoc.programCode || currentDoc.programName || '-';
+  const displayGrowthStage = currentDoc.growthStage || currentDoc.tahapan || '-';
+  const displayDocNo = currentDoc.docNo || '-';
+  const displaySourceDoc = currentDoc.sourceSelectionDocNo || currentDoc.sourceDocNo || '-';
+  const sourceSelDisplay = displaySourceDoc;
+  const displayBatch = currentDoc.batchCode || currentDoc.batchNo || currentDoc.batchId || '-';
+  const displayClone = currentDoc.clone || currentDoc.klon || currentDoc.klonAwal || '-';
+  const batchCode = currentDoc.batchCode || currentDoc.batchNo || '-';
 
-  const existingBibitSelected = executions.reduce((sum, tx) =>
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10),
-    0
-  );
-  const initialRetained = Math.max(0, sourceBibit - existingBibitSelected);
+  // Akumulasi Total Populasi Batch Seleksi II
+  const curBatch = String(currentDoc.batchCode || currentDoc.batchNo || currentDoc.batchId || '').trim().toUpperCase();
+  const curProg = String(currentDoc.programCode || currentDoc.programId || currentDoc.programName || currentDoc.program || '').trim().toUpperCase();
+
+  let totalBatchBibit = 0;
+  try {
+    const rawPreDocs = getPreGraftingSelectionDocuments({ selectionStage: 'SELEKSI_2' }, user) || [];
+    const batchDocs = rawPreDocs.filter(d => {
+      if (d.isSplit || d.isLegacyAggregateSplit) return false;
+      const b = String(d.batchCode || d.batchNo || d.batchId || '').trim().toUpperCase();
+      const p = String(d.programCode || d.programId || d.programName || d.program || '').trim().toUpperCase();
+      return b === curBatch && (!curProg || !p || p === curProg);
+    });
+    if (batchDocs.length > 0) {
+      const batchMetrics = calculateBatchMetrics({ batchCode: curBatch, docs: batchDocs }, 'SELEKSI_2');
+      totalBatchBibit = batchMetrics.totalSourceBibit || batchMetrics.totalBibitAwal || 0;
+    }
+  } catch (err) {
+    console.warn('Failed to calculate batch metrics for modal sel2:', err);
+  }
+  if (!totalBatchBibit || totalBatchBibit <= 0) {
+    totalBatchBibit = parseInt(currentDoc.batchTotalBibit || 0, 10);
+  }
+  if (!totalBatchBibit || totalBatchBibit <= 0) {
+    totalBatchBibit = parseInt(currentDoc.sourceBibitQty || currentDoc.sourcePolybagQty || 0, 10);
+  }
 
   const bodyContent = `
-    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 0.78rem; color: #334155; line-height: 1.4; display: flex; flex-direction: column; gap: 12px;">
       
-      <!-- INFORMASI DOKUMEN -->
-      <div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
-          Informasi Dokumen
+      <!-- INFORMASI PEMERIKSAAN -->
+      <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="font-size: 0.82rem; font-weight: 700; color: #0F172A;">
+            Informasi Pemeriksaan
+          </div>
+          <div style="font-size: 0.78rem; font-weight: 600; color: #64748B;">
+            ${esc(today)}
+          </div>
         </div>
-        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
-          <div style="font-size: 0.68rem; color: #64748B;">Dok. Seleksi</div>
-          <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-bottom: 6px;">${esc(doc.docNo)}</div>
-          
-          <div style="font-size: 0.68rem; color: #64748B;">Dok. Asal</div>
-          <div style="font-size: 0.85rem; font-weight: 700; color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</div>
-          <div style="font-size: 0.74rem; color: #475569; margin-top: 2px;">${esc(doc.batchCode || '-')} • ${esc(doc.clone || doc.klon || '-')}</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px;">
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Program Pembibitan</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-all;">${esc(displayProgram)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Tahapan Pertumbuhan</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-word;">${esc(displayGrowthStage)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Dok. Seleksi</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-all;">${esc(displayDocNo)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Dok. Asal</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-all;">${esc(displaySourceDoc)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Batch</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">${esc(displayBatch)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Klon</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">${esc(displayClone)}</div>
+          </div>
         </div>
       </div>
 
       <!-- BEDENGAN PEMERIKSAAN -->
       <div>
-        <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+        <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">
           Bedengan Pemeriksaan <span style="color: #DC2626;">*</span>
         </label>
-        <select id="modal-sel2-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.82rem; background: #FFFFFF; color: #0F172A; font-weight: 600;">
-          ${bedScopeList.map(bed => `
-            <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
-              ${esc(bed.bedenganCode)} (Sisa Polybag: ${bed.remainingPolybag.toLocaleString('id-ID')} / ${bed.initialPolybag.toLocaleString('id-ID')})
-            </option>
-          `).join('')}
-        </select>
+        <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 6px;">
+          Pilih bedengan yang akan diperiksa.
+        </div>
+        <div style="position: relative;">
+          <select id="modal-sel2-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 32px 0 10px; font-size: 0.80rem; background: #FFFFFF; color: #0F172A; font-weight: 600; appearance: none; -webkit-appearance: none; cursor: pointer; box-sizing: border-box;">
+            <option value="" disabled ${!initialBedCode ? 'selected' : ''}>-- Pilih Bedengan Pemeriksaan --</option>
+            ${currentBedScopeList.map(bed => {
+    const bCode = formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId);
+    const isCompleted = bed.remainingPolybag === 0;
+    const suffix = isCompleted ? '(Selesai)' : `(Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} Ply)`;
+    const isSelected = initialBedCode && bCode.toUpperCase() === initialBedCode.toUpperCase();
+    return `
+                <option value="${esc(bCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" ${isCompleted ? 'disabled' : ''} ${isSelected ? 'selected' : ''}>
+                  ${esc(bCode)} ${suffix}
+                </option>
+              `;
+  }).join('')}
+          </select>
+          <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748B; display: flex; align-items: center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+        </div>
+
+        <!-- STATS SISA POLYBAG & POPULASI BIBIT LANGSUNG DI BAWAH BEDENGAN -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B;">Sisa polybag</div>
+            <div id="modal-sel2-ref-polybag" style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
+              —
+            </div>
+          </div>
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B;">Populasi bibit</div>
+            <div id="modal-sel2-ref-bibit" style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
+              —
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- REFERENCE -->
+      <!-- HASIL PEMERIKSAAN -->
       <div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
-          Reference
+        <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">
+          Hasil Pemeriksaan <span style="color: #DC2626;">*</span>
+        </label>
+        <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 8px;">
+          Masukkan jumlah hasil pemeriksaan pada bedengan terpilih.
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #0F172A; margin-bottom: 3px;">
+              Polybag diperiksa <span style="color: #DC2626;">*</span>
+            </label>
+            <div style="display: flex; align-items: stretch; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; overflow: hidden; background: #FFFFFF;">
+              <input id="modal-sel2-polybag-inspected" type="number" min="0" value="" placeholder="Masukkan jumlah" disabled style="flex: 1; border: none; padding: 0 10px; font-size: 0.82rem; font-weight: 600; color: #0F172A; outline: none; box-sizing: border-box; background: transparent;">
+              <div style="background: #F8FAFC; border-left: 1px solid #CBD5E1; padding: 0 12px; display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 600; color: #64748B; min-width: 42px;">
+                Ply
+              </div>
+            </div>
+            <div style="font-size: 0.65rem; color: #94A3B8; margin-top: 2px;">Masukkan bilangan bulat, minimal 0.</div>
+            <div id="error-modal-sel2-polybag" style="color: #DC2626; font-size: 0.68rem; font-weight: 600; margin-top: 3px; display: none;"></div>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #0F172A; margin-bottom: 3px;">
+              Bibit Diseleksi <span style="color: #DC2626;">*</span>
+            </label>
+            <div style="display: flex; align-items: stretch; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; overflow: hidden; background: #FFFFFF;">
+              <input id="modal-sel2-bibit-selected" type="number" min="0" value="" placeholder="Masukkan jumlah" disabled style="flex: 1; border: none; padding: 0 10px; font-size: 0.82rem; font-weight: 600; color: #0F172A; outline: none; box-sizing: border-box; background: transparent;">
+              <div style="background: #F8FAFC; border-left: 1px solid #CBD5E1; padding: 0 12px; display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 600; color: #64748B; min-width: 42px;">
+                Pkk
+              </div>
+            </div>
+            <div style="font-size: 0.65rem; color: #94A3B8; margin-top: 2px;">Masukkan bilangan bulat, minimal 0.</div>
+            <div id="error-modal-sel2-bibit" style="color: #DC2626; font-size: 0.68rem; font-weight: 600; margin-top: 3px; display: none;"></div>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #0F172A; margin-bottom: 3px;">
+              Alasan Diseleksi <span id="modal-sel2-alasan-required" style="color: #DC2626; display: none;">*</span>
+            </label>
+            <select id="modal-sel2-alasan" disabled style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.80rem; font-weight: 600; color: #0F172A; outline: none; background: #F8FAFC; box-sizing: border-box; transition: all 0.15s ease;">
+              <option value="" disabled selected>-- Pilih Alasan --</option>
+              <option value="Busuk">Busuk</option>
+              <option value="Fomes">Fomes</option>
+              <option value="Jamur Lainnya">Jamur Lainnya</option>
+              <option value="Kerdil">Kerdil</option>
+              <option value="Mati">Mati</option>
+              <option value="Patah">Patah</option>
+              <option value="Rusak">Rusak</option>
+            </select>
+            <div style="font-size: 0.65rem; color: #94A3B8; margin-top: 2px;">Wajib dipilih jika ada bibit diseleksi.</div>
+            <div id="error-modal-sel2-alasan" style="color: #DC2626; font-size: 0.68rem; font-weight: 600; margin-top: 3px; display: none;"></div>
+          </div>
+
+          <div id="modal-sel2-quota-warning" style="display: none; margin-top: 2px; padding: 6px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; color: #DC2626; font-size: 0.70rem; font-weight: 600;"></div>
+        </div>
+      </div>
+
+      <!-- PERKIRAAN HASIL -->
+      <div id="modal-sel2-calculator-card" style="display: none; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;">
+          <span style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">Perkiraan Hasil</span>
+          <span style="display: none;">Real-time</span>
+        </div>
+        <div id="modal-sel2-calc-instruction" style="font-size: 0.68rem; color: #64748B; margin-bottom: 8px;">
+          Pilih bedengan pemeriksaan terlebih dahulu untuk melihat perkiraan hasil.
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
-            <div id="modal-sel2-ref-polybag" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
-              ${initialRemainingPolybag.toLocaleString('id-ID')} Ply
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 4px;">Sisa polybag setelah input</div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span id="modal-sel2-calc-rem-poly" style="font-size: 1.15rem; font-weight: 700; color: #0F172A;">—</span>
+              <span id="modal-sel2-calc-rem-poly-unit" style="font-size: 0.72rem; color: #64748B; display: none;">Ply</span>
             </div>
-            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Sisa Polybag</div>
           </div>
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
-            <div id="modal-sel2-ref-bibit" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
-              ${sourceBibit.toLocaleString('id-ID')} Pkk
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 4px;">Sisa bibit setelah input</div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span id="modal-sel2-calc-retained-bibit" style="font-size: 1.15rem; font-weight: 700; color: #0F172A;">—</span>
+              <span id="modal-sel2-calc-retained-bibit-unit" style="font-size: 0.72rem; color: #64748B; display: none;">Pkk</span>
             </div>
-            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Bibit Awal</div>
           </div>
-        </div>
-        <input type="hidden" id="modal-sel2-current-remaining-poly" value="${initialRemainingPolybag}">
-      </div>
-
-      <!-- INPUT PEMERIKSAAN MANTRI -->
-      <div style="display: flex; flex-direction: column; gap: 10px;">
-        <div style="font-size: 0.74rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em;">
-          INPUT PEMERIKSAAN MANTRI
-        </div>
-
-        <!-- 1. Jlh Polybag Diperiksa -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Polybag Diperiksa <span style="color: #DC2626;">*</span>
-          </label>
-          <input id="modal-sel2-polybag-inspected" type="number" min="1" max="${initialRemainingPolybag}" value="" placeholder="Masukkan jlh polybag diperiksa..." style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
-        </div>
-
-        <!-- 2. Jlh Bibit Diseleksi -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
-          </label>
-          <input id="modal-sel2-bibit-selected" type="number" min="0" value="" placeholder="Masukkan jlh bibit diseleksi (afkir)..." style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #DC2626; background: #FFFFFF;">
-        </div>
-
-        <!-- 3. Jlh Bibit Dipertahankan (READONLY / OTOMATIS) -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Bibit Dipertahankan <span style="font-size: 0.68rem; color: #15803D; font-weight: normal;">(Otomatis Dihitung)</span>
-          </label>
-          <input id="modal-sel2-bibit-retained" type="number" value="${initialRetained}" readonly disabled style="width: 100%; height: 38px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 10px; font-weight: 800; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #F1F5F9; cursor: not-allowed;">
         </div>
       </div>
 
-      <!-- RINGKASAN -->
+      <!-- RINGKASAN PEMERIKSAAN -->
+      <div id="modal-sel2-summary-panel" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+          <span style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">Ringkasan Pemeriksaan</span>
+          <span id="modal-sel2-summary-bed-name" style="display: none;">Bedengan: —</span>
+        </div>
+        <div id="modal-sel2-summary-instruction" style="font-size: 0.68rem; color: #64748B; margin-bottom: 10px;">
+          Pilih bedengan pemeriksaan untuk menampilkan ringkasan.
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Baris 1: Polybag diperiksa & progress -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="font-size: 0.70rem; color: #64748B;">Polybag diperiksa</span>
+              <span id="sum-sel2-poly-ratio" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="flex: 1; height: 6px; background: #E2E8F0; border-radius: 3px; overflow: hidden;">
+                <div id="sum-sel2-poly-progress-bar" style="width: 0%; height: 100%; background: #16A34A; transition: width 0.2s ease;"></div>
+              </div>
+              <span id="sum-sel2-poly-pct" style="font-size: 0.65rem; font-weight: 600; color: #64748B; min-width: 28px; text-align: right;">—</span>
+            </div>
+          </div>
+
+          <!-- Baris 2: Bibit Diseleksi -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Bibit Diseleksi</span>
+            <span id="sum-sel2-bibit-afkir" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+
+          <!-- Baris 3: Alasan Diseleksi -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Alasan Diseleksi</span>
+            <span id="sum-sel2-alasan-afkir" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+
+          <!-- Baris 4: Sisa polybag -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Sisa polybag</span>
+            <span id="sum-sel2-poly-sisa" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+
+          <!-- Baris 5: Sisa bibit tersedia -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Sisa bibit tersedia</span>
+            <span id="sum-sel2-bibit-sisa" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOTO BUKTI PEMERIKSAAN (WAJIB DENGAN WATERMARK GPS) -->
       <div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
-          RINGKASAN
+        <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">
+          Foto Bukti Pemeriksaan <span style="color: #DC2626;">*</span>
+        </label>
+        <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 8px;">
+          Ambil satu foto bukti dengan kamera dan lokasi aktual.
         </div>
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
-            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
-              <div style="font-size: 0.68rem; color: #64748B;">Polybag Diperiksa</div>
-              <div id="modal-sel2-sum-inspected-poly" style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin-top: 1px;">0 Ply</div>
-            </div>
-            <div style="padding: 8px 10px;">
-              <div style="font-size: 0.68rem; color: #64748B;">Bibit Diseleksi</div>
-              <div id="modal-sel2-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Pkk</div>
-            </div>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr;">
-            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
-              <div style="font-size: 0.68rem; color: #64748B;">Bibit Dipertahankan</div>
-              <div id="modal-sel2-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRetained.toLocaleString('id-ID')} Pkk</div>
-            </div>
-            <div style="padding: 8px 10px;">
-              <div style="font-size: 0.68rem; color: #64748B;">Sisa Polybag Bedengan</div>
-              <div id="modal-sel2-sum-remaining-poly" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">${initialRemainingPolybag.toLocaleString('id-ID')} Ply</div>
-            </div>
+
+        <!-- Area Belum Ada Foto (Tombol Ambil Foto) -->
+        <div id="modal-sel2-photo-empty" style="border: 1.5px dashed #CBD5E1; border-radius: 8px; padding: 14px 12px; text-align: center; background: #F8FAFC;">
+          <button type="button" id="btn-modal-sel2-take-photo" style="display: inline-flex; align-items: center; gap: 6px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; padding: 7px 14px; font-size: 0.76rem; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: background 0.15s ease;">
+            <svg viewBox="0 0 24 24" width="15" height="15" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            Ambil Foto Seleksi
+          </button>
+          <div style="font-size: 0.65rem; color: #64748B; margin-top: 6px;">
+            Wajib 1 foto bukti untuk menyimpan transaksi.
           </div>
         </div>
-        <div id="modal-sel2-quota-warning" style="display: none; margin-top: 8px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
-      </div>
 
-      <!-- TANGGAL & CATATAN -->
-      <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
-        <div>
-          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal</label>
-          <input id="modal-sel2-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
+        <!-- Area Preview Foto (Jika Foto Sudah Diambil - Kartu Horizontal Ringkas) -->
+        <div id="modal-sel2-photo-preview-wrap" style="display: none; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 12px; align-items: center; justify-content: space-between; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; flex: 1;">
+            <img id="modal-sel2-photo-img" src="" alt="Bukti Seleksi II" style="width: 48px; height: 48px; border-radius: 6px; object-fit: cover; border: 1px solid #CBD5E1; flex-shrink: 0;" />
+            <div style="overflow: hidden; flex: 1;">
+              <div style="font-size: 0.64rem; color: #64748B;">Foto terpilih</div>
+              <div id="modal-sel2-photo-name" style="font-size: 0.75rem; font-weight: 700; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">IMG_Bukti.jpg</div>
+              <div id="modal-sel2-photo-meta" style="font-size: 0.64rem; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+            </div>
+          </div>
+          <button type="button" id="btn-modal-sel2-remove-photo" style="background: #FFFFFF; color: #EF4444; border: 1px solid #FCA5A5; border-radius: 6px; padding: 5px 12px; font-size: 0.72rem; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: all 0.15s ease;">
+            Hapus
+          </button>
         </div>
-        <div>
-          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan</label>
-          <input id="modal-sel2-notes" type="text" placeholder="Catatan Seleksi II..." style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
-        </div>
-      </div>
-
-      <!-- BUTTONS -->
-      <div style="display: flex; gap: 8px; margin-top: 4px;">
-        <button id="btn-modal-cancel-sel2" type="button" style="flex: 1; height: 38px; background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer;">
-          Batal
-        </button>
-        <button id="btn-modal-save-sel2" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25);">
-          Simpan Transaksi
-        </button>
       </div>
 
     </div>
   `;
 
+  const footerContent = `
+    <div style="display: flex; gap: 8px; width: 100%;">
+      <button id="btn-modal-cancel-sel2" type="button" style="flex: 1; height: 38px; background: #FFFFFF; color: #0F172A; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer; transition: background 0.15s ease;">
+        Batal
+      </button>
+      <button id="btn-modal-save-sel2" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.2); transition: background 0.15s ease; opacity: 0.5;" disabled>
+        Simpan Transaksi
+      </button>
+    </div>
+  `;
+
   openModal({
     title: 'Pelaksanaan Seleksi II',
-    body: bodyContent
+    body: bodyContent,
+    footer: footerContent,
+    isFullScreen: true
   });
 
   const selBed = document.getElementById('modal-sel2-bedengan');
   const inputInspectedPoly = document.getElementById('modal-sel2-polybag-inspected');
   const inputSelectedBibit = document.getElementById('modal-sel2-bibit-selected');
-  const inputRetainedBibit = document.getElementById('modal-sel2-bibit-retained');
-  const inputNotes = document.getElementById('modal-sel2-notes');
-  const hiddenRemPoly = document.getElementById('modal-sel2-current-remaining-poly');
-  const labelRefPoly = document.getElementById('modal-sel2-ref-polybag');
-
-  const sumInspectedPoly = document.getElementById('modal-sel2-sum-inspected-poly');
-  const sumSelectedBibit = document.getElementById('modal-sel2-sum-selected-bibit');
-  const sumRetainedBibit = document.getElementById('modal-sel2-sum-retained-bibit');
-  const sumRemainingPoly = document.getElementById('modal-sel2-sum-remaining-poly');
+  const selAlasan = document.getElementById('modal-sel2-alasan');
+  const alasanReqEl = document.getElementById('modal-sel2-alasan-required');
+  const refPolybagEl = document.getElementById('modal-sel2-ref-polybag');
+  const refBibitEl = document.getElementById('modal-sel2-ref-bibit');
   const warningEl = document.getElementById('modal-sel2-quota-warning');
   const saveBtn = document.getElementById('btn-modal-save-sel2');
 
-  function updateCalculations() {
-    const remPoly = parseInt(hiddenRemPoly?.value || 0, 10);
-    const inspectedPoly = parseInt(inputInspectedPoly?.value || 0, 10);
-    const selectedBibit = parseInt(inputSelectedBibit?.value || 0, 10);
+  // Photo State & Elements
+  let currentPhoto = null;
+  const photoEmptyEl = document.getElementById('modal-sel2-photo-empty');
+  const photoPreviewWrap = document.getElementById('modal-sel2-photo-preview-wrap');
+  const photoImg = document.getElementById('modal-sel2-photo-img');
+  const photoMeta = document.getElementById('modal-sel2-photo-meta');
+  const photoNameEl = document.getElementById('modal-sel2-photo-name');
+  const btnTakePhoto = document.getElementById('btn-modal-sel2-take-photo');
+  const btnRemovePhoto = document.getElementById('btn-modal-sel2-remove-photo');
 
-    const totalSelectedAfter = existingBibitSelected + (isNaN(selectedBibit) ? 0 : selectedBibit);
-    const cumulativeRetained = Math.max(0, sourceBibit - totalSelectedAfter);
-
-    if (inputRetainedBibit) inputRetainedBibit.value = cumulativeRetained;
-    if (sumInspectedPoly) sumInspectedPoly.textContent = `${(isNaN(inspectedPoly) ? 0 : inspectedPoly).toLocaleString('id-ID')} Ply`;
-    if (sumSelectedBibit) sumSelectedBibit.textContent = `${(isNaN(selectedBibit) ? 0 : selectedBibit).toLocaleString('id-ID')} Pkk`;
-    if (sumRetainedBibit) sumRetainedBibit.textContent = `${cumulativeRetained.toLocaleString('id-ID')} Pkk`;
-    if (sumRemainingPoly) sumRemainingPoly.textContent = `${Math.max(0, remPoly - (isNaN(inspectedPoly) ? 0 : inspectedPoly)).toLocaleString('id-ID')} Ply`;
-
-    let errorMsg = null;
-
-    if (inputInspectedPoly && inputInspectedPoly.value.trim() !== '' && (isNaN(inspectedPoly) || inspectedPoly <= 0)) {
-      errorMsg = 'Jumlah polybag diperiksa harus lebih besar dari 0.';
-    } else if (inspectedPoly > remPoly) {
-      errorMsg = `Jumlah polybag diperiksa (${inspectedPoly.toLocaleString('id-ID')}) melebihi sisa scope polybag (${remPoly.toLocaleString('id-ID')}).`;
-    } else if (inputSelectedBibit && inputSelectedBibit.value.trim() !== '' && (isNaN(selectedBibit) || selectedBibit < 0)) {
-      errorMsg = 'Jumlah bibit diseleksi tidak boleh negatif.';
-    }
-
-    const isCriticalError = isNaN(inspectedPoly) || inspectedPoly <= 0 || inspectedPoly > remPoly || isNaN(selectedBibit) || selectedBibit < 0;
-
-    if (errorMsg) {
-      if (warningEl) {
-        warningEl.textContent = errorMsg;
-        warningEl.style.display = 'block';
+  function renderPhotoState() {
+    if (currentPhoto && currentPhoto.dataUrl) {
+      if (photoEmptyEl) photoEmptyEl.style.display = 'none';
+      if (photoPreviewWrap) photoPreviewWrap.style.display = 'flex';
+      if (photoImg) photoImg.src = currentPhoto.dataUrl;
+      if (photoNameEl) {
+        photoNameEl.textContent = currentPhoto.fileName || `IMG_${today.replace(/[^0-9]/g, '')}_${currentPhoto.capturedAt ? new Date(currentPhoto.capturedAt).toTimeString().slice(0, 8).replace(/:/g, '') : '102530'}.jpg`;
+      }
+      if (photoMeta) {
+        photoMeta.textContent = currentPhoto.capturedAtLabel || today;
       }
     } else {
-      if (warningEl) {
+      if (photoEmptyEl) photoEmptyEl.style.display = 'block';
+      if (photoPreviewWrap) photoPreviewWrap.style.display = 'none';
+      if (photoImg) photoImg.src = '';
+      if (photoMeta) photoMeta.textContent = '';
+    }
+  }
+
+  function launchCamera() {
+    if (!currentBedenganCode) {
+      toast('Silakan pilih bedengan pemeriksaan terlebih dahulu.', 'warning');
+      selBed?.focus();
+      return;
+    }
+    openExecutionCameraModal({
+      batchCode: curBatch || doc.batchCode,
+      bedenganCode: currentBedenganCode,
+      stageLabel: 'Seleksi II',
+      onCaptureSuccess: (photoRecord) => {
+        currentPhoto = photoRecord;
+        renderPhotoState();
+        updateCalculations();
+      },
+      onCancel: () => {
+        // Form state remains intact
+      }
+    });
+  }
+
+  btnTakePhoto?.addEventListener('click', launchCamera);
+  btnRemovePhoto?.addEventListener('click', () => {
+    currentPhoto = null;
+    renderPhotoState();
+    updateCalculations();
+  });
+
+  let currentBedenganCode = '';
+  let currentRemainingPolybag = 0;
+  let currentInitialPolybag = 0;
+  let currentSourceBibit = 0;
+  let existingPolyInspected = 0;
+  let existingBibitSelected = 0;
+  let isSubmitting = false;
+
+  function renderBedenganOptions(scopeList) {
+    if (!selBed) return;
+    selBed.innerHTML = `
+      <option value="" disabled ${!currentBedenganCode ? 'selected' : ''}>-- Pilih Bedengan Pemeriksaan --</option>
+      ${scopeList.map(bed => {
+      const bCode = formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId);
+      const isCompleted = (bed.remainingPolybag === 0);
+      const suffix = isCompleted ? '(Selesai)' : `(Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} Ply)`;
+      const isSelected = currentBedenganCode && bCode.toUpperCase() === currentBedenganCode.toUpperCase();
+      return `
+          <option value="${esc(bCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" ${isCompleted ? 'disabled' : ''} ${isSelected ? 'selected' : ''}>
+            ${esc(bCode)} ${suffix}
+          </option>
+        `;
+    }).join('')}
+    `;
+    selBed.value = currentBedenganCode || '';
+  }
+
+  function resetCalculatorAndSummary() {
+    const calcInstructionEl = document.getElementById('modal-sel2-calc-instruction');
+    if (calcInstructionEl) {
+      calcInstructionEl.textContent = 'Pilih bedengan pemeriksaan terlebih dahulu untuk melihat perkiraan hasil.';
+    }
+
+    const calcRemPolyEl = document.getElementById('modal-sel2-calc-rem-poly');
+    const calcRetainedBibitEl = document.getElementById('modal-sel2-calc-retained-bibit');
+    const calcRemPolyUnitEl = document.getElementById('modal-sel2-calc-rem-poly-unit');
+    const calcRetainedBibitUnitEl = document.getElementById('modal-sel2-calc-retained-bibit-unit');
+
+    if (calcRemPolyEl) { calcRemPolyEl.textContent = '—'; calcRemPolyEl.style.color = '#0F172A'; }
+    if (calcRetainedBibitEl) { calcRetainedBibitEl.textContent = '—'; calcRetainedBibitEl.style.color = '#0F172A'; }
+    if (calcRemPolyUnitEl) calcRemPolyUnitEl.style.display = 'none';
+    if (calcRetainedBibitUnitEl) calcRetainedBibitUnitEl.style.display = 'none';
+
+    const sumBedNameEl = document.getElementById('modal-sel2-summary-bed-name');
+    if (sumBedNameEl) sumBedNameEl.textContent = 'Bedengan: —';
+
+    const sumInstructionEl = document.getElementById('modal-sel2-summary-instruction');
+    if (sumInstructionEl) {
+      sumInstructionEl.textContent = 'Pilih bedengan pemeriksaan untuk menampilkan ringkasan.';
+    }
+
+    const sumPolyRatio = document.getElementById('sum-sel2-poly-ratio');
+    if (sumPolyRatio) sumPolyRatio.textContent = '—';
+
+    const sumPolyBar = document.getElementById('sum-sel2-poly-progress-bar');
+    if (sumPolyBar) sumPolyBar.style.width = '0%';
+
+    const sumPolyPct = document.getElementById('sum-sel2-poly-pct');
+    if (sumPolyPct) sumPolyPct.textContent = '—';
+
+    const sumBibitAfkir = document.getElementById('sum-sel2-bibit-afkir');
+    if (sumBibitAfkir) sumBibitAfkir.textContent = '—';
+
+    const sumAlasanAfkir = document.getElementById('sum-sel2-alasan-afkir');
+    if (sumAlasanAfkir) sumAlasanAfkir.textContent = '—';
+
+    const sumPolySisa = document.getElementById('sum-sel2-poly-sisa');
+    if (sumPolySisa) {
+      sumPolySisa.textContent = '—';
+      sumPolySisa.style.color = '#0F172A';
+    }
+
+    const sumBibitSisa = document.getElementById('sum-sel2-bibit-sisa');
+    if (sumBibitSisa) sumBibitSisa.textContent = '—';
+  }
+
+  function applySelectedBedengan(bCode) {
+    if (!bCode) {
+      currentBedenganCode = '';
+      currentRemainingPolybag = 0;
+      currentInitialPolybag = 0;
+      currentSourceBibit = 0;
+      existingPolyInspected = 0;
+      existingBibitSelected = 0;
+
+      if (selBed) selBed.value = '';
+      if (refPolybagEl) refPolybagEl.textContent = '—';
+      if (refBibitEl) refBibitEl.textContent = '—';
+
+      if (inputInspectedPoly) {
+        inputInspectedPoly.value = '';
+        inputInspectedPoly.disabled = true;
+        inputInspectedPoly.placeholder = 'Masukkan jumlah';
+      }
+      if (inputSelectedBibit) {
+        inputSelectedBibit.value = '';
+        inputSelectedBibit.disabled = true;
+        inputSelectedBibit.placeholder = 'Masukkan jumlah';
+      }
+      if (selAlasan) {
+        selAlasan.value = '';
+        selAlasan.disabled = true;
+        selAlasan.style.background = '#F8FAFC';
+      }
+      if (alasanReqEl) alasanReqEl.style.display = 'none';
+
+      currentPhoto = null;
+      renderPhotoState();
+      updateCalculations();
+      return;
+    }
+
+    const matchedBed = currentBedScopeList.find(b =>
+      formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === bCode.toUpperCase()
+    );
+
+    if (!matchedBed) return;
+
+    const prevBed = currentBedenganCode;
+    currentBedenganCode = formatBedenganDisplayCode(matchedBed.bedenganCode || matchedBed.bedenganId);
+    if (selBed) selBed.value = currentBedenganCode;
+    currentRemainingPolybag = matchedBed.remainingPolybag || 0;
+    currentInitialPolybag = matchedBed.initialPolybag || 0;
+    currentSourceBibit = matchedBed.initialBibit !== undefined
+      ? matchedBed.initialBibit
+      : (matchedBed.initialPolybag || totalBatchBibit);
+    existingPolyInspected = matchedBed.inspectedPolybag || 0;
+    existingBibitSelected = matchedBed.inspectedBibit || 0;
+
+    if (refPolybagEl) refPolybagEl.textContent = `${currentRemainingPolybag.toLocaleString('id-ID')} Ply`;
+    if (refBibitEl) refBibitEl.textContent = `${currentSourceBibit.toLocaleString('id-ID')} Pkk`;
+
+    if (inputInspectedPoly) {
+      inputInspectedPoly.disabled = false;
+      inputInspectedPoly.placeholder = 'Masukkan jumlah';
+      inputInspectedPoly.max = currentRemainingPolybag;
+      inputInspectedPoly.value = '';
+    }
+    if (inputSelectedBibit) {
+      inputSelectedBibit.disabled = false;
+      inputSelectedBibit.placeholder = 'Masukkan jumlah';
+      inputSelectedBibit.value = '';
+    }
+    if (selAlasan) {
+      selAlasan.value = '';
+      selAlasan.disabled = true;
+      selAlasan.style.background = '#F8FAFC';
+    }
+    if (alasanReqEl) alasanReqEl.style.display = 'none';
+
+    // Reset photo if bedengan changed to enforce 1 photo per bedengan
+    if (currentPhoto && currentPhoto.bedenganCode !== currentBedenganCode) {
+      currentPhoto = null;
+      renderPhotoState();
+      if (prevBed && prevBed !== currentBedenganCode) {
+        toast(`Bedengan berganti ke ${currentBedenganCode}. Silakan ambil foto bukti untuk bedengan baru.`, 'info');
+      }
+    }
+
+    updateCalculations();
+  }
+
+  selBed?.addEventListener('change', () => {
+    applySelectedBedengan(selBed.value);
+  });
+
+  function updateCalculations() {
+    const polyErrEl = document.getElementById('error-modal-sel2-polybag');
+    const bibitErrEl = document.getElementById('error-modal-sel2-bibit');
+    const alasanErrEl = document.getElementById('error-modal-sel2-alasan');
+
+    if (!currentBedenganCode) {
+      if (polyErrEl) { polyErrEl.textContent = ''; polyErrEl.style.display = 'none'; }
+      if (bibitErrEl) { bibitErrEl.textContent = ''; bibitErrEl.style.display = 'none'; }
+      if (alasanErrEl) { alasanErrEl.textContent = ''; alasanErrEl.style.display = 'none'; }
+      if (warningEl) { warningEl.style.display = 'none'; }
+      resetCalculatorAndSummary();
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+      return;
+    }
+
+    const rawPolyStr = inputInspectedPoly?.value !== undefined ? String(inputInspectedPoly.value).trim() : '';
+    const rawBibitStr = inputSelectedBibit?.value !== undefined ? String(inputSelectedBibit.value).trim() : '';
+
+    let polyError = null;
+    let pVal = null;
+    if (rawPolyStr !== '') {
+      pVal = Number(rawPolyStr);
+      if (isNaN(pVal)) {
+        polyError = 'Jumlah polybag diperiksa harus berupa angka yang valid.';
+      } else if (!Number.isInteger(pVal) || rawPolyStr.includes('.')) {
+        polyError = 'Jumlah polybag diperiksa harus berupa bilangan bulat.';
+      } else if (pVal < 0) {
+        polyError = 'Jumlah polybag diperiksa tidak boleh negatif (minimum 0).';
+      } else if (pVal > currentRemainingPolybag) {
+        polyError = `Jumlah polybag diperiksa (${pVal.toLocaleString('id-ID')}) melebihi sisa scope bedengan (${currentRemainingPolybag.toLocaleString('id-ID')}).`;
+      }
+    }
+
+    const sisaBibitBedengan = Math.max(0, currentSourceBibit - existingBibitSelected);
+
+    let bibitError = null;
+    let bVal = null;
+    if (rawBibitStr !== '') {
+      bVal = Number(rawBibitStr);
+      if (isNaN(bVal)) {
+        bibitError = 'Jumlah bibit afkir harus berupa angka yang valid.';
+      } else if (!Number.isInteger(bVal) || rawBibitStr.includes('.')) {
+        bibitError = 'Jumlah bibit afkir harus berupa bilangan bulat.';
+      } else if (bVal < 0) {
+        bibitError = 'Jumlah bibit afkir tidak boleh negatif (minimum 0).';
+      } else if (bVal > sisaBibitBedengan) {
+        bibitError = `Jumlah bibit afkir (${bVal.toLocaleString('id-ID')}) melebihi sisa bibit tersedia (${sisaBibitBedengan.toLocaleString('id-ID')}).`;
+      }
+    }
+
+    // Alasan afkir control & validation
+    let alasanError = null;
+    if (bVal !== null && bVal > 0 && !bibitError) {
+      if (selAlasan) {
+        selAlasan.disabled = false;
+        selAlasan.style.background = '#FFFFFF';
+      }
+      if (alasanReqEl) alasanReqEl.style.display = 'inline';
+      if (!selAlasan?.value) {
+        alasanError = 'Alasan wajib dipilih jika ada bibit afkir.';
+      }
+    } else {
+      if (selAlasan) {
+        selAlasan.disabled = true;
+        selAlasan.style.background = '#F8FAFC';
+        selAlasan.value = '';
+      }
+      if (alasanReqEl) alasanReqEl.style.display = 'none';
+      alasanError = null;
+    }
+
+    // Render inline error elements
+    if (polyErrEl) {
+      polyErrEl.textContent = polyError || '';
+      polyErrEl.style.display = polyError ? 'block' : 'none';
+    }
+    if (inputInspectedPoly) {
+      inputInspectedPoly.style.borderColor = polyError ? '#DC2626' : '#CBD5E1';
+    }
+
+    if (bibitErrEl) {
+      bibitErrEl.textContent = bibitError || '';
+      bibitErrEl.style.display = bibitError ? 'block' : 'none';
+    }
+    if (inputSelectedBibit) {
+      inputSelectedBibit.style.borderColor = bibitError ? '#DC2626' : '#CBD5E1';
+    }
+
+    if (alasanErrEl) {
+      alasanErrEl.textContent = alasanError || '';
+      alasanErrEl.style.display = alasanError ? 'block' : 'none';
+    }
+    if (selAlasan) {
+      selAlasan.style.borderColor = alasanError ? '#DC2626' : '#CBD5E1';
+    }
+
+    if (warningEl) {
+      const topError = polyError || bibitError || alasanError;
+      if (topError) {
+        warningEl.textContent = topError;
+        warningEl.style.display = 'block';
+      } else {
         warningEl.style.display = 'none';
       }
     }
 
+    const validP = (pVal !== null && !isNaN(pVal) && pVal >= 0 && !polyError) ? pVal : null;
+    const validB = (bVal !== null && !isNaN(bVal) && bVal >= 0 && !bibitError) ? bVal : null;
+
+    const activeP = validP !== null ? validP : 0;
+    const activeB = validB !== null ? validB : 0;
+
+    const totalInspectedPoly = existingPolyInspected + activeP;
+    const remPolyAfter = currentRemainingPolybag - activeP;
+    const pctPoly = currentInitialPolybag > 0 ? Math.min(100, Math.round((totalInspectedPoly / currentInitialPolybag) * 100)) : 0;
+
+    const totalAfkirBibit = existingBibitSelected + activeB;
+    const sisaBibitTersedia = Math.max(0, currentSourceBibit - totalAfkirBibit);
+
+    const calcInstructionEl = document.getElementById('modal-sel2-calc-instruction');
+    if (calcInstructionEl) {
+      calcInstructionEl.textContent = 'Perkiraan hasil dihitung berdasarkan sisa bedengan setelah input transaksi ini.';
+    }
+    const calcRemPolyUnitEl = document.getElementById('modal-sel2-calc-rem-poly-unit');
+    const calcRetainedBibitUnitEl = document.getElementById('modal-sel2-calc-retained-bibit-unit');
+    if (calcRemPolyUnitEl) calcRemPolyUnitEl.style.display = 'inline';
+    if (calcRetainedBibitUnitEl) calcRetainedBibitUnitEl.style.display = 'inline';
+
+    const sumInstructionEl = document.getElementById('modal-sel2-summary-instruction');
+    if (sumInstructionEl) {
+      sumInstructionEl.textContent = 'Ringkasan akumulasi pemeriksaan pada bedengan terpilih.';
+    }
+
+    const calcRemPolyEl = document.getElementById('modal-sel2-calc-rem-poly');
+    const calcRetainedBibitEl = document.getElementById('modal-sel2-calc-retained-bibit');
+
+    if (calcRemPolyEl) {
+      calcRemPolyEl.textContent = validP !== null ? remPolyAfter.toLocaleString('id-ID') : currentRemainingPolybag.toLocaleString('id-ID');
+      calcRemPolyEl.style.color = remPolyAfter < 0 ? '#DC2626' : '#116834';
+    }
+
+    if (calcRetainedBibitEl) {
+      calcRetainedBibitEl.textContent = sisaBibitTersedia.toLocaleString('id-ID');
+      calcRetainedBibitEl.style.color = '#116834';
+    }
+
+    // Section 5: Ringkasan Pemeriksaan
+    const sumBedNameEl = document.getElementById('modal-sel2-summary-bed-name');
+    if (sumBedNameEl) {
+      sumBedNameEl.textContent = currentBedenganCode ? `Bedengan: ${currentBedenganCode}` : 'Bedengan: —';
+    }
+
+    const sumPolyRatio = document.getElementById('sum-sel2-poly-ratio');
+    if (sumPolyRatio) {
+      sumPolyRatio.textContent = validP !== null
+        ? `${totalInspectedPoly.toLocaleString('id-ID')} / ${currentInitialPolybag.toLocaleString('id-ID')} Ply`
+        : `— / ${currentInitialPolybag.toLocaleString('id-ID')} Ply`;
+    }
+
+    const sumPolyBar = document.getElementById('sum-sel2-poly-progress-bar');
+    if (sumPolyBar) {
+      sumPolyBar.style.width = `${pctPoly}%`;
+    }
+
+    const sumPolyPct = document.getElementById('sum-sel2-poly-pct');
+    if (sumPolyPct) {
+      sumPolyPct.textContent = `${pctPoly}%`;
+    }
+
+    const sumBibitAfkir = document.getElementById('sum-sel2-bibit-afkir');
+    if (sumBibitAfkir) {
+      sumBibitAfkir.textContent = validB !== null ? `${totalAfkirBibit.toLocaleString('id-ID')} Pkk` : '—';
+    }
+
+    const sumAlasanAfkir = document.getElementById('sum-sel2-alasan-afkir');
+    if (sumAlasanAfkir) {
+      sumAlasanAfkir.textContent = (validB !== null && validB > 0 && selAlasan?.value) ? selAlasan.value : '—';
+    }
+
+    const sumPolySisa = document.getElementById('sum-sel2-poly-sisa');
+    if (sumPolySisa) {
+      sumPolySisa.textContent = `${remPolyAfter.toLocaleString('id-ID')} Ply`;
+      sumPolySisa.style.color = remPolyAfter < 0 ? '#DC2626' : '#116834';
+    }
+
+    const sumBibitSisa = document.getElementById('sum-sel2-bibit-sisa');
+    if (sumBibitSisa) {
+      sumBibitSisa.textContent = `${sisaBibitTersedia.toLocaleString('id-ID')} Pkk`;
+    }
+
+    const hasExplicitError = Boolean(polyError || bibitError || alasanError);
     if (saveBtn) {
-      saveBtn.disabled = isCriticalError;
-      saveBtn.style.opacity = isCriticalError ? '0.5' : '1';
-      saveBtn.style.cursor = isCriticalError ? 'not-allowed' : 'pointer';
+      saveBtn.disabled = hasExplicitError;
+      saveBtn.style.opacity = hasExplicitError ? '0.5' : '1';
+      saveBtn.style.cursor = hasExplicitError ? 'not-allowed' : 'pointer';
     }
   }
 
-  // Initial calculation trigger
-  updateCalculations();
-
-  selBed?.addEventListener('change', () => {
-    const opt = selBed.options[selBed.selectedIndex];
-    const remPoly = parseInt(opt.getAttribute('data-remaining-poly') || 0, 10);
-
-    if (hiddenRemPoly) hiddenRemPoly.value = remPoly;
-    if (labelRefPoly) labelRefPoly.textContent = `${remPoly.toLocaleString('id-ID')} Ply`;
-
-    if (inputInspectedPoly) {
-      inputInspectedPoly.max = remPoly;
-      inputInspectedPoly.value = '';
-    }
-    if (inputSelectedBibit) {
-      inputSelectedBibit.value = '';
-    }
-    updateCalculations();
-  });
+  // Initial setup: render options and apply initial selection
+  renderBedenganOptions(currentBedScopeList);
+  applySelectedBedengan(initialBedCode || '');
 
   inputInspectedPoly?.addEventListener('input', updateCalculations);
   inputSelectedBibit?.addEventListener('input', updateCalculations);
+  selAlasan?.addEventListener('change', updateCalculations);
 
   document.getElementById('btn-modal-cancel-sel2')?.addEventListener('click', closeModal);
 
   document.getElementById('btn-modal-save-sel2')?.addEventListener('click', () => {
-    const bedenganCode = selBed?.value || '';
-    const remPoly = parseInt(hiddenRemPoly?.value || 0, 10);
-    const inspectedPoly = parseInt(inputInspectedPoly?.value || 0, 10);
-    const selectedBibit = parseInt(inputSelectedBibit?.value || 0, 10);
-    const tanggalSeleksi = today;
-    const catatan = inputNotes?.value || '';
+    if (isSubmitting) return;
 
-    // Validations
-    if (isNaN(inspectedPoly) || inspectedPoly <= 0) {
-      toast('Jumlah polybag diperiksa harus lebih besar dari 0.', 'error');
+    if (!currentBedenganCode) {
+      toast('Silakan pilih bedengan pemeriksaan terlebih dahulu.', 'error');
+      selBed?.focus();
       return;
     }
-    if (inspectedPoly > remPoly) {
-      toast(`Jumlah polybag diperiksa (${inspectedPoly.toLocaleString('id-ID')}) melebihi sisa scope (${remPoly.toLocaleString('id-ID')}).`, 'error');
+
+    const rawPolyStr = inputInspectedPoly?.value !== undefined ? String(inputInspectedPoly.value).trim() : '';
+    const rawBibitStr = inputSelectedBibit?.value !== undefined ? String(inputSelectedBibit.value).trim() : '';
+
+    if (rawPolyStr === '') {
+      const polyErrEl = document.getElementById('error-modal-sel2-polybag');
+      if (polyErrEl) {
+        polyErrEl.textContent = 'Jumlah polybag diperiksa wajib diisi.';
+        polyErrEl.style.display = 'block';
+      }
+      toast('Jumlah polybag diperiksa wajib diisi.', 'error');
+      inputInspectedPoly?.focus();
       return;
     }
-    if (isNaN(selectedBibit) || selectedBibit < 0) {
-      toast('Jumlah bibit diseleksi tidak valid.', 'error');
+    if (rawBibitStr === '') {
+      const bibitErrEl = document.getElementById('error-modal-sel2-bibit');
+      if (bibitErrEl) {
+        bibitErrEl.textContent = 'Jumlah bibit afkir wajib diisi.';
+        bibitErrEl.style.display = 'block';
+      }
+      toast('Jumlah bibit afkir wajib diisi.', 'error');
+      inputSelectedBibit?.focus();
       return;
     }
+
+    const inspectedPoly = Number(rawPolyStr);
+    const selectedBibit = Number(rawBibitStr);
+
+    if (isNaN(inspectedPoly) || !Number.isInteger(inspectedPoly) || inspectedPoly < 0 || inspectedPoly > currentRemainingPolybag) {
+      updateCalculations();
+      toast('Periksa kembali input jumlah polybag diperiksa.', 'error');
+      return;
+    }
+
+    const sisaBibitBedengan = Math.max(0, currentSourceBibit - existingBibitSelected);
+    if (isNaN(selectedBibit) || !Number.isInteger(selectedBibit) || selectedBibit < 0 || selectedBibit > sisaBibitBedengan) {
+      updateCalculations();
+      toast('Periksa kembali input jumlah bibit afkir.', 'error');
+      return;
+    }
+
+    if (selectedBibit > 0 && !selAlasan?.value) {
+      const alasanErrEl = document.getElementById('error-modal-sel2-alasan');
+      if (alasanErrEl) {
+        alasanErrEl.textContent = 'Alasan wajib dipilih jika ada bibit afkir.';
+        alasanErrEl.style.display = 'block';
+      }
+      toast('Alasan wajib dipilih jika ada bibit afkir.', 'error');
+      selAlasan?.focus();
+      return;
+    }
+
+    // Photo Evidence Mandatory Validation
+    if (!currentPhoto || !currentPhoto.dataUrl) {
+      toast('Foto bukti pemeriksaan seleksi wajib dilampirkan (minimal 1 foto dengan koordinat GPS aktual).', 'error');
+      return;
+    }
+
+    isSubmitting = true;
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.5';
+    saveBtn.textContent = 'Menyimpan...';
 
     const totalSelectedAfter = existingBibitSelected + selectedBibit;
-    const cumulativeRetained = Math.max(0, sourceBibit - totalSelectedAfter);
+    const cumulativeRetained = Math.max(0, currentSourceBibit - totalSelectedAfter);
+    const chosenAlasan = selectedBibit > 0 ? (selAlasan?.value || '') : '';
 
     try {
       const res = createSeleksi2ExecutionTransaction({
-        selectionDocumentId: doc.id,
-        selectionDocNo: doc.docNo,
-        bedenganCode,
+        selectionDocumentId: currentDoc.id,
+        selectionDocNo: currentDoc.docNo,
+        bedenganCode: currentBedenganCode,
         actualPolybagInspectedQty: inspectedPoly,
         actualBibitSelectedQty: selectedBibit,
         actualBibitRetainedQty: cumulativeRetained,
-        tanggalSeleksi,
-        catatan
+        alasan: chosenAlasan,
+        category: chosenAlasan,
+        alasanAfkir: chosenAlasan,
+        alasanDitolakCategory: chosenAlasan,
+        tanggalSeleksi: today,
+        catatan: '',
+        photo: currentPhoto,
+        requirePhoto: true,
+        requireAlasan: true,
+        fromUI: true
       }, user);
 
-      closeModal();
-      toast(`Transaksi Seleksi II (${res.transaction.docNo}) pada ${bedenganCode} berhasil dicatat. (${res.transaction.actualPolybagInspectedQty} Polybag, ${res.transaction.actualBibitSelectedQty} Bibit Diseleksi)`, 'success');
+      toast(`Transaksi Seleksi II (${res.transaction.docNo}) pada ${currentBedenganCode} berhasil dicatat. (${res.transaction.actualPolybagInspectedQty} Polybag, ${res.transaction.actualBibitSelectedQty} Bibit Diseleksi)`, 'success');
       if (onSaved) onSaved(res);
+
+      // Verify scope completion on refreshed document
+      const freshDoc = getPreGraftingSelectionDocumentById(currentDoc.id) || currentDoc;
+      const freshBedScopeList = getBedenganScopeStatusForSeleksi2(freshDoc);
+      const isAllCompleted = freshBedScopeList.length > 0 && freshBedScopeList.every(b => b.remainingPolybag === 0);
+
+      if (isAllCompleted) {
+        toast('Seluruh bedengan pada dokumen ini telah selesai diperiksa.', 'success');
+        closeModal();
+        return;
+      }
+
+      // Continuous transaction loop: modal stays open, form reset
+      currentDoc = freshDoc;
+      currentBedScopeList = freshBedScopeList;
+      renderBedenganOptions(freshBedScopeList);
+      applySelectedBedengan('');
+
+      isSubmitting = false;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Simpan Transaksi';
+      saveBtn.style.opacity = '0.5';
+
+      toast('Form telah di-reset. Silakan pilih bedengan berikutnya untuk melanjutkan input.', 'info');
     } catch (err) {
       console.error('[Seleksi 2 Save Error]', err);
       toast(err.message || 'Gagal menyimpan transaksi Seleksi II', 'error');
+      isSubmitting = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Simpan Transaksi';
+      saveBtn.style.opacity = '1';
     }
   });
 }
@@ -4333,305 +6162,924 @@ export function openSeleksi2ExecutionModal({ doc, user, onSaved }) {
  * MODAL PELAKSANAAN TRANSAKSI SELEKSI III (TASK-09 / TASK-26)
  * =============================================================================
  */
-export function openSeleksi3ExecutionModal({ doc, user, onSaved }) {
+export function openSeleksi3ExecutionModal({ doc, bedenganCode = null, user, onSaved }) {
   const today = formatDate(new Date().toISOString());
-  const bedScopeList = getBedenganScopeStatusForSeleksi3(doc);
-  const executions = getSeleksi3ExecutionsByDocument(doc.id || doc.docNo);
-  const sourcePolybag = parseInt(doc.sourcePolybagQty !== undefined ? doc.sourcePolybagQty : (doc.sourceBibitQty || 0), 10);
-  const sourceBibit = parseInt(doc.sourceBibitQty !== undefined ? doc.sourceBibitQty : sourcePolybag, 10);
+  let currentDoc = doc;
+  let currentBedScopeList = getBedenganScopeStatusForSeleksi3(currentDoc);
 
-  // Check if any bedengan has remaining uninspected polybag
-  const availableBeds = bedScopeList.filter(b => b.remainingPolybag > 0);
-  if (bedScopeList.length > 0 && availableBeds.length === 0) {
-    toast('Seluruh populasi polybag telah diperiksa.', 'warning');
+  // Check if all bedengans in document are already completed
+  const availableBeds = currentBedScopeList.filter(b => b.remainingPolybag > 0);
+  if (currentBedScopeList.length > 0 && availableBeds.length === 0) {
+    toast('Seluruh populasi polybag pada dokumen ini telah selesai diperiksa.', 'warning');
     return;
   }
 
-  const initialBed = availableBeds[0] || bedScopeList[0] || {
-    bedenganCode: 'BED-001',
-    remainingPolybag: doc.sourcePolybagQty || 0,
-    initialPolybag: doc.sourcePolybagQty || 0
-  };
+  // Resolve initial selected bedengan (if provided and valid)
+  let initialBedCode = '';
+  if (bedenganCode) {
+    const match = currentBedScopeList.find(b =>
+      formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === formatBedenganDisplayCode(bedenganCode).toUpperCase()
+    );
+    if (match && match.remainingPolybag > 0) {
+      initialBedCode = formatBedenganDisplayCode(match.bedenganCode || match.bedenganId);
+    }
+  }
 
-  const initialScopePoly = initialBed.remainingPolybag !== undefined ? initialBed.remainingPolybag : (doc.sourcePolybagQty || 0);
+  const progObj = resolveProgram(currentDoc.programCode || currentDoc.programId || currentDoc.program);
+  const displayProgram = progObj?.code || currentDoc.programCode || currentDoc.programName || '-';
+  const displayGrowthStage = currentDoc.growthStage || currentDoc.tahapan || '-';
+  const displayDocNo = currentDoc.docNo || '-';
+  const displaySourceDoc = currentDoc.sourceSelectionDocNo || currentDoc.sourceDocNo || '-';
+  const sourceSelDisplay = displaySourceDoc;
+  const displayBatch = currentDoc.batchCode || currentDoc.batchNo || currentDoc.batchId || '-';
+  const displayClone = currentDoc.clone || currentDoc.klon || currentDoc.klonAwal || '-';
+  const batchCode = currentDoc.batchCode || currentDoc.batchNo || '-';
 
-  const existingBibitSelected = executions.reduce((sum, tx) =>
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10),
-    0
-  );
-  const initialRetained = Math.max(0, sourceBibit - existingBibitSelected);
+  // Akumulasi Total Populasi Batch Seleksi III
+  const curBatch = String(currentDoc.batchCode || currentDoc.batchNo || currentDoc.batchId || '').trim().toUpperCase();
+  const curProg = String(currentDoc.programCode || currentDoc.programId || currentDoc.programName || currentDoc.program || '').trim().toUpperCase();
+
+  let totalBatchBibit = 0;
+  try {
+    const rawPreDocs = getPreGraftingSelectionDocuments({ selectionStage: 'SELEKSI_3' }, user) || [];
+    const batchDocs = rawPreDocs.filter(d => {
+      if (d.isSplit || d.isLegacyAggregateSplit) return false;
+      const b = String(d.batchCode || d.batchNo || d.batchId || '').trim().toUpperCase();
+      const p = String(d.programCode || d.programId || d.programName || d.program || '').trim().toUpperCase();
+      return b === curBatch && (!curProg || !p || p === curProg);
+    });
+    if (batchDocs.length > 0) {
+      const batchMetrics = calculateBatchMetrics({ batchCode: curBatch, docs: batchDocs }, 'SELEKSI_3');
+      totalBatchBibit = batchMetrics.totalSourceBibit || batchMetrics.totalBibitAwal || 0;
+    }
+  } catch (err) {
+    console.warn('Failed to calculate batch metrics for modal sel3:', err);
+  }
+  if (!totalBatchBibit || totalBatchBibit <= 0) {
+    totalBatchBibit = parseInt(currentDoc.batchTotalBibit || 0, 10);
+  }
+  if (!totalBatchBibit || totalBatchBibit <= 0) {
+    totalBatchBibit = parseInt(currentDoc.sourceBibitQty || currentDoc.sourcePolybagQty || 0, 10);
+  }
 
   const bodyContent = `
-    <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 0.78rem; color: #334155; line-height: 1.4; display: flex; flex-direction: column; gap: 12px;">
       
-      <!-- INFORMASI DOKUMEN -->
-      <div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
-          Informasi Dokumen
+      <!-- INFORMASI PEMERIKSAAN -->
+      <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="font-size: 0.82rem; font-weight: 700; color: #0F172A;">
+            Informasi Pemeriksaan
+          </div>
+          <div style="font-size: 0.78rem; font-weight: 600; color: #64748B;">
+            ${esc(today)}
+          </div>
         </div>
-        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
-          <div style="font-size: 0.68rem; color: #64748B;">Dok. Seleksi</div>
-          <div style="font-size: 0.88rem; font-weight: 800; color: #0F172A; margin-bottom: 6px;">${esc(doc.docNo)}</div>
-          
-          <div style="font-size: 0.68rem; color: #64748B;">Dok. Asal</div>
-          <div style="font-size: 0.85rem; font-weight: 700; color: #0F172A;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</div>
-          <div style="font-size: 0.74rem; color: #475569; margin-top: 2px;">${esc(doc.batchCode || '-')} • ${esc(doc.clone || doc.klon || '-')}</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px;">
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Program Pembibitan</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-all;">${esc(displayProgram)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Tahapan Pertumbuhan</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-word;">${esc(displayGrowthStage)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Dok. Seleksi</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-all;">${esc(displayDocNo)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Dok. Asal</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A; word-break: break-all;">${esc(displaySourceDoc)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Batch</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">${esc(displayBatch)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748B;">Klon</div>
+            <div style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">${esc(displayClone)}</div>
+          </div>
         </div>
       </div>
 
       <!-- BEDENGAN PEMERIKSAAN -->
       <div>
-        <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
+        <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">
           Bedengan Pemeriksaan <span style="color: #DC2626;">*</span>
         </label>
-        <select id="modal-sel3-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.82rem; background: #FFFFFF; color: #0F172A; font-weight: 600;">
-          ${bedScopeList.map(bed => `
-            <option value="${esc(bed.bedenganCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" ${bed.bedenganCode === initialBed.bedenganCode ? 'selected' : ''}>
-              ${esc(bed.bedenganCode)} (Sisa Polybag: ${bed.remainingPolybag.toLocaleString('id-ID')} / ${bed.initialPolybag.toLocaleString('id-ID')})
-            </option>
-          `).join('')}
-        </select>
+        <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 6px;">
+          Pilih bedengan yang akan diperiksa.
+        </div>
+        <div style="position: relative;">
+          <select id="modal-sel3-bedengan" style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 32px 0 10px; font-size: 0.80rem; background: #FFFFFF; color: #0F172A; font-weight: 600; appearance: none; -webkit-appearance: none; cursor: pointer; box-sizing: border-box;">
+            <option value="" disabled ${!initialBedCode ? 'selected' : ''}>-- Pilih Bedengan Pemeriksaan --</option>
+            ${currentBedScopeList.map(bed => {
+    const bCode = formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId);
+    const isCompleted = bed.remainingPolybag === 0;
+    const suffix = isCompleted ? '(Selesai)' : `(Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} Ply)`;
+    const isSelected = initialBedCode && bCode.toUpperCase() === initialBedCode.toUpperCase();
+    return `
+                <option value="${esc(bCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" ${isCompleted ? 'disabled' : ''} ${isSelected ? 'selected' : ''}>
+                  ${esc(bCode)} ${suffix}
+                </option>
+              `;
+  }).join('')}
+          </select>
+          <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748B; display: flex; align-items: center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+        </div>
+
+        <!-- STATS SISA POLYBAG & POPULASI BIBIT LANGSUNG DI BAWAH BEDENGAN -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B;">Sisa polybag</div>
+            <div id="modal-sel3-ref-polybag" style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
+              —
+            </div>
+          </div>
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B;">Populasi bibit</div>
+            <div id="modal-sel3-ref-bibit" style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
+              —
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- REFERENCE -->
+      <!-- HASIL PEMERIKSAAN -->
       <div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
-          Reference
+        <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">
+          Hasil Pemeriksaan <span style="color: #DC2626;">*</span>
+        </label>
+        <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 8px;">
+          Masukkan jumlah hasil pemeriksaan pada bedengan terpilih.
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #0F172A; margin-bottom: 3px;">
+              Polybag diperiksa <span style="color: #DC2626;">*</span>
+            </label>
+            <div style="display: flex; align-items: stretch; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; overflow: hidden; background: #FFFFFF;">
+              <input id="modal-sel3-polybag-inspected" type="number" min="0" value="" placeholder="Masukkan jumlah" disabled style="flex: 1; border: none; padding: 0 10px; font-size: 0.82rem; font-weight: 600; color: #0F172A; outline: none; box-sizing: border-box; background: transparent;">
+              <div style="background: #F8FAFC; border-left: 1px solid #CBD5E1; padding: 0 12px; display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 600; color: #64748B; min-width: 42px;">
+                Ply
+              </div>
+            </div>
+            <div style="font-size: 0.65rem; color: #94A3B8; margin-top: 2px;">Masukkan bilangan bulat, minimal 0.</div>
+            <div id="error-modal-sel3-polybag" style="color: #DC2626; font-size: 0.68rem; font-weight: 600; margin-top: 3px; display: none;"></div>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #0F172A; margin-bottom: 3px;">
+              Bibit Diseleksi <span style="color: #DC2626;">*</span>
+            </label>
+            <div style="display: flex; align-items: stretch; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; overflow: hidden; background: #FFFFFF;">
+              <input id="modal-sel3-bibit-selected" type="number" min="0" value="" placeholder="Masukkan jumlah" disabled style="flex: 1; border: none; padding: 0 10px; font-size: 0.82rem; font-weight: 600; color: #0F172A; outline: none; box-sizing: border-box; background: transparent;">
+              <div style="background: #F8FAFC; border-left: 1px solid #CBD5E1; padding: 0 12px; display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 600; color: #64748B; min-width: 42px;">
+                Pkk
+              </div>
+            </div>
+            <div style="font-size: 0.65rem; color: #94A3B8; margin-top: 2px;">Masukkan bilangan bulat, minimal 0.</div>
+            <div id="error-modal-sel3-bibit" style="color: #DC2626; font-size: 0.68rem; font-weight: 600; margin-top: 3px; display: none;"></div>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #0F172A; margin-bottom: 3px;">
+              Alasan Diseleksi <span id="modal-sel3-alasan-required" style="color: #DC2626; display: none;">*</span>
+            </label>
+            <select id="modal-sel3-alasan" disabled style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-size: 0.80rem; font-weight: 600; color: #0F172A; outline: none; background: #F8FAFC; box-sizing: border-box; transition: all 0.15s ease;">
+              <option value="" disabled selected>-- Pilih Alasan --</option>
+              <option value="Busuk">Busuk</option>
+              <option value="Fomes">Fomes</option>
+              <option value="Jamur Lainnya">Jamur Lainnya</option>
+              <option value="Kerdil">Kerdil</option>
+              <option value="Mati">Mati</option>
+              <option value="Patah">Patah</option>
+              <option value="Rusak">Rusak</option>
+            </select>
+            <div style="font-size: 0.65rem; color: #94A3B8; margin-top: 2px;">Wajib dipilih jika ada bibit diseleksi.</div>
+            <div id="error-modal-sel3-alasan" style="color: #DC2626; font-size: 0.68rem; font-weight: 600; margin-top: 3px; display: none;"></div>
+          </div>
+
+          <div id="modal-sel3-quota-warning" style="display: none; margin-top: 2px; padding: 6px 10px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; color: #DC2626; font-size: 0.70rem; font-weight: 600;"></div>
+        </div>
+      </div>
+
+      <!-- PERKIRAAN HASIL -->
+      <div id="modal-sel3-calculator-card" style="display: none; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;">
+          <span style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">Perkiraan Hasil</span>
+          <span style="display: none;">Real-time</span>
+        </div>
+        <div id="modal-sel3-calc-instruction" style="font-size: 0.68rem; color: #64748B; margin-bottom: 8px;">
+          Pilih bedengan pemeriksaan terlebih dahulu untuk melihat perkiraan hasil.
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
-            <div id="modal-sel3-ref-poly" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
-              ${initialScopePoly.toLocaleString('id-ID')} Ply
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 4px;">Sisa polybag setelah input</div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span id="modal-sel3-calc-rem-poly" style="font-size: 1.15rem; font-weight: 700; color: #0F172A;">—</span>
+              <span id="modal-sel3-calc-rem-poly-unit" style="font-size: 0.72rem; color: #64748B; display: none;">Ply</span>
             </div>
-            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Sisa Polybag</div>
           </div>
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;">
-            <div id="modal-sel3-ref-bibit" style="font-size: 1.05rem; font-weight: 800; color: #0F172A;">
-              ${sourceBibit.toLocaleString('id-ID')} Pkk
+          <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.66rem; color: #64748B; margin-bottom: 4px;">Sisa bibit setelah input</div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span id="modal-sel3-calc-retained-bibit" style="font-size: 1.15rem; font-weight: 700; color: #0F172A;">—</span>
+              <span id="modal-sel3-calc-retained-bibit-unit" style="font-size: 0.72rem; color: #64748B; display: none;">Pkk</span>
             </div>
-            <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">Bibit Awal</div>
           </div>
-        </div>
-        <input type="hidden" id="modal-sel3-current-remaining-poly" value="${initialScopePoly}">
-      </div>
-
-      <!-- INPUT PEMERIKSAAN MANTRI -->
-      <div style="display: flex; flex-direction: column; gap: 10px;">
-        <div style="font-size: 0.74rem; font-weight: 800; color: #116834; text-transform: uppercase; letter-spacing: 0.03em;">
-          INPUT PEMERIKSAAN MANTRI
-        </div>
-
-        <!-- 1. Jlh Polybag Diperiksa -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Polybag Diperiksa <span style="color: #DC2626;">*</span>
-          </label>
-          <input id="modal-sel3-polybag-inspected" type="number" min="1" max="${initialScopePoly}" value="" placeholder="Masukkan jlh polybag diperiksa..." style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #0F172A; background: #FFFFFF;">
-        </div>
-
-        <!-- 2. Jlh Bibit Diseleksi -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Bibit Diseleksi <span style="color: #DC2626;">*</span>
-          </label>
-          <input id="modal-sel3-bibit-selected" type="number" min="0" value="" placeholder="Masukkan jlh bibit diseleksi (afkir)..." style="width: 100%; height: 38px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 10px; font-weight: 700; font-size: 0.90rem; box-sizing: border-box; color: #DC2626; background: #FFFFFF;">
-        </div>
-
-        <!-- 3. Jlh Bibit Dipertahankan (READONLY / OTOMATIS) -->
-        <div>
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">
-            Jlh Bibit Dipertahankan <span style="font-size: 0.68rem; color: #15803D; font-weight: normal;">(Otomatis Dihitung)</span>
-          </label>
-          <input id="modal-sel3-bibit-retained" type="number" value="${initialRetained}" readonly disabled style="width: 100%; height: 38px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 10px; font-weight: 800; font-size: 0.90rem; box-sizing: border-box; color: #15803D; background: #F1F5F9; cursor: not-allowed;">
         </div>
       </div>
 
-      <!-- RINGKASAN -->
+      <!-- RINGKASAN PEMERIKSAAN -->
+      <div id="modal-sel3-summary-panel" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+          <span style="font-size: 0.78rem; font-weight: 700; color: #0F172A;">Ringkasan Pemeriksaan</span>
+          <span id="modal-sel3-summary-bed-name" style="display: none;">Bedengan: —</span>
+        </div>
+        <div id="modal-sel3-summary-instruction" style="font-size: 0.68rem; color: #64748B; margin-bottom: 10px;">
+          Pilih bedengan pemeriksaan untuk menampilkan ringkasan.
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Baris 1: Polybag diperiksa & progress -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="font-size: 0.70rem; color: #64748B;">Polybag diperiksa</span>
+              <span id="sum-sel3-poly-ratio" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="flex: 1; height: 6px; background: #E2E8F0; border-radius: 3px; overflow: hidden;">
+                <div id="sum-sel3-poly-progress-bar" style="width: 0%; height: 100%; background: #16A34A; transition: width 0.2s ease;"></div>
+              </div>
+              <span id="sum-sel3-poly-pct" style="font-size: 0.65rem; font-weight: 600; color: #64748B; min-width: 28px; text-align: right;">—</span>
+            </div>
+          </div>
+
+          <!-- Baris 2: Bibit Diseleksi -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Bibit Diseleksi</span>
+            <span id="sum-sel3-bibit-afkir" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+
+          <!-- Baris 3: Alasan Diseleksi -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Alasan Diseleksi</span>
+            <span id="sum-sel3-alasan-afkir" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+
+          <!-- Baris 4: Sisa polybag -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Sisa polybag</span>
+            <span id="sum-sel3-poly-sisa" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+
+          <!-- Baris 5: Sisa bibit tersedia -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #F1F5F9; padding-top: 6px;">
+            <span style="font-size: 0.70rem; color: #64748B;">Sisa bibit tersedia</span>
+            <span id="sum-sel3-bibit-sisa" style="font-size: 0.76rem; font-weight: 700; color: #0F172A;">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOTO BUKTI PEMERIKSAAN (WAJIB DENGAN WATERMARK GPS) -->
       <div>
-        <div style="font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
-          RINGKASAN
+        <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">
+          Foto Bukti Pemeriksaan <span style="color: #DC2626;">*</span>
+        </label>
+        <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 8px;">
+          Ambil satu foto bukti dengan kamera dan lokasi aktual.
         </div>
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #E2E8F0;">
-            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
-              <div style="font-size: 0.68rem; color: #64748B;">Polybag Diperiksa</div>
-              <div id="modal-sel3-sum-inspected-poly" style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin-top: 1px;">0 Ply</div>
-            </div>
-            <div style="padding: 8px 10px;">
-              <div style="font-size: 0.68rem; color: #64748B;">Bibit Diseleksi</div>
-              <div id="modal-sel3-sum-selected-bibit" style="font-size: 0.88rem; font-weight: 700; color: #DC2626; margin-top: 1px;">0 Pkk</div>
-            </div>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr;">
-            <div style="padding: 8px 10px; border-right: 1px solid #E2E8F0;">
-              <div style="font-size: 0.68rem; color: #64748B;">Bibit Dipertahankan</div>
-              <div id="modal-sel3-sum-retained-bibit" style="font-size: 0.88rem; font-weight: 700; color: #15803D; margin-top: 1px;">${initialRetained.toLocaleString('id-ID')} Pkk</div>
-            </div>
-            <div style="padding: 8px 10px;">
-              <div style="font-size: 0.68rem; color: #64748B;">Sisa Polybag Bedengan</div>
-              <div id="modal-sel3-sum-remaining-poly" style="font-size: 0.88rem; font-weight: 700; color: #64748B; margin-top: 1px;">${initialScopePoly.toLocaleString('id-ID')} Ply</div>
-            </div>
+
+        <!-- Area Belum Ada Foto (Tombol Ambil Foto) -->
+        <div id="modal-sel3-photo-empty" style="border: 1.5px dashed #CBD5E1; border-radius: 8px; padding: 14px 12px; text-align: center; background: #F8FAFC;">
+          <button type="button" id="btn-modal-sel3-take-photo" style="display: inline-flex; align-items: center; gap: 6px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; padding: 7px 14px; font-size: 0.76rem; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: background 0.15s ease;">
+            <svg viewBox="0 0 24 24" width="15" height="15" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            Ambil Foto Seleksi
+          </button>
+          <div style="font-size: 0.65rem; color: #64748B; margin-top: 6px;">
+            Wajib 1 foto bukti untuk menyimpan transaksi.
           </div>
         </div>
-        <div id="modal-sel3-quota-warning" style="display: none; margin-top: 8px; padding: 6px 8px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 4px; color: #DC2626; font-size: 0.72rem; font-weight: 700;"></div>
-      </div>
 
-      <!-- TANGGAL & CATATAN -->
-      <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px;">
-        <div>
-          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Tanggal</label>
-          <input id="modal-sel3-date" type="text" value="${today}" readonly disabled style="width: 100%; height: 36px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; background: #F1F5F9; color: #475569; cursor: not-allowed; box-sizing: border-box;">
+        <!-- Area Preview Foto (Jika Foto Sudah Diambil - Kartu Horizontal Ringkas) -->
+        <div id="modal-sel3-photo-preview-wrap" style="display: none; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 12px; align-items: center; justify-content: space-between; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; flex: 1;">
+            <img id="modal-sel3-photo-img" src="" alt="Bukti Seleksi III" style="width: 48px; height: 48px; border-radius: 6px; object-fit: cover; border: 1px solid #CBD5E1; flex-shrink: 0;" />
+            <div style="overflow: hidden; flex: 1;">
+              <div style="font-size: 0.64rem; color: #64748B;">Foto terpilih</div>
+              <div id="modal-sel3-photo-name" style="font-size: 0.75rem; font-weight: 700; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">IMG_Bukti.jpg</div>
+              <div id="modal-sel3-photo-meta" style="font-size: 0.64rem; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+            </div>
+          </div>
+          <button type="button" id="btn-modal-sel3-remove-photo" style="background: #FFFFFF; color: #EF4444; border: 1px solid #FCA5A5; border-radius: 6px; padding: 5px 12px; font-size: 0.72rem; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: all 0.15s ease;">
+            Hapus
+          </button>
         </div>
-        <div>
-          <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #0F172A; margin-bottom: 2px;">Catatan</label>
-          <input id="modal-sel3-notes" type="text" placeholder="Catatan seleksi..." style="width: 100%; height: 36px; border: 1px solid #CBD5E1; border-radius: 6px; padding: 0 8px; font-size: 0.78rem; box-sizing: border-box;">
-        </div>
-      </div>
-
-      <!-- BUTTONS -->
-      <div style="display: flex; gap: 8px; margin-top: 4px;">
-        <button id="btn-modal-cancel-sel3" type="button" style="flex: 1; height: 38px; background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer;">
-          Batal
-        </button>
-        <button id="btn-modal-save-sel3" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.25);">
-          Simpan Transaksi
-        </button>
       </div>
 
     </div>
   `;
 
+  const footerContent = `
+    <div style="display: flex; gap: 8px; width: 100%;">
+      <button id="btn-modal-cancel-sel3" type="button" style="flex: 1; height: 38px; background: #FFFFFF; color: #0F172A; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer; transition: background 0.15s ease;">
+        Batal
+      </button>
+      <button id="btn-modal-save-sel3" type="button" style="flex: 1.5; height: 38px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 600; font-size: 0.80rem; cursor: pointer; box-shadow: 0 1px 3px rgba(17,104,52,0.2); transition: background 0.15s ease; opacity: 0.5;" disabled>
+        Simpan Transaksi
+      </button>
+    </div>
+  `;
+
   openModal({
     title: 'Pelaksanaan Seleksi III (Pra-Okulasi)',
-    body: bodyContent
+    body: bodyContent,
+    footer: footerContent,
+    isFullScreen: true
   });
 
   const selBed = document.getElementById('modal-sel3-bedengan');
   const inputInspectedPoly = document.getElementById('modal-sel3-polybag-inspected');
   const inputSelectedBibit = document.getElementById('modal-sel3-bibit-selected');
-  const inputRetainedBibit = document.getElementById('modal-sel3-bibit-retained');
-  const inputNotes = document.getElementById('modal-sel3-notes');
-  const hiddenRemPoly = document.getElementById('modal-sel3-current-remaining-poly');
-  const labelRefPoly = document.getElementById('modal-sel3-ref-poly');
-
-  const sumInspectedPoly = document.getElementById('modal-sel3-sum-inspected-poly');
-  const sumSelectedBibit = document.getElementById('modal-sel3-sum-selected-bibit');
-  const sumRetainedBibit = document.getElementById('modal-sel3-sum-retained-bibit');
-  const sumRemainingPoly = document.getElementById('modal-sel3-sum-remaining-poly');
+  const selAlasan = document.getElementById('modal-sel3-alasan');
+  const alasanReqEl = document.getElementById('modal-sel3-alasan-required');
+  const refPolybagEl = document.getElementById('modal-sel3-ref-polybag');
+  const refBibitEl = document.getElementById('modal-sel3-ref-bibit');
   const warningEl = document.getElementById('modal-sel3-quota-warning');
   const saveBtn = document.getElementById('btn-modal-save-sel3');
 
-  function updateCalculations() {
-    const remPoly = parseInt(hiddenRemPoly?.value || 0, 10);
-    const inspectedPoly = parseInt(inputInspectedPoly?.value || 0, 10);
-    const selectedBibit = parseInt(inputSelectedBibit?.value || 0, 10);
+  // Photo State & Elements
+  let currentPhoto = null;
+  const photoEmptyEl = document.getElementById('modal-sel3-photo-empty');
+  const photoPreviewWrap = document.getElementById('modal-sel3-photo-preview-wrap');
+  const photoImg = document.getElementById('modal-sel3-photo-img');
+  const photoMeta = document.getElementById('modal-sel3-photo-meta');
+  const photoNameEl = document.getElementById('modal-sel3-photo-name');
+  const btnTakePhoto = document.getElementById('btn-modal-sel3-take-photo');
+  const btnRemovePhoto = document.getElementById('btn-modal-sel3-remove-photo');
 
-    const totalSelectedAfter = existingBibitSelected + (isNaN(selectedBibit) ? 0 : selectedBibit);
-    const cumulativeRetained = Math.max(0, sourceBibit - totalSelectedAfter);
-
-    if (inputRetainedBibit) inputRetainedBibit.value = cumulativeRetained;
-    if (sumInspectedPoly) sumInspectedPoly.textContent = `${(isNaN(inspectedPoly) ? 0 : inspectedPoly).toLocaleString('id-ID')} Ply`;
-    if (sumSelectedBibit) sumSelectedBibit.textContent = `${(isNaN(selectedBibit) ? 0 : selectedBibit).toLocaleString('id-ID')} Pkk`;
-    if (sumRetainedBibit) sumRetainedBibit.textContent = `${cumulativeRetained.toLocaleString('id-ID')} Pkk`;
-    if (sumRemainingPoly) sumRemainingPoly.textContent = `${Math.max(0, remPoly - (isNaN(inspectedPoly) ? 0 : inspectedPoly)).toLocaleString('id-ID')} Ply`;
-
-    let errorMsg = null;
-    if (inputInspectedPoly && inputInspectedPoly.value.trim() !== '' && (isNaN(inspectedPoly) || inspectedPoly <= 0)) {
-      errorMsg = 'Jumlah polybag diperiksa harus lebih besar dari 0.';
-    } else if (inspectedPoly > remPoly) {
-      errorMsg = `Jumlah polybag diperiksa (${inspectedPoly.toLocaleString('id-ID')}) melebihi sisa scope polybag (${remPoly.toLocaleString('id-ID')}).`;
-    } else if (inputSelectedBibit && inputSelectedBibit.value.trim() !== '' && (isNaN(selectedBibit) || selectedBibit < 0)) {
-      errorMsg = 'Jumlah bibit diseleksi tidak boleh negatif.';
-    }
-
-    const isCriticalError = isNaN(inspectedPoly) || inspectedPoly <= 0 || inspectedPoly > remPoly || isNaN(selectedBibit) || selectedBibit < 0;
-
-    if (errorMsg) {
-      if (warningEl) {
-        warningEl.textContent = errorMsg;
-        warningEl.style.display = 'block';
+  function renderPhotoState() {
+    if (currentPhoto && currentPhoto.dataUrl) {
+      if (photoEmptyEl) photoEmptyEl.style.display = 'none';
+      if (photoPreviewWrap) photoPreviewWrap.style.display = 'flex';
+      if (photoImg) photoImg.src = currentPhoto.dataUrl;
+      if (photoNameEl) {
+        photoNameEl.textContent = currentPhoto.fileName || `IMG_${today.replace(/[^0-9]/g, '')}_${currentPhoto.capturedAt ? new Date(currentPhoto.capturedAt).toTimeString().slice(0, 8).replace(/:/g, '') : '102530'}.jpg`;
+      }
+      if (photoMeta) {
+        photoMeta.textContent = currentPhoto.capturedAtLabel || today;
       }
     } else {
-      if (warningEl) {
+      if (photoEmptyEl) photoEmptyEl.style.display = 'block';
+      if (photoPreviewWrap) photoPreviewWrap.style.display = 'none';
+      if (photoImg) photoImg.src = '';
+      if (photoMeta) photoMeta.textContent = '';
+    }
+  }
+
+  function launchCamera() {
+    if (!currentBedenganCode) {
+      toast('Silakan pilih bedengan pemeriksaan terlebih dahulu.', 'warning');
+      selBed?.focus();
+      return;
+    }
+    openExecutionCameraModal({
+      batchCode: curBatch || doc.batchCode,
+      bedenganCode: currentBedenganCode,
+      stageLabel: 'Seleksi III',
+      onCaptureSuccess: (photoRecord) => {
+        currentPhoto = photoRecord;
+        renderPhotoState();
+        updateCalculations();
+      },
+      onCancel: () => {
+        // Form state remains intact
+      }
+    });
+  }
+
+  btnTakePhoto?.addEventListener('click', launchCamera);
+  btnRemovePhoto?.addEventListener('click', () => {
+    currentPhoto = null;
+    renderPhotoState();
+    updateCalculations();
+  });
+
+  let currentBedenganCode = '';
+  let currentRemainingPolybag = 0;
+  let currentInitialPolybag = 0;
+  let currentSourceBibit = 0;
+  let existingPolyInspected = 0;
+  let existingBibitSelected = 0;
+  let isSubmitting = false;
+
+  function renderBedenganOptions(scopeList) {
+    if (!selBed) return;
+    selBed.innerHTML = `
+      <option value="" disabled ${!currentBedenganCode ? 'selected' : ''}>-- Pilih Bedengan Pemeriksaan --</option>
+      ${scopeList.map(bed => {
+      const bCode = formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId);
+      const isCompleted = (bed.remainingPolybag === 0);
+      const suffix = isCompleted ? '(Selesai)' : `(Sisa: ${bed.remainingPolybag.toLocaleString('id-ID')} Ply)`;
+      const isSelected = currentBedenganCode && bCode.toUpperCase() === currentBedenganCode.toUpperCase();
+      return `
+          <option value="${esc(bCode)}" data-remaining-poly="${bed.remainingPolybag}" data-initial-poly="${bed.initialPolybag}" ${isCompleted ? 'disabled' : ''} ${isSelected ? 'selected' : ''}>
+            ${esc(bCode)} ${suffix}
+          </option>
+        `;
+    }).join('')}
+    `;
+    selBed.value = currentBedenganCode || '';
+  }
+
+  function resetCalculatorAndSummary() {
+    const calcInstructionEl = document.getElementById('modal-sel3-calc-instruction');
+    if (calcInstructionEl) {
+      calcInstructionEl.textContent = 'Pilih bedengan pemeriksaan terlebih dahulu untuk melihat perkiraan hasil.';
+    }
+
+    const calcRemPolyEl = document.getElementById('modal-sel3-calc-rem-poly');
+    const calcRetainedBibitEl = document.getElementById('modal-sel3-calc-retained-bibit');
+    const calcRemPolyUnitEl = document.getElementById('modal-sel3-calc-rem-poly-unit');
+    const calcRetainedBibitUnitEl = document.getElementById('modal-sel3-calc-retained-bibit-unit');
+
+    if (calcRemPolyEl) { calcRemPolyEl.textContent = '—'; calcRemPolyEl.style.color = '#0F172A'; }
+    if (calcRetainedBibitEl) { calcRetainedBibitEl.textContent = '—'; calcRetainedBibitEl.style.color = '#0F172A'; }
+    if (calcRemPolyUnitEl) calcRemPolyUnitEl.style.display = 'none';
+    if (calcRetainedBibitUnitEl) calcRetainedBibitUnitEl.style.display = 'none';
+
+    const sumBedNameEl = document.getElementById('modal-sel3-summary-bed-name');
+    if (sumBedNameEl) sumBedNameEl.textContent = 'Bedengan: —';
+
+    const sumInstructionEl = document.getElementById('modal-sel3-summary-instruction');
+    if (sumInstructionEl) {
+      sumInstructionEl.textContent = 'Pilih bedengan pemeriksaan untuk menampilkan ringkasan.';
+    }
+
+    const sumPolyRatio = document.getElementById('sum-sel3-poly-ratio');
+    if (sumPolyRatio) sumPolyRatio.textContent = '—';
+
+    const sumPolyBar = document.getElementById('sum-sel3-poly-progress-bar');
+    if (sumPolyBar) sumPolyBar.style.width = '0%';
+
+    const sumPolyPct = document.getElementById('sum-sel3-poly-pct');
+    if (sumPolyPct) sumPolyPct.textContent = '—';
+
+    const sumBibitAfkir = document.getElementById('sum-sel3-bibit-afkir');
+    if (sumBibitAfkir) sumBibitAfkir.textContent = '—';
+
+    const sumAlasanAfkir = document.getElementById('sum-sel3-alasan-afkir');
+    if (sumAlasanAfkir) sumAlasanAfkir.textContent = '—';
+
+    const sumPolySisa = document.getElementById('sum-sel3-poly-sisa');
+    if (sumPolySisa) {
+      sumPolySisa.textContent = '—';
+      sumPolySisa.style.color = '#0F172A';
+    }
+
+    const sumBibitSisa = document.getElementById('sum-sel3-bibit-sisa');
+    if (sumBibitSisa) sumBibitSisa.textContent = '—';
+  }
+
+  function applySelectedBedengan(bCode) {
+    if (!bCode) {
+      currentBedenganCode = '';
+      currentRemainingPolybag = 0;
+      currentInitialPolybag = 0;
+      currentSourceBibit = 0;
+      existingPolyInspected = 0;
+      existingBibitSelected = 0;
+
+      if (selBed) selBed.value = '';
+      if (refPolybagEl) refPolybagEl.textContent = '—';
+      if (refBibitEl) refBibitEl.textContent = '—';
+
+      if (inputInspectedPoly) {
+        inputInspectedPoly.value = '';
+        inputInspectedPoly.disabled = true;
+        inputInspectedPoly.placeholder = 'Masukkan jumlah';
+      }
+      if (inputSelectedBibit) {
+        inputSelectedBibit.value = '';
+        inputSelectedBibit.disabled = true;
+        inputSelectedBibit.placeholder = 'Masukkan jumlah';
+      }
+      if (selAlasan) {
+        selAlasan.value = '';
+        selAlasan.disabled = true;
+        selAlasan.style.background = '#F8FAFC';
+      }
+      if (alasanReqEl) alasanReqEl.style.display = 'none';
+
+      currentPhoto = null;
+      renderPhotoState();
+      updateCalculations();
+      return;
+    }
+
+    const matchedBed = currentBedScopeList.find(b =>
+      formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === bCode.toUpperCase()
+    );
+
+    if (!matchedBed) return;
+
+    const prevBed = currentBedenganCode;
+    currentBedenganCode = formatBedenganDisplayCode(matchedBed.bedenganCode || matchedBed.bedenganId);
+    if (selBed) selBed.value = currentBedenganCode;
+    currentRemainingPolybag = matchedBed.remainingPolybag || 0;
+    currentInitialPolybag = matchedBed.initialPolybag || 0;
+    currentSourceBibit = matchedBed.initialBibit !== undefined
+      ? matchedBed.initialBibit
+      : (matchedBed.initialPolybag || totalBatchBibit);
+    existingPolyInspected = matchedBed.inspectedPolybag || 0;
+    existingBibitSelected = matchedBed.inspectedBibit || 0;
+
+    if (refPolybagEl) refPolybagEl.textContent = `${currentRemainingPolybag.toLocaleString('id-ID')} Ply`;
+    if (refBibitEl) refBibitEl.textContent = `${currentSourceBibit.toLocaleString('id-ID')} Pkk`;
+
+    if (inputInspectedPoly) {
+      inputInspectedPoly.disabled = false;
+      inputInspectedPoly.placeholder = 'Masukkan jumlah';
+      inputInspectedPoly.max = currentRemainingPolybag;
+      inputInspectedPoly.value = '';
+    }
+    if (inputSelectedBibit) {
+      inputSelectedBibit.disabled = false;
+      inputSelectedBibit.placeholder = 'Masukkan jumlah';
+      inputSelectedBibit.value = '';
+    }
+    if (selAlasan) {
+      selAlasan.value = '';
+      selAlasan.disabled = true;
+      selAlasan.style.background = '#F8FAFC';
+    }
+    if (alasanReqEl) alasanReqEl.style.display = 'none';
+
+    // Reset photo if bedengan changed to enforce 1 photo per bedengan
+    if (currentPhoto && currentPhoto.bedenganCode !== currentBedenganCode) {
+      currentPhoto = null;
+      renderPhotoState();
+      if (prevBed && prevBed !== currentBedenganCode) {
+        toast(`Bedengan berganti ke ${currentBedenganCode}. Silakan ambil foto bukti untuk bedengan baru.`, 'info');
+      }
+    }
+
+    updateCalculations();
+  }
+
+  selBed?.addEventListener('change', () => {
+    applySelectedBedengan(selBed.value);
+  });
+
+  function updateCalculations() {
+    const polyErrEl = document.getElementById('error-modal-sel3-polybag');
+    const bibitErrEl = document.getElementById('error-modal-sel3-bibit');
+    const alasanErrEl = document.getElementById('error-modal-sel3-alasan');
+
+    if (!currentBedenganCode) {
+      if (polyErrEl) { polyErrEl.textContent = ''; polyErrEl.style.display = 'none'; }
+      if (bibitErrEl) { bibitErrEl.textContent = ''; bibitErrEl.style.display = 'none'; }
+      if (alasanErrEl) { alasanErrEl.textContent = ''; alasanErrEl.style.display = 'none'; }
+      if (warningEl) { warningEl.style.display = 'none'; }
+      resetCalculatorAndSummary();
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+      return;
+    }
+
+    const rawPolyStr = inputInspectedPoly?.value !== undefined ? String(inputInspectedPoly.value).trim() : '';
+    const rawBibitStr = inputSelectedBibit?.value !== undefined ? String(inputSelectedBibit.value).trim() : '';
+
+    let polyError = null;
+    let pVal = null;
+    if (rawPolyStr !== '') {
+      pVal = Number(rawPolyStr);
+      if (isNaN(pVal)) {
+        polyError = 'Jumlah polybag diperiksa harus berupa angka yang valid.';
+      } else if (!Number.isInteger(pVal) || rawPolyStr.includes('.')) {
+        polyError = 'Jumlah polybag diperiksa harus berupa bilangan bulat.';
+      } else if (pVal < 0) {
+        polyError = 'Jumlah polybag diperiksa tidak boleh negatif (minimum 0).';
+      } else if (pVal > currentRemainingPolybag) {
+        polyError = `Jumlah polybag diperiksa (${pVal.toLocaleString('id-ID')}) melebihi sisa scope bedengan (${currentRemainingPolybag.toLocaleString('id-ID')}).`;
+      }
+    }
+
+    const sisaBibitBedengan = Math.max(0, currentSourceBibit - existingBibitSelected);
+
+    let bibitError = null;
+    let bVal = null;
+    if (rawBibitStr !== '') {
+      bVal = Number(rawBibitStr);
+      if (isNaN(bVal)) {
+        bibitError = 'Jumlah bibit afkir harus berupa angka yang valid.';
+      } else if (!Number.isInteger(bVal) || rawBibitStr.includes('.')) {
+        bibitError = 'Jumlah bibit afkir harus berupa bilangan bulat.';
+      } else if (bVal < 0) {
+        bibitError = 'Jumlah bibit afkir tidak boleh negatif (minimum 0).';
+      } else if (bVal > sisaBibitBedengan) {
+        bibitError = `Jumlah bibit afkir (${bVal.toLocaleString('id-ID')}) melebihi sisa bibit tersedia (${sisaBibitBedengan.toLocaleString('id-ID')}).`;
+      }
+    }
+
+    // Alasan afkir control & validation
+    let alasanError = null;
+    if (bVal !== null && bVal > 0 && !bibitError) {
+      if (selAlasan) {
+        selAlasan.disabled = false;
+        selAlasan.style.background = '#FFFFFF';
+      }
+      if (alasanReqEl) alasanReqEl.style.display = 'inline';
+      if (!selAlasan?.value) {
+        alasanError = 'Alasan wajib dipilih jika ada bibit afkir.';
+      }
+    } else {
+      if (selAlasan) {
+        selAlasan.disabled = true;
+        selAlasan.style.background = '#F8FAFC';
+        selAlasan.value = '';
+      }
+      if (alasanReqEl) alasanReqEl.style.display = 'none';
+      alasanError = null;
+    }
+
+    // Render inline error elements
+    if (polyErrEl) {
+      polyErrEl.textContent = polyError || '';
+      polyErrEl.style.display = polyError ? 'block' : 'none';
+    }
+    if (inputInspectedPoly) {
+      inputInspectedPoly.style.borderColor = polyError ? '#DC2626' : '#CBD5E1';
+    }
+
+    if (bibitErrEl) {
+      bibitErrEl.textContent = bibitError || '';
+      bibitErrEl.style.display = bibitError ? 'block' : 'none';
+    }
+    if (inputSelectedBibit) {
+      inputSelectedBibit.style.borderColor = bibitError ? '#DC2626' : '#CBD5E1';
+    }
+
+    if (alasanErrEl) {
+      alasanErrEl.textContent = alasanError || '';
+      alasanErrEl.style.display = alasanError ? 'block' : 'none';
+    }
+    if (selAlasan) {
+      selAlasan.style.borderColor = alasanError ? '#DC2626' : '#CBD5E1';
+    }
+
+    if (warningEl) {
+      const topError = polyError || bibitError || alasanError;
+      if (topError) {
+        warningEl.textContent = topError;
+        warningEl.style.display = 'block';
+      } else {
         warningEl.style.display = 'none';
       }
     }
 
+    const validP = (pVal !== null && !isNaN(pVal) && pVal >= 0 && !polyError) ? pVal : null;
+    const validB = (bVal !== null && !isNaN(bVal) && bVal >= 0 && !bibitError) ? bVal : null;
+
+    const activeP = validP !== null ? validP : 0;
+    const activeB = validB !== null ? validB : 0;
+
+    const totalInspectedPoly = existingPolyInspected + activeP;
+    const remPolyAfter = currentRemainingPolybag - activeP;
+    const pctPoly = currentInitialPolybag > 0 ? Math.min(100, Math.round((totalInspectedPoly / currentInitialPolybag) * 100)) : 0;
+
+    const totalAfkirBibit = existingBibitSelected + activeB;
+    const sisaBibitTersedia = Math.max(0, currentSourceBibit - totalAfkirBibit);
+
+    const calcInstructionEl = document.getElementById('modal-sel3-calc-instruction');
+    if (calcInstructionEl) {
+      calcInstructionEl.textContent = 'Perkiraan hasil dihitung berdasarkan sisa bedengan setelah input transaksi ini.';
+    }
+    const calcRemPolyUnitEl = document.getElementById('modal-sel3-calc-rem-poly-unit');
+    const calcRetainedBibitUnitEl = document.getElementById('modal-sel3-calc-retained-bibit-unit');
+    if (calcRemPolyUnitEl) calcRemPolyUnitEl.style.display = 'inline';
+    if (calcRetainedBibitUnitEl) calcRetainedBibitUnitEl.style.display = 'inline';
+
+    const sumInstructionEl = document.getElementById('modal-sel3-summary-instruction');
+    if (sumInstructionEl) {
+      sumInstructionEl.textContent = 'Ringkasan akumulasi pemeriksaan pada bedengan terpilih.';
+    }
+
+    // Section 4: Perkiraan Hasil
+    const calcRemPolyEl = document.getElementById('modal-sel3-calc-rem-poly');
+    const calcRetainedBibitEl = document.getElementById('modal-sel3-calc-retained-bibit');
+
+    if (calcRemPolyEl) {
+      calcRemPolyEl.textContent = validP !== null ? remPolyAfter.toLocaleString('id-ID') : currentRemainingPolybag.toLocaleString('id-ID');
+      calcRemPolyEl.style.color = remPolyAfter < 0 ? '#DC2626' : '#116834';
+    }
+
+    if (calcRetainedBibitEl) {
+      calcRetainedBibitEl.textContent = sisaBibitTersedia.toLocaleString('id-ID');
+      calcRetainedBibitEl.style.color = '#116834';
+    }
+
+    // Section 5: Ringkasan Pemeriksaan
+    const sumBedNameEl = document.getElementById('modal-sel3-summary-bed-name');
+    if (sumBedNameEl) {
+      sumBedNameEl.textContent = currentBedenganCode ? `Bedengan: ${currentBedenganCode}` : 'Bedengan: —';
+    }
+
+    const sumPolyRatio = document.getElementById('sum-sel3-poly-ratio');
+    if (sumPolyRatio) {
+      sumPolyRatio.textContent = validP !== null
+        ? `${totalInspectedPoly.toLocaleString('id-ID')} / ${currentInitialPolybag.toLocaleString('id-ID')} Ply`
+        : `— / ${currentInitialPolybag.toLocaleString('id-ID')} Ply`;
+    }
+
+    const sumPolyBar = document.getElementById('sum-sel3-poly-progress-bar');
+    if (sumPolyBar) {
+      sumPolyBar.style.width = `${pctPoly}%`;
+    }
+
+    const sumPolyPct = document.getElementById('sum-sel3-poly-pct');
+    if (sumPolyPct) {
+      sumPolyPct.textContent = `${pctPoly}%`;
+    }
+
+    const sumBibitAfkir = document.getElementById('sum-sel3-bibit-afkir');
+    if (sumBibitAfkir) {
+      sumBibitAfkir.textContent = validB !== null ? `${totalAfkirBibit.toLocaleString('id-ID')} Pkk` : '—';
+    }
+
+    const sumAlasanAfkir = document.getElementById('sum-sel3-alasan-afkir');
+    if (sumAlasanAfkir) {
+      sumAlasanAfkir.textContent = (validB !== null && validB > 0 && selAlasan?.value) ? selAlasan.value : '—';
+    }
+
+    const sumPolySisa = document.getElementById('sum-sel3-poly-sisa');
+    if (sumPolySisa) {
+      sumPolySisa.textContent = `${remPolyAfter.toLocaleString('id-ID')} Ply`;
+      sumPolySisa.style.color = remPolyAfter < 0 ? '#DC2626' : '#116834';
+    }
+
+    const sumBibitSisa = document.getElementById('sum-sel3-bibit-sisa');
+    if (sumBibitSisa) {
+      sumBibitSisa.textContent = `${sisaBibitTersedia.toLocaleString('id-ID')} Pkk`;
+    }
+
+    const hasExplicitError = Boolean(polyError || bibitError || alasanError);
     if (saveBtn) {
-      saveBtn.disabled = isCriticalError;
-      saveBtn.style.opacity = isCriticalError ? '0.5' : '1';
-      saveBtn.style.cursor = isCriticalError ? 'not-allowed' : 'pointer';
+      saveBtn.disabled = hasExplicitError;
+      saveBtn.style.opacity = hasExplicitError ? '0.5' : '1';
+      saveBtn.style.cursor = hasExplicitError ? 'not-allowed' : 'pointer';
     }
   }
 
-  // Initial calculation trigger
-  updateCalculations();
-
-  selBed?.addEventListener('change', () => {
-    const opt = selBed.options[selBed.selectedIndex];
-    const remPoly = parseInt(opt.getAttribute('data-remaining-poly') || 0, 10);
-
-    if (hiddenRemPoly) hiddenRemPoly.value = remPoly;
-    if (labelRefPoly) labelRefPoly.textContent = `${remPoly.toLocaleString('id-ID')} Ply`;
-
-    if (inputInspectedPoly) {
-      inputInspectedPoly.max = remPoly;
-      inputInspectedPoly.value = '';
-    }
-    if (inputSelectedBibit) {
-      inputSelectedBibit.value = '';
-    }
-    updateCalculations();
-  });
+  // Initial setup: render options and apply initial selection
+  renderBedenganOptions(currentBedScopeList);
+  applySelectedBedengan(initialBedCode || '');
 
   inputInspectedPoly?.addEventListener('input', updateCalculations);
   inputSelectedBibit?.addEventListener('input', updateCalculations);
+  selAlasan?.addEventListener('change', updateCalculations);
 
   document.getElementById('btn-modal-cancel-sel3')?.addEventListener('click', closeModal);
 
   document.getElementById('btn-modal-save-sel3')?.addEventListener('click', () => {
-    const bedenganCode = selBed?.value || '';
-    const remPoly = parseInt(hiddenRemPoly?.value || 0, 10);
-    const inspectedPoly = parseInt(inputInspectedPoly?.value || 0, 10);
-    const selectedBibit = parseInt(inputSelectedBibit?.value || 0, 10);
-    const tanggalSeleksi = today;
-    const catatan = inputNotes?.value || '';
+    if (isSubmitting) return;
 
-    // Validations
-    if (isNaN(inspectedPoly) || inspectedPoly <= 0) {
-      toast('Jumlah polybag diperiksa harus lebih besar dari 0.', 'error');
+    if (!currentBedenganCode) {
+      toast('Silakan pilih bedengan pemeriksaan terlebih dahulu.', 'error');
+      selBed?.focus();
       return;
     }
-    if (inspectedPoly > remPoly) {
-      toast(`Jumlah polybag diperiksa (${inspectedPoly.toLocaleString('id-ID')}) melebihi sisa scope (${remPoly.toLocaleString('id-ID')}).`, 'error');
+
+    const rawPolyStr = inputInspectedPoly?.value !== undefined ? String(inputInspectedPoly.value).trim() : '';
+    const rawBibitStr = inputSelectedBibit?.value !== undefined ? String(inputSelectedBibit.value).trim() : '';
+
+    if (rawPolyStr === '') {
+      const polyErrEl = document.getElementById('error-modal-sel3-polybag');
+      if (polyErrEl) {
+        polyErrEl.textContent = 'Jumlah polybag diperiksa wajib diisi.';
+        polyErrEl.style.display = 'block';
+      }
+      toast('Jumlah polybag diperiksa wajib diisi.', 'error');
+      inputInspectedPoly?.focus();
       return;
     }
-    if (isNaN(selectedBibit) || selectedBibit < 0) {
-      toast('Jumlah bibit diseleksi tidak valid.', 'error');
+    if (rawBibitStr === '') {
+      const bibitErrEl = document.getElementById('error-modal-sel3-bibit');
+      if (bibitErrEl) {
+        bibitErrEl.textContent = 'Jumlah bibit afkir wajib diisi.';
+        bibitErrEl.style.display = 'block';
+      }
+      toast('Jumlah bibit afkir wajib diisi.', 'error');
+      inputSelectedBibit?.focus();
       return;
     }
+
+    const inspectedPoly = Number(rawPolyStr);
+    const selectedBibit = Number(rawBibitStr);
+
+    if (isNaN(inspectedPoly) || !Number.isInteger(inspectedPoly) || inspectedPoly < 0 || inspectedPoly > currentRemainingPolybag) {
+      updateCalculations();
+      toast('Periksa kembali input jumlah polybag diperiksa.', 'error');
+      return;
+    }
+
+    const sisaBibitBedengan = Math.max(0, currentSourceBibit - existingBibitSelected);
+    if (isNaN(selectedBibit) || !Number.isInteger(selectedBibit) || selectedBibit < 0 || selectedBibit > sisaBibitBedengan) {
+      updateCalculations();
+      toast('Periksa kembali input jumlah bibit afkir.', 'error');
+      return;
+    }
+
+    if (selectedBibit > 0 && !selAlasan?.value) {
+      const alasanErrEl = document.getElementById('error-modal-sel3-alasan');
+      if (alasanErrEl) {
+        alasanErrEl.textContent = 'Alasan wajib dipilih jika ada bibit afkir.';
+        alasanErrEl.style.display = 'block';
+      }
+      toast('Alasan wajib dipilih jika ada bibit afkir.', 'error');
+      selAlasan?.focus();
+      return;
+    }
+
+    // Photo Evidence Mandatory Validation
+    if (!currentPhoto || !currentPhoto.dataUrl) {
+      toast('Foto bukti pemeriksaan seleksi wajib dilampirkan (minimal 1 foto dengan koordinat GPS aktual).', 'error');
+      return;
+    }
+
+    isSubmitting = true;
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.5';
+    saveBtn.textContent = 'Menyimpan...';
 
     const totalSelectedAfter = existingBibitSelected + selectedBibit;
-    const cumulativeRetained = Math.max(0, sourceBibit - totalSelectedAfter);
+    const cumulativeRetained = Math.max(0, currentSourceBibit - totalSelectedAfter);
+    const chosenAlasan = selectedBibit > 0 ? (selAlasan?.value || '') : '';
 
     try {
       const res = createSeleksi3ExecutionTransaction({
-        selectionDocumentId: doc.id,
-        selectionDocNo: doc.docNo,
-        bedenganCode,
+        selectionDocumentId: currentDoc.id,
+        selectionDocNo: currentDoc.docNo,
+        bedenganCode: currentBedenganCode,
         actualPolybagInspectedQty: inspectedPoly,
         actualBibitSelectedQty: selectedBibit,
         actualBibitRetainedQty: cumulativeRetained,
-        tanggalSeleksi,
-        catatan
+        alasan: chosenAlasan,
+        category: chosenAlasan,
+        alasanAfkir: chosenAlasan,
+        alasanDitolakCategory: chosenAlasan,
+        tanggalSeleksi: today,
+        catatan: '',
+        photo: currentPhoto,
+        requirePhoto: true,
+        requireAlasan: true,
+        fromUI: true
       }, user);
 
-      closeModal();
-      toast(`Transaksi Seleksi III (${res.transaction.docNo}) pada ${bedenganCode} berhasil dicatat. (${res.transaction.actualPolybagInspectedQty} Polybag, ${res.transaction.actualBibitSelectedQty} Bibit Diseleksi)`, 'success');
+      toast(`Transaksi Seleksi III (${res.transaction.docNo}) pada ${currentBedenganCode} berhasil dicatat. (${res.transaction.actualPolybagInspectedQty} Polybag, ${res.transaction.actualBibitSelectedQty} Bibit Diseleksi)`, 'success');
       if (onSaved) onSaved(res);
+
+      // Verify scope completion on refreshed document
+      const freshDoc = getPreGraftingSelectionDocumentById(currentDoc.id) || currentDoc;
+      const freshBedScopeList = getBedenganScopeStatusForSeleksi3(freshDoc);
+      const isAllCompleted = freshBedScopeList.length > 0 && freshBedScopeList.every(b => b.remainingPolybag === 0);
+
+      if (isAllCompleted) {
+        toast('Seluruh bedengan pada dokumen ini telah selesai diperiksa.', 'success');
+        closeModal();
+        return;
+      }
+
+      // Continuous transaction loop: modal stays open, form reset
+      currentDoc = freshDoc;
+      currentBedScopeList = freshBedScopeList;
+      renderBedenganOptions(freshBedScopeList);
+      applySelectedBedengan('');
+
+      isSubmitting = false;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Simpan Transaksi';
+      saveBtn.style.opacity = '0.5';
+
+      toast('Form telah di-reset. Silakan pilih bedengan berikutnya untuk melanjutkan input.', 'info');
     } catch (err) {
       console.error('[Seleksi 3 Save Error]', err);
       toast(err.message || 'Gagal menyimpan transaksi Seleksi III', 'error');
+      isSubmitting = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Simpan Transaksi';
+      saveBtn.style.opacity = '1';
     }
   });
 }

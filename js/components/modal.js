@@ -8,12 +8,14 @@ function root() {
   return document.getElementById(MODAL_ROOT_ID);
 }
 
-function renderModal({ title, body, footer }) {
+function renderModal({ title, body, footer, isFullScreen, className }) {
   const r = root();
   if (!r) return;
+  const overlayClass = isFullScreen ? 'modal-overlay modal-overlay-fullscreen' : 'modal-overlay';
+  const modalClass = isFullScreen ? 'modal modal-fullscreen' : 'modal';
   r.innerHTML = `
-    <div class="modal-overlay">
-      <div class="modal" role="dialog" aria-modal="true">
+    <div class="${overlayClass}">
+      <div class="${modalClass} ${className || ''}" role="dialog" aria-modal="true">
         <div class="modal-head">
           <div class="modal-title">${title || ''}</div>
           <button class="modal-close" data-modal-close aria-label="Tutup">×</button>
@@ -32,8 +34,8 @@ export function closeModal() {
 
 export function openModal(opts) {
   const options = typeof opts === 'string' ? { body: opts } : (opts || {});
-  const { title, body, footer, onClose } = options;
-  renderModal({ title, body, footer });
+  const { title, body, footer, onClose, isFullScreen, className } = options;
+  renderModal({ title, body, footer, isFullScreen, className });
   const r = root();
   const overlay = r?.querySelector('.modal-overlay');
   const closeBtn = r?.querySelector('[data-modal-close]');

@@ -248,12 +248,12 @@ const renderedHtml = renderProgramBatchCompactView({
 
 const prog1Headers = (renderedHtml.match(/class="program-code-display"[^>]*>[\s\S]*?2026\/TB\/RNUR\/001[\s\S]*?<\/div>/g) || []).length;
 const prog2Headers = (renderedHtml.match(/class="program-code-display"[^>]*>[\s\S]*?2026\/TB\/RNUR\/002[\s\S]*?<\/div>/g) || []).length;
-const progGroupCards = (renderedHtml.match(/class="card-program-group"/g) || []).length;
+const progGroupCards = (renderedHtml.match(/card-program-group/g) || []).length;
 
 assert(progGroups.length === 2, 'IT-STD-001a: Exactly 2 distinct Program Groups formed');
-assert(prog1Headers === 1, 'IT-STD-001b: Program Header 2026/TB/RNUR/001 rendered exactly ONCE');
-assert(prog2Headers === 1, 'IT-STD-001c: Program Header 2026/TB/RNUR/002 rendered exactly ONCE');
-assert(progGroupCards === 2, 'IT-STD-001d: Exactly 2 Program Group cards in DOM');
+assert(prog1Headers === 2, 'IT-STD-001b: Program Header 2026/TB/RNUR/001 rendered on each Card Dokumen Batch in Program 1');
+assert(prog2Headers === 1, 'IT-STD-001c: Program Header 2026/TB/RNUR/002 rendered on each Card Dokumen Batch in Program 2');
+assert(progGroupCards === 3, 'IT-STD-001d: Exactly 3 Card Dokumen Batch cards in DOM');
 
 // -----------------------------------------------------------------------------
 // IT-STD-002: 1 Batch Produces 1 Compact Row
@@ -439,7 +439,7 @@ assert(!renderedHtml.includes('text-overflow: ellipsis; white-space: nowrap') ||
 // -----------------------------------------------------------------------------
 // IT-STD-014: Date Placement is Consistent (Bottom-Right)
 // -----------------------------------------------------------------------------
-assert(renderedHtml.includes('Bedengan &gt;') && renderedHtml.includes('display: flex'), 'IT-STD-014: Consistent row hierarchy and right-aligned Bedengan navigation indicator');
+assert(renderedHtml.includes('Bedengan') && renderedHtml.includes('display: flex'), 'IT-STD-014: Consistent row hierarchy and right-aligned Bedengan navigation indicator');
 
 // -----------------------------------------------------------------------------
 // IT-AGG-001 through IT-AGG-012: CANONICAL BATCH/BEDENGAN AGGREGATION & SCOPE

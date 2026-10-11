@@ -141,7 +141,14 @@ export function validateSelectionTransactionAgainstSource(tx) {
       );
       if (matchingSeedings.length > 0) {
         const totalDitolak = matchingSeedings.reduce((sum, s) => {
-          return sum + parseInt(s.jumlahDitolakPindahSemai !== undefined ? s.jumlahDitolakPindahSemai : (s.afkir || 0), 10);
+          const sowDitolak = s.jumlahDitolakPindahSemai !== undefined 
+            ? s.jumlahDitolakPindahSemai 
+            : (s.ditolak !== undefined 
+                ? s.ditolak 
+                : (s.jumlahDitolak !== undefined 
+                    ? s.jumlahDitolak 
+                    : (s.afkir || 0)));
+          return sum + parseInt(sowDitolak, 10);
         }, 0);
 
         if (txAfkir > totalDitolak) {
@@ -1176,6 +1183,26 @@ export function integrateSeedingToSelectionPool(seedingTx, options = {}) {
   const newEntries = [];
 
   categories.forEach(({ category, qty, label }) => {
+    // Jika dokumen sumber sedang dikoreksi (isEditing), sinkronisasikan kuantitas pada transaksi seleksi hilir yang belum disetujui
+    if (isEditing) {
+      let txsChanged = false;
+      existingTxs.forEach(tx => {
+        const isMatch = (tx.sourceDocNo === sourceDocNo || tx.seedingDocNo === sourceDocNo || tx.sourceTransactionId === (seedingTx.id || sourceDocNo)) &&
+          (tx.sourceModule === 'PENYEMAIAN' || tx.originType === 'REJECT_PENYEMAIAN');
+        const isNotFinal = tx.status !== SELECTION_STATUS.DISETUJUI && tx.status !== 'TERVERIFIKASI' && tx.status !== 'VERIFIED';
+        if (isMatch && isNotFinal) {
+          tx.jumlahAfkir = qty;
+          tx.quantity = qty;
+          tx.jumlahDiperiksa = qty;
+          tx.updatedAt = new Date().toISOString();
+          txsChanged = true;
+        }
+      });
+      if (txsChanged) {
+        storage.set(SELECTION_STORAGE_KEY, existingTxs);
+      }
+    }
+
     // Idempotency check: Jangan buat duplikasi jika sudah ada di pool atau sudah ada selection_transactions (CULL) untuk source SOW ini
     const alreadyInSelectionTxs = existingTxs.some(tx => 
       (tx.sourceDocNo === sourceDocNo || tx.seedingDocNo === sourceDocNo || tx.sourceTransactionId === (seedingTx.id || sourceDocNo)) &&
@@ -1408,6 +1435,19 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
     finalTx = existingTx;
     finalTx.category = selectedCat;
     finalTx.alasanDitolakCategory = selectedCat;
+
+    // Sinkronisasi kuantitas afkir dari targetPoolItem atau dokumen sumber terbaru
+    const declaredQty = parseInt(targetPoolItem.jumlahAfkir !== undefined ? targetPoolItem.jumlahAfkir : (targetPoolItem.quantity || 0), 10);
+    if (!isNaN(declaredQty) && declaredQty > 0) {
+      finalTx.jumlahAfkir = declaredQty;
+      finalTx.quantity = declaredQty;
+      finalTx.jumlahDiperiksa = declaredQty;
+    }
+    if (targetPoolItem.bedenganId) finalTx.bedenganId = targetPoolItem.bedenganId;
+    if (targetPoolItem.bedenganCode) finalTx.bedenganCode = targetPoolItem.bedenganCode;
+    if (targetPoolItem.batchId) finalTx.batchId = targetPoolItem.batchId;
+    if (targetPoolItem.batchCode) finalTx.batchCode = targetPoolItem.batchCode;
+
     finalTx.status = SELECTION_STATUS.READY_TO_CONFIRM;
     finalTx.verificationStatus = null;
     finalTx.submissionStatus = null;
@@ -1757,6 +1797,20 @@ export function createPreGraftingSelectionDocument(seedingTx, currentUser = null
       if (canonicalBatchBibit > 0 && existing.batchTotalBibit !== canonicalBatchBibit) {
         existing.batchTotalBibit = canonicalBatchBibit;
         modified = true;
+      }
+      if (Array.isArray(existing.rows) && existing.rows.length > 0) {
+        const rowToUpdate = existing.rows.find(r => formatBedenganDisplayCode(r.bedenganCode || r.bedenganId || r.bedengan).toUpperCase() === normBed);
+        if (rowToUpdate) {
+          if (effectiveBedPoly > 0 && rowToUpdate.polybag !== effectiveBedPoly) {
+            rowToUpdate.polybag = effectiveBedPoly;
+            modified = true;
+          }
+          if (bedBibit > 0 && (rowToUpdate.disemai !== bedBibit || rowToUpdate.sourceBibitQty !== bedBibit)) {
+            rowToUpdate.disemai = bedBibit;
+            rowToUpdate.sourceBibitQty = bedBibit;
+            modified = true;
+          }
+        }
       }
       const mergedSows = Array.from(new Set([...(existing.sourceSeedingDocNos || [existing.sourceDocNo || existing.seedingDocNo].filter(Boolean)), ...allSowDocNos]));
       if (JSON.stringify(mergedSows) !== JSON.stringify(existing.sourceSeedingDocNos)) {
@@ -3837,12 +3891,38 @@ export function getBedenganScopeStatusForSeleksi1(parentDoc, txsOverride = null)
   // Resolve bedengan list from rows or bedenganIds
   let bedenganList = [];
   if (Array.isArray(parentDoc.rows) && parentDoc.rows.length > 0) {
-    bedenganList = parentDoc.rows.map(r => ({
-      bedenganId: r.bedenganId || r.bedenganCode || r.bedengan,
-      bedenganCode: formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId),
-      initialPolybag: parseInt(r.polybag !== undefined ? r.polybag : Math.ceil((r.disemai || 0) / 2), 10),
-      initialBibit: parseInt(r.disemai || ((r.polybag || 0) * 2), 10)
-    }));
+    bedenganList = parentDoc.rows.map(r => {
+      const bCode = formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId);
+      const batchCode = parentDoc.batchCode || parentDoc.batchNo;
+      let liveTotals = null;
+      try {
+        liveTotals = calculateEligibleSeedingTotalsForBedengan(batchCode, bCode);
+      } catch (e) {}
+
+      let initDisemai = (liveTotals && liveTotals.totalDisemai > 0)
+        ? liveTotals.totalDisemai
+        : parseInt(r.disemai !== undefined ? r.disemai : ((r.polybag || 0) * 2), 10);
+      let initPolybag = (liveTotals && liveTotals.totalPolybag > 0)
+        ? liveTotals.totalPolybag
+        : parseInt(r.polybag !== undefined ? r.polybag : Math.ceil((r.disemai || 0) / 2), 10);
+
+      // Reconcile with parentDoc source quantities if single bedengan or if parentDoc has higher cumulative totals
+      if (parentDoc.rows.length === 1) {
+        if (parentDoc.sourceBibitQty && parentDoc.sourceBibitQty > initDisemai) {
+          initDisemai = parentDoc.sourceBibitQty;
+        }
+        if (parentDoc.sourcePolybagQty && parentDoc.sourcePolybagQty > initPolybag) {
+          initPolybag = parentDoc.sourcePolybagQty;
+        }
+      }
+
+      return {
+        bedenganId: r.bedenganId || r.bedenganCode || r.bedengan,
+        bedenganCode: bCode,
+        initialPolybag: initPolybag,
+        initialBibit: initDisemai
+      };
+    });
   } else if (Array.isArray(parentDoc.bedenganIds) && parentDoc.bedenganIds.length > 0) {
     const polyPerBed = Math.floor(parentDoc.sourcePolybagQty / parentDoc.bedenganIds.length);
     const remPoly = parentDoc.sourcePolybagQty % parentDoc.bedenganIds.length;
@@ -3853,11 +3933,25 @@ export function getBedenganScopeStatusForSeleksi1(parentDoc, txsOverride = null)
       initialBibit: (polyPerBed + (idx === 0 ? remPoly : 0)) * 2
     }));
   } else {
+    const bCode = formatBedenganDisplayCode(parentDoc.bedenganCode || parentDoc.bedengan || 'BED-001');
+    const batchCode = parentDoc.batchCode || parentDoc.batchNo;
+    let liveTotals = null;
+    try {
+      liveTotals = calculateEligibleSeedingTotalsForBedengan(batchCode, bCode);
+    } catch (e) {}
+
+    let initDisemai = (liveTotals && liveTotals.totalDisemai > 0)
+      ? liveTotals.totalDisemai
+      : (parentDoc.sourceBibitQty || 0);
+    let initPolybag = (liveTotals && liveTotals.totalPolybag > 0)
+      ? liveTotals.totalPolybag
+      : (parentDoc.sourcePolybagQty || 0);
+
     bedenganList = [{
       bedenganId: parentDoc.bedenganId || 'BED-001',
-      bedenganCode: formatBedenganDisplayCode(parentDoc.bedenganCode || parentDoc.bedengan || 'BED-001'),
-      initialPolybag: parentDoc.sourcePolybagQty || 0,
-      initialBibit: parentDoc.sourceBibitQty || 0
+      bedenganCode: bCode,
+      initialPolybag: initPolybag,
+      initialBibit: initDisemai
     }];
   }
 
@@ -3896,7 +3990,7 @@ export function getBedenganScopeStatusForSeleksi1(parentDoc, txsOverride = null)
  * Validasi payload transaksi pelaksanaan Seleksi I
  * Mendukung model kuantitas baru (actualPolybagInspectedQty, actualBibitSelectedQty) dan Legacy
  */
-export function validateSeleksi1Execution(payload, parentDoc, existingTxs = null) {
+export function validateSeleksi1Execution(payload, parentDoc, existingTxs = null, options = {}) {
   const errors = [];
   if (!payload) {
     return { isValid: false, errors: ['Data transaksi Seleksi I tidak boleh kosong.'] };
@@ -3933,37 +4027,61 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = null
         : parseInt(parentDoc.sourcePolybagQty || 0, 10));
 
   const sourceBibit = parseInt(parentDoc.sourceBibitQty !== undefined ? parentDoc.sourceBibitQty : ((parentDoc.sourcePolybagQty || 0) * 2), 10);
+  // Parse 2 canonical inputs: Jlh Polybag Diperiksa & Jlh Bibit Diseleksi (Minimum 0)
+  const rawPoly = payload.actualPolybagInspectedQty !== undefined
+    ? payload.actualPolybagInspectedQty
+    : (payload.polybagScope !== undefined
+        ? payload.polybagScope
+        : (payload.actualPolybagActiveQty !== undefined ? payload.actualPolybagActiveQty : payload.polybagAktif));
 
-  // Parse 2 canonical inputs: Jlh Polybag Diperiksa & Jlh Bibit Diseleksi
-  const actualPolyInspected = parseInt(
-    payload.actualPolybagInspectedQty !== undefined
-      ? payload.actualPolybagInspectedQty
-      : (payload.polybagScope !== undefined
-          ? payload.polybagScope
-          : (payload.actualPolybagActiveQty !== undefined ? payload.actualPolybagActiveQty : payload.polybagAktif || 0)),
-    10
-  );
+  const rawBibit = payload.actualBibitSelectedQty !== undefined
+    ? payload.actualBibitSelectedQty
+    : (payload.selectedBibitScopeQty !== undefined
+        ? payload.selectedBibitScopeQty
+        : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : undefined));
 
-  const actualBibitSelected = parseInt(
-    payload.actualBibitSelectedQty !== undefined
-      ? payload.actualBibitSelectedQty
-      : (payload.selectedBibitScopeQty !== undefined
-          ? payload.selectedBibitScopeQty
-          : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : 0)),
-    10
-  );
-
-  if (isNaN(actualPolyInspected) || actualPolyInspected <= 0) {
-    errors.push('Jumlah polybag diperiksa harus lebih besar dari 0.');
+  let actualPolyInspected = 0;
+  if (rawPoly === undefined || rawPoly === null || String(rawPoly).trim() === '') {
+    errors.push('Jumlah polybag diperiksa wajib diisi.');
+  } else {
+    actualPolyInspected = Number(rawPoly);
+    if (isNaN(actualPolyInspected)) {
+      errors.push('Jumlah polybag diperiksa harus berupa angka yang valid.');
+    } else if (actualPolyInspected < 0) {
+      errors.push('Jumlah polybag diperiksa tidak boleh negatif (minimum 0).');
+    } else if (matchedBed && matchedBed.isFullyInspected && actualPolyInspected > 0) {
+      errors.push(`Bedengan ${resolvedBedCode} telah selesai diperiksa seluruhnya.`);
+    } else if (actualPolyInspected > maxPolybagScope) {
+      errors.push(`Jumlah polybag diperiksa (${actualPolyInspected}) melebihi sisa scope polybag bedengan ${resolvedBedCode} (${maxPolybagScope}).`);
+    }
   }
-  if (matchedBed && matchedBed.isFullyInspected) {
-    errors.push(`Bedengan ${resolvedBedCode} telah selesai diperiksa seluruhnya.`);
-  } else if (actualPolyInspected > maxPolybagScope) {
-    errors.push(`Jumlah polybag diperiksa (${actualPolyInspected}) melebihi sisa scope polybag bedengan ${resolvedBedCode} (${maxPolybagScope}).`);
+
+  const maxBibitBedengan = matchedBed 
+    ? (matchedBed.initialBibit !== undefined ? matchedBed.initialBibit : ((matchedBed.initialPolybag || 0) * 2)) 
+    : sourceBibit;
+  const existingBibitOnBed = matchedBed ? (matchedBed.inspectedBibit || 0) : 0;
+  const availableBibit = Math.max(0, maxBibitBedengan - existingBibitOnBed);
+
+  let actualBibitSelected = 0;
+  if (rawBibit === undefined || rawBibit === null || String(rawBibit).trim() === '') {
+    errors.push('Jumlah bibit afkir wajib diisi.');
+  } else {
+    actualBibitSelected = Number(rawBibit);
+    if (isNaN(actualBibitSelected)) {
+      errors.push('Jumlah bibit afkir harus berupa angka yang valid.');
+    } else if (actualBibitSelected < 0) {
+      errors.push('Jumlah bibit afkir tidak boleh negatif (minimum 0).');
+    } else if (actualBibitSelected > availableBibit) {
+      errors.push(`Jumlah bibit afkir (${actualBibitSelected}) melebihi sisa bibit tersedia (${availableBibit}).`);
+    }
   }
 
-  if (isNaN(actualBibitSelected) || actualBibitSelected < 0) {
-    errors.push('Jumlah bibit diseleksi tidak boleh negatif.');
+  const selectedReason = String(payload.alasan || payload.category || payload.alasanAfkir || payload.alasanDitolakCategory || '').trim();
+  const isReasonRequired = options && options.requireAlasan !== undefined 
+    ? Boolean(options.requireAlasan) 
+    : Boolean(payload.requireAlasan);
+  if (isReasonRequired && actualBibitSelected > 0 && !selectedReason) {
+    errors.push('Alasan wajib dipilih jika ada bibit afkir.');
   }
 
   // Sesi Seleksi 1: 1 Polybag = 2 Bibit
@@ -3993,6 +4111,18 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = null
     resolvedSowDocNo = parentDoc.sourceDocNo || '';
   }
 
+  // 4. Photo Evidence Validation (Wajib minimal 1 foto dengan watermark GPS)
+  const isPhotoRequired = options && options.requirePhoto !== undefined 
+    ? Boolean(options.requirePhoto) 
+    : Boolean(payload.requirePhoto || payload.fromUI);
+  if (isPhotoRequired) {
+    const photo = payload.photo || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos[0]);
+    const photoDataUrl = (typeof photo === 'object' && photo !== null) ? (photo.dataUrl || photo.src || photo.url) : (typeof photo === 'string' ? photo : null);
+    if (!photoDataUrl || typeof photoDataUrl !== 'string' || !photoDataUrl.startsWith('data:image/')) {
+      errors.push('Foto bukti pemeriksaan seleksi wajib dilampirkan (minimal 1 foto dengan koordinat GPS aktual).');
+    }
+  }
+
   return {
     isValid: errors.length === 0,
     errors,
@@ -4014,7 +4144,14 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = null
       bibitDipertahankan: sessionBibitRetained,
       bibitReject,
       jumlahAfkir,
-      jumlahLayak: sessionBibitRetained
+      jumlahLayak: sessionBibitRetained,
+      alasan: actualBibitSelected > 0 ? selectedReason : '',
+      category: actualBibitSelected > 0 ? (payload.category || selectedReason) : '',
+      alasanAfkir: actualBibitSelected > 0 ? selectedReason : '',
+      alasanDitolakCategory: actualBibitSelected > 0 ? selectedReason : '',
+      photo: payload.photo || null,
+      photoEvidence: payload.photo?.dataUrl || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos[0]) || null,
+      photos: payload.photo?.dataUrl ? [payload.photo.dataUrl] : (Array.isArray(payload.photos) ? payload.photos : [])
     }
   };
 }
@@ -4022,7 +4159,7 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = null
 /**
  * Membuat transaksi pelaksanaan Seleksi I baru oleh Mantri Bibitan
  */
-export function createSeleksi1ExecutionTransaction(payload, currentUser) {
+export function createSeleksi1ExecutionTransaction(payload, currentUser, options = {}) {
   const parentDocId = payload.selectionDocumentId || payload.selectionDocNo || payload.docNo;
   const parentDoc = getPreGraftingSelectionDocumentById(parentDocId);
   if (!parentDoc) {
@@ -4039,7 +4176,7 @@ export function createSeleksi1ExecutionTransaction(payload, currentUser) {
   assertAttendanceGateOrThrow(currentUser);
 
   const existingExecutions = getSeleksi1ExecutionsByDocument(parentDoc.id);
-  const val = validateSeleksi1Execution(payload, parentDoc, existingExecutions);
+  const val = validateSeleksi1Execution(payload, parentDoc, existingExecutions, options);
   if (!val.isValid) {
     throw new Error(val.errors.join(' '));
   }
@@ -4129,13 +4266,34 @@ export function createSeleksi1ExecutionTransaction(payload, currentUser) {
       parentDocNo: parentDoc.docNo,
       sourceDocNo: parentDoc.sourceDocNo,
       bedenganCode: val.parsed.bedenganCode,
-      rejectCount: val.parsed.actualBibitSelectedQty
+      rejectCount: val.parsed.actualBibitSelectedQty,
+      reason: val.parsed.alasan || 'Bibit afkir Seleksi I'
     },
+    alasan: val.parsed.alasan || '',
+    category: val.parsed.category || '',
+    alasanAfkir: val.parsed.alasanAfkir || '',
+    alasanDitolakCategory: val.parsed.alasanDitolakCategory || '',
     
     tanggalSeleksi: today,
     tanggal: today,
     catatan: payload.catatan || payload.remarks || '-',
     
+    // Photo Evidence Documentation
+    photo: payload.photo ? {
+      id: payload.photo.id || `PHOTO-SEL1-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      dataUrl: payload.photo.dataUrl,
+      capturedAt: payload.photo.capturedAt,
+      capturedAtLabel: payload.photo.capturedAtLabel,
+      latitude: payload.photo.latitude,
+      longitude: payload.photo.longitude,
+      batchCode: val.parsed.batchCode || parentDoc.batchCode,
+      bedenganCode: val.parsed.bedenganCode,
+      source: 'CAMERA'
+    } : null,
+    photoEvidence: payload.photo?.dataUrl || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos[0]) || null,
+    photos: payload.photo?.dataUrl ? [payload.photo.dataUrl] : (Array.isArray(payload.photos) ? payload.photos : []),
+    hasPhotoEvidence: Boolean(payload.photo?.dataUrl || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos.length > 0)),
+
     status: 'RECORDED',
     stockMutationStatus: 'NOT_REQUIRED',
     
@@ -4423,7 +4581,7 @@ export function getBedenganScopeStatusForSeleksi2(parentDoc, txsOverride = null)
  * Validasi payload transaksi pelaksanaan Seleksi II
  * Mendukung model kuantitas baru (actualPolybagInspectedQty, actualBibitSelectedQty) dan Legacy
  */
-export function validateSeleksi2Execution(payload, parentDoc, existingTxs = []) {
+export function validateSeleksi2Execution(payload, parentDoc, existingTxs = [], options = {}) {
   const errors = [];
   if (!payload) {
     return { isValid: false, errors: ['Data transaksi Seleksi II tidak boleh kosong.'] };
@@ -4458,34 +4616,59 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = []) 
   const maxPolybagScope = matchedBed ? matchedBed.remainingPolybag : parseInt(parentDoc.sourcePolybagQty || 0, 10);
   const sourceBibit = parseInt(parentDoc.sourceBibitQty !== undefined ? parentDoc.sourceBibitQty : (parentDoc.sourcePolybagQty || 0), 10);
 
-  // Parse 2 canonical inputs: Jlh Polybag Diperiksa & Jlh Bibit Diseleksi
-  const actualPolyInspected = parseInt(
-    payload.actualPolybagInspectedQty !== undefined
-      ? payload.actualPolybagInspectedQty
-      : (payload.polybagScope !== undefined
-          ? payload.polybagScope
-          : (payload.actualPolybagActiveQty !== undefined ? payload.actualPolybagActiveQty : payload.polybagAktif || 0)),
-    10
-  );
+  // Parse 2 canonical inputs: Jlh Polybag Diperiksa & Jlh Bibit Diseleksi (Minimum 0)
+  const rawPoly2 = payload.actualPolybagInspectedQty !== undefined
+    ? payload.actualPolybagInspectedQty
+    : (payload.polybagScope !== undefined
+        ? payload.polybagScope
+        : (payload.actualPolybagActiveQty !== undefined ? payload.actualPolybagActiveQty : payload.polybagAktif));
 
-  const actualBibitSelected = parseInt(
-    payload.actualBibitSelectedQty !== undefined
-      ? payload.actualBibitSelectedQty
-      : (payload.selectedBibitScopeQty !== undefined
-          ? payload.selectedBibitScopeQty
-          : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : 0)),
-    10
-  );
+  const rawBibit2 = payload.actualBibitSelectedQty !== undefined
+    ? payload.actualBibitSelectedQty
+    : (payload.selectedBibitScopeQty !== undefined
+        ? payload.selectedBibitScopeQty
+        : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : undefined));
 
-  if (isNaN(actualPolyInspected) || actualPolyInspected <= 0) {
-    errors.push('Jumlah polybag diperiksa harus lebih besar dari 0.');
+  let actualPolyInspected = 0;
+  if (rawPoly2 === undefined || rawPoly2 === null || String(rawPoly2).trim() === '') {
+    errors.push('Jumlah polybag diperiksa wajib diisi.');
+  } else {
+    actualPolyInspected = Number(rawPoly2);
+    if (isNaN(actualPolyInspected)) {
+      errors.push('Jumlah polybag diperiksa harus berupa angka yang valid.');
+    } else if (actualPolyInspected < 0) {
+      errors.push('Jumlah polybag diperiksa tidak boleh negatif (minimum 0).');
+    } else if (actualPolyInspected > maxPolybagScope) {
+      errors.push(`Jumlah polybag diperiksa (${actualPolyInspected}) melebihi sisa scope polybag yang tersedia (${maxPolybagScope}).`);
+    }
   }
-  if (actualPolyInspected > maxPolybagScope) {
-    errors.push(`Jumlah polybag diperiksa (${actualPolyInspected}) melebihi sisa scope polybag yang tersedia (${maxPolybagScope}).`);
+
+  const maxBibitBedengan2 = matchedBed 
+    ? (matchedBed.initialBibit !== undefined ? matchedBed.initialBibit : (matchedBed.initialPolybag || 0)) 
+    : sourceBibit;
+  const existingBibitOnBed2 = matchedBed ? (matchedBed.inspectedBibit || 0) : existingBibitSelectedSum;
+  const availableBibit2 = Math.max(0, maxBibitBedengan2 - existingBibitOnBed2);
+
+  let actualBibitSelected = 0;
+  if (rawBibit2 === undefined || rawBibit2 === null || String(rawBibit2).trim() === '') {
+    errors.push('Jumlah bibit afkir wajib diisi.');
+  } else {
+    actualBibitSelected = Number(rawBibit2);
+    if (isNaN(actualBibitSelected)) {
+      errors.push('Jumlah bibit afkir harus berupa angka yang valid.');
+    } else if (actualBibitSelected < 0) {
+      errors.push('Jumlah bibit afkir tidak boleh negatif (minimum 0).');
+    } else if (actualBibitSelected > availableBibit2) {
+      errors.push(`Jumlah bibit afkir (${actualBibitSelected}) melebihi sisa bibit tersedia (${availableBibit2}).`);
+    }
   }
 
-  if (isNaN(actualBibitSelected) || actualBibitSelected < 0) {
-    errors.push('Jumlah bibit diseleksi tidak boleh negatif.');
+  const selectedReason2 = String(payload.alasan || payload.category || payload.alasanAfkir || payload.alasanDitolakCategory || '').trim();
+  const isReasonRequired2 = options && options.requireAlasan !== undefined 
+    ? Boolean(options.requireAlasan) 
+    : Boolean(payload.requireAlasan);
+  if (isReasonRequired2 && actualBibitSelected > 0 && !selectedReason2) {
+    errors.push('Alasan wajib dipilih jika ada bibit afkir.');
   }
 
   // Hitung otomatis Bibit Dipertahankan secara kumulatif
@@ -4501,6 +4684,18 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = []) 
   const selectedBibitScopeQty = actualBibitSelected;
   const bibitReject = actualBibitSelected;
   const bibitAwal = actualBibitSelected;
+
+  // 4. Photo Evidence Validation (Wajib minimal 1 foto dengan watermark GPS)
+  const isPhotoRequired = options && options.requirePhoto !== undefined 
+    ? Boolean(options.requirePhoto) 
+    : Boolean(payload.requirePhoto || payload.fromUI);
+  if (isPhotoRequired) {
+    const photo = payload.photo || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos[0]);
+    const photoDataUrl = (typeof photo === 'object' && photo !== null) ? (photo.dataUrl || photo.src || photo.url) : (typeof photo === 'string' ? photo : null);
+    if (!photoDataUrl || typeof photoDataUrl !== 'string' || !photoDataUrl.startsWith('data:image/')) {
+      errors.push('Foto bukti pemeriksaan seleksi wajib dilampirkan (minimal 1 foto dengan koordinat GPS aktual).');
+    }
+  }
 
   return {
     isValid: errors.length === 0,
@@ -4520,7 +4715,10 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = []) 
       bibitAwal,
       jumlahDiperiksa: actualBibitSelected,
       bibitDipertahankan: cumulativeBibitRetained,
-      bibitReject
+      bibitReject,
+      photo: payload.photo || null,
+      photoEvidence: payload.photo?.dataUrl || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos[0]) || null,
+      photos: payload.photo?.dataUrl ? [payload.photo.dataUrl] : (Array.isArray(payload.photos) ? payload.photos : [])
     }
   };
 }
@@ -4528,7 +4726,7 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = []) 
 /**
  * Membuat transaksi pelaksanaan Seleksi II baru oleh Mantri Bibitan
  */
-export function createSeleksi2ExecutionTransaction(payload, currentUser) {
+export function createSeleksi2ExecutionTransaction(payload, currentUser, options = {}) {
   // GLOBAL ATTENDANCE GATE
   assertAttendanceGateOrThrow(currentUser);
 
@@ -4539,7 +4737,7 @@ export function createSeleksi2ExecutionTransaction(payload, currentUser) {
   }
 
   const existingExecutions = getSeleksi2ExecutionsByDocument(parentDoc.id);
-  const val = validateSeleksi2Execution(payload, parentDoc, existingExecutions);
+  const val = validateSeleksi2Execution(payload, parentDoc, existingExecutions, options);
   if (!val.isValid) {
     throw new Error(val.errors.join(' '));
   }
@@ -4634,13 +4832,33 @@ export function createSeleksi2ExecutionTransaction(payload, currentUser) {
       sourceSeedingDocNo: parentDoc.sourceSeedingDocNo,
       bedenganCode: val.parsed.bedenganCode,
       rejectCount: val.parsed.actualBibitSelectedQty,
-      reason: 'Bibit kecil/terhambat saat Seleksi II'
+      reason: val.parsed.alasan || 'Bibit kecil/terhambat saat Seleksi II'
     },
+    alasan: val.parsed.alasan || '',
+    category: val.parsed.category || '',
+    alasanAfkir: val.parsed.alasanAfkir || '',
+    alasanDitolakCategory: val.parsed.alasanDitolakCategory || '',
     
     tanggalSeleksi: today,
     tanggal: today,
     catatan: payload.catatan || payload.remarks || '-',
     
+    // Photo Evidence Documentation
+    photo: payload.photo ? {
+      id: payload.photo.id || `PHOTO-SEL2-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      dataUrl: payload.photo.dataUrl,
+      capturedAt: payload.photo.capturedAt,
+      capturedAtLabel: payload.photo.capturedAtLabel,
+      latitude: payload.photo.latitude,
+      longitude: payload.photo.longitude,
+      batchCode: val.parsed.batchCode || parentDoc.batchCode,
+      bedenganCode: val.parsed.bedenganCode,
+      source: 'CAMERA'
+    } : null,
+    photoEvidence: payload.photo?.dataUrl || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos[0]) || null,
+    photos: payload.photo?.dataUrl ? [payload.photo.dataUrl] : (Array.isArray(payload.photos) ? payload.photos : []),
+    hasPhotoEvidence: Boolean(payload.photo?.dataUrl || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos.length > 0)),
+
     status: 'RECORDED',
     stockMutationStatus: 'NOT_REQUIRED',
     
@@ -4923,7 +5141,7 @@ export function getBedenganScopeStatusForSeleksi3(parentDoc, txsOverride = null)
  * Validasi payload transaksi pelaksanaan Seleksi III
  * Mendukung model kuantitas baru (actualPolybagInspectedQty, actualBibitSelectedQty) dan Legacy
  */
-export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) {
+export function validateSeleksi3Execution(payload, parentDoc, existingTxs = [], options = {}) {
   const errors = [];
   if (!payload) {
     return { isValid: false, errors: ['Data transaksi Seleksi III tidak boleh kosong.'] };
@@ -4962,34 +5180,59 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
   const maxPolybagScope = matchedBed ? matchedBed.remainingPolybag : parseInt(parentDoc.sourcePolybagQty || 0, 10);
   const sourceBibit = parseInt(parentDoc.sourceBibitQty !== undefined ? parentDoc.sourceBibitQty : (parentDoc.sourcePolybagQty || 0), 10);
 
-  // Parse 2 canonical inputs: Jlh Polybag Diperiksa & Jlh Bibit Diseleksi
-  const actualPolyInspected = parseInt(
-    payload.actualPolybagInspectedQty !== undefined
-      ? payload.actualPolybagInspectedQty
-      : (payload.polybagScope !== undefined
-          ? payload.polybagScope
-          : (payload.actualPolybagActiveQty !== undefined ? payload.actualPolybagActiveQty : payload.polybagAktif || 0)),
-    10
-  );
+  // Parse 2 canonical inputs: Jlh Polybag Diperiksa & Jlh Bibit Diseleksi (Minimum 0)
+  const rawPoly3 = payload.actualPolybagInspectedQty !== undefined
+    ? payload.actualPolybagInspectedQty
+    : (payload.polybagScope !== undefined
+        ? payload.polybagScope
+        : (payload.actualPolybagActiveQty !== undefined ? payload.actualPolybagActiveQty : payload.polybagAktif));
 
-  const actualBibitSelected = parseInt(
-    payload.actualBibitSelectedQty !== undefined
-      ? payload.actualBibitSelectedQty
-      : (payload.selectedBibitScopeQty !== undefined
-          ? payload.selectedBibitScopeQty
-          : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : 0)),
-    10
-  );
+  const rawBibit3 = payload.actualBibitSelectedQty !== undefined
+    ? payload.actualBibitSelectedQty
+    : (payload.selectedBibitScopeQty !== undefined
+        ? payload.selectedBibitScopeQty
+        : (payload.jumlahDiperiksa !== undefined ? payload.jumlahDiperiksa : undefined));
 
-  if (isNaN(actualPolyInspected) || actualPolyInspected <= 0) {
-    errors.push('Jumlah polybag diperiksa harus lebih besar dari 0.');
+  let actualPolyInspected = 0;
+  if (rawPoly3 === undefined || rawPoly3 === null || String(rawPoly3).trim() === '') {
+    errors.push('Jumlah polybag diperiksa wajib diisi.');
+  } else {
+    actualPolyInspected = Number(rawPoly3);
+    if (isNaN(actualPolyInspected)) {
+      errors.push('Jumlah polybag diperiksa harus berupa angka yang valid.');
+    } else if (actualPolyInspected < 0) {
+      errors.push('Jumlah polybag diperiksa tidak boleh negatif (minimum 0).');
+    } else if (actualPolyInspected > maxPolybagScope) {
+      errors.push(`Jumlah polybag diperiksa (${actualPolyInspected}) melebihi sisa scope polybag yang tersedia (${maxPolybagScope}).`);
+    }
   }
-  if (actualPolyInspected > maxPolybagScope) {
-    errors.push(`Jumlah polybag diperiksa (${actualPolyInspected}) melebihi sisa scope polybag yang tersedia (${maxPolybagScope}).`);
+
+  const maxBibitBedengan3 = matchedBed 
+    ? (matchedBed.initialBibit !== undefined ? matchedBed.initialBibit : (matchedBed.initialPolybag || 0)) 
+    : sourceBibit;
+  const existingBibitOnBed3 = matchedBed ? (matchedBed.inspectedBibit || 0) : existingBibitSelectedSum;
+  const availableBibit3 = Math.max(0, maxBibitBedengan3 - existingBibitOnBed3);
+
+  let actualBibitSelected = 0;
+  if (rawBibit3 === undefined || rawBibit3 === null || String(rawBibit3).trim() === '') {
+    errors.push('Jumlah bibit afkir wajib diisi.');
+  } else {
+    actualBibitSelected = Number(rawBibit3);
+    if (isNaN(actualBibitSelected)) {
+      errors.push('Jumlah bibit afkir harus berupa angka yang valid.');
+    } else if (actualBibitSelected < 0) {
+      errors.push('Jumlah bibit afkir tidak boleh negatif (minimum 0).');
+    } else if (actualBibitSelected > availableBibit3) {
+      errors.push(`Jumlah bibit afkir (${actualBibitSelected}) melebihi sisa bibit tersedia (${availableBibit3}).`);
+    }
   }
 
-  if (isNaN(actualBibitSelected) || actualBibitSelected < 0) {
-    errors.push('Jumlah bibit diseleksi tidak boleh negatif.');
+  const selectedReason3 = String(payload.alasan || payload.category || payload.alasanAfkir || payload.alasanDitolakCategory || '').trim();
+  const isReasonRequired3 = options && options.requireAlasan !== undefined 
+    ? Boolean(options.requireAlasan) 
+    : Boolean(payload.requireAlasan);
+  if (isReasonRequired3 && actualBibitSelected > 0 && !selectedReason3) {
+    errors.push('Alasan wajib dipilih jika ada bibit afkir.');
   }
 
   // Hitung otomatis Bibit Dipertahankan secara kumulatif
@@ -5005,6 +5248,18 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
   const selectedBibitScopeQty = actualBibitSelected;
   const bibitReject = actualBibitSelected;
   const bibitAwal = actualBibitSelected;
+
+  // 4. Photo Evidence Validation (Wajib minimal 1 foto dengan watermark GPS)
+  const isPhotoRequired = options && options.requirePhoto !== undefined 
+    ? Boolean(options.requirePhoto) 
+    : Boolean(payload.requirePhoto || payload.fromUI);
+  if (isPhotoRequired) {
+    const photo = payload.photo || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos[0]);
+    const photoDataUrl = (typeof photo === 'object' && photo !== null) ? (photo.dataUrl || photo.src || photo.url) : (typeof photo === 'string' ? photo : null);
+    if (!photoDataUrl || typeof photoDataUrl !== 'string' || !photoDataUrl.startsWith('data:image/')) {
+      errors.push('Foto bukti pemeriksaan seleksi wajib dilampirkan (minimal 1 foto dengan koordinat GPS aktual).');
+    }
+  }
 
   return {
     isValid: errors.length === 0,
@@ -5024,7 +5279,10 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
       bibitAwal,
       jumlahDiperiksa: actualBibitSelected,
       bibitDipertahankan: cumulativeBibitRetained,
-      bibitReject
+      bibitReject,
+      photo: payload.photo || null,
+      photoEvidence: payload.photo?.dataUrl || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos[0]) || null,
+      photos: payload.photo?.dataUrl ? [payload.photo.dataUrl] : (Array.isArray(payload.photos) ? payload.photos : [])
     }
   };
 }
@@ -5032,7 +5290,7 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = []) 
 /**
  * Membuat transaksi pelaksanaan Seleksi III baru oleh Mantri Bibitan
  */
-export function createSeleksi3ExecutionTransaction(payload, currentUser) {
+export function createSeleksi3ExecutionTransaction(payload, currentUser, options = {}) {
   // GLOBAL ATTENDANCE GATE
   assertAttendanceGateOrThrow(currentUser);
 
@@ -5043,7 +5301,7 @@ export function createSeleksi3ExecutionTransaction(payload, currentUser) {
   }
 
   const existingExecutions = getSeleksi3ExecutionsByDocument(parentDoc.id);
-  const val = validateSeleksi3Execution(payload, parentDoc, existingExecutions);
+  const val = validateSeleksi3Execution(payload, parentDoc, existingExecutions, options);
   if (!val.isValid) {
     throw new Error(val.errors.join(' '));
   }
@@ -5138,13 +5396,33 @@ export function createSeleksi3ExecutionTransaction(payload, currentUser) {
       sourceSeedingDocNo: parentDoc.sourceSeedingDocNo,
       bedenganCode: val.parsed.bedenganCode,
       rejectCount: val.parsed.actualBibitSelectedQty,
-      reason: 'Bibit abnormal/sakit saat Seleksi III'
+      reason: val.parsed.alasan || 'Bibit abnormal/sakit saat Seleksi III'
     },
+    alasan: val.parsed.alasan || '',
+    category: val.parsed.category || '',
+    alasanAfkir: val.parsed.alasanAfkir || '',
+    alasanDitolakCategory: val.parsed.alasanDitolakCategory || '',
     
     tanggalSeleksi: today,
     tanggal: today,
     catatan: payload.catatan || payload.remarks || '-',
     
+    // Photo Evidence Documentation
+    photo: payload.photo ? {
+      id: payload.photo.id || `PHOTO-SEL3-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      dataUrl: payload.photo.dataUrl,
+      capturedAt: payload.photo.capturedAt,
+      capturedAtLabel: payload.photo.capturedAtLabel,
+      latitude: payload.photo.latitude,
+      longitude: payload.photo.longitude,
+      batchCode: val.parsed.batchCode || parentDoc.batchCode,
+      bedenganCode: val.parsed.bedenganCode,
+      source: 'CAMERA'
+    } : null,
+    photoEvidence: payload.photo?.dataUrl || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos[0]) || null,
+    photos: payload.photo?.dataUrl ? [payload.photo.dataUrl] : (Array.isArray(payload.photos) ? payload.photos : []),
+    hasPhotoEvidence: Boolean(payload.photo?.dataUrl || payload.photoEvidence || (Array.isArray(payload.photos) && payload.photos.length > 0)),
+
     status: 'RECORDED',
     stockMutationStatus: 'NOT_REQUIRED',
     

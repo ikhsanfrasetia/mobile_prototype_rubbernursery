@@ -38,7 +38,7 @@ import { renderBuddingForm } from './modules/budding/budding-form.js';
 import { renderInspectionLanding } from './modules/inspection/inspection-landing.js';
 import { renderInspectionScan } from './modules/inspection/inspection-scan.js';
 import { renderInspectionForm } from './modules/inspection/inspection-form.js';
-import { renderSelectionLanding } from './modules/selection/selection-landing.js';
+import { renderSelectionLanding } from './modules/selection/selection-landing.js?v=177';
 import { renderNurseryHistory } from './modules/history/nursery-history.js';
 import { renderTransactionManager } from './modules/transactions/transaction-manager.js';
 import { renderEntresLanding } from './modules/entres/entres-landing.js';
