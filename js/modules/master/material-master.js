@@ -161,7 +161,9 @@ export function renderMaterialMaster() {
         String(rec.bedenganCode || '').toLowerCase().includes(q) ||
         String(rec.notes || '').toLowerCase().includes(q);
 
-      const matchSource = state.recordSourceFilter === 'ALL' || rec.sourceType === state.recordSourceFilter;
+      const matchSource = state.recordSourceFilter === 'ALL' || 
+        rec.sourceType === state.recordSourceFilter || 
+        rec.sourceModule === state.recordSourceFilter;
       const matchMaterial = state.recordMaterialFilter === 'ALL' || rec.itemCode === state.recordMaterialFilter;
 
       return matchSearch && matchSource && matchMaterial;
@@ -683,9 +685,11 @@ export function renderMaterialMaster() {
       title: `Detail Dokumen Issue`,
       body: modalBody,
       footer: `
-        <button id="modal-btn-close-detail" type="button" style="background: #F1F5F9; border: 1px solid #CBD5E1; color: #334155; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; cursor: pointer;">
-          Tutup
-        </button>
+        <div style="width: 100%;">
+          <button id="modal-btn-close-detail" type="button" style="width: 100%; height: 42px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.88rem; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.25); transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; letter-spacing: 0.01em;">
+            Tutup
+          </button>
+        </div>
       `
     });
 
@@ -704,14 +708,16 @@ export function renderMaterialMaster() {
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input id="input-record-search" type="text" placeholder="Cari Dokumen SOW, Material, Batch, Bedengan, Issue..." value="${esc(state.recordSearch)}" style="width: 100%; box-sizing: border-box; padding: 8px 10px 8px 34px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.82rem; color: #0F172A; outline: none; background: #F8FAFC;" />
+            <input id="input-record-search" type="text" placeholder="Cari Dokumen Penerimaan, SOW, Material, Batch, Issue..." value="${esc(state.recordSearch)}" style="width: 100%; box-sizing: border-box; padding: 8px 10px 8px 34px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.82rem; color: #0F172A; outline: none; background: #F8FAFC;" />
           </div>
 
           <!-- FILTERS & ACTIONS ROW -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
             <select id="select-record-source" style="width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.78rem; color: #334155; background: #FFFFFF; outline: none; cursor: pointer;">
               <option value="ALL" ${state.recordSourceFilter === 'ALL' ? 'selected' : ''}>Semua Sumber</option>
-              <option value="OPERASIONAL" ${state.recordSourceFilter === 'OPERASIONAL' ? 'selected' : ''}>Operasional (Penyemaian)</option>
+              <option value="OPERASIONAL" ${state.recordSourceFilter === 'OPERASIONAL' ? 'selected' : ''}>Semua Operasional</option>
+              <option value="PENERIMAAN" ${state.recordSourceFilter === 'PENERIMAAN' ? 'selected' : ''}>Operasional (Penerimaan Benih)</option>
+              <option value="PENYEMAIAN" ${state.recordSourceFilter === 'PENYEMAIAN' ? 'selected' : ''}>Operasional (Penyemaian)</option>
               <option value="MANUAL" ${state.recordSourceFilter === 'MANUAL' ? 'selected' : ''}>Manual (Mantri)</option>
             </select>
 
@@ -803,9 +809,9 @@ export function renderMaterialMaster() {
                       <!-- REFERENSI -->
                       <td style="padding: 12px 14px; vertical-align: top; font-size: 0.76rem; color: #475569; line-height: 1.4;">
                         ${isOp ? `
-                          <div>SOW: <strong style="color: #0F766E; font-family: monospace;">${esc(rec.docNo)}</strong></div>
+                          <div>${rec.sourceModule === 'PENERIMAAN' ? 'Penerimaan:' : 'SOW:'} <strong style="color: #0F766E; font-family: monospace;">${esc(rec.docNo)}</strong></div>
                           ${rec.issueDocNo && rec.issueDocNo !== '-' ? `<div>No. Issue: <span style="font-family: monospace; color: #334155;">${esc(rec.issueDocNo)}</span></div>` : ''}
-                          <div>Batch: <strong style="color: #1E293B;">${esc(rec.batchCode)}</strong> · Bedengan: <strong style="color: #1E293B;">${esc(rec.bedenganCode)}</strong></div>
+                          ${(rec.batchCode && rec.batchCode !== '-') ? `<div>Batch: <strong style="color: #1E293B;">${esc(rec.batchCode)}</strong>${(rec.bedenganCode && rec.bedenganCode !== '-') ? ` · Bedengan: <strong style="color: #1E293B;">${esc(rec.bedenganCode)}</strong>` : ''}</div>` : ''}
                         ` : `
                           <div>Keterangan: <strong style="color: #1E293B;">${esc(rec.notes)}</strong></div>
                           ${rec.issueDocNo && rec.issueDocNo !== '-' ? `<div>No. Issue: <span style="font-family: monospace; color: #334155;">${esc(rec.issueDocNo)}</span></div>` : ''}
@@ -850,85 +856,109 @@ export function renderMaterialMaster() {
         
         <!-- HERO CARD -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
-            <div style="font-size: 1.02rem; font-weight: 800; color: #0F172A; line-height: 1.35;">
-              ${esc(rec.itemName)}
-            </div>
-            <span style="display: inline-block; padding: 3px 8px; ${badgeStyle} font-weight: 700; border-radius: 6px; font-size: 0.68rem; white-space: nowrap; flex-shrink: 0; text-transform: uppercase;">
+          
+          <!-- TOP ROW: BADGE & NO DOKUMEN -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+            <span style="display: inline-block; padding: 3px 8px; ${badgeStyle} font-weight: 700; border-radius: 6px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.3px;">
               ${esc(rec.sourceLabel)}
+            </span>
+            <span style="font-family: monospace; font-size: 0.72rem; color: #64748B; font-weight: 600;">
+              ${esc(rec.docNo)}
             </span>
           </div>
 
-          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.74rem; color: #64748B; margin-bottom: 10px;">
+          <!-- NAMA MATERIAL (LEGA & TIDAK TERTEKAN) -->
+          <div style="font-size: 1.05rem; font-weight: 800; color: #0F172A; line-height: 1.35; margin-bottom: 8px;">
+            ${esc(rec.itemName)}
+          </div>
+
+          <!-- META BADGES: ITEM CODE, UOM -->
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.72rem; margin-bottom: 12px;">
             ${rec.itemCode ? `
-              <span style="font-family: monospace; font-weight: 700; color: #334155; background: #F1F5F9; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0;">
+              <span style="font-family: monospace; font-weight: 700; color: #334155; background: #F1F5F9; padding: 2px 7px; border-radius: 4px; border: 1px solid #E2E8F0;">
                 Item: ${esc(rec.itemCode)}
               </span>
             ` : ''}
-            <span style="font-weight: 700; color: #0369A1; background: #E0F2FE; padding: 2px 6px; border-radius: 4px;">
+            <span style="font-weight: 700; color: #0369A1; background: #E0F2FE; border: 1px solid #BAE6FD; padding: 2px 7px; border-radius: 4px;">
               UOM: ${esc(rec.uom)}
             </span>
-            <span>·</span>
-            <span>No. Dokumen: <strong style="font-family: monospace; color: #0F172A;">${esc(rec.docNo)}</strong></span>
           </div>
 
-          <div style="border-top: 1px solid #F1F5F9; padding-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 8px; font-size: 0.76rem;">
+          <!-- METRIC GRID 2-KOLOM -->
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
-              <span style="color: #64748B; display: block; font-size: 0.68rem;">Kuantitas Digunakan</span>
-              <strong style="color: #0F172A; font-size: 0.95rem;">${Number(rec.quantity).toLocaleString('id-ID')} ${esc(rec.uom)}</strong>
+              <div style="color: #64748B; font-size: 0.67rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 3px;">Kuantitas Digunakan</div>
+              <div style="color: #116834; font-size: 1.05rem; font-weight: 800; line-height: 1.2;">
+                ${Number(rec.quantity).toLocaleString('id-ID')} <span style="font-size: 0.72rem; font-weight: 700; color: #15803D;">${esc(rec.uom)}</span>
+              </div>
             </div>
-            <div>
-              <span style="color: #64748B; display: block; font-size: 0.68rem;">Tanggal Pencatatan</span>
-              <strong style="color: #1E293B; font-size: 0.78rem;">${esc(rec.tanggal || rec.date || '-')}</strong>
+            <div style="border-left: 1px solid #E2E8F0; padding-left: 12px;">
+              <div style="color: #64748B; font-size: 0.67rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 3px;">Tanggal Pencatatan</div>
+              <div style="color: #0F172A; font-size: 0.88rem; font-weight: 700; line-height: 1.2;">
+                ${esc(rec.tanggal || rec.date || '-')}
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- DETAIL FIELDS CARD -->
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-          <div style="font-size: 0.68rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+        <!-- DETAIL FIELDS CARD (RINCIAN INFORMASI REFERENSI) -->
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <div style="font-size: 0.70rem; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
             Rincian Informasi Referensi
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.78rem;">
-            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 6px;">
-              <span style="color: #64748B;">Sumber Pencatatan:</span>
-              <strong style="color: #1E293B;">${esc(rec.sourceLabel)}</strong>
+          <div style="display: flex; flex-direction: column; gap: 9px; font-size: 0.78rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+              <span style="color: #64748B; font-weight: 500;">Sumber Transaksi:</span>
+              <span style="font-weight: 700; color: #1E293B;">${esc(rec.sourceLabel)}</span>
             </div>
 
             ${isOp ? `
-              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 6px;">
-                <span style="color: #64748B;">Dokumen SOW (Penyemaian):</span>
-                <strong style="color: #0F766E; font-family: monospace;">${esc(rec.docNo)}</strong>
+              <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                <span style="color: #64748B; font-weight: 500;">${rec.sourceModule === 'PENERIMAAN' ? 'Dokumen Penerimaan:' : 'Dokumen SOW (Penyemaian):'}</span>
+                <span style="font-family: monospace; font-weight: 800; color: #0F766E; background: #F0FDFA; border: 1px solid #CCFBF1; padding: 2px 7px; border-radius: 4px;">${esc(rec.docNo)}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 6px;">
-                <span style="color: #64748B;">Dokumen Issue Gudang:</span>
-                <strong style="color: #1E293B; font-family: monospace;">${esc(rec.issueDocNo || '-')}</strong>
-              </div>
-              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 6px;">
-                <span style="color: #64748B;">Batch Pembibitan:</span>
-                <strong style="color: #1E293B;">${esc(rec.batchCode || '-')}</strong>
-              </div>
-              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 6px;">
-                <span style="color: #64748B;">Bedengan Penanaman:</span>
-                <strong style="color: #1E293B;">${esc(rec.bedenganCode || '-')}</strong>
-              </div>
-            ` : `
               ${rec.issueDocNo && rec.issueDocNo !== '-' ? `
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 6px;">
-                  <span style="color: #64748B;">Dokumen Issue Gudang:</span>
-                  <strong style="color: #1E293B; font-family: monospace;">${esc(rec.issueDocNo)}</strong>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                  <span style="color: #64748B; font-weight: 500;">Dokumen Issue Gudang:</span>
+                  <span style="font-family: monospace; font-weight: 800; color: #1E293B; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 2px 7px; border-radius: 4px;">${esc(rec.issueDocNo)}</span>
                 </div>
               ` : ''}
-              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 6px;">
-                <span style="color: #64748B;">Keterangan / Peruntukan:</span>
-                <strong style="color: #1E293B;">${esc(rec.notes || '-')}</strong>
+              ${(rec.batchCode && rec.batchCode !== '-') ? `
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                  <span style="color: #64748B; font-weight: 500;">Batch Pembibitan:</span>
+                  <strong style="color: #1E293B;">${esc(rec.batchCode)}</strong>
+                </div>
+              ` : ''}
+              ${(rec.bedenganCode && rec.bedenganCode !== '-') ? `
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                  <span style="color: #64748B; font-weight: 500;">Bedengan:</span>
+                  <strong style="color: #1E293B;">${esc(rec.bedenganCode)}</strong>
+                </div>
+              ` : ''}
+            ` : `
+              ${rec.issueDocNo && rec.issueDocNo !== '-' ? `
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                  <span style="color: #64748B; font-weight: 500;">Dokumen Issue Gudang:</span>
+                  <span style="font-family: monospace; font-weight: 800; color: #1E293B; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 2px 7px; border-radius: 4px;">${esc(rec.issueDocNo)}</span>
+                </div>
+              ` : ''}
+              <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+                <span style="color: #64748B; font-weight: 500;">Keterangan / Peruntukan:</span>
+                <strong style="color: #1E293B; max-width: 60%; text-align: right;">${esc(rec.notes || '-')}</strong>
               </div>
             `}
 
-            <div style="display: flex; justify-content: space-between; padding-top: 2px;">
-              <span style="color: #64748B;">Dicatat Oleh:</span>
-              <strong style="color: #1E293B;">${esc(rec.actor || 'Mantri Bibitan')}</strong>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 2px;">
+              <span style="color: #64748B; font-weight: 500;">Dicatat Oleh:</span>
+              <strong style="color: #0F172A; font-weight: 700;">${esc(rec.actor || 'Mantri Bibitan')}</strong>
             </div>
           </div>
         </div>
@@ -940,9 +970,11 @@ export function renderMaterialMaster() {
       title: `Detail Pencatatan Material`,
       body: modalBody,
       footer: `
-        <button id="modal-btn-close-record-detail" type="button" style="background: #F1F5F9; border: 1px solid #CBD5E1; color: #334155; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; cursor: pointer;">
-          Tutup
-        </button>
+        <div style="width: 100%;">
+          <button id="modal-btn-close-record-detail" type="button" style="width: 100%; height: 42px; background: #116834; color: #FFFFFF; border: none; border-radius: 8px; font-weight: 700; font-size: 0.88rem; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.25); transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; letter-spacing: 0.01em;">
+            Tutup
+          </button>
+        </div>
       `
     });
 

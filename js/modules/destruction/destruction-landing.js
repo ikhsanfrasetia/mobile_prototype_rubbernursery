@@ -259,10 +259,10 @@ function renderAsistenDestructionReview(app, currentUser) {
       });
 
       document.getElementById('btn-cancel-modal')?.addEventListener('click', closeModal);
-      document.getElementById('btn-confirm-approve-destr')?.addEventListener('click', () => {
+      document.getElementById('btn-confirm-approve-destr')?.addEventListener('click', async () => {
         const notes = document.getElementById('modal-destruction-notes')?.value || '';
         try {
-          approveDestructionRecord(id, notes, currentUser, true);
+          await approveDestructionRecord(id, notes, currentUser, true);
           closeModal();
           toast('Pengajuan pemusnahan bibit berhasil disetujui dan stok batch dimutasi.', 'success');
           renderAsistenDestructionReview(app, currentUser);

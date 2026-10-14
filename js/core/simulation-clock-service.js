@@ -11,7 +11,7 @@
 
 import { session } from './session.js';
 import { ROLES } from './permissions.js';
-import { todayISO, nowTimeWithSeconds, nowISO, pad, esc } from './utils.js';
+import { pad, esc } from './utils.js';
 import { openModal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 
@@ -46,6 +46,9 @@ export function isValidTimeString(timeStr) {
  */
 export function getSimulationState() {
   try {
+    if (typeof localStorage === 'undefined') {
+      return { enabled: false, simulatedDate: null, simulatedTime: null, updatedAt: null };
+    }
     const raw = localStorage.getItem(SIMULATION_CLOCK_STORAGE_KEY);
     if (!raw) return { enabled: false, simulatedDate: null, simulatedTime: null, updatedAt: null };
     const parsed = JSON.parse(raw);
@@ -84,7 +87,9 @@ export function setSimulationState({ enabled = true, simulatedDate, simulatedTim
   };
 
   try {
-    localStorage.setItem(SIMULATION_CLOCK_STORAGE_KEY, JSON.stringify(payload));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SIMULATION_CLOCK_STORAGE_KEY, JSON.stringify(payload));
+    }
   } catch (err) {
     console.error('[simulation-clock] Gagal simpan ke localStorage:', err);
     throw err;
@@ -98,19 +103,24 @@ export function setSimulationState({ enabled = true, simulatedDate, simulatedTim
  */
 export function clearSimulationState() {
   try {
-    localStorage.removeItem(SIMULATION_CLOCK_STORAGE_KEY);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(SIMULATION_CLOCK_STORAGE_KEY);
+    }
   } catch (err) {
     console.warn('[simulation-clock] Gagal hapus simulation state:', err);
   }
 }
 
 /**
- * Mengecek apakah simulasi aktif dan role saat ini adalah ROLES.MANTRI_TANAMAN
+ * Mengecek apakah simulasi aktif untuk operasional nursery
  */
 export function isSimulationActive() {
   const currentRole = session.getRole();
-  // Role isolation ketat: Hanya aktif jika role canonical === ROLES.MANTRI_TANAMAN
-  if (currentRole !== ROLES.MANTRI_TANAMAN) {
+  // Role scope: Simulasi diatur dari sidebar Mantri Bibitan dan berlaku untuk modul operasional Nursery
+  // Termasuk Mantri Tanaman, Asisten Bibitan, Asisten Lapangan, serta context tanpa pembatasan role.
+  // Role non-operasional (ASKEP, PENGURUS) tetap waktu sistem aktual.
+  const disallowedRoles = [ROLES.ASKEP, ROLES.PENGURUS];
+  if (currentRole && disallowedRoles.includes(currentRole)) {
     return false;
   }
 
@@ -132,7 +142,25 @@ export function getEffectiveDate() {
     const state = getSimulationState();
     return state.simulatedDate;
   }
-  return todayISO();
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * Mengambil tanggal efektif format DD/MM/YYYY
+ */
+export function getEffectiveTodayDDMMYYYY() {
+  if (isSimulationActive()) {
+    const state = getSimulationState();
+    if (state.simulatedDate) {
+      const parts = state.simulatedDate.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+  }
+  const d = new Date();
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
 /**
@@ -155,7 +183,8 @@ export function getEffectiveTimeWithSeconds() {
     const state = getSimulationState();
     return `${state.simulatedTime}:00`;
   }
-  return nowTimeWithSeconds();
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 /**
@@ -170,7 +199,7 @@ export function getEffectiveISO() {
       return d.toISOString();
     }
   }
-  return nowISO();
+  return new Date().toISOString();
 }
 
 /**
@@ -180,8 +209,11 @@ export function getEffectiveISO() {
 export function openSimulationClockModal(onApplied = null) {
   const state = getSimulationState();
   const isActive = isSimulationActive();
-  const defaultDate = state.simulatedDate || todayISO();
-  const defaultTime = state.simulatedTime || (nowTimeWithSeconds() ? nowTimeWithSeconds().slice(0, 5) : '07:30');
+  const now = new Date();
+  const sysDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const sysTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const defaultDate = state.simulatedDate || sysDate;
+  const defaultTime = state.simulatedTime || sysTime || '07:30';
 
   const modalBody = `
     <div class="simulation-clock-modal-body" style="display: flex; flex-direction: column; gap: 14px; font-size: 0.88rem; color: #1e293b;">

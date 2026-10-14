@@ -29,9 +29,59 @@ import {
   renderDatePickerModalHtml,
   attachDatePickerModalEvents
 } from '../../components/date-filter-modal.js';
+import { openModal, closeModal } from '../../components/modal.js';
+import {
+  SELECTION_STATUS,
+  SELECTION_STAGES,
+  SELECTION_TYPES,
+  SELECTION_STORAGE_KEY,
+  PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY,
+  filterSelectionByScope,
+  getPreGraftingSelectionDocuments,
+  getSeleksi1ExecutionsByDocument,
+  getSeleksi2ExecutionsByDocument,
+  getSeleksi3ExecutionsByDocument,
+  deleteSeleksi1ExecutionTransaction,
+  deleteSeleksi2ExecutionTransaction,
+  deleteSeleksi3ExecutionTransaction,
+  syncAllSeedingsToPreGraftingSelectionDocuments,
+  syncAllApprovedPreGraftingSelectionDocuments
+} from '../selection/selection-manager.js';
+import {
+  groupPreGraftingDocsByProgram,
+  renderProgramBatchCompactView,
+  handleBatchRowClick,
+  renderGlobalChildTransactionsSection
+} from '../selection/selection-landing.js';
 
-let activeInspectionModuleTab = 'DEDERAN'; // 'DEDERAN' | 'OKULASI'
+let activeInspectionModuleTab = 'DEDERAN'; // 'DEDERAN' | 'SELEKSI_PRA_OKULASI' | 'OKULASI'
+let activePreGraftingTab = 'SELEKSI_1'; // 'SELEKSI_1' | 'SELEKSI_2' | 'SELEKSI_3'
+let activeFilterProgram = 'ALL';
 let selectedInspectionDate = todayDDMMYYYY();
+
+export function setActiveInspectionModuleTab(tab) {
+  activeInspectionModuleTab = tab;
+}
+
+export function getActiveInspectionModuleTab() {
+  return activeInspectionModuleTab;
+}
+
+export function setActivePreGraftingTab(tab) {
+  activePreGraftingTab = tab;
+}
+
+export function getActivePreGraftingTab() {
+  return activePreGraftingTab;
+}
+
+export function setActiveFilterProgram(prog) {
+  activeFilterProgram = prog;
+}
+
+export function getActiveFilterProgram() {
+  return activeFilterProgram;
+}
 
 export function setSelectedInspectionDate(dateStr) {
   selectedInspectionDate = normalizeDateStr(dateStr) || todayDDMMYYYY();
@@ -395,6 +445,18 @@ export function renderInspectionLanding() {
     return d === selectedInspectionDate;
   });
 
+  // Sync Pre-Grafting selection docs
+  try {
+    syncAllSeedingsToPreGraftingSelectionDocuments(userCtx);
+    syncAllApprovedPreGraftingSelectionDocuments(userCtx);
+  } catch (err) {
+    console.warn('[renderInspectionLanding] Gagal sinkronisasi data seleksi pra-okulasi:', err);
+  }
+
+  const rawPreGraftingDocs = getPreGraftingSelectionDocuments({}, userCtx);
+  const activePreGraftingDocs = filterSelectionByScope(rawPreGraftingDocs, userCtx).filter(d => !d.isSplit && !d.isLegacyAggregateSplit);
+  const preGraftingPendingCount = activePreGraftingDocs.length;
+
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; position: relative;">
       
@@ -407,22 +469,26 @@ export function renderInspectionLanding() {
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">Pemeriksaan</h1>
+          <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0; letter-spacing: -0.01em;">Pemeriksaan</h1>
         </div>
         <div>
           ${renderCalendarHeaderButton('btn-open-date-filter', selectedInspectionDate)}
         </div>
       </header>
 
-      <!-- TAB SELEKTOR MODUL: PEMERIKSAAN DEDERAN vs OKULASI -->
-      <div style="display: flex; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 16px; gap: 16px; flex-shrink: 0;">
-        <button id="tab-insp-dederan" type="button" style="padding: 12px 4px; font-size: 0.82rem; font-weight: ${activeInspectionModuleTab === 'DEDERAN' ? '700' : '600'}; color: ${activeInspectionModuleTab === 'DEDERAN' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeInspectionModuleTab === 'DEDERAN' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+      <!-- TAB SELEKTOR MODUL: PEMERIKSAAN DEDERAN vs SELEKSI PRA-OKULASI vs OKULASI -->
+      <div class="no-scrollbar" style="display: flex; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 16px; gap: 20px; flex-shrink: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; -ms-overflow-style: none;">
+        <button id="tab-insp-dederan" type="button" style="padding: 12px 2px; font-size: 0.82rem; font-weight: ${activeInspectionModuleTab === 'DEDERAN' ? '700' : '600'}; color: ${activeInspectionModuleTab === 'DEDERAN' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeInspectionModuleTab === 'DEDERAN' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; margin-bottom: -1px; transition: color 0.15s ease;">
           <span>Pemeriksaan Dederan</span>
-          ${pendingDederInspCount > 0 ? `<span style="background: #116834; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${pendingDederInspCount}</span>` : ''}
+          ${pendingDederInspCount > 0 ? `<span style="background: ${activeInspectionModuleTab === 'DEDERAN' ? '#116834' : '#64748B'}; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${pendingDederInspCount}</span>` : ''}
         </button>
-        <button id="tab-insp-okulasi" type="button" style="padding: 12px 4px; font-size: 0.82rem; font-weight: ${activeInspectionModuleTab === 'OKULASI' ? '700' : '600'}; color: ${activeInspectionModuleTab === 'OKULASI' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeInspectionModuleTab === 'OKULASI' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+        <button id="tab-insp-seleksi-pra-okulasi" type="button" style="padding: 12px 2px; font-size: 0.82rem; font-weight: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '700' : '600'}; color: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; margin-bottom: -1px; transition: color 0.15s ease;">
+          <span>Seleksi Pra-Okulasi</span>
+          ${preGraftingPendingCount > 0 ? `<span style="background: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : '#64748B'}; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${preGraftingPendingCount}</span>` : ''}
+        </button>
+        <button id="tab-insp-okulasi" type="button" style="padding: 12px 2px; font-size: 0.82rem; font-weight: ${activeInspectionModuleTab === 'OKULASI' ? '700' : '600'}; color: ${activeInspectionModuleTab === 'OKULASI' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeInspectionModuleTab === 'OKULASI' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; margin-bottom: -1px; transition: color 0.15s ease;">
           <span>Pemeriksaan Okulasi</span>
-          ${items.length > 0 ? `<span style="background: #64748B; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;">${items.length}</span>` : ''}
+          ${items.length > 0 ? `<span style="background: ${activeInspectionModuleTab === 'OKULASI' ? '#116834' : '#64748B'}; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${items.length}</span>` : ''}
         </button>
       </div>
 
@@ -430,7 +496,9 @@ export function renderInspectionLanding() {
       <main style="flex: 1; overflow-y: auto; padding: 16px;">
         ${activeInspectionModuleTab === 'DEDERAN'
           ? renderDederanInspectionSection(dederTxs, filteredDederInspections, dederIndukDocs, returnedDederInspections)
-          : renderOkulasiInspectionSection(items, graftingCount, regraftingCount, filteredInspectionTxs, returnedOkulasiInspections)}
+          : (activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI'
+            ? renderPreGraftingInspectionSection(user, userCtx, activePreGraftingDocs)
+            : renderOkulasiInspectionSection(items, graftingCount, regraftingCount, filteredInspectionTxs, returnedOkulasiInspections))}
 
         <!-- MODAL DIALOG KONFIRMASI HAPUS -->
         <div id="modal-delete-insp-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.45); z-index: 1000; backdrop-filter: blur(2px);"></div>
@@ -487,9 +555,14 @@ export function renderInspectionLanding() {
     navigate('/home');
   });
 
-  // Event Listener: Module Tabs (Dederan vs Okulasi)
+  // Event Listener: Module Tabs (Dederan vs Seleksi Pra-Okulasi vs Okulasi)
   app.querySelector('#tab-insp-dederan')?.addEventListener('click', () => {
     activeInspectionModuleTab = 'DEDERAN';
+    renderInspectionLanding();
+  });
+
+  app.querySelector('#tab-insp-seleksi-pra-okulasi')?.addEventListener('click', () => {
+    activeInspectionModuleTab = 'SELEKSI_PRA_OKULASI';
     renderInspectionLanding();
   });
 
@@ -501,6 +574,8 @@ export function renderInspectionLanding() {
   // Attach tab-specific events
   if (activeInspectionModuleTab === 'DEDERAN') {
     attachDederanInspectionEvents(app);
+  } else if (activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI') {
+    attachPreGraftingInspectionEvents(app, user, userCtx, activePreGraftingDocs);
   } else {
     attachOkulasiInspectionEvents(app, items, inspectionTxs);
   }
@@ -1575,6 +1650,363 @@ export function getReturnedInspectionCount(currentUser) {
 
 export function hasReturnedInspection(currentUser) {
   return getReturnedInspectionCount(currentUser) > 0;
+}
+
+/**
+ * Render Section Seleksi Pra-Okulasi (Pelaksanaan Fisik Seleksi I, II, III)
+ */
+export function renderPreGraftingInspectionSection(user, userCtx, preGraftingDocs = []) {
+  const seleksi1Docs = preGraftingDocs.filter(d => {
+    const s = d.selectionStage || 'SELEKSI_I';
+    return s === 'SELEKSI_I' || s === 'SELEKSI_1';
+  });
+  const seleksi2Docs = preGraftingDocs.filter(d => {
+    const s = d.selectionStage || '';
+    return s === 'SELEKSI_II' || s === 'SELEKSI_2';
+  });
+  const seleksi3Docs = preGraftingDocs.filter(d => {
+    const s = d.selectionStage || '';
+    return s === 'SELEKSI_III' || s === 'SELEKSI_3';
+  });
+
+  const seleksi1ProgGroups = groupPreGraftingDocsByProgram(seleksi1Docs);
+  const seleksi2ProgGroups = groupPreGraftingDocsByProgram(seleksi2Docs);
+  const seleksi3ProgGroups = groupPreGraftingDocsByProgram(seleksi3Docs);
+
+  // Available programs
+  const availableProgramsSet = new Set();
+  preGraftingDocs.forEach(d => {
+    const p = d.programCode || d.programId || d.programName;
+    if (p) availableProgramsSet.add(p);
+  });
+  if (availableProgramsSet.size === 0) {
+    availableProgramsSet.add('2026/TB/RNUR/001');
+  }
+  const allAvailablePrograms = Array.from(availableProgramsSet);
+  if (!activeFilterProgram || (activeFilterProgram !== 'ALL' && !allAvailablePrograms.includes(activeFilterProgram))) {
+    activeFilterProgram = allAvailablePrograms[0];
+  }
+
+  const filterGroupsByProgram = (groups) => {
+    if (!activeFilterProgram || activeFilterProgram === 'ALL') return groups;
+    return groups.filter(g => g.programCode === activeFilterProgram);
+  };
+
+  const displaySeleksi1ProgGroups = filterGroupsByProgram(seleksi1ProgGroups);
+  const displaySeleksi2ProgGroups = filterGroupsByProgram(seleksi2ProgGroups);
+  const displaySeleksi3ProgGroups = filterGroupsByProgram(seleksi3ProgGroups);
+
+  // Child Transactions per Stage
+  const rawAllTxs = storage.get(SELECTION_STORAGE_KEY, []);
+  const authorizedAllTxs = getAuthorizedTransactions(rawAllTxs, userCtx);
+
+  const stageChildTxs = authorizedAllTxs.filter(tx => {
+    if (tx.originType === 'CULL_DECLARATION' || tx.isCullDeclaration || tx.transactionType === 'PENYELEKSIAN_BIBIT_AFKIR') {
+      return false;
+    }
+    const s = String(tx.selectionStage || tx.stage || '').toUpperCase();
+    const tType = String(tx.transactionType || '').toUpperCase();
+    if (activePreGraftingTab === 'SELEKSI_3') {
+      return s === 'SELEKSI_3' || s === 'SELEKSI_III' || tType === 'PELAKSANAAN_SELEKSI_3' || tType === 'PELAKSANAAN_SELEKSI_III';
+    }
+    if (activePreGraftingTab === 'SELEKSI_2') {
+      return s === 'SELEKSI_2' || s === 'SELEKSI_II' || tType === 'PELAKSANAAN_SELEKSI_2' || tType === 'PELAKSANAAN_SELEKSI_II';
+    }
+    return s === 'SELEKSI_1' || s === 'SELEKSI_I' || tType === 'PELAKSANAAN_SELEKSI_1' || tType === 'PELAKSANAAN_SELEKSI_I';
+  });
+
+  const filteredStageChildTxs = stageChildTxs.filter(tx => {
+    const d = normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.date || tx.createdAt);
+    return d === selectedInspectionDate;
+  });
+
+  return `
+    <!-- SUB-TAB SELEKSI PRA-OKULASI: SELEKSI I vs SELEKSI II vs SELEKSI III -->
+    <div style="display: flex; background: #F1F5F9; border-radius: 8px; padding: 4px; margin-bottom: 14px; gap: 4px;">
+      <button id="subtab-seleksi-1" type="button" style="flex: 1; height: 38px; padding: 0 8px; font-size: 0.80rem; font-weight: ${activePreGraftingTab === 'SELEKSI_1' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_1' ? '#FFFFFF' : 'transparent'}; border: ${activePreGraftingTab === 'SELEKSI_1' ? '1px solid rgba(0,0,0,0.04)' : '1px solid transparent'}; border-radius: 6px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_1' ? '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' : 'none'}; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease;">
+        <span>Seleksi I</span>
+        ${seleksi1Docs.length > 0 ? `<span style="background: ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : '#64748B'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${seleksi1Docs.length}</span>` : ''}
+      </button>
+      <button id="subtab-seleksi-2" type="button" style="flex: 1; height: 38px; padding: 0 8px; font-size: 0.80rem; font-weight: ${activePreGraftingTab === 'SELEKSI_2' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_2' ? '#FFFFFF' : 'transparent'}; border: ${activePreGraftingTab === 'SELEKSI_2' ? '1px solid rgba(0,0,0,0.04)' : '1px solid transparent'}; border-radius: 6px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_2' ? '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' : 'none'}; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease;">
+        <span>Seleksi II</span>
+        ${seleksi2Docs.length > 0 ? `<span style="background: ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : '#64748B'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${seleksi2Docs.length}</span>` : ''}
+      </button>
+      <button id="subtab-seleksi-3" type="button" style="flex: 1; height: 38px; padding: 0 8px; font-size: 0.80rem; font-weight: ${activePreGraftingTab === 'SELEKSI_3' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_3' ? '#FFFFFF' : 'transparent'}; border: ${activePreGraftingTab === 'SELEKSI_3' ? '1px solid rgba(0,0,0,0.04)' : '1px solid transparent'}; border-radius: 6px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_3' ? '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' : 'none'}; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease;">
+        <span>Seleksi III</span>
+        ${seleksi3Docs.length > 0 ? `<span style="background: ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : '#64748B'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${seleksi3Docs.length}</span>` : ''}
+      </button>
+    </div>
+
+    <!-- CONTROLS: PROGRAM PEMBIBITAN SELECTOR & SEARCH/FILTER BAR -->
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.3px;">
+        Program Pembibitan
+      </label>
+      <div style="position: relative;">
+        <select id="select-filter-program" style="width: 100%; box-sizing: border-box; height: 38px; padding: 0 32px 0 12px; font-size: 0.80rem; font-weight: 600; color: #1E293B; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; cursor: pointer; outline: none; appearance: none; -webkit-appearance: none; transition: border-color 0.15s ease;" onfocus="this.style.borderColor='#116834'" onblur="this.style.borderColor='#CBD5E1'">
+          ${allAvailablePrograms.map(p => `
+            <option value="${esc(p)}" ${activeFilterProgram === p ? 'selected' : ''}>${esc(p)}</option>
+          `).join('')}
+          ${allAvailablePrograms.length > 1 ? `<option value="ALL" ${activeFilterProgram === 'ALL' ? 'selected' : ''}>Semua Program</option>` : ''}
+        </select>
+        <div style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748B;">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEARCH & QUICK FILTER ACTIONS -->
+    <div style="display: flex; gap: 8px; margin-bottom: 14px; align-items: center;">
+      <div style="flex: 1; min-width: 0; position: relative;">
+        <div style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #94A3B8; display: flex; align-items: center;">
+          <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+        <input id="input-search-selection" type="text" placeholder="Cari batch atau bedengan..." style="width: 100%; box-sizing: border-box; height: 38px; padding: 0 10px 0 32px; font-size: 0.78rem; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; color: #0F172A; outline: none; transition: border-color 0.15s ease;" onfocus="this.style.borderColor='#116834'" onblur="this.style.borderColor='#CBD5E1'">
+      </div>
+      <button id="btn-filter-selection" type="button" style="height: 38px; padding: 0 11px; font-size: 0.76rem; font-weight: 600; color: #334155; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; transition: all 0.15s ease;" onmouseover="this.style.borderColor='#94A3B8'" onmouseout="this.style.borderColor='#CBD5E1'">
+        <span>Filter</span>
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <button id="btn-sort-selection" type="button" style="height: 38px; padding: 0 11px; font-size: 0.76rem; font-weight: 600; color: #334155; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; transition: all 0.15s ease;" onmouseover="this.style.borderColor='#94A3B8'" onmouseout="this.style.borderColor='#CBD5E1'">
+        <span>Urutkan</span>
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+    </div>
+
+    <!-- BATCH CARDS (KOMPAK / GROUPED) -->
+    ${activePreGraftingTab === 'SELEKSI_1' ? `
+      ${renderProgramBatchCompactView({
+        programGroups: displaySeleksi1ProgGroups,
+        stage: 'SELEKSI_1',
+        emptyTitle: 'Belum Ada Dokumen Seleksi I',
+        emptyDesc: 'Dokumen Seleksi I otomatis dibuat dari transaksi Pindah Semai yang valid.',
+        isPasca: false
+      })}
+    ` : activePreGraftingTab === 'SELEKSI_2' ? `
+      ${renderProgramBatchCompactView({
+        programGroups: displaySeleksi2ProgGroups,
+        stage: 'SELEKSI_2',
+        emptyTitle: 'Belum Ada Dokumen Seleksi II',
+        emptyDesc: 'Dokumen Seleksi II dapat dibuat setelah Seleksi I berstatus DISETUJUI dan final.',
+        isPasca: false
+      })}
+    ` : `
+      ${renderProgramBatchCompactView({
+        programGroups: displaySeleksi3ProgGroups,
+        stage: 'SELEKSI_3',
+        emptyTitle: 'Belum Ada Dokumen Seleksi III',
+        emptyDesc: 'Dokumen Seleksi III dapat dibuat setelah Seleksi II berstatus DISETUJUI dan final.',
+        isPasca: false
+      })}
+    `}
+
+    <!-- RINGKASAN TRANSAKSI PELAKSANAAN (GLOBAL CHILD TRANSACTIONS) -->
+    ${renderGlobalChildTransactionsSection(
+      filteredStageChildTxs,
+      preGraftingDocs,
+      activePreGraftingTab,
+      user,
+      selectedInspectionDate
+    )}
+  `;
+}
+
+/**
+ * Event Listeners for Seleksi Pra-Okulasi Section in Modul Pemeriksaan
+ */
+export function attachPreGraftingInspectionEvents(app, user, userCtx, preGraftingDocs = []) {
+  // Sub-Tab switching
+  app.querySelector('#subtab-seleksi-1')?.addEventListener('click', () => {
+    activePreGraftingTab = 'SELEKSI_1';
+    renderInspectionLanding();
+  });
+
+  app.querySelector('#subtab-seleksi-2')?.addEventListener('click', () => {
+    activePreGraftingTab = 'SELEKSI_2';
+    renderInspectionLanding();
+  });
+
+  app.querySelector('#subtab-seleksi-3')?.addEventListener('click', () => {
+    activePreGraftingTab = 'SELEKSI_3';
+    renderInspectionLanding();
+  });
+
+  // Program dropdown filter change
+  app.querySelector('#select-filter-program')?.addEventListener('change', (e) => {
+    activeFilterProgram = e.target.value;
+    renderInspectionLanding();
+  });
+
+  // Client-side quick search filtering
+  const searchInput = app.querySelector('#input-search-selection');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      app.querySelectorAll('.card-batch-document').forEach(card => {
+        const batchCode = (card.dataset.batchCode || '').toLowerCase();
+        const progCode = (card.dataset.programCode || '').toLowerCase();
+        const text = card.textContent.toLowerCase();
+        if (!q || batchCode.includes(q) || progCode.includes(q) || text.includes(q)) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    });
+  }
+
+  // Batch row click for Seleksi I, II, III
+  app.querySelectorAll('.row-batch-clickable').forEach(row => {
+    row.addEventListener('click', (e) => {
+      const stage = row.dataset.stage || activePreGraftingTab;
+      const programCode = row.dataset.programCode;
+      const batchCode = row.dataset.batchCode;
+      handleBatchRowClick({
+        stage,
+        programCode,
+        batchCode,
+        user,
+        onSaved: () => {
+          renderInspectionLanding();
+        }
+      });
+    });
+  });
+
+  // Child Transaction Toggle (expand/collapse)
+  app.querySelectorAll('.btn-toggle-child-tx').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const card = toggle.closest('.card-child-tx');
+      if (!card) return;
+      const detail = card.querySelector('.child-tx-detail-content');
+      const icon = card.querySelector('.icon-child-toggle');
+      if (detail) {
+        const isExpanded = detail.style.display !== 'none';
+        detail.style.display = isExpanded ? 'none' : 'block';
+        if (icon) {
+          icon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+      }
+    });
+  });
+
+  // Reset date filter
+  app.querySelector('#btn-reset-date-filter')?.addEventListener('click', () => {
+    setSelectedInspectionDate(todayDDMMYYYY());
+    renderInspectionLanding();
+  });
+
+  // Safe Child Transaction Deletion with Data Protection
+  app.querySelectorAll('.btn-delete-child-tx').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const txId = btn.dataset.txId;
+      const docNo = btn.dataset.docNo;
+      const stage = btn.dataset.stage || activePreGraftingTab;
+      const stageLabel = btn.dataset.stageLabel || 'Seleksi Pra-Okulasi';
+
+      const allTxs = storage.get(SELECTION_STORAGE_KEY, []);
+      const targetTx = allTxs.find(t => (txId && t.id === txId) || (docNo && t.docNo === docNo));
+      if (!targetTx) {
+        toast('Transaksi tidak ditemukan atau sudah dihapus.', 'error');
+        return;
+      }
+
+      // 1. Guard against deletion if Parent Document is already Approved / Final
+      const allDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
+      const parentDoc = allDocs.find(d =>
+        d.id === targetTx.parentSelectionDocumentId ||
+        d.id === targetTx.selectionDocumentId ||
+        d.docNo === targetTx.parentSelectionDocNo ||
+        d.docNo === targetTx.selectionDocNo
+      );
+      if (parentDoc) {
+        const pStatus = String(parentDoc.status || '').toUpperCase();
+        const pVerif = String(parentDoc.verificationStatus || '').toUpperCase();
+        if (pStatus === SELECTION_STATUS.DISETUJUI || pStatus === 'DISETUJUI' || parentDoc.isFinal || pVerif === 'TERVERIFIKASI') {
+          toast('Dokumen induk telah disetujui final oleh Asisten Bibitan. Transaksi pelaksanaan tidak dapat dihapus.', 'warning');
+          return;
+        }
+      }
+
+      // 2. Guard against deletion if candidate afkir is tied to submitted/approved CULL
+      const pool = storage.get('selection_pool', []);
+      const candidateItem = pool.find(s =>
+        (targetTx.id && (s.id === `SEL-POOL-PRE-${targetTx.id}` || s.sourceTransactionId === targetTx.id)) ||
+        (targetTx.docNo && s.sourceDocNo === targetTx.docNo)
+      );
+
+      if (candidateItem) {
+        if (candidateItem.status !== 'PENDING_DECLARATION' || candidateItem.selectionTransactionId || candidateItem.docNo) {
+          toast(`Data afkir dari transaksi ini telah diproses dalam deklarasi CULL (${candidateItem.docNo || candidateItem.selectionTransactionId || candidateItem.status}). Transaksi tidak dapat dihapus.`, 'warning');
+          return;
+        }
+      }
+
+      // 3. Guard against deletion if an official CULL record exists for this execution
+      const officialCull = allTxs.find(t =>
+        (candidateItem && (t.id === candidateItem.selectionTransactionId || t.docNo === candidateItem.docNo)) ||
+        (t.sourceTransactionId === targetTx.id && (t.isCullDeclaration || t.originType === 'CULL_DECLARATION' || t.transactionType === 'PENYELEKSIAN_BIBIT_AFKIR'))
+      );
+      if (officialCull) {
+        const cStatus = String(officialCull.status || '').toUpperCase();
+        if (cStatus === SELECTION_STATUS.DISETUJUI || cStatus === 'DISETUJUI' || cStatus === SELECTION_STATUS.MENUNGGU_VERIFIKASI || officialCull.stockMutationStatus === 'COMPLETED') {
+          toast(`Dokumen CULL resmi (${officialCull.docNo}) telah diajukan/disetujui. Transaksi pelaksanaan tidak dapat dihapus.`, 'warning');
+          return;
+        }
+      }
+
+      // Open Confirmation Modal
+      openModal({
+        title: `Hapus Transaksi ${stageLabel}`,
+        body: `
+          <div style="font-size: 0.84rem; color: #334155; line-height: 1.5;">
+            <p style="margin: 0 0 10px 0;">
+              Apakah Anda yakin ingin menghapus transaksi pelaksanaan <strong>${esc(targetTx.docNo || docNo)}</strong> pada Bedengan <strong>${esc(targetTx.bedenganCode || '-')}</strong>?
+            </p>
+            <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.76rem; color: #991B1B;">
+              Kandidat afkir yang belum dideklarasikan akan dibersihkan dari daftar seleksi. Transaksi historis dan mutasi stok resmi tetap terlindungi.
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button id="btn-cancel-del-child-modal" type="button" style="flex: 1; height: 38px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                Batal
+              </button>
+              <button id="btn-confirm-del-child-modal" type="button" style="flex: 1; height: 38px; background: #DC2626; color: #FFF; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">
+                Ya, Hapus
+              </button>
+            </div>
+          </div>
+        `
+      });
+
+      document.getElementById('btn-cancel-del-child-modal')?.addEventListener('click', closeModal);
+      document.getElementById('btn-confirm-del-child-modal')?.addEventListener('click', () => {
+        try {
+          if (stage === 'SELEKSI_3' || stage === 'SELEKSI_III') {
+            deleteSeleksi3ExecutionTransaction(targetTx.id || docNo, user);
+          } else if (stage === 'SELEKSI_2' || stage === 'SELEKSI_II') {
+            deleteSeleksi2ExecutionTransaction(targetTx.id || docNo, user);
+          } else {
+            deleteSeleksi1ExecutionTransaction(targetTx.id || docNo, user);
+          }
+          closeModal();
+          toast(`Transaksi pelaksanaan ${stageLabel} (${targetTx.docNo || docNo}) berhasil dihapus.`, 'success');
+          renderInspectionLanding();
+        } catch (err) {
+          toast(err.message || 'Gagal menghapus transaksi pelaksanaan', 'error');
+        }
+      });
+    });
+  });
 }
 
 export function hasActionableInspection(currentUser) {

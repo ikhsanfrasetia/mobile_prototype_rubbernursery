@@ -21,6 +21,7 @@ import { applyTransactionActor, canUserAccessTransaction, AUDIT_EVENT_TYPES } fr
 import { 
   deductBatchStock as deductInventoryStock, 
   getAvailableQty as getInventoryAvailableQty, 
+  executeStockMutationWithLock,
   INVENTORY_TX_TYPE 
 } from '../../core/batch-inventory-service.js';
 import { getBatchContext } from '../../core/master-context-service.js';
@@ -230,7 +231,7 @@ export function createDestructionRecord(payload, currentUser) {
 /**
  * Approve Pemusnahan Bibit oleh Asisten Bibitan
  */
-export function approveDestructionRecord(recordIdOrDocNo, notes = '', currentUser, autoMutateStock = false) {
+export async function approveDestructionRecord(recordIdOrDocNo, notes = '', currentUser, autoMutateStock = false) {
   if (!currentUser) throw new Error('Pengguna aktif tidak valid.');
   const role = normalizeRole(currentUser.role || currentUser.rawRole);
   if (role !== ROLES.ASISTEN_BIBITAN) {
@@ -269,7 +270,7 @@ export function approveDestructionRecord(recordIdOrDocNo, notes = '', currentUse
   storage.set(DESTRUCTION_STORAGE_KEY, allRecords);
 
   if (autoMutateStock) {
-    const mutationResult = mutateStockFromDestruction(updatedRecord.id, currentUser);
+    const mutationResult = await mutateStockFromDestruction(updatedRecord.id, currentUser);
     return mutationResult.destruction;
   }
 
@@ -279,8 +280,9 @@ export function approveDestructionRecord(recordIdOrDocNo, notes = '', currentUse
 /**
  * MUTASI STOK PEMUSNAHAN BIBIT (TASK ASB-14)
  * Mengurangi availableQty & currentQty pada nursery_batches berdasarkan destructionQty yang DISETUJUI.
+ * Dilindungi Web Locks API (Fail-Closed).
  */
-export function mutateStockFromDestruction(recordIdOrDocNo, currentUser) {
+export async function mutateStockFromDestruction(recordIdOrDocNo, currentUser) {
   if (!currentUser) {
     throw new Error('Otorisasi gagal: Pengguna aktif tidak ditemukan.');
   }
@@ -291,145 +293,157 @@ export function mutateStockFromDestruction(recordIdOrDocNo, currentUser) {
     throw new Error(`Dokumen pemusnahan dengan identitas ${recordIdOrDocNo} tidak ditemukan.`);
   }
 
-  const target = allRecords[idx];
+  const initialTarget = allRecords[idx];
 
   // 1. Validasi Status Pemusnahan: Hanya DISETUJUI yang boleh memutasi stok
-  const statusUpper = (target.status || '').toUpperCase();
+  const statusUpper = (initialTarget.status || '').toUpperCase();
   if (statusUpper !== DESTRUCTION_STATUS.DISETUJUI) {
-    throw new Error(`Hanya pengajuan pemusnahan dengan status DISETUJUI yang dapat melakukan mutasi stok (status saat ini: ${target.status}).`);
+    throw new Error(`Hanya pengajuan pemusnahan dengan status DISETUJUI yang dapat melakukan mutasi stok (status saat ini: ${initialTarget.status}).`);
   }
 
   // 2. Scope Validation
-  if (currentUser.estateId && target.estateId && currentUser.estateId !== target.estateId) {
-    throw new Error(`Akses ditolak: Dokumen berada di luar lingkup estate user (${target.estateId} vs ${currentUser.estateId}).`);
+  if (currentUser.estateId && initialTarget.estateId && currentUser.estateId !== initialTarget.estateId) {
+    throw new Error(`Akses ditolak: Dokumen berada di luar lingkup estate user (${initialTarget.estateId} vs ${currentUser.estateId}).`);
   }
-  if (currentUser.divisionId && target.divisionId && currentUser.divisionId !== target.divisionId) {
-    throw new Error(`Akses ditolak: Dokumen berada di luar lingkup divisi user (${target.divisionId} vs ${currentUser.divisionId}).`);
+  if (currentUser.divisionId && initialTarget.divisionId && currentUser.divisionId !== initialTarget.divisionId) {
+    throw new Error(`Akses ditolak: Dokumen berada di luar lingkup divisi user (${initialTarget.divisionId} vs ${currentUser.divisionId}).`);
   }
 
-  // 3. Idempotency Check: Jika sudah dimutasi, jangan deduct lagi
-  if (target.stockMutationStatus === STOCK_MUTATION_STATUS.APPLIED) {
+  const batchKey = initialTarget.batchId || initialTarget.batchCode;
+
+  return await executeStockMutationWithLock(batchKey, async () => {
+    // Re-fetch under lock to prevent race conditions
+    const currentRecords = storage.get(DESTRUCTION_STORAGE_KEY, []);
+    const currIdx = currentRecords.findIndex(r => r.id === initialTarget.id || r.destructionId === initialTarget.id || r.docNo === initialTarget.docNo);
+    const target = currIdx !== -1 ? currentRecords[currIdx] : initialTarget;
+
+    // 3. Idempotency Check: Jika sudah dimutasi, jangan deduct lagi
+    if (target.stockMutationStatus === STOCK_MUTATION_STATUS.APPLIED) {
+      return {
+        status: STOCK_MUTATION_STATUS.ALREADY_APPLIED,
+        success: true,
+        message: 'Mutasi stok pemusnahan sudah pernah diterapkan sebelumnya.',
+        destruction: target,
+        batch: null
+      };
+    }
+
+    // 4. Formula Quantity: stockMutationQty = destructionQty (wajib > 0)
+    const mutationQty = parseInt(target.destructionQty !== undefined ? target.destructionQty : (target.quantity || 0), 10);
+    if (isNaN(mutationQty) || mutationQty <= 0) {
+      const failedRecord = {
+        ...target,
+        stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
+        stockMutationError: `Jumlah pemusnahan tidak valid (${mutationQty}).`,
+        updatedAt: new Date().toISOString()
+      };
+      currentRecords[currIdx] = failedRecord;
+      storage.set(DESTRUCTION_STORAGE_KEY, currentRecords);
+      throw new Error(`Jumlah pemusnahan tidak valid (${mutationQty}).`);
+    }
+
+    // 5. Muat nursery_batches & Validasi Batch
+    const allBatches = storage.get('nursery_batches', []);
+    const bIdx = allBatches.findIndex(b => b.id === target.batchId || b.batchCode === target.batchCode || b.batchNo === target.batchCode);
+    
+    if (bIdx === -1) {
+      const failedRecord = {
+        ...target,
+        stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
+        stockMutationError: `Batch ${target.batchCode || target.batchId} tidak ditemukan di nursery_batches.`,
+        updatedAt: new Date().toISOString()
+      };
+      currentRecords[currIdx] = failedRecord;
+      storage.set(DESTRUCTION_STORAGE_KEY, currentRecords);
+      throw new Error(`Batch ${target.batchCode || target.batchId} tidak ditemukan di nursery_batches.`);
+    }
+
+    const batchObj = allBatches[bIdx];
+    const batchCtx = getBatchContext(batchObj.id || batchObj.batchId || target.batchId || target.batchCode) || batchObj;
+
+    // 6. Validasi Program / Estate / Division Alignment via Context Relation Layer
+    if (target.estateId && batchCtx.estateId && target.estateId.toUpperCase() !== batchCtx.estateId.toUpperCase()) {
+      const failedRecord = {
+        ...target,
+        stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
+        stockMutationError: `Inkonsistensi estate: Pemusnahan (${target.estateId}) vs Batch (${batchCtx.estateId})`,
+        updatedAt: new Date().toISOString()
+      };
+      currentRecords[currIdx] = failedRecord;
+      storage.set(DESTRUCTION_STORAGE_KEY, currentRecords);
+      throw new Error(`Inkonsistensi estate: Pemusnahan (${target.estateId}) vs Batch (${batchCtx.estateId}).`);
+    }
+
+    if (target.divisionId && batchCtx.divisionId && target.divisionId.toUpperCase() !== batchCtx.divisionId.toUpperCase()) {
+      const failedRecord = {
+        ...target,
+        stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
+        stockMutationError: `Inkonsistensi divisi: Pemusnahan (${target.divisionId}) vs Batch (${batchCtx.divisionId})`,
+        updatedAt: new Date().toISOString()
+      };
+      currentRecords[currIdx] = failedRecord;
+      storage.set(DESTRUCTION_STORAGE_KEY, currentRecords);
+      throw new Error(`Inkonsistensi divisi: Pemusnahan (${target.divisionId}) vs Batch (${batchCtx.divisionId}).`);
+    }
+
+    // 7. Validasi Kecukupan Stok via Inventory Service (inside lock)
+    const currentAvailable = getInventoryAvailableQty(batchObj.id || batchObj.batchCode || batchObj.batchNo);
+    if (currentAvailable < mutationQty) {
+      const failedRecord = {
+        ...target,
+        stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
+        stockMutationError: `Stok batch tidak mencukupi: Tersedia ${currentAvailable}, Pemusnahan ${mutationQty}`,
+        updatedAt: new Date().toISOString()
+      };
+      currentRecords[currIdx] = failedRecord;
+      storage.set(DESTRUCTION_STORAGE_KEY, currentRecords);
+      throw new Error(`Stok batch ${batchObj.batchCode || batchObj.batchNo} tidak mencukupi (Tersedia: ${currentAvailable} < Pemusnahan: ${mutationQty}).`);
+    }
+
+    // 8. Atomic Stock Mutation Commit via Inventory Service
+    const destIdempotencyKey = `destr:${target.id || target.docNo}`;
+    const updatedInvState = deductInventoryStock(
+      batchObj.id || batchObj.batchCode || batchObj.batchNo,
+      mutationQty,
+      INVENTORY_TX_TYPE.DESTRUCTION,
+      target.docNo || target.id,
+      currentUser,
+      `Pengurangan stok pemusnahan ${target.docNo || target.id}`,
+      null,
+      destIdempotencyKey
+    );
+
+    const updatedBatch = {
+      ...batchObj,
+      availableQty: updatedInvState.availableQty,
+      currentQty: updatedInvState.availableQty,
+      status: updatedInvState.status,
+      updatedAt: updatedInvState.updatedAt
+    };
+
+    // 9. Update Transaction Metadata
+    const updatedDestruction = {
+      ...target,
+      stockMutationStatus: STOCK_MUTATION_STATUS.APPLIED,
+      stockMutationQty: mutationQty,
+      stockMutationAt: new Date().toISOString(),
+      stockMutationByUserId: currentUser?.userId || currentUser?.id || 'SYSTEM',
+      stockMutationByName: currentUser?.name || currentUser?.fullName || 'Asisten Bibitan',
+      stockMutationByRole: currentUser?.role || ROLES.ASISTEN_BIBITAN,
+      stockMutationError: null,
+      updatedAt: new Date().toISOString()
+    };
+
+    currentRecords[currIdx] = updatedDestruction;
+    storage.set(DESTRUCTION_STORAGE_KEY, currentRecords);
+
     return {
-      status: STOCK_MUTATION_STATUS.ALREADY_APPLIED,
+      status: STOCK_MUTATION_STATUS.APPLIED,
       success: true,
-      message: 'Mutasi stok pemusnahan sudah pernah diterapkan sebelumnya.',
-      destruction: target,
-      batch: null
+      batch: updatedBatch,
+      destruction: updatedDestruction
     };
-  }
-
-  // 4. Formula Quantity: stockMutationQty = destructionQty (wajib > 0)
-  const mutationQty = parseInt(target.destructionQty !== undefined ? target.destructionQty : (target.quantity || 0), 10);
-  if (isNaN(mutationQty) || mutationQty <= 0) {
-    const failedRecord = {
-      ...target,
-      stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Jumlah pemusnahan tidak valid (${mutationQty}).`,
-      updatedAt: new Date().toISOString()
-    };
-    allRecords[idx] = failedRecord;
-    storage.set(DESTRUCTION_STORAGE_KEY, allRecords);
-    throw new Error(`Jumlah pemusnahan tidak valid (${mutationQty}).`);
-  }
-
-  // 5. Muat nursery_batches & Validasi Batch
-  const allBatches = storage.get('nursery_batches', []);
-  const bIdx = allBatches.findIndex(b => b.id === target.batchId || b.batchCode === target.batchCode || b.batchNo === target.batchCode);
-  
-  if (bIdx === -1) {
-    const failedRecord = {
-      ...target,
-      stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Batch ${target.batchCode || target.batchId} tidak ditemukan di nursery_batches.`,
-      updatedAt: new Date().toISOString()
-    };
-    allRecords[idx] = failedRecord;
-    storage.set(DESTRUCTION_STORAGE_KEY, allRecords);
-    throw new Error(`Batch ${target.batchCode || target.batchId} tidak ditemukan di nursery_batches.`);
-  }
-
-  const batchObj = allBatches[bIdx];
-  const batchCtx = getBatchContext(batchObj.id || batchObj.batchId || target.batchId || target.batchCode) || batchObj;
-
-  // 6. Validasi Program / Estate / Division Alignment via Context Relation Layer
-  if (target.estateId && batchCtx.estateId && target.estateId.toUpperCase() !== batchCtx.estateId.toUpperCase()) {
-    const failedRecord = {
-      ...target,
-      stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Inkonsistensi estate: Pemusnahan (${target.estateId}) vs Batch (${batchCtx.estateId})`,
-      updatedAt: new Date().toISOString()
-    };
-    allRecords[idx] = failedRecord;
-    storage.set(DESTRUCTION_STORAGE_KEY, allRecords);
-    throw new Error(`Inkonsistensi estate: Pemusnahan (${target.estateId}) vs Batch (${batchCtx.estateId}).`);
-  }
-
-  if (target.divisionId && batchCtx.divisionId && target.divisionId.toUpperCase() !== batchCtx.divisionId.toUpperCase()) {
-    const failedRecord = {
-      ...target,
-      stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Inkonsistensi divisi: Pemusnahan (${target.divisionId}) vs Batch (${batchCtx.divisionId})`,
-      updatedAt: new Date().toISOString()
-    };
-    allRecords[idx] = failedRecord;
-    storage.set(DESTRUCTION_STORAGE_KEY, allRecords);
-    throw new Error(`Inkonsistensi divisi: Pemusnahan (${target.divisionId}) vs Batch (${batchCtx.divisionId}).`);
-  }
-
-  // 7. Validasi Kecukupan Stok via Inventory Service
-  const currentAvailable = getInventoryAvailableQty(batchObj.id || batchObj.batchCode || batchObj.batchNo);
-  if (currentAvailable < mutationQty) {
-    const failedRecord = {
-      ...target,
-      stockMutationStatus: STOCK_MUTATION_STATUS.FAILED,
-      stockMutationError: `Stok batch tidak mencukupi: Tersedia ${currentAvailable}, Pemusnahan ${mutationQty}`,
-      updatedAt: new Date().toISOString()
-    };
-    allRecords[idx] = failedRecord;
-    storage.set(DESTRUCTION_STORAGE_KEY, allRecords);
-    throw new Error(`Stok batch ${batchObj.batchCode || batchObj.batchNo} tidak mencukupi (Tersedia: ${currentAvailable} < Pemusnahan: ${mutationQty}).`);
-  }
-
-  // 8. Atomic Stock Mutation Commit via Inventory Service
-  const updatedInvState = deductInventoryStock(
-    batchObj.id || batchObj.batchCode || batchObj.batchNo,
-    mutationQty,
-    INVENTORY_TX_TYPE.DESTRUCTION,
-    target.docNo || target.id,
-    currentUser,
-    `Pengurangan stok pemusnahan ${target.docNo || target.id}`
-  );
-
-  const updatedBatch = {
-    ...batchObj,
-    availableQty: updatedInvState.availableQty,
-    currentQty: updatedInvState.availableQty,
-    status: updatedInvState.status,
-    updatedAt: updatedInvState.updatedAt
-  };
-
-  // 9. Update Transaction Metadata
-  const updatedDestruction = {
-    ...target,
-    stockMutationStatus: STOCK_MUTATION_STATUS.APPLIED,
-    stockMutationQty: mutationQty,
-    stockMutationAt: new Date().toISOString(),
-    stockMutationByUserId: currentUser?.userId || currentUser?.id || 'SYSTEM',
-    stockMutationByName: currentUser?.name || currentUser?.fullName || 'Asisten Bibitan',
-    stockMutationByRole: currentUser?.role || ROLES.ASISTEN_BIBITAN,
-    stockMutationError: null,
-    updatedAt: new Date().toISOString()
-  };
-
-  allRecords[idx] = updatedDestruction;
-  storage.set(DESTRUCTION_STORAGE_KEY, allRecords);
-
-  return {
-    status: STOCK_MUTATION_STATUS.APPLIED,
-    success: true,
-    batch: updatedBatch,
-    destruction: updatedDestruction
-  };
+  });
 }
 
 /**

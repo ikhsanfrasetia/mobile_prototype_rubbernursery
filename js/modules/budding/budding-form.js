@@ -2,7 +2,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
-import { formatDate, formatStandardDocNo, generateUniqueDocNo, esc } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo, generateUniqueDocNo, esc, getEffectiveTodayDDMMYYYY } from '../../core/utils.js';
 import { getWorkersForUserContext, getWorkerById, isWorkerInScope } from '../../data/worker-master.js';
 import { getActiveKlons, getKlonsForUsage, KLON_USAGE, normalizeKlonName, resolveKlon } from '../../data/klon-master.js';
 import { attendanceRepository } from '../../db/repositories.js';
@@ -35,7 +35,7 @@ const MASTER_WORKERS = [
 export async function renderBuddingForm() {
   const app = document.getElementById('app');
   const user = getCurrentUserContext();
-  const today = formatDate(new Date().toISOString());
+  const today = getEffectiveTodayDDMMYYYY();
 
   const buddingType = storage.get('budding_type', 'GRAFTING');
   const isRegrafting = buddingType === 'REGRAFTING';
@@ -1066,11 +1066,16 @@ export async function renderBuddingForm() {
 
       // SINKRONISASI KE PENYELEKSIAN (SELECTION_POOL) UNTUK BIBIT DITOLAK SAAT OKULASI
       let selPool = storage.get('selection_pool', []);
+      const existingCandidate = selPool.find(s => s.buddingDocNo === docNoBudding && s.originType === 'REJECT_OKULASI');
       selPool = selPool.filter(s => !(s.buddingDocNo === docNoBudding && s.originType === 'REJECT_OKULASI'));
       if (ditolak > 0) {
         selPool.push({
-          docNo: formatStandardDocNo(2026, 'CULL', selPool.length + 1),
+          id: existingCandidate?.id || `SEL-POOL-BUD-${docNoBudding}`,
+          docNo: existingCandidate?.docNo || null,
           originType: 'REJECT_OKULASI',
+          sourceModule: 'BUDDING',
+          sourceTransactionType: isRegrafting ? 'REGRAFTING' : 'GRAFTING',
+          sourceDocNo: docNoBudding,
           batchNo: batchNo,
           buddingDocNo: docNoBudding,
           inspectionDocNo: '-',
@@ -1078,7 +1083,7 @@ export async function renderBuddingForm() {
           bedengan: bedenganDisplay,
           jumlahAfkir: ditolak,
           alasan: 'Bibit Ditolak saat Proses Okulasi (Grafting)',
-          status: 'PENDING_DECLARATION'
+          status: existingCandidate?.status || 'PENDING_DECLARATION'
         });
       }
       storage.set('selection_pool', selPool);

@@ -23,7 +23,7 @@ import { session } from '../../core/session.js';
 import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
 import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
 import { getAuthorizedTransactions } from '../../core/transaction-actor.js';
-import { formatDate, formatStandardDocNo } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo, getEffectiveTodayDDMMYYYY } from '../../core/utils.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 
 let selectedProgramFilter = 'ALL';
@@ -31,10 +31,16 @@ let selectedStageFilter = 'ALL'; // 'ALL' | 'Rubber Main Nursery' | 'Rubber Adva
 let activeCategoryFilter = 'ALL';
 let searchQuery = '';
 
+function parseReceiptQty(tx) {
+  if (!tx) return 0;
+  const raw = tx.jumlahBenih ?? tx.rawState?.selectedSir?.rawQty ?? tx.jumlahDiterima ?? tx.totalKecambah ?? tx.jumlah ?? tx.qty ?? 0;
+  return typeof raw === 'number' ? raw : (parseInt(String(raw).replace(/[^0-9]/g, ''), 10) || 0);
+}
+
 export function renderNurseryHistory() {
   const app = document.getElementById('app');
   const user = getCurrentUserContext();
-  const today = formatDate(new Date().toISOString());
+  const today = getEffectiveTodayDDMMYYYY();
 
   // 1. Ambil data real transaksi dari storage dan terapkan isolasi otorisasi
   const rawReceiptTxs = storage.get('receipt_transactions', []);
@@ -64,7 +70,7 @@ export function renderNurseryHistory() {
 
   // A. Penerimaan Benih / Bibit APM (Stok Masuk Awal)
   receiptTxs.forEach((tx, idx) => {
-    const qty = parseInt(tx.qty || tx.jumlahBenih || tx.jumlahDiterima || tx.totalKecambah || tx.jumlah || 0);
+    const qty = parseReceiptQty(tx);
     const itemProgram = tx.program || '-';
     const itemStage = tx.tahapan || 'Rubber Main Nursery';
     const isAPM = itemStage === 'Rubber Advance Planting Material';
@@ -292,7 +298,7 @@ export function renderNurseryHistory() {
   const targetSelections = filterByCriteria(selectionTxs);
 
   // Perhitungan Stok Global Terpilih
-  let stokAwalPenerimaan = targetReceipts.reduce((sum, tx) => sum + parseInt(tx.qty || tx.jumlahBenih || tx.jumlahDiterima || tx.totalKecambah || tx.jumlah || 0), 0);
+  let stokAwalPenerimaan = targetReceipts.reduce((sum, tx) => sum + parseReceiptQty(tx), 0);
   if (stokAwalPenerimaan === 0 && targetSeedings.length > 0) {
     stokAwalPenerimaan = targetSeedings.reduce((sum, tx) => sum + parseInt(tx.totalPenerimaan || tx.totalDisemai || 0), 0);
   }
@@ -311,7 +317,7 @@ export function renderNurseryHistory() {
   const rmnReceipts = receiptTxs.filter(t => (selectedProgramFilter === 'ALL' || t.program === selectedProgramFilter) && (t.tahapan || 'Rubber Main Nursery') === 'Rubber Main Nursery');
   const rmnSeedings = seedingTxs.filter(t => (selectedProgramFilter === 'ALL' || t.program === selectedProgramFilter) && (t.tahapan || 'Rubber Main Nursery') === 'Rubber Main Nursery');
   const rmnSelections = selectionTxs.filter(t => (selectedProgramFilter === 'ALL' || t.program === selectedProgramFilter) && (t.tahapan || 'Rubber Main Nursery') === 'Rubber Main Nursery');
-  let stokAwalRMN = rmnReceipts.reduce((sum, tx) => sum + parseInt(tx.qty || tx.jumlahBenih || tx.jumlahDiterima || tx.totalKecambah || tx.jumlah || 0), 0);
+  let stokAwalRMN = rmnReceipts.reduce((sum, tx) => sum + parseReceiptQty(tx), 0);
   if (stokAwalRMN === 0 && rmnSeedings.length > 0) {
     stokAwalRMN = rmnSeedings.reduce((sum, tx) => sum + parseInt(tx.totalPenerimaan || tx.totalDisemai || 0), 0);
   }
@@ -321,7 +327,7 @@ export function renderNurseryHistory() {
   // B. Rubber Advance Planting Material (APM)
   const apmReceipts = receiptTxs.filter(t => (selectedProgramFilter === 'ALL' || t.program === selectedProgramFilter) && t.tahapan === 'Rubber Advance Planting Material');
   const apmSelections = selectionTxs.filter(t => (selectedProgramFilter === 'ALL' || t.program === selectedProgramFilter) && t.tahapan === 'Rubber Advance Planting Material');
-  const stokAwalAPM = apmReceipts.reduce((sum, tx) => sum + parseInt(tx.qty || tx.jumlahBenih || tx.jumlahDiterima || tx.totalKecambah || tx.jumlah || 0), 0);
+  const stokAwalAPM = apmReceipts.reduce((sum, tx) => sum + parseReceiptQty(tx), 0);
   const afkirAPM = apmSelections.reduce((sum, tx) => sum + parseInt(tx.jumlahAfkir || 0), 0);
   const stokAktualAPM = Math.max(0, stokAwalAPM - afkirAPM);
 
@@ -394,7 +400,7 @@ export function renderNurseryHistory() {
     const stage = tx.tahapan || 'Rubber Main Nursery';
     if (stage === 'Rubber Advance Planting Material') {
       const bNo = (tx.batchNo || (tx.rawState && tx.rawState.batchCode) || `Batch-APM-0${idx + 1}`).trim();
-      const qty = parseInt(tx.qty || tx.jumlahBenih || tx.jumlahDiterima || 0);
+      const qty = parseReceiptQty(tx);
       const bObj = getBatchObj(bNo, tx.program, stage, tx.klon || 'IRR 300');
       bObj.stokAwal += qty;
       bObj.klon = tx.klon || 'IRR 300';

@@ -12,7 +12,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate, esc } from '../../core/utils.js';
+import { formatDate, esc, getEffectiveTodayDDMMYYYY } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
 import { 
   getDederanIndukById, 
@@ -29,7 +29,7 @@ export function renderDederanForm() {
   const app = document.getElementById('app');
   const userCtx = getCurrentUserContext();
   const user = session.get() || { name: userCtx?.name || 'Wagiman', code: userCtx?.code || 'MNT001', position: 'Mantri Bibitan' };
-  const today = formatDate(new Date().toISOString());
+  const today = getEffectiveTodayDDMMYYYY();
 
   const editingDocNo = storage.get('editing_dederan_doc_no', null);
   let editingTx = null;
@@ -525,7 +525,7 @@ export function renderDederanForm() {
           bedenganCode: bedCode,
           jumlahDeder: val,
           photos,
-          tanggalDeder: formatDate(new Date().toISOString()),
+          tanggalDeder: today,
           createdBy: user.name
         });
 

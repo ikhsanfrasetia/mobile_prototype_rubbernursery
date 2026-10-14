@@ -228,6 +228,30 @@ assert(item005 && item005.status === MANTRI_TRANSACTION_STATUS.READY_TO_CONFIRM,
 
 // IT-HUB-SEL-006: Completed selection doc dikirim via Central Hub
 console.log('\n--- IT-HUB-SEL-006: Pengiriman Dokumen via Central Hub ---');
+const effectiveDate = new Date().toISOString().slice(0, 10);
+storage.set('attendance_transactions', [
+  {
+    id: 'ATT-SUP-001',
+    date: effectiveDate,
+    attendanceType: 'DATANG',
+    type: 'SUPERVISOR',
+    role: 'MANTRI_TANAMAN',
+    estateId: userMantri.estateId,
+    divisionId: userMantri.divisionId,
+    status: 'HADIR'
+  },
+  {
+    id: 'ATT-WRK-001',
+    date: effectiveDate,
+    attendanceType: 'DATANG',
+    type: 'WORKER',
+    workerId: 'WRK-001',
+    position: 'Pekerja Bibitan',
+    estateId: userMantri.estateId,
+    divisionId: userMantri.divisionId,
+    status: 'HADIR'
+  }
+]);
 const submitResult = submitMantriTransactions(['SEL-DOC-005'], userMantri);
 assert(submitResult.success === true, 'Submit Central Hub berhasil');
 assert(submitResult.submittedCount === 1, '1 Transaksi berhasil disubmit');

@@ -1481,6 +1481,8 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
       if (pIdx !== -1) {
         preDocs[pIdx].status = 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN';
         preDocs[pIdx].verificationStatus = 'MENUNGGU_VERIFIKASI';
+        preDocs[pIdx].returnReason = null;
+        preDocs[pIdx].isCorrected = true;
         preDocs[pIdx].submittedAt = nowIso;
         preDocs[pIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
         preDocs[pIdx].submittedByName = user?.name || 'Mantri Bibitan';
@@ -1501,6 +1503,8 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
         } else {
           records[rIdx].status = 'MENUNGGU_VERIFIKASI';
           records[rIdx].submissionStatus = 'SUBMITTED_TO_ASB';
+          records[rIdx].returnReason = null;
+          records[rIdx].isCorrected = true;
           records[rIdx].submittedAt = nowIso;
         }
         records[rIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
@@ -1513,11 +1517,14 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
     const existingIdx = allVerifs.findIndex(v =>
       ((v.referenceId && String(v.referenceId) === String(tx.id)) ||
        (v.referenceDocNo && String(v.referenceDocNo) === String(tx.docNo))) &&
-      ((v.referenceType || v.moduleType || '').toUpperCase() === (tx.referenceType || tx.moduleType || '').toUpperCase())
+      ((v.referenceType || v.moduleType || '').toUpperCase() === (tx.referenceType || tx.moduleType || '').toUpperCase() ||
+       (v.referenceDocNo && String(v.referenceDocNo) === String(tx.docNo)))
     );
 
     if (existingIdx !== -1) {
       allVerifs[existingIdx].verificationStatus = VERIFICATION_STATUS.MENUNGGU_VERIFIKASI;
+      allVerifs[existingIdx].returnReason = null;
+      allVerifs[existingIdx].isRevision = true;
       allVerifs[existingIdx].submittedAt = nowIso;
       allVerifs[existingIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
       allVerifs[existingIdx].submittedByName = user?.name || 'Mantri Bibitan';

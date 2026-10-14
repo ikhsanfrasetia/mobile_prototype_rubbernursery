@@ -1123,6 +1123,10 @@ export function renderReceiptBenih() {
       sumber: state.sourceName || '-',
       sir: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? '-' : (selectedSir ? selectedSir.issueNo : '-'),
       qty: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? totalQtyTable : (selectedSir ? selectedSir.qty : '-'),
+      issueDocNo: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? null : (selectedSir ? (selectedSir.issueNo || selectedSir.noIssue) : null),
+      issueItemId: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? null : (selectedSir ? selectedSir.issueItemId : null),
+      itemCode: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? null : (selectedSir ? (selectedSir.itemCode || '7030016') : null),
+      jumlahBenih: (originTypeRaw === 'KEBUN_SENDIRI' || originTypeRaw === 'LAINNYA') ? totalQtyTable : (selectedSir ? (selectedSir.rawQty || parseInt(String(selectedSir.qty).replace(/[^0-9]/g, ''), 10)) : 0),
       rawState: {
         originTypeRaw,
         estateId: currentEstateId,

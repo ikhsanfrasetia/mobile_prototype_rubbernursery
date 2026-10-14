@@ -56,6 +56,11 @@ export const DATA_STORAGE_REGISTRY = {
     'verification_transactions',
     'batch_inventory_states',
     'batch_inventory_journal',
+    'selection_approval_decisions',
+    'selection_mutation_intents',
+    'selection_stock_audits',
+    'selection_anomaly_cases',
+    'cull_document_sequences',
     'bedengan_context_relations',
     'batch_context_relations'
   ],

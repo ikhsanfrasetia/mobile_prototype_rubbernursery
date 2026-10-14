@@ -1154,23 +1154,28 @@ export function renderInspectionForm() {
 
     // Save/Update to Selection Pool if unchecked
     let selectionPool = storage.get('selection_pool', []);
+    const existingCandidate = selectionPool.find(s => s.inspectionDocNo === docNoInsp);
     if (isEditing) {
       selectionPool = selectionPool.filter(s => s.inspectionDocNo !== docNoInsp);
     }
     if (totalToSelection > 0) {
       selectionPool.push({
-        docNo: formatStandardDocNo(2026, 'CULL', selectionPool.length + 1),
+        id: existingCandidate?.id || `SEL-POOL-INS-${docNoInsp}`,
+        docNo: existingCandidate?.docNo || null,
+        originType: 'REJECT_PEMERIKSAAN',
+        sourceModule: 'INSPECTION',
+        sourceTransactionType: 'INSPECTION',
         inspectionDocNo: docNoInsp,
         batchNo,
         sourceBuddingDocNo: docNo,
-        sourceDocNo: selectedBudding.sourceDocNo,
+        sourceDocNo: selectedBudding.sourceDocNo || docNo,
         tanggal: isEditing && targetInsp?.tanggal ? targetInsp.tanggal : today,
         bedengan: selectedBudding.bedengan,
         klon: selectedBudding.klonEntres || 'PB 260',
         klonRootstock: selectedBudding.klonRootstock || 'GT-01',
         jumlahAfkir: totalToSelection,
         alasan: 'Gagal / Tidak Berhasil Okulasi (Ditolak Regrafting)',
-        status: 'PENDING_CULLING'
+        status: existingCandidate?.status || 'PENDING_DECLARATION'
       });
     }
     storage.set('selection_pool', selectionPool);

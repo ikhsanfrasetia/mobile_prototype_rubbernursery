@@ -242,12 +242,12 @@ export function deductBatchStock(batchIdOrCode, qty) {
 /**
  * Mengurangi stok multi-batch secara ATOMIK (Delegasi ke Inventory Service)
  */
-export function deductMultiBatchStock(allocations) {
+export async function deductMultiBatchStock(allocations) {
   if (!Array.isArray(allocations) || allocations.length === 0) {
     return { success: false, error: 'Daftar alokasi batch tidak boleh kosong.' };
   }
 
-  const res = deductMultiInventoryStock(allocations, INVENTORY_TX_TYPE.DISPATCH, null, null);
+  const res = await deductMultiInventoryStock(allocations, INVENTORY_TX_TYPE.DISPATCH, null, null);
   if (!res.success) {
     return { success: false, error: res.error };
   }
@@ -602,7 +602,7 @@ export async function processDispatchShipment(parentRequest, formValues, current
     qty: parseInt(row.qty, 10)
   }));
 
-  const multiDeductResult = deductMultiBatchStock(allocations);
+  const multiDeductResult = await deductMultiBatchStock(allocations);
   if (!multiDeductResult.success) {
     throw new Error(multiDeductResult.error || 'Gagal mengalokasikan stok batch.');
   }

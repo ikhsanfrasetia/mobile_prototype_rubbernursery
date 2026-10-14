@@ -5,7 +5,7 @@
  * Excluded non-nursery items: Pasir Kasar, Kereta Sorong, Selang, Elbow, Socket, Seal Tape.
  *
  * Core Master Materials:
- * 1. 7030016: KLATAK (BIJI KARET) - KG
+ * 1. 7030016: KLATAK (BIJI KARET) - BUTIR
  * 2. 7058117: PUPUK RP @50KG/ZAK - KG
  * 3. 7065168: POLYBAG 25X50CMX0,20MM - LBR
  * 4. 7000133: POLYBAG 25 X 60CM X 0.20MM - LBR
@@ -22,7 +22,7 @@ export const RAW_MATERIAL_ISSUE_RECORDS = Object.freeze([
     "itemName": "KLATAK (BIJI KARET)",
     "purpose": "Untuk bibit rubber Nursery",
     "quantity": 2.135,
-    "uomSource": "KG"
+    "uomSource": "BUTIR"
   },
   {
     "rowNumber": 5,
@@ -611,6 +611,42 @@ export const RAW_MATERIAL_ISSUE_RECORDS = Object.freeze([
     "purpose": "Pupuk untuk campuran tanah",
     "quantity": 500.0,
     "uomSource": "KG"
+  },
+  {
+    "rowNumber": 55,
+    "tanggal": "12/10/2026",
+    "noIssue": "ISSUE/2026/01/055",
+    "kodeAlokasi": "122111",
+    "namaAlokasi": "Biaya Biji Karet",
+    "itemCode": "7030016",
+    "itemName": "KLATAK (BIJI KARET)",
+    "purpose": "Untuk bibit rubber Nursery",
+    "quantity": 120000.0,
+    "uomSource": "BUTIR"
+  },
+  {
+    "rowNumber": 56,
+    "tanggal": "12/10/2026",
+    "noIssue": "ISSUE/2026/01/056",
+    "kodeAlokasi": "122111",
+    "namaAlokasi": "Biaya Biji Karet",
+    "itemCode": "7030016",
+    "itemName": "KLATAK (BIJI KARET)",
+    "purpose": "Untuk bibit rubber Nursery",
+    "quantity": 140000.0,
+    "uomSource": "BUTIR"
+  },
+  {
+    "rowNumber": 57,
+    "tanggal": "12/10/2026",
+    "noIssue": "ISSUE/2026/01/057",
+    "kodeAlokasi": "122111",
+    "namaAlokasi": "Biaya Biji Karet",
+    "itemCode": "7030016",
+    "itemName": "KLATAK (BIJI KARET)",
+    "purpose": "Untuk bibit rubber Nursery",
+    "quantity": 160000.0,
+    "uomSource": "BUTIR"
   }
 ]);
 
@@ -620,7 +656,7 @@ export const INITIAL_MASTER_MATERIALS = Object.freeze([
   {
     "itemCode": "7030016",
     "itemName": "KLATAK (BIJI KARET)",
-    "uom": "KG",
+    "uom": "BUTIR",
     "status": "ACTIVE"
   },
   {
@@ -661,7 +697,7 @@ export const INITIAL_ISSUE_DOCUMENTS = Object.freeze([
         "quantityIssue": 2.135,
         "usedQuantity": 0,
         "remainingQuantity": 2.135,
-        "uom": "KG",
+        "uom": "BUTIR",
         "status": "AVAILABLE"
       }
     ]
@@ -1740,6 +1776,72 @@ export const INITIAL_ISSUE_DOCUMENTS = Object.freeze([
         "usedQuantity": 0,
         "remainingQuantity": 500.0,
         "uom": "KG",
+        "status": "AVAILABLE"
+      }
+    ]
+  },
+  {
+    "id": "ISSUE-DOC-051",
+    "noIssue": "ISSUE/2026/01/055",
+    "tanggal": "12/10/2026",
+    "kodeAlokasi": "122111",
+    "namaAlokasi": "Biaya Biji Karet",
+    "status": "AVAILABLE",
+    "itemCount": 1,
+    "items": [
+      {
+        "id": "DETAIL-051",
+        "itemCode": "7030016",
+        "itemName": "KLATAK (BIJI KARET)",
+        "purpose": "Untuk bibit rubber Nursery",
+        "quantityIssue": 120000.0,
+        "usedQuantity": 0,
+        "remainingQuantity": 120000.0,
+        "uom": "BUTIR",
+        "status": "AVAILABLE"
+      }
+    ]
+  },
+  {
+    "id": "ISSUE-DOC-052",
+    "noIssue": "ISSUE/2026/01/056",
+    "tanggal": "12/10/2026",
+    "kodeAlokasi": "122111",
+    "namaAlokasi": "Biaya Biji Karet",
+    "status": "AVAILABLE",
+    "itemCount": 1,
+    "items": [
+      {
+        "id": "DETAIL-052",
+        "itemCode": "7030016",
+        "itemName": "KLATAK (BIJI KARET)",
+        "purpose": "Untuk bibit rubber Nursery",
+        "quantityIssue": 140000.0,
+        "usedQuantity": 0,
+        "remainingQuantity": 140000.0,
+        "uom": "BUTIR",
+        "status": "AVAILABLE"
+      }
+    ]
+  },
+  {
+    "id": "ISSUE-DOC-053",
+    "noIssue": "ISSUE/2026/01/057",
+    "tanggal": "12/10/2026",
+    "kodeAlokasi": "122111",
+    "namaAlokasi": "Biaya Biji Karet",
+    "status": "AVAILABLE",
+    "itemCount": 1,
+    "items": [
+      {
+        "id": "DETAIL-053",
+        "itemCode": "7030016",
+        "itemName": "KLATAK (BIJI KARET)",
+        "purpose": "Untuk bibit rubber Nursery",
+        "quantityIssue": 160000.0,
+        "usedQuantity": 0,
+        "remainingQuantity": 160000.0,
+        "uom": "BUTIR",
         "status": "AVAILABLE"
       }
     ]

@@ -277,13 +277,16 @@ export function renderVerificationLanding() {
   }
 
   // Gate Check untuk Asisten Bibitan (ASB):
-  // ASB wajib menyelesaikan seluruh dokumen Pemeriksaan Hasil Seleksi terlebih dahulu
+  // [CATATAN SIMULASI PROTOTYPE]: Dinonaktifkan sementara agar pengguna dapat membuka
+  // dan bernavigasi ke halaman Verifikasi tanpa harus menyelesaikan seluruh pemeriksaan seleksi terlebih dahulu.
+  /*
   const gateCheck = checkAsbSelectionGate(userCtx);
   if (gateCheck.isGated) {
     showAsbVerificationGateModal(gateCheck.pendingSelectionCount);
     renderGatedVerificationPlaceholder(app, userCtx, gateCheck.pendingSelectionCount);
     return;
   }
+  */
 
   if (currentVerifView === 'MODULE_GRID') {
     renderModuleGridView(app, userCtx);
@@ -747,9 +750,12 @@ function renderTransactionDetailView(app, userCtx) {
   });
 
   // Approve
-  app.querySelector('#btn-tx-approve')?.addEventListener('click', () => {
+  app.querySelector('#btn-tx-approve')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (btn?.disabled) return;
+    if (btn) btn.disabled = true;
     try {
-      approveVerification({
+      await approveVerification({
         referenceType: selectedTxItem.referenceType,
         referenceId: selectedTxItem.referenceId,
         currentUser: userCtx
@@ -759,6 +765,7 @@ function renderTransactionDetailView(app, userCtx) {
       renderVerificationLanding();
     } catch (err) {
       toast(err.message || 'Gagal menyetujui dokumen', 'error');
+      if (btn) btn.disabled = false;
     }
   });
 

@@ -30,11 +30,11 @@ const STORAGE_KEYS = {
  * Inisialisasi storage baseline jika belum ada atau versi data berubah.
  */
 export function initMaterialMasterStorage(force = false) {
-  const versionMatches = storage.get(STORAGE_KEYS.DATA_VERSION) === '3.1.0';
+  const versionMatches = storage.get(STORAGE_KEYS.DATA_VERSION) === '3.1.3';
   if (force || !versionMatches || !storage.has(STORAGE_KEYS.MASTER_MATERIALS)) {
     storage.set(STORAGE_KEYS.MASTER_MATERIALS, INITIAL_MASTER_MATERIALS);
     storage.set(STORAGE_KEYS.ISSUE_DOCUMENTS, INITIAL_ISSUE_DOCUMENTS);
-    storage.set(STORAGE_KEYS.DATA_VERSION, '3.1.0');
+    storage.set(STORAGE_KEYS.DATA_VERSION, '3.1.3');
   }
 }
 
@@ -49,21 +49,31 @@ export function initMaterialMasterStorage(force = false) {
 export function isTransactionMatchingIssueItem(tx, doc, item, docItemCount = 1) {
   if (!tx || !doc || !item) return false;
 
-  const txIssue = String(tx.issueDocNo || tx.noIssue || '').trim().toUpperCase();
+  const txIssue = String(
+    tx.issueDocNo || 
+    tx.noIssue || 
+    tx.sir || 
+    tx.rawState?.selectedSir?.issueNo || 
+    tx.rawState?.selectedSir?.noIssue || 
+    tx.rawState?.selectedSir?.id || 
+    ''
+  ).trim().toUpperCase();
   const docId = String(doc.id || '').trim().toUpperCase();
   const docNo = String(doc.noIssue || '').trim().toUpperCase();
 
-  const matchesDoc = txIssue && (txIssue === docId || txIssue === docNo);
+  const matchesDoc = txIssue && txIssue !== '-' && (txIssue === docId || txIssue === docNo);
   if (!matchesDoc) return false;
 
   // 1. Exact match via issueItemId if present in transaction
-  if (tx.issueItemId && item.id) {
-    return String(tx.issueItemId).trim().toUpperCase() === String(item.id).trim().toUpperCase();
+  const txItemId = String(tx.issueItemId || tx.rawState?.selectedSir?.issueItemId || '').trim().toUpperCase();
+  if (txItemId && item.id) {
+    return txItemId === String(item.id).trim().toUpperCase();
   }
 
   // 2. Fallback via itemCode if present
-  if (tx.itemCode && item.itemCode) {
-    return String(tx.itemCode).trim().toUpperCase() === String(item.itemCode).trim().toUpperCase();
+  const txItemCode = String(tx.itemCode || tx.rawState?.selectedSir?.itemCode || '').trim().toUpperCase();
+  if (txItemCode && item.itemCode) {
+    return txItemCode === String(item.itemCode).trim().toUpperCase();
   }
 
   // 3. Fallback for single-item documents
@@ -83,13 +93,32 @@ export function isTransactionMatchingIssueItem(tx, doc, item, docItemCount = 1) 
  * @returns {number} Total used quantity
  */
 export function calculateIssueItemUsedQuantity(doc, item, docItemCount = 1, excludeTxDocNo = null) {
-  const seedingTxs = storage.get('seeding_transactions', []);
   let usedQty = 0;
 
+  // 1. Konsumsi dari seeding_transactions (penaburan / pindah semai polybag)
+  const seedingTxs = storage.get('seeding_transactions', []) || [];
   seedingTxs.forEach(tx => {
-    if (excludeTxDocNo && tx.docNo === excludeTxDocNo) return;
+    if (excludeTxDocNo && (tx.docNo === excludeTxDocNo || tx.id === excludeTxDocNo || tx.nomorDokumen === excludeTxDocNo)) return;
     if (isTransactionMatchingIssueItem(tx, doc, item, docItemCount)) {
       usedQty += parseInt(tx.totalPolybag || tx.rows?.[0]?.polybag || 0, 10);
+    }
+  });
+
+  // 2. Konsumsi dari receipt_transactions (Penerimaan Benih / Biji Kelatak langsung memotong kuota issue)
+  const receiptTxs = storage.get('receipt_transactions', []) || [];
+  receiptTxs.forEach(tx => {
+    if (excludeTxDocNo && (tx.docNo === excludeTxDocNo || tx.id === excludeTxDocNo || tx.nomorDokumen === excludeTxDocNo)) return;
+    if (isTransactionMatchingIssueItem(tx, doc, item, docItemCount)) {
+      const raw = tx.rawState?.selectedSir?.rawQty ?? 
+                  tx.rawState?.selectedSir?.remainingQuantity ?? 
+                  tx.rawState?.selectedSir?.quantityIssue ?? 
+                  tx.jumlahBenih ?? 
+                  tx.totalKecambah ?? 
+                  tx.qty;
+      const num = typeof raw === 'number' ? raw : parseInt(String(raw || '0').replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(num) && num > 0) {
+        usedQty += num;
+      }
     }
   });
 
@@ -325,6 +354,19 @@ export function getIssueUsageTransactions(noIssueOrId) {
     }
   });
 
+  const receiptTxs = storage.get('receipt_transactions', []);
+  receiptTxs.forEach(tx => {
+    const isMatch = items.some(item => isTransactionMatchingIssueItem(tx, doc, item, items.length));
+    if (isMatch) {
+      const docNo = tx.docNo || tx.nomorDokumen || tx.id || '-';
+      const rawDate = tx.date || tx.tanggal || tx.createdAt || '-';
+      const tanggal = (rawDate && rawDate !== '-') ? formatDate(rawDate) : '-';
+      if (!matchingTxs.some(t => t.docNo === docNo)) {
+        matchingTxs.push({ docNo, tanggal });
+      }
+    }
+  });
+
   return matchingTxs;
 }
 
@@ -372,6 +414,61 @@ export function getOperationalMaterialRecords() {
       bedenganCode: tx.bedenganCode || tx.bedengan || '-',
       actor: tx.mantri || tx.actorName || tx.createdByName || 'Mantri Bibitan',
       notes: tx.keterangan || tx.notes || `Penyemaian SOW ${docNo}`,
+      rawRecord: tx
+    });
+  });
+
+  // 2. Operational Records dari Penerimaan Benih (APR - Penggunaan Benih/Biji Kelatak dari Dokumen Issue)
+  const receiptTxs = storage.get('receipt_transactions', []) || [];
+  receiptTxs.forEach(tx => {
+    if (!tx || typeof tx !== 'object') return;
+    const rawIssueDocNo = String(tx.issueDocNo || tx.sir || '').trim();
+    const hasIssueDoc = Boolean(rawIssueDocNo) && rawIssueDocNo !== '-';
+
+    const rawBenihQty = tx.jumlahBenih ?? 
+                        tx.rawState?.selectedSir?.rawQty ?? 
+                        tx.rawState?.selectedSir?.quantityIssue ?? 
+                        tx.qty ?? 
+                        0;
+    const benihQty = typeof rawBenihQty === 'number'
+      ? rawBenihQty
+      : (parseInt(String(rawBenihQty).replace(/[^0-9]/g, ''), 10) || 0);
+
+    if (!hasIssueDoc || benihQty <= 0) return;
+
+    const uniqueId = String(tx.id || tx.docNo || tx.nomorDokumen || '').trim();
+    if (!uniqueId || seenIds.has(uniqueId)) return;
+    seenIds.add(uniqueId);
+
+    const docNo = tx.docNo || tx.nomorDokumen || tx.id || '-';
+    const rawDate = tx.date || tx.tanggal || tx.createdAt || '-';
+    const tanggalFormatted = (rawDate && rawDate !== '-') ? formatDate(rawDate) : '-';
+
+    const itemCode = tx.itemCode || tx.rawState?.selectedSir?.itemCode || '7030016';
+    const itemName = tx.itemName || tx.rawState?.selectedSir?.itemName || tx.rawState?.selectedSir?.item || 'KLATAK (BIJI KARET)';
+    const uom = tx.uom || tx.rawState?.selectedSir?.uom || 'BUTIR';
+    const issueDocNo = tx.issueDocNo || (tx.sir !== '-' ? tx.sir : null) || '-';
+
+    results.push({
+      id: uniqueId,
+      docNo,
+      sourceType: 'OPERASIONAL',
+      sourceLabel: 'Operasional · Penerimaan Benih',
+      sourceModule: 'PENERIMAAN',
+      itemCode,
+      itemName,
+      quantity: benihQty,
+      uom,
+      tanggal: tanggalFormatted,
+      date: rawDate,
+      issueDocNo,
+      issueItemId: tx.issueItemId || tx.rawState?.selectedSir?.issueItemId || null,
+      batchId: tx.batchId || tx.rawState?.batchId || null,
+      batchCode: tx.batchNo || tx.batchCode || tx.rawState?.batchCode || '-',
+      bedenganId: tx.bedenganId || null,
+      bedenganCode: tx.bedengan || tx.bedenganCode || '-',
+      actor: tx.mantri || tx.penerima || tx.actorName || tx.createdByName || 'Mantri Bibitan',
+      notes: tx.keterangan || tx.notes || `Penerimaan Benih ${docNo}`,
       rawRecord: tx
     });
   });

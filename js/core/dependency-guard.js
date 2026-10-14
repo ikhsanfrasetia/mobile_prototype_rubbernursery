@@ -39,10 +39,12 @@ function getReceiptContextYear(receiptTx) {
   return new Date().getFullYear();
 }
 
-function isTxActive(tx) {
+function isTxActive(tx, isEditAction = false) {
   if (!tx || typeof tx !== 'object') return false;
   const s = String(tx.status || tx.verificationStatus || '').trim().toUpperCase();
-  return s !== 'BATAL' && s !== 'CANCELLED' && s !== 'VOID';
+  if (s === 'BATAL' || s === 'CANCELLED' || s === 'VOID') return false;
+  if (isEditAction && (s === 'DIKEMBALIKAN' || s === 'REVISION')) return false;
+  return true;
 }
 
 /**
@@ -226,8 +228,10 @@ export function isReceiptLocked(receiptTx, receiptIndex = -1, preloadedContext =
  * @param {object} [preloadedContext=null] - Konteks koleksi transaksi yang telah dimuat sebelumnya (opsional)
  * @returns {object|null} - Mengembalikan objek { docNo, moduleName, url, status } jika ada dependensi aktif, atau null jika aman.
  */
-export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, preloadedContext = null) {
+export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, preloadedContext = null, options = {}) {
   if (!docIdentifier) return null;
+
+  const isEditAction = Boolean(options && (options.isEditAction || options.action === 'Diedit' || options.action === 'Diubah'));
 
   const isObj = typeof docIdentifier === 'object' && docIdentifier !== null;
   const docNo = isObj
@@ -260,7 +264,7 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
   const checkSeeding = () => {
     const seedingTxs = getCol('seeding_transactions', 'seedingTxs');
     const dependentSeeding = seedingTxs.find(s => {
-      if (!s || !isTxActive(s)) return false;
+      if (!s || !isTxActive(s, isEditAction)) return false;
       if (s.id && (s.id === docId || s.id === docNo)) return false; // Abaikan dirinya sendiri
       if (s.docNo && s.docNo === docNo) return false;
 
@@ -291,7 +295,7 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
   const checkDederan = () => {
     const dederTxs = getCol('dederan_transactions', 'dederTxs');
     const dependentDeder = dederTxs.find(d => {
-      if (!d || !isTxActive(d)) return false;
+      if (!d || !isTxActive(d, isEditAction)) return false;
       if (d.id && (d.id === docId || d.id === docNo)) return false;
       if (d.docNo && d.docNo === docNo) return false;
 
@@ -330,7 +334,7 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
       if (!isMatch) return false;
 
       const totalDideder = parseInt(induk.totalDidederSDHI || 0, 10);
-      const hasChildDeder = dederTxs.some(t => isTxActive(t) && t.parentDederIndukDocNo === induk.docNo);
+      const hasChildDeder = dederTxs.some(t => isTxActive(t, isEditAction) && t.parentDederIndukDocNo === induk.docNo);
       return totalDideder > 0 || hasChildDeder;
     });
     if (dependentInduk) {
@@ -344,11 +348,14 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
     return null;
   };
 
-  // 4. Cek Pemeriksaan Dederan (dederan_inspection_transactions)
+  // 4. Cek Pemeriksaan Dederan (dederan_inspection_transactions & dederan_inspections)
   const checkDederInspection = () => {
-    const dederInspTxs = getCol('dederan_inspection_transactions', 'dederInspTxs');
+    const dederInspTxs = [
+      ...getCol('dederan_inspection_transactions', 'dederInspTxs'),
+      ...getCol('dederan_inspections', 'dederInspections')
+    ];
     const dependentDederInsp = dederInspTxs.find(di => {
-      if (!di || !isTxActive(di)) return false;
+      if (!di || !isTxActive(di, isEditAction)) return false;
       if (di.id && (di.id === docId || di.id === docNo)) return false;
       if (di.docNo && di.docNo === docNo) return false;
 
@@ -374,7 +381,7 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
   const checkSelection = () => {
     const selectionDocs = getCol('pre_grafting_selection_documents', 'selectionDocs');
     const dependentSelection = selectionDocs.find(d => {
-      if (!d || !isTxActive(d)) return false;
+      if (!d || !isTxActive(d, isEditAction)) return false;
       if (d.id && (d.id === docId || d.id === docNo)) return false;
       if (d.docNo && d.docNo === docNo) return false;
 
@@ -402,7 +409,7 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
 
     const selectionTxs = getCol('selection_transactions', 'selectionTxs');
     const dependentSelectionTx = selectionTxs.find(st => {
-      if (!st || !isTxActive(st)) return false;
+      if (!st || !isTxActive(st, isEditAction)) return false;
       if (st.id && (st.id === docId || st.id === docNo)) return false;
       if (st.docNo && st.docNo === docNo) return false;
 
@@ -428,7 +435,7 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
   const checkBudding = () => {
     const buddingTxs = getCol('budding_transactions', 'buddingTxs');
     const dependentBudding = buddingTxs.find(b => {
-      if (!b || !isTxActive(b)) return false;
+      if (!b || !isTxActive(b, isEditAction)) return false;
       if (b.id && (b.id === docId || b.id === docNo)) return false;
       if (b.docNo && b.docNo === docNo) return false;
 
@@ -461,7 +468,7 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
   const checkInspection = () => {
     const inspectionTxs = getCol('inspection_transactions', 'inspectionTxs');
     const dependentInspection = inspectionTxs.find(ins => {
-      if (!ins || !isTxActive(ins)) return false;
+      if (!ins || !isTxActive(ins, isEditAction)) return false;
       if (ins.id && (ins.id === docId || ins.id === docNo)) return false;
       if (ins.docNo && ins.docNo === docNo) return false;
 
@@ -488,7 +495,7 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
   const checkPool = () => {
     const pool = getCol('selection_pool', 'pool');
     const dependentPool = pool.find(p => {
-      if (!p || !isTxActive(p)) return false;
+      if (!p || !isTxActive(p, isEditAction)) return false;
       if (p.id && (p.id === docId || p.id === docNo)) return false;
       if (p.docNo && p.docNo === docNo) return false;
 
@@ -606,7 +613,26 @@ export function findDownstreamDependency(docIdentifier, sourceTypeHint = null, p
  * @returns {boolean} - true jika BLOCKED, false jika AMAN
  */
 export function guardDependency(docIdentifier, moduleName, action = 'Diubah') {
-  const dependency = findDownstreamDependency(docIdentifier);
+  const isEditAction = typeof action === 'string' && (
+    action.toLowerCase().includes('edit') || 
+    action.toLowerCase().includes('ubah') || 
+    action.toLowerCase().includes('koreksi')
+  );
+
+  const isObj = typeof docIdentifier === 'object' && docIdentifier !== null;
+  const isSourceReturned = isObj && (
+    docIdentifier.status === 'DIKEMBALIKAN' || 
+    docIdentifier.verificationStatus === 'DIKEMBALIKAN' || 
+    docIdentifier.status === 'REVISION'
+  );
+
+  // Jika dokumen sumber berstatus DIKEMBALIKAN dan aksi adalah Edit/Koreksi,
+  // Mantri sedang melakukan perbaikan resmi yang diminta Asisten Bibitan.
+  if (isEditAction && isSourceReturned) {
+    return false;
+  }
+
+  const dependency = findDownstreamDependency(docIdentifier, null, null, { isEditAction, action });
   
   if (dependency) {
     const docDisplay = (typeof docIdentifier === 'object' && docIdentifier !== null)
@@ -926,6 +952,43 @@ export function validateSourceEditability(docType, docNo, updatedPayload = null)
   }
 
   return { allowed: true };
+}
+
+/**
+ * Memastikan Bedengan tidak dalam status terkunci anomali (BEDENGAN_LOCKED)
+ * @param {string} batchId 
+ * @param {string} bedenganId 
+ */
+export function assertBedenganNotLocked(batchId, bedenganId) {
+  if (!bedenganId) return true;
+  const anomalies = storage.get('selection_anomaly_cases', []);
+  const activeCase = anomalies.find(a => 
+    (a.bedenganId === bedenganId || a.bedenganCode === bedenganId) && 
+    (a.status === 'OPEN_LOCKED' || a.status === 'INVESTIGATING' || a.status === 'BEDENGAN_LOCKED')
+  );
+
+  if (activeCase) {
+    throw new Error(`BedenganLockedError: Bedengan ${bedenganId} dalam status terkunci (${activeCase.status}) karena anomali stok fisik [Kasus: ${activeCase.caseNo || activeCase.id}]. Mutasi ditolak.`);
+  }
+  return true;
+}
+
+/**
+ * Memastikan Batch tidak dalam status terkunci integritas (BATCH_LOCKED)
+ * @param {string} batchId 
+ */
+export function assertBatchNotLocked(batchId) {
+  if (!batchId) return true;
+  const anomalies = storage.get('selection_anomaly_cases', []);
+  const activeCase = anomalies.find(a => 
+    (a.batchId === batchId || a.batchCode === batchId) && 
+    (a.status === 'BATCH_LOCKED' || a.scope === 'BATCH_GLOBAL')
+  );
+
+  if (activeCase) {
+    throw new Error(`BatchLockedError: Batch ${batchId} dalam status terkunci global (${activeCase.status}) [Kasus: ${activeCase.caseNo || activeCase.id}]. Seluruh mutasi batch ditolak.`);
+  }
+  return true;
 }
 
 

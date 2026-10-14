@@ -15,7 +15,7 @@ import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
-import { formatDate, esc } from '../../core/utils.js';
+import { formatDate, esc, getEffectiveTodayDDMMYYYY } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
 import { validateSourceEditability } from '../../core/dependency-guard.js';
 import {
@@ -33,7 +33,7 @@ export function renderDederanInspectionForm() {
   if (!app) return;
 
   const user = getCurrentUserContext();
-  const today = formatDate(new Date().toISOString());
+  const today = getEffectiveTodayDDMMYYYY();
 
   const editInspId = storage.get('editing_dederan_inspection_id', null);
   const editingInsp = editInspId ? getDederanInspectionById(editInspId) : null;

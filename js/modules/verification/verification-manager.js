@@ -26,9 +26,20 @@ import {
   createSelection3DocumentFromSelection2,
   validateSelectionTransactionAgainstSource,
   getActionableSelectionCount,
-  syncAllSeedingsToPreGraftingSelectionDocuments
+  syncAllSeedingsToPreGraftingSelectionDocuments,
+  isPreGraftingSelection,
+  syncAllApprovedPreGraftingSelectionDocuments,
+  isPrePlantingCullStockExempt
 } from '../selection/selection-manager.js';
 import { getInspectionChronologicalMaxAllowed, syncAllDederanRejectionsToSelectionPool } from '../seeding/dederan-manager.js';
+import {
+  deductBatchStock as deductInventoryStock,
+  getAvailableQty as getInventoryAvailableQty,
+  syncBatchPopulationFromSeeding,
+  executeStockMutationWithLock,
+  INVENTORY_TX_TYPE
+} from '../../core/batch-inventory-service.js';
+import { assertBatchNotLocked, assertBedenganNotLocked } from '../../core/dependency-guard.js';
 
 export const VERIFICATION_STORAGE_KEY = 'verification_transactions';
 
@@ -669,12 +680,40 @@ function _computeVerificationDetailData(raw, userCtx = null, refType = 'PENERIMA
     case 'PENYELEKSIAN':
     case 'SELECTION': {
       const stage = getSelectionStageLabel(raw);
-      const layak = raw.actualBibitRetainedQty !== undefined
+      let layak = raw.actualBibitRetainedQty !== undefined
         ? raw.actualBibitRetainedQty
         : (raw.bibitDipertahankan !== undefined ? raw.bibitDipertahankan : (raw.jumlahLayak !== undefined ? raw.jumlahLayak : '-'));
       const afkir = raw.actualBibitSelectedQty !== undefined
         ? raw.actualBibitSelectedQty
         : (raw.bibitReject !== undefined ? raw.bibitReject : (raw.jumlahAfkir !== undefined ? raw.jumlahAfkir : '-'));
+
+      const docNoStr = String(raw.docNo || raw.selectionNo || '').toUpperCase();
+      const isPreGrafting = isPreGraftingSelection(raw) ||
+        docNoStr.includes('/CULL/SEL-I/') || docNoStr.includes('/CULL/SEL-II/') || docNoStr.includes('/CULL/SEL-III/') ||
+        docNoStr.includes('/SEL-I') || docNoStr.includes('/SEL-II') || docNoStr.includes('/SEL-III');
+
+      if (isPreGrafting) {
+        const allPreDocs = storage.get('pre_grafting_selection_documents', []);
+        const parentDoc = allPreDocs.find(d =>
+          (raw.parentSelectionDocumentId && d.id === raw.parentSelectionDocumentId) ||
+          (raw.selectionDocumentId && d.id === raw.selectionDocumentId) ||
+          (raw.parentSelectionDocNo && d.docNo === raw.parentSelectionDocNo) ||
+          (raw.selectionDocNo && d.docNo === raw.selectionDocNo) ||
+          (raw.sourceDocNo && d.docNo === raw.sourceDocNo) ||
+          (raw.batchCode && (d.batchCode === raw.batchCode || d.batchNo === raw.batchCode))
+        );
+        if (parentDoc) {
+          if (parentDoc.totalBibitRetainedQty !== undefined && parentDoc.totalBibitRetainedQty !== null && !isNaN(parentDoc.totalBibitRetainedQty)) {
+            layak = parentDoc.totalBibitRetainedQty;
+          } else if (parentDoc.sourceBibitQty !== undefined && parentDoc.sourceBibitQty !== null && !isNaN(parentDoc.sourceBibitQty)) {
+            const afkirNum = typeof afkir === 'number' ? afkir : parseInt(afkir, 10);
+            if (!isNaN(afkirNum)) {
+              layak = Math.max(0, parseInt(parentDoc.sourceBibitQty, 10) - afkirNum);
+            }
+          }
+        }
+      }
+
       const formattedLayak = formatSafeNumber(layak);
       const formattedAfkir = formatSafeNumber(afkir);
       const reason = raw.reason || raw.kategoriAfkir || stage;
@@ -1186,29 +1225,67 @@ export function getVerificationRecordsByScope(currentUser, filters = {}) {
   const allVerifRecords = getAllVerifications();
 
   // Deduplicate: ambil verifikasi terbaru per (referenceType:referenceId)
+  // Untuk dokumen seleksi (2026/SEL/xxx, 2026/SEL-II/xxx, dll), satukan key ke 'SELEKSI_PRA_OKULASI:<docNo>'
+  // agar Dokumen Induk dan Transaksi Seleksi lama tidak menduplikasi kartu di ASB
   const latestMap = new Map();
   allVerifRecords.forEach(v => {
-    const key = `${v.referenceType}:${v.referenceId}`;
-    if (!latestMap.has(key) || new Date(v.createdAt || v.submittedAt || 0) > new Date(latestMap.get(key).createdAt || latestMap.get(key).submittedAt || 0)) {
+    const isSelDoc = Boolean(
+      String(v.referenceDocNo || '').match(/^2026\/SEL(-[I|V|X]+)?\/\d+$/i) ||
+      v.referenceType === 'SELEKSI_PRA_OKULASI'
+    );
+    const key = (isSelDoc && v.referenceDocNo) ? `SELEKSI_PRA_OKULASI:${v.referenceDocNo}` : `${v.referenceType}:${v.referenceId}`;
+    if (!latestMap.has(key)) {
       latestMap.set(key, v);
+    } else {
+      const existing = latestMap.get(key);
+      const isVPre = v.referenceType === 'SELEKSI_PRA_OKULASI';
+      const isExistPre = existing.referenceType === 'SELEKSI_PRA_OKULASI';
+      if (isVPre && !isExistPre) {
+        latestMap.set(key, v);
+      } else if (isVPre === isExistPre) {
+        const vTime = new Date(v.updatedAt || v.submittedAt || v.createdAt || 0).getTime();
+        const existTime = new Date(existing.updatedAt || existing.submittedAt || existing.createdAt || 0).getTime();
+        if (vTime >= existTime) {
+          latestMap.set(key, v);
+        }
+      }
     }
   });
 
   const list = [];
 
   latestMap.forEach((verifRecord) => {
-    const refType = verifRecord.referenceType;
-    const refId = verifRecord.referenceId;
+    let refType = verifRecord.referenceType;
+    let refId = verifRecord.referenceId;
+    const docNo = verifRecord.referenceDocNo || refId;
+    const isSelDoc = Boolean(
+      String(docNo || '').match(/^2026\/SEL(-[I|V|X]+)?\/\d+$/i) ||
+      verifRecord.referenceType === 'SELEKSI_PRA_OKULASI'
+    );
+    if (isSelDoc) {
+      refType = 'SELEKSI_PRA_OKULASI';
+    }
 
     // Exclude logistics types (REQUEST)
     if (LOGISTICS_TYPES.includes(refType)) return;
 
-    const sourceRecord = findSourceRecord(refType, refId, currentUser);
+    let sourceRecord = findSourceRecord(refType, refId, currentUser);
+    if (!sourceRecord && isSelDoc) {
+      sourceRecord = findSourceRecord('SELEKSI_PRA_OKULASI', docNo, currentUser);
+    }
     const rawRecord = sourceRecord || verifRecord;
+
+    // Filter out pure child execution transactions (e.g. PELAKSANAAN_SELEKSI_I, 2026/SEL-I/xxx)
+    // Transaksi eksekusi pelaksanaan bukanlah dokumen audit mandiri, melainkan bagian dari Dokumen Induk
+    if (rawRecord.transactionType && String(rawRecord.transactionType).startsWith('PELAKSANAAN_SELEKSI')) {
+      return;
+    }
+    if (String(docNo || '').match(/^2026\/SEL-[I|II|III]/i) && rawRecord.parentSelectionDocNo) {
+      return;
+    }
 
     const estateId = verifRecord.estateId || rawRecord.targetEstateId || rawRecord.estateId || rawRecord.sourceEstateId;
     const divisionId = verifRecord.divisionId || rawRecord.targetDivisionId || rawRecord.divisionId || rawRecord.sourceDivisionId;
-    const docNo = verifRecord.referenceDocNo || rawRecord.docNo || rawRecord.id || refId;
 
     // ROLE + ESTATE + DIVISION ISOLATION
     if (currentUser?.role && normalizeRole(currentUser.role) === ROLES.ASISTEN_BIBITAN) {
@@ -1237,6 +1314,20 @@ export function getVerificationRecordsByScope(currentUser, filters = {}) {
 
     const normalizedData = getVerificationDetailData(sourceRecord || rawRecord, currentUser, refType);
 
+    const rawStatusNorm = String(rawRecord.status || '').toUpperCase();
+    let effectiveVerifStatus = verifRecord.verificationStatus || VERIFICATION_STATUS.MENUNGGU_VERIFIKASI;
+
+    // Sinkronisasi status bila dokumen sudah disetujui final
+    if (rawStatusNorm === 'DISETUJUI' && rawRecord.isFinal) {
+      effectiveVerifStatus = VERIFICATION_STATUS.TERVERIFIKASI;
+    } else if (
+      (rawStatusNorm === 'MENUNGGU_VERIFIKASI' || rawStatusNorm === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' || rawRecord.submissionStatus === 'SUBMITTED_TO_ASB') &&
+      effectiveVerifStatus === VERIFICATION_STATUS.DIKEMBALIKAN
+    ) {
+      // Jika dokumen yang pernah dikembalikan sudah disubmit ulang oleh Mantri, statusnya di ASB kembali menjadi MENUNGGU_VERIFIKASI
+      effectiveVerifStatus = VERIFICATION_STATUS.MENUNGGU_VERIFIKASI;
+    }
+
     list.push({
       referenceType: refType,
       referenceId: refId,
@@ -1247,9 +1338,9 @@ export function getVerificationRecordsByScope(currentUser, filters = {}) {
       summary: normalizedData.summary,
       estateId,
       divisionId,
-      currentStatus: rawRecord.status || verifRecord.verificationStatus || 'SUBMITTED',
-      verificationStatus: verifRecord.verificationStatus || VERIFICATION_STATUS.MENUNGGU_VERIFIKASI,
-      returnReason: rawRecord.returnReason || verifRecord.returnReason || null,
+      currentStatus: rawRecord.status || effectiveVerifStatus || 'SUBMITTED',
+      verificationStatus: effectiveVerifStatus,
+      returnReason: (effectiveVerifStatus === VERIFICATION_STATUS.DIKEMBALIKAN ? (rawRecord.returnReason || verifRecord.returnReason || null) : null),
       latestVerification: verifRecord,
       canApprove: evalResult.canApprove,
       errors: evalResult.errors,
@@ -1482,6 +1573,7 @@ function generateVerificationNo() {
 
 /**
  * APPROVAL VERIFIKASI (approveVerification)
+ * Single Entry Point persetujuan final ASB
  */
 export function approveVerification({ referenceType, referenceId, notes = '', currentUser }) {
   if (!referenceType || !referenceId) {
@@ -1492,9 +1584,16 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
     throw new Error('Otorisasi gagal: User aktif tidak ditemukan.');
   }
 
-  const gateCheck = checkAsbSelectionGate(currentUser);
-  if (gateCheck.isGated) {
-    throw new Error(`Verifikasi diblokir: Harap selesaikan ${gateCheck.pendingSelectionCount} dokumen Pemeriksaan Hasil Seleksi terlebih dahulu.`);
+  const isSelectionType = (
+    referenceType === 'SELEKSI_PRA_OKULASI' ||
+    referenceType === 'PENYELEKSIAN' ||
+    referenceType === 'SELECTION'
+  );
+  if (!isSelectionType) {
+    const gateCheck = checkAsbSelectionGate(currentUser);
+    if (gateCheck.isGated) {
+      throw new Error(`Verifikasi diblokir: Harap selesaikan ${gateCheck.pendingSelectionCount} dokumen Pemeriksaan Hasil Seleksi terlebih dahulu.`);
+    }
   }
 
   // 1. Ambil source record
@@ -1513,10 +1612,13 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
     throw new Error(`Akses ditolak: Dokumen berada di luar lingkup divisi user (${recordDivisionId} vs ${currentUser.divisionId}).`);
   }
 
-  // 3. Cek apakah sudah terverifikasi final
+  // 3. Cek apakah sudah terverifikasi final (Idempotency Guard)
   const existingVerif = getVerificationByReference(referenceType, referenceId);
   if (existingVerif && (existingVerif.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || existingVerif.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI)) {
     throw new Error(`Dokumen ini sudah diverifikasi sebelumnya dengan No: ${existingVerif.verificationNo || existingVerif.verificationId}.`);
+  }
+  if (sourceRecord.isFinal && (sourceRecord.status === 'DISETUJUI' || sourceRecord.status === 'TERKONFIRMASI')) {
+    throw new Error(`Dokumen ini sudah disetujui sebelumnya dan berstatus final (${sourceRecord.docNo || referenceId}).`);
   }
 
   // 4. CONSISTENCY GATE
@@ -1552,68 +1654,355 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
     updatedAt: nowIso
   };
 
-  // 6. Simpan / perbarui di verification_transactions
-  const currentVerifs = storage.get(VERIFICATION_STORAGE_KEY, []);
-  const existIdx = currentVerifs.findIndex(v =>
-    ((v.referenceType || v.moduleType || '').toUpperCase() === (referenceType || '').toUpperCase()) &&
-    (String(v.referenceId) === String(referenceId) || String(v.referenceDocNo) === String(docNo))
-  );
+  // 6. Helper: Simpan / perbarui di verification_transactions HANYA setelah mutasi & update sumber sukses
+  const persistVerificationRecord = () => {
+    const currentVerifs = storage.get(VERIFICATION_STORAGE_KEY, []);
+    const existIdx = currentVerifs.findIndex(v =>
+      ((v.referenceType || v.moduleType || '').toUpperCase() === (referenceType || '').toUpperCase()) &&
+      (String(v.referenceId) === String(referenceId) || String(v.referenceDocNo) === String(docNo))
+    );
 
-  if (existIdx !== -1) {
-    currentVerifs[existIdx] = {
-      ...currentVerifs[existIdx],
-      ...auditRecord,
-      verificationNo: currentVerifs[existIdx].verificationNo || verificationNo
-    };
-  } else {
-    currentVerifs.push(auditRecord);
-  }
-  storage.set(VERIFICATION_STORAGE_KEY, currentVerifs);
+    if (existIdx !== -1) {
+      currentVerifs[existIdx] = {
+        ...currentVerifs[existIdx],
+        ...auditRecord,
+        verificationNo: currentVerifs[existIdx].verificationNo || verificationNo
+      };
+    } else {
+      currentVerifs.push(auditRecord);
+    }
+    storage.set(VERIFICATION_STORAGE_KEY, currentVerifs);
+  };
 
   // 7. Update status pada raw source record jika ada storeKey
+  let lockAsyncPromise = null;
   if (sourceRecord._storeKey) {
     const records = storage.get(sourceRecord._storeKey, []);
     const idx = records.findIndex(r => String(r.id || r.docNo || '') === String(referenceId) || String(r.docNo || '') === String(docNo));
     if (idx !== -1) {
-      if (referenceType === 'MATERIAL') {
-        records[idx].materialSubmissionStatus = 'DISETUJUI';
-      } else {
-        records[idx].status = referenceType === 'TIDAK_HADIR' ? 'TERKONFIRMASI' : 'DISETUJUI';
-        records[idx].isFinal = true;
-        records[idx].verificationStatus = referenceType === 'TIDAK_HADIR' ? VERIFICATION_STATUS.DATA_TERKONFIRMASI : VERIFICATION_STATUS.TERVERIFIKASI;
-      }
-      records[idx].verifiedAt = nowIso;
-      records[idx].verifiedByUserId = currentUser.userId || currentUser.id;
-      records[idx].verifiedByName = currentUser.name || 'Asisten Bibitan';
-      storage.set(sourceRecord._storeKey, records);
+      const targetRecord = records[idx];
 
-      // Downstream Document Generation for Seleksi Pra-Okulasi (Seleksi I -> II, Seleksi II -> III)
-      if (referenceType === 'SELEKSI_PRA_OKULASI' || sourceRecord._storeKey === 'pre_grafting_selection_documents') {
-        const approvedDoc = records[idx];
-        const stageNorm = String(approvedDoc.selectionStage || '').toUpperCase();
+      // A. PENYELEKSIAN / CULL (selection_transactions)
+      if (referenceType === 'PENYELEKSIAN' || referenceType === 'SELECTION' || sourceRecord._storeKey === 'selection_transactions') {
+        const isExemptPrePlanting = isPrePlantingCullStockExempt(targetRecord);
+        const mutationQty = parseInt(targetRecord.jumlahAfkir || targetRecord.quantity || 0, 10);
+
+        if (isExemptPrePlanting) {
+          // --- CULL PRA-TANAM: ZERO STOCK MUTATION (NOT_REQUIRED) ---
+          targetRecord.status = 'DISETUJUI';
+          targetRecord.isFinal = true;
+          targetRecord.verificationStatus = VERIFICATION_STATUS.TERVERIFIKASI;
+          targetRecord.stockMutationStatus = 'NOT_REQUIRED';
+          targetRecord.stockMutationAt = nowIso;
+          targetRecord.stockMutationBy = currentUser.userId || currentUser.code || currentUser.id || 'ASISTEN';
+          targetRecord.stockMutationQty = mutationQty;
+          targetRecord.stockMutationError = null;
+          targetRecord.verifiedByUserId = currentUser.userId || currentUser.id;
+          targetRecord.verifiedByName = currentUser.name || 'Asisten Bibitan';
+          targetRecord.verifiedByRole = currentUser.role || ROLES.ASISTEN_BIBITAN;
+          targetRecord.verifiedAt = nowIso;
+          targetRecord.approvalNotes = notes || 'Disetujui oleh Asisten Bibitan via Central Hub Verifikasi';
+          targetRecord.updatedAt = nowIso;
+
+          // Catat Approval Decision Record Asisten (PERSISTENT & IMMUTABLE)
+          const decisions = storage.get('selection_approval_decisions', []);
+          const decisionId = `DEC-${targetRecord.id || targetRecord.docNo}-${Date.now()}`;
+          decisions.push({
+            id: decisionId,
+            txId: targetRecord.id || targetRecord.docNo,
+            docNo: targetRecord.docNo || targetRecord.id,
+            batchId: targetRecord.batchId || targetRecord.batchCode || null,
+            bedenganId: targetRecord.bedenganId || targetRecord.bedenganCode || targetRecord.bedengan || null,
+            approvedQty: mutationQty,
+            actorId: currentUser?.userId || currentUser?.id || 'ASISTEN',
+            actorRole: ROLES.ASISTEN_BIBITAN,
+            signatureNote: notes || 'Persetujuan hasil seleksi pra-tanam via Central Hub Verifikasi',
+            createdAt: nowIso
+          });
+          storage.set('selection_approval_decisions', decisions);
+
+          // Update Selection Pool item
+          const fullPool = storage.get('selection_pool', []);
+          const poolIdx = fullPool.findIndex(p =>
+            p.selectionTransactionId === targetRecord.id ||
+            p.id === targetRecord.selectionTransactionId ||
+            p.docNo === targetRecord.docNo ||
+            p.selectionDocNo === targetRecord.docNo ||
+            (p.dederanDocNo && p.dederanDocNo === targetRecord.sourceDocNo) ||
+            (p.sourceDocNo && p.sourceDocNo === targetRecord.sourceDocNo)
+          );
+          if (poolIdx !== -1) {
+            fullPool[poolIdx].status = 'DECLARED_CULLED';
+            fullPool[poolIdx].verifiedAt = nowIso;
+            fullPool[poolIdx].verifiedByName = currentUser.name || 'Asisten Bibitan';
+            storage.set('selection_pool', fullPool);
+          }
+
+          records[idx] = targetRecord;
+          storage.set(sourceRecord._storeKey, records);
+          persistVerificationRecord();
+        } else {
+          // --- CULL NON-DEDERAN: ATOMIC STOCK MUTATION UNDER WEB LOCKS & IDEMPOTENCY KEY ---
+          const batchKey = targetRecord.batchId || targetRecord.batchCode || targetRecord.batchNo;
+          const bedenganKey = targetRecord.bedenganId || targetRecord.bedenganCode || targetRecord.bedengan;
+
+          if (mutationQty > 0) {
+            if (!batchKey) {
+              throw new Error(`Dokumen seleksi ${targetRecord.docNo || targetRecord.id} tidak memiliki referensi batch.`);
+            }
+
+            // Assert Kernel Level Locks
+            assertBatchNotLocked(batchKey);
+            if (bedenganKey) assertBedenganNotLocked(batchKey, bedenganKey);
+
+            // 1. Catat Approval Decision Record Asisten
+            const decisions = storage.get('selection_approval_decisions', []);
+            const decisionId = `DEC-${targetRecord.id || targetRecord.docNo}-${Date.now()}`;
+            const decisionRecord = {
+              id: decisionId,
+              txId: targetRecord.id || targetRecord.docNo,
+              docNo: targetRecord.docNo || targetRecord.id,
+              batchId: batchKey,
+              bedenganId: bedenganKey,
+              approvedQty: mutationQty,
+              actorId: currentUser?.userId || currentUser?.id || 'ASISTEN',
+              actorRole: ROLES.ASISTEN_BIBITAN,
+              signatureNote: notes || 'Disetujui oleh Asisten Bibitan via Central Hub Verifikasi',
+              createdAt: nowIso
+            };
+            decisions.push(decisionRecord);
+            storage.set('selection_approval_decisions', decisions);
+
+            // 2. Catat Mutation Intent (IN_FLIGHT)
+            const intents = storage.get('selection_mutation_intents', []);
+            const idempotencyKey = `MUT-${batchKey}-SEL-${targetRecord.id || targetRecord.docNo}`;
+            const intentRecord = {
+              id: `INTENT-${targetRecord.id || targetRecord.docNo}`,
+              txId: targetRecord.id || targetRecord.docNo,
+              docNo: targetRecord.docNo || targetRecord.id,
+              decisionId: decisionId,
+              batchId: batchKey,
+              bedenganId: bedenganKey,
+              mutationQty: mutationQty,
+              idempotencyKey: idempotencyKey,
+              status: 'IN_FLIGHT',
+              createdAt: nowIso,
+              updatedAt: nowIso
+            };
+            intents.push(intentRecord);
+            storage.set('selection_mutation_intents', intents);
+
+            const performDeduction = () => {
+              // 3. Sync & Validate stock adequacy
+              syncBatchPopulationFromSeeding(batchKey);
+              const currentAvailable = getInventoryAvailableQty(batchKey);
+              if (currentAvailable < mutationQty) {
+                intentRecord.status = 'HALTED_RETRY_REQUIRED';
+                intentRecord.errorReason = `Stok batch ${batchKey} tidak mencukupi (Tersedia: ${currentAvailable.toLocaleString('id-ID')} Pkk < Afkir: ${mutationQty.toLocaleString('id-ID')} Pkk).`;
+                intentRecord.updatedAt = new Date().toISOString();
+                storage.set('selection_mutation_intents', intents);
+                throw new Error(intentRecord.errorReason);
+              }
+
+              // 4. Perform stock deduction in inventory ledger under idempotency key
+              try {
+                deductInventoryStock(
+                  batchKey,
+                  mutationQty,
+                  INVENTORY_TX_TYPE.SELECTION,
+                  { id: targetRecord.docNo || targetRecord.id, idempotencyKey },
+                  currentUser,
+                  `Pengurangan stok seleksi afkir ${targetRecord.docNo || targetRecord.id} (Disetujui via Verifikasi)`
+                );
+                intentRecord.status = 'COMPLETED';
+                intentRecord.updatedAt = new Date().toISOString();
+                storage.set('selection_mutation_intents', intents);
+              } catch (err) {
+                intentRecord.status = 'HALTED_RETRY_REQUIRED';
+                intentRecord.errorReason = err.message;
+                intentRecord.updatedAt = new Date().toISOString();
+                storage.set('selection_mutation_intents', intents);
+                throw new Error(`Gagal melakukan mutasi stok batch: ${err.message}`);
+              }
+
+              targetRecord.stockMutationStatus = 'APPLIED';
+              targetRecord.stockMutationAt = nowIso;
+              targetRecord.stockMutationBy = currentUser.userId || currentUser.code || currentUser.id || 'ASISTEN';
+              targetRecord.stockMutationQty = mutationQty;
+              targetRecord.stockMutationError = null;
+              targetRecord.status = 'DISETUJUI';
+              targetRecord.isFinal = true;
+              targetRecord.verificationStatus = VERIFICATION_STATUS.TERVERIFIKASI;
+              targetRecord.verifiedByUserId = currentUser.userId || currentUser.id;
+              targetRecord.verifiedByName = currentUser.name || 'Asisten Bibitan';
+              targetRecord.verifiedByRole = currentUser.role || ROLES.ASISTEN_BIBITAN;
+              targetRecord.verifiedAt = nowIso;
+              targetRecord.approvalNotes = notes || 'Disetujui oleh Asisten Bibitan via Central Hub Verifikasi';
+              targetRecord.updatedAt = nowIso;
+
+              // Update Selection Pool item
+              const fullPool = storage.get('selection_pool', []);
+              const poolIdx = fullPool.findIndex(p =>
+                p.selectionTransactionId === targetRecord.id ||
+                p.id === targetRecord.selectionTransactionId ||
+                p.docNo === targetRecord.docNo ||
+                p.selectionDocNo === targetRecord.docNo ||
+                (p.dederanDocNo && p.dederanDocNo === targetRecord.sourceDocNo) ||
+                (p.sourceDocNo && p.sourceDocNo === targetRecord.sourceDocNo)
+              );
+              if (poolIdx !== -1) {
+                fullPool[poolIdx].status = 'DECLARED_CULLED';
+                fullPool[poolIdx].verifiedAt = nowIso;
+                fullPool[poolIdx].verifiedByName = currentUser.name || 'Asisten Bibitan';
+                storage.set('selection_pool', fullPool);
+              }
+
+              records[idx] = targetRecord;
+              storage.set(sourceRecord._storeKey, records);
+              persistVerificationRecord();
+            };
+
+            // Gunakan Web Locks jika tersedia pada runtime
+            if (typeof navigator !== 'undefined' && navigator.locks && navigator.locks.request) {
+              lockAsyncPromise = executeStockMutationWithLock(batchKey, async () => {
+                performDeduction();
+              });
+            } else {
+              performDeduction();
+            }
+          } else {
+            // mutationQty === 0
+            targetRecord.stockMutationStatus = 'NOT_REQUIRED';
+            targetRecord.stockMutationAt = nowIso;
+            targetRecord.stockMutationBy = currentUser.userId || currentUser.code || currentUser.id || 'ASISTEN';
+            targetRecord.stockMutationQty = 0;
+            targetRecord.stockMutationError = null;
+            targetRecord.status = 'DISETUJUI';
+            targetRecord.isFinal = true;
+            targetRecord.verificationStatus = VERIFICATION_STATUS.TERVERIFIKASI;
+            targetRecord.verifiedByUserId = currentUser.userId || currentUser.id;
+            targetRecord.verifiedByName = currentUser.name || 'Asisten Bibitan';
+            targetRecord.verifiedByRole = currentUser.role || ROLES.ASISTEN_BIBITAN;
+            targetRecord.verifiedAt = nowIso;
+            targetRecord.approvalNotes = notes || 'Disetujui oleh Asisten Bibitan via Central Hub Verifikasi';
+            targetRecord.updatedAt = nowIso;
+
+            // Update Selection Pool item
+            const fullPool = storage.get('selection_pool', []);
+            const poolIdx = fullPool.findIndex(p =>
+              p.selectionTransactionId === targetRecord.id ||
+              p.id === targetRecord.selectionTransactionId ||
+              p.docNo === targetRecord.docNo ||
+              p.selectionDocNo === targetRecord.docNo ||
+              (p.dederanDocNo && p.dederanDocNo === targetRecord.sourceDocNo) ||
+              (p.sourceDocNo && p.sourceDocNo === targetRecord.sourceDocNo)
+            );
+            if (poolIdx !== -1) {
+              fullPool[poolIdx].status = 'DECLARED_CULLED';
+              fullPool[poolIdx].verifiedAt = nowIso;
+              fullPool[poolIdx].verifiedByName = currentUser.name || 'Asisten Bibitan';
+              storage.set('selection_pool', fullPool);
+            }
+
+            records[idx] = targetRecord;
+            storage.set(sourceRecord._storeKey, records);
+            persistVerificationRecord();
+          }
+        }
+      } else if (referenceType === 'SELEKSI_PRA_OKULASI' || sourceRecord._storeKey === 'pre_grafting_selection_documents') {
+        // --- SELEKSI PRA-OKULASI (I, II, III): ZERO STOCK MUTATION & DOWNSTREAM GENERATION ---
+        targetRecord.status = 'DISETUJUI';
+        targetRecord.isFinal = true;
+        targetRecord.verificationStatus = VERIFICATION_STATUS.TERVERIFIKASI;
+        targetRecord.finalBibitQty = targetRecord.totalLayak !== undefined ? targetRecord.totalLayak : targetRecord.currentBibitQty;
+        targetRecord.finalPolybagQty = targetRecord.activePolybagQty !== undefined ? targetRecord.activePolybagQty : targetRecord.sourcePolybagQty;
+        targetRecord.activePolybagQty = targetRecord.activePolybagQty !== undefined ? targetRecord.activePolybagQty : (targetRecord.currentPolybagQty || 0);
+        targetRecord.emptyPolybagQty = targetRecord.emptyPolybagQty !== undefined ? targetRecord.emptyPolybagQty : 0;
+        targetRecord.verifiedByUserId = currentUser.userId || currentUser.id;
+        targetRecord.verifiedByName = currentUser.name || 'Asisten Bibitan';
+        targetRecord.verifiedByRole = currentUser.role || ROLES.ASISTEN_BIBITAN;
+        targetRecord.verifiedAt = nowIso;
+        targetRecord.approvalNotes = notes || 'Disetujui oleh Asisten Bibitan via Central Hub Verifikasi';
+        targetRecord.updatedAt = nowIso;
+
+        // Sinkronkan seluruh transaksi pelaksanaan Seleksi Pra-Okulasi anak
+        const allSelTxs = storage.get('selection_transactions', []);
+        let childTxsModified = false;
+        allSelTxs.forEach(tx => {
+          if (
+            tx.selectionDocumentId === targetRecord.id ||
+            tx.parentSelectionDocumentId === targetRecord.id ||
+            tx.selectionDocNo === targetRecord.docNo ||
+            tx.parentSelectionDocNo === targetRecord.docNo
+          ) {
+            tx.status = 'DISETUJUI';
+            tx.isFinal = true;
+            tx.verificationStatus = VERIFICATION_STATUS.TERVERIFIKASI;
+            tx.verifiedByUserId = currentUser.userId || currentUser.id;
+            tx.verifiedByName = currentUser.name || 'Asisten Bibitan';
+            tx.verifiedAt = nowIso;
+            tx.approvalNotes = notes || 'Disetujui oleh Asisten Bibitan via Central Hub Verifikasi';
+            tx.updatedAt = nowIso;
+            childTxsModified = true;
+          }
+        });
+        if (childTxsModified) {
+          storage.set('selection_transactions', allSelTxs);
+        }
+
+        // Downstream Document Generation
+        const stageNorm = String(targetRecord.selectionStage || '').toUpperCase();
         try {
           if (stageNorm === 'SELEKSI_I' || stageNorm === 'SELEKSI_1') {
-            createSelection2DocumentFromSelection1(approvedDoc.id, currentUser);
+            createSelection2DocumentFromSelection1(targetRecord, currentUser);
           } else if (stageNorm === 'SELEKSI_II' || stageNorm === 'SELEKSI_2') {
-            createSelection3DocumentFromSelection2(approvedDoc.id, currentUser);
+            createSelection3DocumentFromSelection2(targetRecord, currentUser);
           }
         } catch (genErr) {
           console.warn('[approveVerification] Downstream generation notice:', genErr.message);
         }
+
+        records[idx] = targetRecord;
+        storage.set(sourceRecord._storeKey, records);
+        persistVerificationRecord();
+      } else if (referenceType === 'MATERIAL') {
+        targetRecord.materialSubmissionStatus = 'DISETUJUI';
+        targetRecord.verifiedAt = nowIso;
+        targetRecord.verifiedByUserId = currentUser.userId || currentUser.id;
+        targetRecord.verifiedByName = currentUser.name || 'Asisten Bibitan';
+        records[idx] = targetRecord;
+        storage.set(sourceRecord._storeKey, records);
+        persistVerificationRecord();
+      } else {
+        // Modul Pemeriksaan Lapangan & Lainnya (Presensi, Penerimaan, Dederan/Okulasi Inspection, dll.)
+        targetRecord.status = referenceType === 'TIDAK_HADIR' ? 'TERKONFIRMASI' : 'DISETUJUI';
+        targetRecord.isFinal = true;
+        targetRecord.verificationStatus = referenceType === 'TIDAK_HADIR' ? VERIFICATION_STATUS.DATA_TERKONFIRMASI : VERIFICATION_STATUS.TERVERIFIKASI;
+        targetRecord.verifiedAt = nowIso;
+        targetRecord.verifiedByUserId = currentUser.userId || currentUser.id;
+        targetRecord.verifiedByName = currentUser.name || 'Asisten Bibitan';
+        records[idx] = targetRecord;
+        storage.set(sourceRecord._storeKey, records);
+        persistVerificationRecord();
       }
 
       // Auto-reconcile Dokumen Seleksi Pra-Okulasi jika Pindah Semai (SEEDING) atau CULL baru disetujui ASB
-      if (referenceType === 'PENYEMAIAN' || referenceType === 'SEEDING' || referenceType === 'SELEKSI' || sourceRecord._storeKey === 'seeding_transactions' || sourceRecord._storeKey === 'selection_transactions') {
+      if (referenceType === 'PENYEMAIAN' || referenceType === 'SEEDING' || referenceType === 'SELEKSI' || referenceType === 'PENYELEKSIAN' || sourceRecord._storeKey === 'seeding_transactions' || sourceRecord._storeKey === 'selection_transactions') {
         try {
           syncAllSeedingsToPreGraftingSelectionDocuments(currentUser);
+          syncAllApprovedPreGraftingSelectionDocuments(currentUser);
         } catch (syncErr) {
           console.warn('[approveVerification] Auto-reconcile pre-grafting notice:', syncErr.message);
         }
       }
     }
+  } else {
+    persistVerificationRecord();
   }
 
-  return auditRecord;
+  const p = lockAsyncPromise ? lockAsyncPromise.then(() => auditRecord) : Promise.resolve(auditRecord);
+  Object.assign(p, auditRecord);
+  return p;
 }
 
 /**
@@ -1643,7 +2032,21 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
     throw new Error(`Data transaksi sumber tidak ditemukan (${referenceType}:${referenceId}).`);
   }
 
-  // 2. Scope validation
+  // 3. Return Guard: Dokumen final atau stok yang sudah termutasi TIDAK DAPAT dikembalikan
+  const existingVerif = getVerificationByReference(referenceType, referenceId);
+  if (existingVerif && (existingVerif.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || existingVerif.verificationStatus === VERIFICATION_STATUS.DATA_TERKONFIRMASI)) {
+    throw new Error(`Dokumen yang sudah diverifikasi dan berstatus final tidak dapat dikembalikan (No: ${existingVerif.verificationNo || existingVerif.verificationId}).`);
+  }
+
+  if (sourceRecord.isFinal || sourceRecord.status === 'DISETUJUI' || sourceRecord.status === 'TERKONFIRMASI') {
+    throw new Error(`Dokumen ini sudah berstatus final (${sourceRecord.docNo || referenceId}) dan tidak dapat dikembalikan.`);
+  }
+
+  if (sourceRecord.stockMutationStatus === 'APPLIED') {
+    throw new Error(`Dokumen dengan mutasi stok yang telah diterapkan (APPLIED) tidak dapat dikembalikan.`);
+  }
+
+  // 4. Scope validation
   const recordEstateId = sourceRecord.targetEstateId || sourceRecord.estateId || sourceRecord.sourceEstateId;
   const recordDivisionId = sourceRecord.targetDivisionId || sourceRecord.divisionId || sourceRecord.sourceDivisionId;
   if (currentUser.estateId && recordEstateId && recordEstateId !== currentUser.estateId) {
@@ -1653,11 +2056,11 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
     throw new Error(`Akses ditolak: Dokumen berada di luar lingkup divisi user (${recordDivisionId} vs ${currentUser.divisionId}).`);
   }
 
-  // 3. Consistency Findings Snapshot
+  // 5. Consistency Findings Snapshot
   const evalResult = evaluateRecordConsistency(referenceType, sourceRecord);
   const allFindings = evalResult.errors.concat(evalResult.warnings).map(f => f.message || f);
 
-  // 4. Build Audit Record
+  // 6. Build Audit Record
   const docNo = sourceRecord.docNo || sourceRecord.nir || sourceRecord.dispatchNo || sourceRecord.receiptDocNo || sourceRecord.selectionNo || sourceRecord.destructionNo || referenceId;
   const verificationId = `VRF-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
   const verificationNo = generateVerificationNo();
@@ -1683,7 +2086,7 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
     updatedAt: nowIso
   };
 
-  // 5. Simpan / perbarui ke verification_transactions (ZERO STOCK MUTATION)
+  // 7. Simpan / perbarui ke verification_transactions
   const currentVerifs = storage.get(VERIFICATION_STORAGE_KEY, []);
   const existIdx = currentVerifs.findIndex(v =>
     ((v.referenceType || v.moduleType || '').toUpperCase() === (referenceType || '').toUpperCase()) &&
@@ -1701,7 +2104,7 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
   }
   storage.set(VERIFICATION_STORAGE_KEY, currentVerifs);
 
-  // 6. Update status raw record menjadi REVISION / DIKEMBALIKAN
+  // 8. Update status raw record menjadi REVISION / DIKEMBALIKAN
   if (sourceRecord._storeKey) {
     const records = storage.get(sourceRecord._storeKey, []);
     const idx = records.findIndex(r => String(r.id || r.docNo || '') === String(referenceId) || String(r.docNo || '') === String(docNo));
@@ -1718,9 +2121,52 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
       records[idx].returnReason = returnReason.trim();
       records[idx].returnedAt = nowIso;
       records[idx].returnedByUserId = currentUser.userId || currentUser.id;
+
+      if (referenceType === 'SELEKSI_PRA_OKULASI' || sourceRecord._storeKey === 'pre_grafting_selection_documents') {
+        records[idx].isCompleted = false;
+        const returnedDoc = records[idx];
+        const allSelTxs = storage.get('selection_transactions', []);
+        let childTxsModified = false;
+        allSelTxs.forEach(tx => {
+          if (
+            tx.selectionDocumentId === returnedDoc.id ||
+            tx.parentSelectionDocumentId === returnedDoc.id ||
+            tx.selectionDocNo === returnedDoc.docNo ||
+            tx.parentSelectionDocNo === returnedDoc.docNo
+          ) {
+            tx.status = 'DIKEMBALIKAN';
+            tx.returnReason = returnReason.trim();
+            tx.returnedAt = nowIso;
+            childTxsModified = true;
+          }
+        });
+        if (childTxsModified) {
+          storage.set('selection_transactions', allSelTxs);
+        }
+      } else if (referenceType === 'PENYELEKSIAN' || referenceType === 'SELECTION' || sourceRecord._storeKey === 'selection_transactions') {
+        // Sinkronkan status selection_pool item agar dapat dikoreksi/dipilih ulang oleh Mantri
+        const fullPool = storage.get('selection_pool', []);
+        const poolIdx = fullPool.findIndex(p =>
+          p.selectionTransactionId === sourceRecord.id ||
+          p.id === sourceRecord.selectionTransactionId ||
+          p.docNo === sourceRecord.docNo ||
+          p.selectionDocNo === sourceRecord.docNo ||
+          (p.dederanDocNo && p.dederanDocNo === sourceRecord.sourceDocNo)
+        );
+        if (poolIdx !== -1) {
+          fullPool[poolIdx].status = 'DIKEMBALIKAN';
+          fullPool[poolIdx].returnReason = returnReason.trim();
+          fullPool[poolIdx].returnedAt = nowIso;
+          fullPool[poolIdx].returnedByName = currentUser.name || 'Asisten Bibitan';
+          storage.set('selection_pool', fullPool);
+        }
+      }
+
       storage.set(sourceRecord._storeKey, records);
     }
   }
 
-  return auditRecord;
+  const p = Promise.resolve(auditRecord);
+  Object.assign(p, auditRecord);
+  return p;
 }

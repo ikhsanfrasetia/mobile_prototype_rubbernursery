@@ -1,7 +1,7 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { session } from '../../core/session.js';
-import { formatDate, formatStandardDocNo, generateUniqueDocNo, esc } from '../../core/utils.js';
+import { formatDate, formatStandardDocNo, generateUniqueDocNo, esc, getEffectiveTodayDDMMYYYY } from '../../core/utils.js';
 import { getActiveKlons, normalizeKlonName } from '../../data/klon-master.js';
 import { getActiveBatches, getBatchById, getBatchByCode } from '../../data/batch-master.js';
 import { getActiveBedengan, getBedenganById, getBedenganByCode } from '../../data/bedengan-master.js';
@@ -17,7 +17,7 @@ export function renderSeedingForm() {
   const app = document.getElementById('app');
   const user = getCurrentUserContext();
   const userCtx = user;
-  const today = formatDate(new Date().toISOString());
+  const today = getEffectiveTodayDDMMYYYY();
 
   // Get source transaction (from Dederan adapter first, or receipt fallback)
   const sourceIdx = storage.get('seeding_source_index', null);
@@ -107,7 +107,12 @@ export function renderSeedingForm() {
     photos: (editTx && Array.isArray(editTx.photos)) ? JSON.parse(JSON.stringify(editTx.photos)) : []
   };
 
-  const totalPenerimaan = parseInt(sourceTx.totalBerhasil !== undefined ? sourceTx.totalBerhasil : (sourceTx.qty || 0), 10);
+  const rawPenerimaan = sourceTx.totalBerhasil !== undefined 
+    ? sourceTx.totalBerhasil 
+    : (sourceTx.jumlahBenih ?? sourceTx.rawState?.selectedSir?.rawQty ?? sourceTx.qty ?? 0);
+  const totalPenerimaan = typeof rawPenerimaan === 'number'
+    ? rawPenerimaan
+    : (parseInt(String(rawPenerimaan).replace(/[^0-9]/g, ''), 10) || 0);
 
   // Issue Gudang State (from Storage or Edit Mode)
   let issueDocNo = storage.get('selected_issue_doc_no', editTx ? editTx.issueDocNo : null);
@@ -344,20 +349,10 @@ export function renderSeedingForm() {
             </div>
           </div>
 
-          <!-- 3. Banyaknya Ditolak / Seleksi (Simetris 2 Kolom) -->
+          <!-- 3. Banyaknya Ditolak / Seleksi -->
           <div style="margin-top: 10px;">
             <div style="font-size: 0.68rem; color: #6B7280; margin-bottom: 4px; text-align: left;">Banyaknya Ditolak/Seleksi</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center;">
-              <input type="number" id="input-ditolak" value="${state.ditolak}" placeholder="0" min="0" ${isInitialBalanced ? 'disabled' : ''} style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; padding: 0 8px; text-align: left; font-size: 0.78rem; font-weight: 600; color: ${isInitialBalanced ? '#9CA3AF' : '#111827'}; background: ${isInitialBalanced ? '#F3F4F6' : '#FFFFFF'}; outline: none; box-sizing: border-box; cursor: ${isInitialBalanced ? 'not-allowed' : 'text'}; -moz-appearance: textfield; appearance: textfield;">
-              <div style="position: relative; width: 100%; height: 36px;">
-                <select id="select-alasan" style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; background: ${(isInitialBalanced || !state.ditolak || parseInt(state.ditolak) === 0) ? '#F3F4F6' : '#FFFFFF'}; padding: 0 6px; font-size: 0.74rem; font-weight: 500; color: ${(isInitialBalanced || !state.ditolak || parseInt(state.ditolak) === 0) ? '#9CA3AF' : '#374151'}; cursor: ${(isInitialBalanced || !state.ditolak || parseInt(state.ditolak) === 0) ? 'not-allowed' : 'pointer'}; outline: none; box-sizing: border-box;" ${(isInitialBalanced || !state.ditolak || parseInt(state.ditolak) === 0) ? 'disabled' : ''}>
-                  <option value="Tidak Ada" ${state.alasanDitolak === 'Tidak Ada' || !state.ditolak || parseInt(state.ditolak) === 0 ? 'selected' : ''}>Tidak Ada</option>
-                  <option value="Rusak" ${state.alasanDitolak === 'Rusak' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Rusak</option>
-                  <option value="Mati" ${state.alasanDitolak === 'Mati' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Mati</option>
-                  <option value="Lainnya" ${state.alasanDitolak === 'Lainnya' && parseInt(state.ditolak) > 0 ? 'selected' : ''}>Lainnya</option>
-                </select>
-              </div>
-            </div>
+            <input type="number" id="input-ditolak" value="${state.ditolak}" placeholder="0" min="0" ${isInitialBalanced ? 'disabled' : ''} style="width: 100%; height: 36px; border: 1px solid #D1D5DB; border-radius: 4px; padding: 0 8px; text-align: left; font-size: 0.78rem; font-weight: 600; color: ${isInitialBalanced ? '#9CA3AF' : '#111827'}; background: ${isInitialBalanced ? '#F3F4F6' : '#FFFFFF'}; outline: none; box-sizing: border-box; cursor: ${isInitialBalanced ? 'not-allowed' : 'text'}; -moz-appearance: textfield; appearance: textfield;">
           </div>
         </section>
 
@@ -723,20 +718,24 @@ export function renderSeedingForm() {
       state.ditolak = e.target.value;
 
       if (val === 0 || !e.target.value) {
-        selectAlasan.value = 'Tidak Ada';
+        if (selectAlasan) {
+          selectAlasan.value = 'Tidak Ada';
+          selectAlasan.disabled = true;
+          selectAlasan.style.background = '#F3F4F6';
+          selectAlasan.style.color = '#9CA3AF';
+          selectAlasan.style.cursor = 'not-allowed';
+        }
         state.alasanDitolak = 'Tidak Ada';
-        selectAlasan.disabled = true;
-        selectAlasan.style.background = '#F3F4F6';
-        selectAlasan.style.color = '#9CA3AF';
-        selectAlasan.style.cursor = 'not-allowed';
       } else {
-        selectAlasan.disabled = false;
-        selectAlasan.style.background = '#FFFFFF';
-        selectAlasan.style.color = '#374151';
-        selectAlasan.style.cursor = 'pointer';
-        if (selectAlasan.value === 'Tidak Ada') {
-          selectAlasan.value = 'Rusak';
-          state.alasanDitolak = 'Rusak';
+        if (selectAlasan) {
+          selectAlasan.disabled = false;
+          selectAlasan.style.background = '#FFFFFF';
+          selectAlasan.style.color = '#374151';
+          selectAlasan.style.cursor = 'pointer';
+          if (selectAlasan.value === 'Tidak Ada') {
+            selectAlasan.value = 'Rusak';
+            state.alasanDitolak = 'Rusak';
+          }
         }
       }
 
@@ -1015,7 +1014,7 @@ export function renderSeedingForm() {
       bedengan: bedenganDisplay,
       totalPenerimaan,
       ditolak: state.ditolak,
-      alasanDitolak: state.alasanDitolak,
+      alasanDitolak: editTx?.alasanDitolak || null,
       rows: enrichedRows,
       photos: state.photos,
       totalDisemai,

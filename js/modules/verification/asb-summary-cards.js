@@ -129,7 +129,14 @@ export function getPemeriksaanSummary(userCtx) {
   const approvedPreCount = preDocs.filter(d => (d.status || '').toUpperCase() === 'DISETUJUI').length;
 
   const allSelRecords = storage.get(SELECTION_STORAGE_KEY, []);
-  const postRecords = allSelRecords.filter(r => !r.selectionDocumentId && !r.parentSelectionDocumentId && r.selectionType !== SELECTION_TYPES.PRA_OKULASI && r.selectionStage !== SELECTION_STAGES.SELEKSI_1);
+  const postRecords = allSelRecords.filter(r => {
+    if (r.selectionDocumentId || r.parentSelectionDocumentId) return false;
+    if (r.selectionType === SELECTION_TYPES.PRA_OKULASI) return false;
+    if (r.transactionType && String(r.transactionType).startsWith('PELAKSANAAN_SELEKSI')) return false;
+    const st = String(r.selectionStage || '').toUpperCase();
+    if (st === SELECTION_STAGES.SELEKSI_1 || st === 'SELEKSI_I' || st === SELECTION_STAGES.SELEKSI_2 || st === 'SELEKSI_II' || st === SELECTION_STAGES.SELEKSI_3 || st === 'SELEKSI_III') return false;
+    return true;
+  });
   const scopedPost = filterSelectionByScope(postRecords, userCtx);
   const approvedPostCount = scopedPost.filter(d => (d.status || '').toUpperCase() === 'DISETUJUI').length;
 

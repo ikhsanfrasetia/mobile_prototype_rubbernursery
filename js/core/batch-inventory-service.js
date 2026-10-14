@@ -83,6 +83,24 @@ function _findBatchInMaster(batchIdOrCode) {
 }
 
 /**
+ * Helper: Resolve semua kode identitas batch yang mungkin
+ */
+function _resolvePossibleCodes(batchIdOrCode) {
+  if (!batchIdOrCode) return new Set();
+  const targetCode = String(batchIdOrCode).trim();
+  const possibleCodes = new Set([targetCode]);
+  const masterBatch = _findBatchInMaster(targetCode);
+  if (masterBatch) {
+    if (masterBatch.id) possibleCodes.add(String(masterBatch.id).trim());
+    if (masterBatch.batchId) possibleCodes.add(String(masterBatch.batchId).trim());
+    if (masterBatch.batchCode) possibleCodes.add(String(masterBatch.batchCode).trim());
+    if (masterBatch.batchNo) possibleCodes.add(String(masterBatch.batchNo).trim());
+    if (masterBatch.kode) possibleCodes.add(String(masterBatch.kode).trim());
+  }
+  return possibleCodes;
+}
+
+/**
  * Helper: Sinkronisasi backward-compatibility ke nursery_batches jika ada
  */
 function _syncLegacyBatchStorage(batchIdOrCode, availableQty, receivedQty = null, status = null) {
@@ -175,41 +193,39 @@ export function syncBatchPopulationFromSeeding(batchIdOrCode) {
     }
   });
 
-  // 3. Hitung total pengurang CULL yang sudah DISETUJUI / VERIFIED dengan mutasi APPLIED
-  const selections = storage.get('selection_transactions', []);
-  let totalApprovedCull = 0;
-  if (Array.isArray(selections)) {
-    selections.forEach(sel => {
-      const isMatch = (
-        (sel.batchId && possibleCodes.has(String(sel.batchId).trim())) ||
-        (sel.batchCode && possibleCodes.has(String(sel.batchCode).trim())) ||
-        (sel.batchNo && possibleCodes.has(String(sel.batchNo).trim())) ||
-        (sel.sourceBatchCode && possibleCodes.has(String(sel.sourceBatchCode).trim()))
-      );
-      const s = String(sel.status || '').toUpperCase();
-      const isApproved = s === 'DISETUJUI' || s === 'VERIFIED' || s === 'TERVERIFIKASI';
-      if (isMatch && isApproved && sel.stockMutationStatus === 'APPLIED') {
-        const cullQty = Number(sel.jumlahAfkir || sel.quantity || 0);
-        if (!isNaN(cullQty) && cullQty > 0) {
-          totalApprovedCull += cullQty;
+  // 3. Hitung mutasi dari jurnal persediaan pasca-cutover (Single Source of Truth)
+  const journal = _loadInventoryJournal();
+  let journalQtyIn = 0;
+  let journalQtyOut = 0;
+  let hasValidBaseline = false;
+
+  if (Array.isArray(journal)) {
+    // Cari baseline khusus batch ini jika ada
+    const baselineEntry = journal.find(j => 
+      (possibleCodes.has(j.batchId) || possibleCodes.has(j.batchCode)) &&
+      (j.txType === INVENTORY_TX_TYPE.INITIAL || j.txType === 'INITIAL_SOW' || j.txType === 'MIGRATION_BASELINE')
+    );
+    if (baselineEntry) {
+      hasValidBaseline = true;
+    }
+
+    journal.forEach(j => {
+      if (possibleCodes.has(j.batchId) || possibleCodes.has(j.batchCode)) {
+        if (j.txType !== INVENTORY_TX_TYPE.INITIAL && j.txType !== 'INITIAL_SOW' && j.txType !== 'MIGRATION_BASELINE') {
+          journalQtyIn += Number(j.qtyIn || 0);
+          journalQtyOut += Number(j.qtyOut || 0);
         }
       }
     });
   }
 
-  // Juga periksa jurnal mutasi jika ada pengurang selain CULL (misal dispatch/destruction)
-  const journal = _loadInventoryJournal();
-  let journalDeductions = 0;
-  if (Array.isArray(journal)) {
-    journal.forEach(j => {
-      if ((possibleCodes.has(j.batchId) || possibleCodes.has(j.batchCode)) && Number(j.qtyOut || 0) > 0) {
-        journalDeductions += Number(j.qtyOut || 0);
-      }
-    });
+  // Jika belum ada jurnal baseline, gunakan totalDisemaiSum sebagai baseline SOW
+  const baseInitial = totalDisemaiSum;
+  const newAvailable = baseInitial + journalQtyIn - journalQtyOut;
+  if (newAvailable < 0) {
+    throw new Error(`StockIntegrityBreachError: Saldo batch ${targetCode} negatif (${newAvailable} Pkk). Ledger terkunci.`);
   }
 
-  const effectiveDeductions = Math.max(totalApprovedCull, journalDeductions);
-  const newAvailable = Math.max(0, totalDisemaiSum - effectiveDeductions);
   const now = new Date().toISOString();
 
   // 4. Update / init inventory state
@@ -237,14 +253,13 @@ export function syncBatchPopulationFromSeeding(batchIdOrCode) {
     states.push(state);
   } else {
     state.initialQty = totalDisemaiSum;
-    state.receivedQty = totalDisemaiSum;
     state.availableQty = newAvailable;
     state.status = newAvailable > 0 ? INVENTORY_STATUS.AVAILABLE : INVENTORY_STATUS.EMPTY;
     state.updatedAt = now;
   }
 
   _saveInventoryStates(states);
-  _syncLegacyBatchStorage(bId, newAvailable, totalDisemaiSum, state.status);
+  _syncLegacyBatchStorage(state.batchId, newAvailable, totalDisemaiSum, state.status);
 
   return { ...state };
 }
@@ -383,21 +398,30 @@ export function initBatchInventory(batchId, batchCode, initialQty = 0, options =
   // Jika initialQty > 0, catat jurnal awal
   if (initQty > 0) {
     const journal = _loadInventoryJournal();
-    const journalId = `JRN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-    journal.push({
-      id: journalId,
-      batchId: batchId,
-      batchCode: batchCode || batchId,
-      txType: INVENTORY_TX_TYPE.INITIAL,
-      qtyIn: initQty,
-      qtyOut: 0,
-      balance: initQty,
-      refId: options.refId || null,
-      notes: options.notes || 'Inisialisasi stok awal batch',
-      createdAt: now,
-      createdBy: options.createdBy || 'SYSTEM'
-    });
-    _saveInventoryJournal(journal);
+    const existingBatchEntries = journal.filter(j => j.batchId === batchId || j.batchCode === batchCode);
+    const nextSeq = existingBatchEntries.length + 1;
+    const idempotencyKey = options.idempotencyKey || `MUT-${batchId}-INITIAL-${options.refId || 'BASELINE'}`;
+    const duplicateEntry = journal.find(j => (j.batchId === batchId || j.batchCode === batchCode) && j.idempotencyKey === idempotencyKey);
+
+    if (!duplicateEntry) {
+      const journalId = `JRN-${batchId}-${nextSeq}`;
+      journal.push({
+        id: journalId,
+        batchId: batchId,
+        batchCode: batchCode || batchId,
+        batchSeq: nextSeq,
+        idempotencyKey: idempotencyKey,
+        txType: options.txType || INVENTORY_TX_TYPE.INITIAL,
+        qtyIn: initQty,
+        qtyOut: 0,
+        balance: initQty,
+        refId: options.refId || null,
+        notes: options.notes || 'Inisialisasi stok awal batch',
+        createdAt: now,
+        createdBy: options.createdBy || 'SYSTEM'
+      });
+      _saveInventoryJournal(journal);
+    }
   }
 
   _syncLegacyBatchStorage(batchId, initQty, initQty, stateObj.status);
@@ -459,6 +483,33 @@ export function addBatchStockFromReceipt(batchIdOrCode, qty, receiptMetaOrId = n
     bCode = state.batchCode || state.batchId;
   }
 
+  // Catat ke Jurnal Mutasi
+  const refId = typeof receiptMetaOrId === 'object' && receiptMetaOrId !== null
+    ? (receiptMetaOrId.id || receiptMetaOrId.receiptId || receiptMetaOrId.receiptDocNo || receiptMetaOrId.docNo)
+    : receiptMetaOrId;
+
+  const userName = typeof user === 'object' && user !== null
+    ? (user.name || user.fullName || user.userId || user.username || 'SYSTEM')
+    : (user || 'SYSTEM');
+
+  const journal = _loadInventoryJournal();
+
+  const idempotencyKey = typeof receiptMetaOrId === 'object' && receiptMetaOrId?.idempotencyKey
+    ? receiptMetaOrId.idempotencyKey
+    : `MUT-${bId}-${INVENTORY_TX_TYPE.RECEIPT}-${refId || Date.now()}`;
+
+  // Cek duplikasi idempotencyKey SEBELUM mutasi state (mencegah double addition)
+  const duplicateEntry = journal.find(j => (j.batchId === bId || j.batchCode === bCode) && j.idempotencyKey === idempotencyKey);
+  if (duplicateEntry) {
+    if (duplicateEntry.qtyIn === addQty && duplicateEntry.txType === INVENTORY_TX_TYPE.RECEIPT) {
+      // Idempoten: Payload identik, skip mutasi ganda
+      return { ...state, idempotentSkipped: true, journalId: duplicateEntry.id };
+    } else {
+      // Konflik idempotencyKey dengan payload berbeda
+      throw new Error(`StockIntegrityBreachError: IdempotencyKey '${idempotencyKey}' terdeteksi dengan payload berbeda.`);
+    }
+  }
+
   const newReceived = Number(state.receivedQty || 0) + addQty;
   const newAvailable = Number(state.availableQty || 0) + addQty;
   const now = new Date().toISOString();
@@ -470,22 +521,17 @@ export function addBatchStockFromReceipt(batchIdOrCode, qty, receiptMetaOrId = n
 
   _saveInventoryStates(states);
 
-  // Catat ke Jurnal Mutasi
-  const refId = typeof receiptMetaOrId === 'object' && receiptMetaOrId !== null
-    ? (receiptMetaOrId.id || receiptMetaOrId.receiptId || receiptMetaOrId.receiptDocNo || receiptMetaOrId.docNo)
-    : receiptMetaOrId;
+  const existingBatchEntries = journal.filter(j => j.batchId === bId || j.batchCode === bCode);
+  const nextSeq = existingBatchEntries.length + 1;
 
-  const userName = typeof user === 'object' && user !== null
-    ? (user.name || user.fullName || user.userId || user.username || 'SYSTEM')
-    : (user || 'SYSTEM');
-
-  const journal = _loadInventoryJournal();
-  const journalId = `JRN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+  const journalId = `JRN-${bId}-${nextSeq}`;
 
   journal.push({
     id: journalId,
     batchId: bId,
     batchCode: bCode,
+    batchSeq: nextSeq,
+    idempotencyKey: idempotencyKey,
     txType: INVENTORY_TX_TYPE.RECEIPT,
     qtyIn: addQty,
     qtyOut: 0,
@@ -501,7 +547,7 @@ export function addBatchStockFromReceipt(batchIdOrCode, qty, receiptMetaOrId = n
   // Sync backward compatibility
   _syncLegacyBatchStorage(bId, newAvailable, newReceived, INVENTORY_STATUS.AVAILABLE);
 
-  return { ...state };
+  return { ...state, journalId };
 }
 
 /**
@@ -553,7 +599,47 @@ export function deductBatchStock(batchIdOrCode, qty, txType = INVENTORY_TX_TYPE.
     throw new Error(`Batch '${state.batchCode || state.batchId}' berstatus NONAKTIF dan tidak dapat digunakan untuk mutasi stok.`);
   }
 
+  if (_startupRecoveryError) {
+    throw new Error(`StartupRecoveryBlockedError: Recovery startup gagal (${_startupRecoveryError.message}). Operasi mutasi batch '${state.batchCode || state.batchId}' diblokir fail-closed.`);
+  }
+
+  const anomalies = storage.get('selection_anomaly_cases', []);
+  const activeCase = anomalies.find(a => 
+    (a.batchId === state.batchId || a.batchCode === state.batchCode) && 
+    (a.status === 'BATCH_LOCKED' || a.scope === 'BATCH_GLOBAL')
+  );
+  if (activeCase) {
+    throw new Error(`BatchLockedError: Batch '${state.batchCode || state.batchId}' dalam status terkunci global (${activeCase.status}) [Kasus: ${activeCase.caseNo || activeCase.id}]. Seluruh mutasi batch ditolak.`);
+  }
+
   const currentAvailable = Number(state.availableQty || 0);
+
+  const refId = typeof refIdOrMeta === 'object' && refIdOrMeta !== null
+    ? (refIdOrMeta.id || refIdOrMeta.docNo || refIdOrMeta.dispatchId || refIdOrMeta.selectionId || refIdOrMeta.destructionId)
+    : refIdOrMeta;
+
+  const userName = typeof user === 'object' && user !== null
+    ? (user.name || user.fullName || user.userId || user.username || 'SYSTEM')
+    : (user || 'SYSTEM');
+
+  const journal = _loadInventoryJournal();
+
+  const idempotencyKey = typeof refIdOrMeta === 'object' && refIdOrMeta?.idempotencyKey
+    ? refIdOrMeta.idempotencyKey
+    : `MUT-${state.batchId}-${txType}-${refId || Date.now()}`;
+
+  // Cek duplikasi idempotencyKey SEBELUM mutasi state (mencegah double deduction)
+  const duplicateEntry = journal.find(j => (j.batchId === state.batchId || j.batchCode === state.batchCode) && j.idempotencyKey === idempotencyKey);
+  if (duplicateEntry) {
+    if (duplicateEntry.qtyOut === deductQty && duplicateEntry.txType === txType) {
+      // Idempoten: Payload identik, skip mutasi ganda
+      return { ...state, idempotentSkipped: true, journalId: duplicateEntry.id };
+    } else {
+      // Konflik idempotencyKey dengan payload berbeda
+      throw new Error(`StockIntegrityBreachError: IdempotencyKey '${idempotencyKey}' terdeteksi dengan payload berbeda.`);
+    }
+  }
+
   if (currentAvailable < deductQty) {
     throw new Error(`Stok batch '${state.batchCode || state.batchId}' tidak mencukupi (Tersedia: ${currentAvailable}, Diminta: ${deductQty})`);
   }
@@ -569,21 +655,17 @@ export function deductBatchStock(batchIdOrCode, qty, txType = INVENTORY_TX_TYPE.
 
   _saveInventoryStates(states);
 
-  const refId = typeof refIdOrMeta === 'object' && refIdOrMeta !== null
-    ? (refIdOrMeta.id || refIdOrMeta.docNo || refIdOrMeta.dispatchId || refIdOrMeta.selectionId || refIdOrMeta.destructionId)
-    : refIdOrMeta;
-
-  const userName = typeof user === 'object' && user !== null
-    ? (user.name || user.fullName || user.userId || user.username || 'SYSTEM')
-    : (user || 'SYSTEM');
-
-  const journal = _loadInventoryJournal();
-  const journalId = `JRN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+  // Deteksi batch sequence monotonik naik
+  const existingBatchEntries = journal.filter(j => j.batchId === state.batchId || j.batchCode === state.batchCode);
+  const nextSeq = existingBatchEntries.length + 1;
+  const journalId = `JRN-${state.batchId}-${nextSeq}`;
 
   journal.push({
     id: journalId,
     batchId: state.batchId,
     batchCode: state.batchCode || state.batchId,
+    batchSeq: nextSeq,
+    idempotencyKey: idempotencyKey,
     txType: txType || INVENTORY_TX_TYPE.DISPATCH,
     qtyIn: 0,
     qtyOut: deductQty,
@@ -599,48 +681,414 @@ export function deductBatchStock(batchIdOrCode, qty, txType = INVENTORY_TX_TYPE.
   // Sync backward compatibility
   _syncLegacyBatchStorage(state.batchId, newAvailable, null, state.status);
 
-  return { ...state };
+  return { ...state, journalId };
 }
 
 /**
- * Mengurangi stok multi-batch secara ATOMIK
+ * Eksekusi mutasi stok terkoordinasi dengan Web Locks API (Fail-Closed Policy)
+ * @param {Array<string>|string} batchIds 
+ * @param {Function} mutationCallback 
+ */
+export async function executeStockMutationWithLock(batchIds, mutationCallback) {
+  const ids = Array.isArray(batchIds) ? batchIds : [batchIds];
+  const sortedBatchIds = [...new Set(ids.map(id => String(id).trim()))].sort();
+
+  if (typeof navigator === 'undefined' || !navigator.locks || !navigator.locks.request) {
+    throw new Error('StockConcurrencyError: Web Locks API tidak tersedia. Operasi mutasi ditolak secara fail-closed.');
+  }
+
+  const acquireRecursive = async (index) => {
+    if (index >= sortedBatchIds.length) {
+      return await mutationCallback();
+    }
+    const bId = sortedBatchIds[index];
+    return await navigator.locks.request(`lock:batch:${bId}`, { mode: 'exclusive' }, async () => {
+      return await acquireRecursive(index + 1);
+    });
+  };
+
+  return await acquireRecursive(0);
+}
+
+/**
+ * Mengurangi stok multi-batch secara ATOMIK di bawah Web Locks (Fail-Closed & Konsisten)
  * @param {Array<{batchIdOrCode: string, qty: number}>} allocations 
  * @param {string} txType 
  * @param {string} refId 
  * @param {Object|string} user 
  */
-export function deductMultiBatchStock(allocations, txType = INVENTORY_TX_TYPE.DISPATCH, refId = null, user = null) {
+export async function deductMultiBatchStock(allocations, txType = INVENTORY_TX_TYPE.DISPATCH, refId = null, user = null) {
   if (!Array.isArray(allocations) || allocations.length === 0) {
     return { success: false, error: 'Daftar alokasi batch tidak boleh kosong.' };
   }
 
-  // 1. Validasi kecukupan seluruh batch terlebih dahulu
-  for (const alloc of allocations) {
-    const bTarget = alloc.batchIdOrCode || alloc.batchCode || alloc.batchId;
-    const deductQty = Number(alloc.qty);
-    if (isNaN(deductQty) || deductQty <= 0) {
-      return { success: false, error: `Kuantitas alokasi (${alloc.qty}) tidak valid.` };
+  const batchIds = allocations.map(a => a.batchIdOrCode || a.batchCode || a.batchId).filter(Boolean);
+
+  return await executeStockMutationWithLock(batchIds, async () => {
+    // 1. Validasi kecukupan seluruh batch terlebih dahulu di bawah lock (all-or-nothing, no partial allocation)
+    for (const alloc of allocations) {
+      const bTarget = alloc.batchIdOrCode || alloc.batchCode || alloc.batchId;
+      const deductQty = Number(alloc.qty);
+      if (isNaN(deductQty) || deductQty <= 0) {
+        return { success: false, error: `Kuantitas alokasi (${alloc.qty}) tidak valid.` };
+      }
+
+      const available = getAvailableQty(bTarget);
+      if (available < deductQty) {
+        return {
+          success: false,
+          error: `Stok batch ${bTarget} (${available.toLocaleString('id-ID')} Pkk) tidak mencukupi untuk alokasi ${deductQty.toLocaleString('id-ID')} Pkk.`
+        };
+      }
     }
 
-    const available = getAvailableQty(bTarget);
-    if (available < deductQty) {
-      return {
-        success: false,
-        error: `Stok batch ${bTarget} (${available.toLocaleString('id-ID')} Pkk) tidak mencukupi untuk alokasi ${deductQty.toLocaleString('id-ID')} Pkk.`
+    // 2. Eksekusi mutasi seluruh batch
+    const results = [];
+    for (const alloc of allocations) {
+      const bTarget = alloc.batchIdOrCode || alloc.batchCode || alloc.batchId;
+      const deductQty = Number(alloc.qty);
+      const updated = deductBatchStock(bTarget, deductQty, txType, refId, user, alloc.notes || '');
+      results.push(updated);
+    }
+
+    return { success: true, results };
+  });
+}
+
+/**
+ * Mengurangi stok Batch terproteksi Web Locks API
+ */
+export async function deductBatchStockWithLock(batchIdOrCode, qty, txType = INVENTORY_TX_TYPE.DISPATCH, refIdOrMeta = null, user = null, notes = '') {
+  return await executeStockMutationWithLock(batchIdOrCode, async () => {
+    return deductBatchStock(batchIdOrCode, qty, txType, refIdOrMeta, user, notes);
+  });
+}
+
+/**
+ * Menambah stok Batch dari Receipt terproteksi Web Locks API
+ */
+export async function addBatchStockFromReceiptWithLock(batchIdOrCode, qty, receiptMetaOrId = null, user = null, notes = '') {
+  return await executeStockMutationWithLock(batchIdOrCode, async () => {
+    return addBatchStockFromReceipt(batchIdOrCode, qty, receiptMetaOrId, user, notes);
+  });
+}
+
+/**
+ * Inisialisasi stok Batch terproteksi Web Locks API
+ */
+export async function initBatchInventoryWithLock(batchId, batchCode, initialQty = 0, options = {}) {
+  return await executeStockMutationWithLock(batchId, async () => {
+    return initBatchInventory(batchId, batchCode, initialQty, options);
+  });
+}
+
+/**
+ * Helper untuk menandai dan mengunci batch yang terdeteksi anomali integritas
+ */
+function _lockBatchAnomaly(batchKey, reason) {
+  const anomalies = storage.get('selection_anomaly_cases', []);
+  const exists = anomalies.find(a => (a.batchId === batchKey || a.batchCode === batchKey) && a.status === 'BATCH_LOCKED');
+  if (!exists) {
+    anomalies.push({
+      id: `ANOMALY-BATCH-${Date.now()}`,
+      caseNo: `CASE-BATCH-${Date.now().toString().slice(-4)}`,
+      batchId: batchKey,
+      batchCode: batchKey,
+      status: 'BATCH_LOCKED',
+      scope: 'BATCH_GLOBAL',
+      reason,
+      createdAt: new Date().toISOString()
+    });
+    storage.set('selection_anomaly_cases', anomalies);
+  }
+}
+
+/**
+ * Prosedur Kanonis Replay Ledger & Rekonsiliasi Saldo Batch (Section 5.3 Plan)
+ * @param {string} batchIdOrCode
+ * @returns {Object}
+ */
+export function replayBatchInventoryLedger(batchIdOrCode) {
+  const possibleCodes = _resolvePossibleCodes(batchIdOrCode);
+  const targetCode = Array.from(possibleCodes)[0] || String(batchIdOrCode).trim();
+  const journal = _loadInventoryJournal();
+
+  const batchEntries = journal.filter(j => possibleCodes.has(String(j.batchId).trim()) || possibleCodes.has(String(j.batchCode).trim()));
+
+  // 1. Validasi Baseline
+  const baselines = batchEntries.filter(j => 
+    j.txType === INVENTORY_TX_TYPE.INITIAL || 
+    j.txType === 'INITIAL_SOW' || 
+    j.txType === 'MIGRATION_BASELINE'
+  );
+
+  if (baselines.length > 1) {
+    _lockBatchAnomaly(targetCode, `BASELINE_CONFLICT_ERROR: Ditemukan ${baselines.length} baseline aktif pada batch ${targetCode}.`);
+    throw new Error(`BASELINE_CONFLICT_ERROR: Ditemukan lebih dari satu baseline pada batch ${targetCode}. Ledger terkunci.`);
+  }
+
+  // 2. Filter entri non-baseline
+  const nonBaselines = batchEntries.filter(j => 
+    j.txType !== INVENTORY_TX_TYPE.INITIAL && 
+    j.txType !== 'INITIAL_SOW' && 
+    j.txType !== 'MIGRATION_BASELINE'
+  );
+
+  // Periksa apakah ada data historis tanpa batchSeq yang tidak dapat dipastikan urutannya
+  const hasUnsequenced = nonBaselines.some(j => j.batchSeq === undefined || j.batchSeq === null);
+  if (hasUnsequenced && nonBaselines.length > 1) {
+    const allHaveCreatedAt = nonBaselines.every(j => j.createdAt);
+    if (!allHaveCreatedAt) {
+      _lockBatchAnomaly(targetCode, `AUDIT_REQUIRED: Urutan jurnal historis tidak dapat dipastikan secara deterministik.`);
+      throw new Error(`AUDIT_REQUIRED: Urutan jurnal historis batch ${targetCode} tidak dapat dibuktikan.`);
+    }
+  }
+
+  // Urutkan berdasarkan batchSeq menaik, lalu createdAt / id leksikografis
+  nonBaselines.sort((a, b) => {
+    if (a.batchSeq !== undefined && b.batchSeq !== undefined && a.batchSeq !== b.batchSeq) {
+      return a.batchSeq - b.batchSeq;
+    }
+    const timeA = new Date(a.createdAt || 0).getTime();
+    const timeB = new Date(b.createdAt || 0).getTime();
+    if (timeA !== timeB) return timeA - timeB;
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
+
+  // 3. Validasi sequence gap dan nilai negatif
+  let expectedSeq = baselines.length === 1 && baselines[0].batchSeq !== undefined ? baselines[0].batchSeq + 1 : 1;
+  const seenIdempotencyKeys = new Map();
+  let baseInitial = 0;
+
+  if (baselines.length === 1) {
+    baseInitial = Number(baselines[0].qtyIn || baselines[0].balance || 0);
+  } else {
+    const sows = storage.get('seeding_transactions', []);
+    const matchingSow = sows.filter(s => possibleCodes.has(String(s.batchId || s.batchCode || s.batchNo || '').trim()));
+    baseInitial = matchingSow.reduce((sum, s) => sum + Number(s.totalDisemai || 0), 0);
+  }
+
+  let runningBalance = baseInitial;
+  let lastAppliedJournalId = baselines.length === 1 ? baselines[0].id : null;
+
+  for (let i = 0; i < nonBaselines.length; i++) {
+    const entry = nonBaselines[i];
+
+    // Cek sequence gap jika batchSeq ada
+    if (entry.batchSeq !== undefined && entry.batchSeq !== null) {
+      if (entry.batchSeq > expectedSeq) {
+        _lockBatchAnomaly(targetCode, `StockIntegrityBreachError: Sequence gap terdeteksi pada batch ${targetCode} (ekspektasi ${expectedSeq}, lompat ke ${entry.batchSeq}).`);
+        throw new Error(`StockIntegrityBreachError: Sequence gap terdeteksi pada batch ${targetCode}.`);
+      }
+      expectedSeq = Math.max(expectedSeq, entry.batchSeq + 1);
+    }
+
+    // Validasi kuantitas non-negatif
+    const qIn = Number(entry.qtyIn || 0);
+    const qOut = Number(entry.qtyOut || 0);
+    if (qIn < 0 || qOut < 0) {
+      _lockBatchAnomaly(targetCode, `StockIntegrityBreachError: Kuantitas jurnal negatif terdeteksi (in: ${qIn}, out: ${qOut}).`);
+      throw new Error(`StockIntegrityBreachError: Kuantitas jurnal negatif pada batch ${targetCode}.`);
+    }
+
+    // Validasi idempotency key
+    if (entry.idempotencyKey) {
+      if (seenIdempotencyKeys.has(entry.idempotencyKey)) {
+        const prev = seenIdempotencyKeys.get(entry.idempotencyKey);
+        if (prev.qtyIn !== qIn || prev.qtyOut !== qOut || prev.txType !== entry.txType) {
+          _lockBatchAnomaly(targetCode, `StockIntegrityBreachError: Konflik idempotencyKey '${entry.idempotencyKey}' dengan payload berbeda.`);
+          throw new Error(`StockIntegrityBreachError: Konflik idempotencyKey '${entry.idempotencyKey}' dengan payload berbeda.`);
+        }
+        // Identik: skip mutasi ganda kumulatif
+        continue;
+      }
+      seenIdempotencyKeys.set(entry.idempotencyKey, entry);
+    }
+
+    runningBalance = runningBalance + qIn - qOut;
+    lastAppliedJournalId = entry.id;
+
+    if (runningBalance < 0) {
+      _lockBatchAnomaly(targetCode, `StockIntegrityBreachError: Replay saldo menghasilkan nilai negatif (${runningBalance} Pkk).`);
+      throw new Error(`StockIntegrityBreachError: Saldo batch ${targetCode} negatif (${runningBalance} Pkk). Ledger terkunci.`);
+    }
+  }
+
+  // Update snapshot state
+  const states = _loadInventoryStates();
+  let state = states.find(s => possibleCodes.has(s.batchId) || possibleCodes.has(s.batchCode));
+  const now = new Date().toISOString();
+
+  if (!state) {
+    state = {
+      batchId: targetCode,
+      batchCode: targetCode,
+      initialQty: baseInitial,
+      receivedQty: baseInitial,
+      availableQty: runningBalance,
+      status: runningBalance > 0 ? INVENTORY_STATUS.AVAILABLE : INVENTORY_STATUS.EMPTY,
+      lastAppliedJournalId,
+      createdAt: now,
+      updatedAt: now
+    };
+    states.push(state);
+  } else {
+    state.availableQty = runningBalance;
+    state.status = runningBalance > 0 ? INVENTORY_STATUS.AVAILABLE : INVENTORY_STATUS.EMPTY;
+    state.lastAppliedJournalId = lastAppliedJournalId;
+    state.updatedAt = now;
+  }
+
+  _saveInventoryStates(states);
+  _syncLegacyBatchStorage(state.batchId, runningBalance, baseInitial, state.status);
+
+  return { ...state };
+}
+
+let _isStartupRecoveryCompleted = false;
+let _startupRecoveryError = null;
+
+export function getStartupRecoveryStatus() {
+  return {
+    completed: _isStartupRecoveryCompleted,
+    error: _startupRecoveryError
+  };
+}
+
+export function resetStartupRecoveryStatusForTest() {
+  _isStartupRecoveryCompleted = false;
+  _startupRecoveryError = null;
+}
+
+/**
+ * Startup Reconciler: Memindai & menyelesaikan crash boundaries sesuai Section 7 Plan
+ * Terkoordinasi di bawah Web Locks API (Fail-Closed, Idempoten, Anti-Rogue)
+ */
+export async function reconcileStartupRecovery(options = {}) {
+  try {
+    const intents = storage.get('selection_mutation_intents', []);
+    const decisions = storage.get('selection_approval_decisions', []);
+    const journal = _loadInventoryJournal();
+    const txs = storage.get('selection_transactions', []);
+
+    const pendingIntents = intents.filter(i => i.status === 'IN_FLIGHT' || i.status === 'HALTED_RETRY_REQUIRED');
+    const results = [];
+
+    for (const intent of pendingIntents) {
+      const bKey = intent.batchId || intent.batchCode;
+
+      const resolveSingleIntent = async () => {
+        // Multi-tab check (Boundary 7): re-read fresh storage inside lock
+        const freshIntents = storage.get('selection_mutation_intents', []);
+        const currIntent = freshIntents.find(i => i.id === intent.id);
+        if (!currIntent || currIntent.status === 'COMPLETED' || currIntent.status === 'ABANDONED_ORPHAN') {
+          return { intentId: intent.id, action: 'NO_OP_ALREADY_COMPLETED' };
+        }
+
+        const freshDec = decisions.find(d => d.txId === currIntent.txId || d.docNo === currIntent.docNo);
+        const freshJournal = _loadInventoryJournal();
+        const relatedJournal = freshJournal.find(j => 
+          j.txType !== INVENTORY_TX_TYPE.INITIAL && 
+          j.txType !== 'INITIAL_SOW' && 
+          j.txType !== 'MIGRATION_BASELINE' &&
+          ((currIntent.idempotencyKey && j.idempotencyKey === currIntent.idempotencyKey) || 
+           (j.refId && (j.refId === currIntent.txId || j.refId === currIntent.docNo)))
+        );
+
+        // Boundary 2: Intent ada tanpa Decision Record sah dan tanpa Jurnal
+        if (!freshDec && !relatedJournal) {
+          currIntent.status = 'ABANDONED_ORPHAN';
+          currIntent.updatedAt = new Date().toISOString();
+          storage.set('selection_mutation_intents', freshIntents);
+          return { intentId: currIntent.id, action: 'ABANDONED_ORPHAN' };
+        }
+
+        // Boundary 3: Jurnal ada tanpa Decision Record sah
+        if (!freshDec && relatedJournal) {
+          currIntent.status = 'CORRUPT_BREACH';
+          currIntent.updatedAt = new Date().toISOString();
+          _lockBatchAnomaly(currIntent.batchId, 'Jurnal mutasi ditemukan tanpa Decision Record Asisten yang sah.');
+          storage.set('selection_mutation_intents', freshIntents);
+          return { intentId: currIntent.id, action: 'BATCH_LOCKED' };
+        }
+
+        // Boundary 6: Jurnal tersimpan tapi kuantitas tidak cocok dengan Decision
+        if (freshDec && relatedJournal) {
+          const decQty = Number(freshDec.approvedQty || 0);
+          const jrnQty = Number(relatedJournal.qtyOut || 0);
+          if (decQty !== jrnQty) {
+            currIntent.status = 'BREACH_TAMPERED';
+            currIntent.updatedAt = new Date().toISOString();
+            _lockBatchAnomaly(currIntent.batchId, `Ketidakcocokan kuantitas Decision (${decQty}) vs Jurnal (${jrnQty}).`);
+            storage.set('selection_mutation_intents', freshIntents);
+            return { intentId: currIntent.id, action: 'BATCH_LOCKED' };
+          }
+        }
+
+        // Boundary 5: Decision ada, Jurnal ada, Materialized Balance / Status belum update
+        if (freshDec && relatedJournal) {
+          replayBatchInventoryLedger(currIntent.batchId);
+          currIntent.status = 'COMPLETED';
+          currIntent.updatedAt = new Date().toISOString();
+          
+          const freshTxs = storage.get('selection_transactions', []);
+          const tx = freshTxs.find(t => t.id === currIntent.txId || t.docNo === currIntent.docNo);
+          if (tx) {
+            tx.status = 'DISETUJUI';
+            tx.stockMutationStatus = 'APPLIED';
+            tx.stockMutationAt = relatedJournal.createdAt;
+            storage.set('selection_transactions', freshTxs);
+          }
+
+          // Selaraskan status pada record verification_transactions jika ada
+          const freshVerifs = storage.get('verification_transactions', []);
+          const vIdx = freshVerifs.findIndex(v =>
+            (String(v.referenceId) === String(currIntent.txId) || String(v.referenceDocNo) === String(currIntent.docNo)) &&
+            (v.referenceType === 'PENYELEKSIAN' || v.referenceType === 'SELECTION')
+          );
+          if (vIdx !== -1) {
+            freshVerifs[vIdx].verificationStatus = 'TERVERIFIKASI';
+            freshVerifs[vIdx].verifiedAt = relatedJournal.createdAt || freshVerifs[vIdx].verifiedAt;
+            freshVerifs[vIdx].updatedAt = new Date().toISOString();
+            storage.set('verification_transactions', freshVerifs);
+          }
+
+          storage.set('selection_mutation_intents', freshIntents);
+          return { intentId: currIntent.id, action: 'FORWARD_RECOVERED' };
+        }
+
+        // Boundary 1 / 4: Decision ada, Jurnal belum ada
+        if (freshDec && !relatedJournal) {
+          currIntent.status = 'HALTED_RETRY_REQUIRED';
+          currIntent.updatedAt = new Date().toISOString();
+          const freshTxs = storage.get('selection_transactions', []);
+          const tx = freshTxs.find(t => t.id === currIntent.txId || t.docNo === currIntent.docNo);
+          if (tx && tx.status !== 'DIKEMBALIKAN') {
+            tx.status = 'APPROVAL_INTERRUPTED';
+            storage.set('selection_transactions', freshTxs);
+          }
+          storage.set('selection_mutation_intents', freshIntents);
+          return { intentId: currIntent.id, action: 'APPROVAL_INTERRUPTED' };
+        }
       };
+
+      if (bKey) {
+        const itemRes = await executeStockMutationWithLock(bKey, resolveSingleIntent);
+        if (itemRes) results.push(itemRes);
+      } else {
+        const itemRes = await resolveSingleIntent();
+        if (itemRes) results.push(itemRes);
+      }
     }
-  }
 
-  // 2. Eksekusi mutasi
-  const results = [];
-  for (const alloc of allocations) {
-    const bTarget = alloc.batchIdOrCode || alloc.batchCode || alloc.batchId;
-    const deductQty = Number(alloc.qty);
-    const updated = deductBatchStock(bTarget, deductQty, txType, refId, user, alloc.notes || '');
-    results.push(updated);
+    _isStartupRecoveryCompleted = true;
+    _startupRecoveryError = null;
+    return results;
+  } catch (err) {
+    _isStartupRecoveryCompleted = false;
+    _startupRecoveryError = err;
+    throw err;
   }
-
-  return { success: true, results };
 }
 
 /**

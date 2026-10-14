@@ -14,7 +14,7 @@
  */
 
 import { storage } from '../../core/storage.js';
-import { formatStandardDocNo, formatDate, generateUniqueDocNo, todayISO } from '../../core/utils.js';
+import { formatStandardDocNo, formatDate, generateUniqueDocNo, todayISO, getEffectiveTodayDDMMYYYY } from '../../core/utils.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
@@ -80,7 +80,15 @@ export function syncDederanIndukDocuments() {
     const sourceReceiptDocNo = rtx.docNo || rtx.nomorDokumen || formatStandardDocNo(2026, 'APR', idx + 1);
     let induk = indukDocs.find(d => d.sourceReceiptDocNo === sourceReceiptDocNo || d.sourceReceiptIndex === rtx.originalIndex);
 
-    const totalNilaiButirPenerimaan = parseInt(rtx.qty || rtx.jumlahBenih || rtx.totalKecambah || rtx.jumlah || 0);
+    const rawBenihQty = rtx.jumlahBenih ?? 
+                        rtx.rawState?.selectedSir?.rawQty ?? 
+                        rtx.totalKecambah ?? 
+                        rtx.jumlah ?? 
+                        rtx.qty ?? 
+                        0;
+    const totalNilaiButirPenerimaan = typeof rawBenihQty === 'number' 
+      ? rawBenihQty 
+      : (parseInt(String(rawBenihQty).replace(/[^0-9]/g, ''), 10) || 0);
 
     // Calculate aggregated child deder transactions
     const childTxs = dederTxs.filter(t => t.parentDederIndukDocNo === (induk?.docNo) || t.sourceReceiptDocNo === sourceReceiptDocNo);
@@ -112,7 +120,7 @@ export function syncDederanIndukDocuments() {
         divisionId: rtx.divisionId || 'DIV-001',
         klon: rtx.klon || 'GT 1',
         tahapan: rtx.tahapan || 'Rubber Main Nursery',
-        tanggalPenerimaan: rtx.tanggal || formatDate(new Date().toISOString()),
+        tanggalPenerimaan: rtx.tanggal || getEffectiveTodayDDMMYYYY(),
         totalNilaiButirPenerimaan,
         totalDidederSDHI,
         sisaBelumDeder,
@@ -293,7 +301,7 @@ export function saveDederanTransaction(txPayload) {
     parentDederIndukId: parent.id,
     parentDederIndukDocNo: parent.docNo,
     sourceReceiptDocNo: parent.sourceReceiptDocNo,
-    tanggalDeder: txPayload.tanggalDeder || formatDate(new Date().toISOString()),
+    tanggalDeder: txPayload.tanggalDeder || getEffectiveTodayDDMMYYYY(),
     estateId: parent.estateId,
     divisionId: parent.divisionId,
     programId: parent.programId,
@@ -375,7 +383,10 @@ export function sortInspectionsChronologically(inspections) {
  */
 export function getDederanInspectionsByDederTx(dederTxDocNo) {
   if (!dederTxDocNo) return [];
-  const list = storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []);
+  const list = [
+    ...storage.get(DEDERAN_STORAGE_KEYS.INSPECTIONS, []),
+    ...storage.get('dederan_inspection_transactions', [])
+  ];
   return list.filter(i => {
     const isTarget = i.dederanTxDocNo === dederTxDocNo || i.dederanTxId === dederTxDocNo;
     const isCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(i.status || '').toUpperCase());
@@ -524,7 +535,7 @@ export function createDederanInspection(payload) {
     dederanTxId: dederTx.id,
     dederanTxDocNo: dederTx.docNo,
     sourceReceiptDocNo: dederTx.sourceReceiptDocNo,
-    tanggalPemeriksaan: payload.tanggalPemeriksaan || formatDate(new Date().toISOString()),
+    tanggalPemeriksaan: payload.tanggalPemeriksaan || getEffectiveTodayDDMMYYYY(),
     estateId: dederTx.estateId,
     divisionId: dederTx.divisionId,
     programId: dederTx.programId,
@@ -568,6 +579,27 @@ export function createDederanInspection(payload) {
 export const saveDederanInspection = createDederanInspection;
 
 /**
+ * Helper untuk memeriksa apakah transaksi CULL Dederan sudah diajukan atau disetujui
+ */
+function isCullSubmittedOrApproved(tx) {
+  if (!tx) return false;
+  const s = String(tx.status || '').toUpperCase();
+  const sub = String(tx.submissionStatus || '').toUpperCase();
+  const ver = String(tx.verificationStatus || '').toUpperCase();
+  return (
+    s === 'MENUNGGU_VERIFIKASI' ||
+    s === 'SUBMITTED_TO_ASB' ||
+    s === 'DIAJUKAN' ||
+    sub === 'SUBMITTED_TO_ASB' ||
+    s === 'DISETUJUI' ||
+    s === 'TERVERIFIKASI' ||
+    s === 'APPROVED' ||
+    ver === 'TERVERIFIKASI' ||
+    ver === 'APPROVED'
+  );
+}
+
+/**
  * Integrates failed dederan inspection quantities to selection_pool as PENDING_DECLARATION
  * NOTE: Category is NOT set to MATI here; it is determined later in Pasca Semai.
  * Batch is NOT propagated for Dederan rejections.
@@ -599,20 +631,20 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
 
   // PATH B Guard: If qty === 0, do not create or maintain pending candidate
   if (qty === 0) {
-    if (existingIdx >= 0) {
-      const existingItem = selectionPool[existingIdx];
+    const existingItem = existingIdx >= 0 ? selectionPool[existingIdx] : null;
+    if (existingIdx >= 0 && existingItem) {
       // Only clean up draft pending candidate, do NOT delete if already converted to official transaction
       if (!existingItem.selectionTransactionId && existingItem.status === 'PENDING_DECLARATION') {
         selectionPool.splice(existingIdx, 1);
         storage.set('selection_pool', selectionPool);
-      } else {
+      } else if (!isCullSubmittedOrApproved(existingItem)) {
         existingItem.jumlahAfkir = 0;
         existingItem.quantity = 0;
         storage.set('selection_pool', selectionPool);
       }
     }
 
-    // Also sync downstream selection_transactions to 0 if unapproved
+    // Also sync downstream selection_transactions to 0 ONLY if still draft / unsubmitted
     let selTxs = storage.get('selection_transactions', []);
     let selChanged = false;
     selTxs = selTxs.map(tx => {
@@ -625,10 +657,8 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
                        (tx.dederanDocNo && tx.dederanDocNo === dederanTxDocNo) ||
                        (bedenganCode && (tx.bedenganCode === bedenganCode || tx.bedengan === bedenganCode));
       if (matchDoc) {
-        const isApproved = String(tx.status || '').toUpperCase() === 'DISETUJUI' ||
-                           String(tx.status || '').toUpperCase() === 'TERVERIFIKASI' ||
-                           String(tx.status || '').toUpperCase() === 'APPROVED';
-        if (!isApproved) {
+        // PROTEKSI: Jangan menimpa transaksi yang sudah diajukan untuk verifikasi atau disetujui
+        if (!isCullSubmittedOrApproved(tx)) {
           selChanged = true;
           return {
             ...tx,
@@ -649,22 +679,90 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
     return null;
   }
 
-  // Calculate max sequence for CULL doc number
-  let maxSeq = 0;
-  selectionPool.forEach(item => {
-    const d = String(item.docNo || item.selectionDocNo || '');
-    const match = d.match(/CULL\/(\d+)/i);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      if (!isNaN(num) && num > maxSeq) maxSeq = num;
-    }
-  });
-
   const existingItem = existingIdx >= 0 ? selectionPool[existingIdx] : null;
+
+  // Cek apakah item ini sudah terkait transaksi CULL resmi yang diajukan atau disetujui
+  let selTxs = storage.get('selection_transactions', []);
+  const linkedTx = existingItem ? selTxs.find(tx => {
+    const isDeder = tx.originType === 'REJECT_DEDERAN' || tx.sourceModule === 'DEDERAN' || String(tx.stage || tx.selectionStage || '').includes('DEDERAN');
+    if (!isDeder) return false;
+    return (
+      (existingItem.selectionDocNo && (tx.docNo === existingItem.selectionDocNo || tx.selectionNo === existingItem.selectionDocNo)) ||
+      (existingItem.selectionTransactionId && (tx.id === existingItem.selectionTransactionId || tx.selectionId === existingItem.selectionTransactionId)) ||
+      (existingItem.docNo && (tx.docNo === existingItem.docNo || tx.selectionNo === existingItem.docNo)) ||
+      (tx.sourceTransactionId && (tx.sourceTransactionId === inspectionTx.id || tx.sourceTransactionId === inspectionTx.docNo || tx.sourceTransactionId === dederanTxDocNo))
+    );
+  }) : null;
+
+  const isProtected = (linkedTx && isCullSubmittedOrApproved(linkedTx)) || (existingItem && isCullSubmittedOrApproved(existingItem));
+
+  if (isProtected) {
+    // PROTEKSI KUANTITAS CULL DEDERAN:
+    // Transaksi CULL yang sedang MENUNGGU_VERIFIKASI / SUBMITTED_TO_ASB / DISETUJUI TIDAK BOLEH ditimpa kuantitasnya.
+    const declaredQty = parseInt(linkedTx?.jumlahAfkir !== undefined ? linkedTx.jumlahAfkir : (existingItem?.jumlahAfkir || 0), 10);
+    const deltaQty = qty - declaredQty;
+    const deltaPoolId = `${poolId}-DELTA`;
+    const existingDeltaIdx = selectionPool.findIndex(s => s.id === deltaPoolId || s.id === `${poolId}-ADDITIONAL`);
+
+    if (deltaQty > 0) {
+      // Tangani kuantitas tambahan hasil pemeriksaan parsial melalui kandidat delta PENDING_DECLARATION
+      // Jangan membuat deklarasi atau nomor CULL baru secara otomatis!
+      const deltaEntry = {
+        id: deltaPoolId,
+        docNo: null,
+        originType: 'REJECT_DEDERAN',
+        sourceModule: 'DEDERAN',
+        sourceTransactionType: 'DEDER_INSPECTION',
+        sourceTransactionId: inspectionTx.id || inspectionTx.docNo,
+        sourceDocNo: inspectionTx.docNo || dederanTxDocNo,
+        dederanDocNo: dederanTxDocNo,
+        dederanIndukDocNo: inspectionTx.parentDederIndukDocNo || inspectionTx.dederanIndukDocNo || (existingItem?.dederanIndukDocNo || null),
+        category: 'PENDING_DECLARATION',
+        alasanDitolakCategory: null,
+        jumlahDeder: inspectionTx.jumlahDeder || existingItem?.jumlahDeder || null,
+        jumlahDiperiksa: inspectionTx.jumlahDiperiksa || inspectionTx.jumlahDeder || existingItem?.jumlahDiperiksa || null,
+        jumlahBerhasil: inspectionTx.jumlahBerhasil || existingItem?.jumlahBerhasil || 0,
+        jumlahLayak: inspectionTx.jumlahBerhasil || existingItem?.jumlahLayak || 0,
+        jumlahAfkir: deltaQty,
+        quantity: deltaQty,
+        alasan: `Tambahan Hasil Pemeriksaan Dederan Tidak Berhasil (${inspectionTx.bedenganCode || (existingItem?.bedenganCode || '-')})`,
+        estateId: inspectionTx.estateId || existingItem?.estateId || null,
+        divisionId: inspectionTx.divisionId || existingItem?.divisionId || null,
+        programId: inspectionTx.programId || existingItem?.programId || null,
+        programCode: inspectionTx.programCode || inspectionTx.program || (existingItem?.programCode || null),
+        program: inspectionTx.program || inspectionTx.programCode || (existingItem?.program || null),
+        bedenganId: inspectionTx.bedenganId || existingItem?.bedenganId || null,
+        bedenganCode: inspectionTx.bedenganCode || existingItem?.bedenganCode || null,
+        klon: inspectionTx.klon || existingItem?.klon || 'GT 1',
+        tahapan: 'Rubber Main Nursery',
+        tanggal: inspectionTx.tanggalPemeriksaan || inspectionTx.tanggal || (existingItem?.tanggal || new Date().toISOString().split('T')[0]),
+        status: 'PENDING_DECLARATION',
+        returnReason: null,
+        returnedAt: null,
+        returnedByName: null,
+        declaredAt: null,
+        declaredBy: null,
+        selectionTransactionId: null,
+        selectionDocNo: null,
+        stockMutationStatus: 'PENDING',
+        createdAt: new Date().toISOString()
+      };
+      if (existingDeltaIdx >= 0) {
+        selectionPool[existingDeltaIdx] = { ...selectionPool[existingDeltaIdx], ...deltaEntry, id: deltaPoolId };
+      } else {
+        selectionPool.push(deltaEntry);
+      }
+    } else if (existingDeltaIdx >= 0 && selectionPool[existingDeltaIdx].status === 'PENDING_DECLARATION') {
+      selectionPool.splice(existingDeltaIdx, 1);
+    }
+
+    storage.set('selection_pool', selectionPool);
+    return existingItem;
+  }
 
   const poolEntry = {
     id: existingItem?.id || poolId,
-    docNo: existingItem?.docNo || formatStandardDocNo(2026, 'CULL', maxSeq + 1),
+    docNo: existingItem?.docNo || null,
     originType: 'REJECT_DEDERAN',
     sourceModule: 'DEDERAN',
     sourceTransactionType: 'DEDER_INSPECTION',
@@ -715,8 +813,7 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
 
   storage.set('selection_pool', selectionPool);
 
-  // Synchronize linked selection_transactions so downstream culls reflect updated dederan rejection
-  let selTxs = storage.get('selection_transactions', []);
+  // Synchronize linked selection_transactions ONLY if unsubmitted (DRAFT / READY_TO_CONFIRM)
   let selChanged = false;
   selTxs = selTxs.map(tx => {
     const isDeder = tx.originType === 'REJECT_DEDERAN' || tx.sourceModule === 'DEDERAN' || String(tx.stage || tx.selectionStage || '').includes('DEDERAN');
@@ -731,10 +828,7 @@ export function integrateDederanRejectionToSelectionPool(inspectionTx, totalTida
                      (bedenganCode && (tx.bedenganCode === bedenganCode || tx.bedengan === bedenganCode));
 
     if (matchDoc) {
-      const isApproved = String(tx.status || '').toUpperCase() === 'DISETUJUI' ||
-                         String(tx.status || '').toUpperCase() === 'TERVERIFIKASI' ||
-                         String(tx.status || '').toUpperCase() === 'APPROVED';
-      if (!isApproved) {
+      if (!isCullSubmittedOrApproved(tx)) {
         selChanged = true;
         return {
           ...tx,
@@ -890,7 +984,11 @@ export function deleteDederanInspection(idOrDocNo) {
     if (newSummary.totalTidakBerhasil > 0) {
       integrateDederanRejectionToSelectionPool(deleted, newSummary.totalTidakBerhasil);
     } else {
-      selectionPool = selectionPool.filter(s => s.id !== poolId && s.dederanDocNo !== (deleted.dederanTxDocNo || deleted.docNo));
+      selectionPool = selectionPool.filter(s => {
+        const isMatch = s.id === poolId || s.dederanDocNo === (deleted.dederanTxDocNo || deleted.docNo);
+        if (!isMatch) return true;
+        return s.status !== 'PENDING_DECLARATION' || Boolean(s.selectionTransactionId);
+      });
       storage.set('selection_pool', selectionPool);
     }
   }
@@ -972,7 +1070,11 @@ export function updateDederanInspection(idOrDocNo, payload) {
   } else {
     let selectionPool = storage.get('selection_pool', []);
     const poolId = `SEL-POOL-DED-${updatedInspection.dederanTxDocNo || updatedInspection.docNo || updatedInspection.id}`;
-    selectionPool = selectionPool.filter(s => s.id !== poolId && s.dederanDocNo !== (updatedInspection.dederanTxDocNo || updatedInspection.docNo));
+    selectionPool = selectionPool.filter(s => {
+      const isMatch = s.id === poolId || s.dederanDocNo === (updatedInspection.dederanTxDocNo || updatedInspection.docNo);
+      if (!isMatch) return true;
+      return s.status !== 'PENDING_DECLARATION' || Boolean(s.selectionTransactionId);
+    });
     storage.set('selection_pool', selectionPool);
   }
 

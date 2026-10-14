@@ -164,6 +164,9 @@ export function attachAsbBottomNavEvents(container) {
       e.stopPropagation();
       const route = btn.getAttribute('data-nav-route');
       if (route === '/verification') {
+        // [CATATAN SIMULASI PROTOTYPE]: Dinonaktifkan sementara agar navigasi ke Verifikasi
+        // tidak terhalang oleh modal Pemeriksaan Seleksi Diperlukan.
+        /*
         const currentUser = session.getUser ? session.getUser() : (session.get ? session.get() : null);
         const ctx = getCurrentUserContext() || resolveUserContext(currentUser);
         const gate = checkAsbSelectionGate(ctx);
@@ -171,6 +174,7 @@ export function attachAsbBottomNavEvents(container) {
           showAsbVerificationGateModal(gate.pendingSelectionCount);
           return;
         }
+        */
       }
       if (route) {
         navigate(route);

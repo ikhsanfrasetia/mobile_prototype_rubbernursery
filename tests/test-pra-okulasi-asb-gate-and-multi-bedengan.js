@@ -470,7 +470,7 @@ console.log('===================================================================
   console.log('✓ PASS 10: SOW tanpa afkir yang belum disetujui ASB (COMPLETED) berhasil diblokir dari Seleksi Pra-Okulasi.');
 }
 
-// TEST 11: Validasi UI rendering renderProgramBatchCompactView (Label "Menunggu Persetujuan", Tanpa icon gembok 🔒)
+// TEST 11: Validasi UI rendering renderProgramBatchCompactView (Label "Menunggu Approval SOW", Tanpa icon gembok 🔒)
 {
   clearStorage();
   const unapprovedSow = {
@@ -509,11 +509,11 @@ console.log('===================================================================
     stage: 'SELEKSI_1'
   });
 
-  assert.ok(html.includes('Menunggu Persetujuan'), 'Badge harus memuat teks "Menunggu Persetujuan"');
+  assert.ok(html.includes('Menunggu Approval SOW'), 'Badge harus memuat teks "Menunggu Approval SOW"');
   assert.ok(!html.includes('🔒 Terkunci'), 'Badge TIDAK boleh memuat teks "🔒 Terkunci"');
   assert.ok(!html.includes('🔒'), 'TIDAK boleh ada emoji gembok 🔒 tambahan pada tampilan');
-  assert.ok(html.includes('Menunggu Persetujuan ASB (Pindah Semai / Afkir)'), 'Progress text harus menampilkan keterangan menunggu persetujuan ASB');
-  console.log('✓ PASS 11: UI renderProgramBatchCompactView menampilkan label "Menunggu Persetujuan" bersih tanpa icon tambahan.');
+  assert.ok(html.includes('Menunggu Approval SOW (Asisten Bibitan)'), 'Progress text harus menampilkan keterangan menunggu approval SOW');
+  console.log('✓ PASS 11: UI renderProgramBatchCompactView menampilkan label "Menunggu Approval SOW" bersih tanpa icon tambahan.');
 }
 
 // TEST 12: Seluruh Batch (BTCH-001, BTCH-002, BTCH-003, BTCH-004) tidak dapat dilanjutkan untuk transaksi pada Seleksi I
@@ -570,7 +570,7 @@ console.log('===================================================================
     }, /Pelaksanaan Seleksi I tidak dapat dilakukan/);
   });
 
-  // Validasi rendering compact view: seluruh batch berlabel "Menunggu Persetujuan"
+  // Validasi rendering compact view: status mencerminkan lifecycle aktual masing-masing batch
   const progGroups = [{
     programCode: 'PRG/NUR/2026',
     batches: preDocs.map(d => ({
@@ -579,11 +579,15 @@ console.log('===================================================================
     }))
   }];
   const html = renderProgramBatchCompactView({ programGroups: progGroups, stage: 'SELEKSI_1' });
-  const matches = (html.match(/Menunggu Persetujuan/g) || []).length;
-  // Minimal 4 badge pada 4 batch + 4 keterangan
-  assert.ok(matches >= 8, `Harus menampilkan status Menunggu Persetujuan untuk seluruh 4 batch, ditemukan: ${matches}`);
+  
+  // BTCH-001, BTCH-002, BTCH-003 belum dikonfirmasi Mantri -> Menunggu Konfirmasi Mantri
+  assert.ok(html.includes('Menunggu Konfirmasi Mantri'), 'Harus menampilkan status Menunggu Konfirmasi Mantri untuk batch belum dikonfirmasi');
+  // BTCH-004 sudah dikirim Mantri -> Menunggu Approval SOW
+  assert.ok(html.includes('Menunggu Approval SOW'), 'Harus menampilkan status Menunggu Approval SOW untuk batch yang sudah disubmit');
+  // Jangan menampilkan "Menunggu Persetujuan" hanya karena canPerform false
+  assert.ok(!html.includes('Menunggu Persetujuan'), 'Tidak boleh menampilkan "Menunggu Persetujuan" sebelum Seleksi I diajukan');
 
-  console.log('✓ PASS 12: Seluruh 4 batch (BTCH-001 s/d BTCH-004) berhasil diverifikasi terkunci dan transaksi Seleksi I diblokir saat SOW belum disetujui ASB.');
+  console.log('✓ PASS 12: Seluruh 4 batch (BTCH-001 s/d BTCH-004) berhasil diverifikasi terkunci dan transaksi Seleksi I diblokir dengan badge lifecycle yang sesuai.');
 }
 
 console.log('================================================================================');

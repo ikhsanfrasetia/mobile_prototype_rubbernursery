@@ -75,6 +75,7 @@ import { seedDatabase } from './db/seed.js';
 import { initExportScreenToolbar } from './core/export-screen.js';
 import { session } from './core/session.js';
 import { storage } from './core/storage.js';
+import { reconcileStartupRecovery, getStartupRecoveryStatus } from './core/batch-inventory-service.js';
 
 // Hard reset master runtime storage baseline once (TASK-HARD-CLEAR-MASTER-RUNTIME-01)
 if (storage.get('master_reset_hard_v2') !== true) {
@@ -174,12 +175,28 @@ registerRoute('/profile', renderProfile);
 setNotFound(renderAnalysisPlaceholder);
 
 /* ---- Bootstrap ---- */
+let isBootstrapInitialized = false;
+
 window.addEventListener('DOMContentLoaded', async () => {
+  if (isBootstrapInitialized) return;
+  isBootstrapInitialized = true;
+
   try {
     await seedDatabase();
   } catch (err) {
     console.error('[bootstrap] seed gagal:', err);
   }
+
+  // Rekonsiliasi crash boundaries persistence pada startup sebelum router dan alur transaksi diaktifkan
+  try {
+    const recoveryResults = await reconcileStartupRecovery();
+    if (Array.isArray(recoveryResults) && recoveryResults.length > 0) {
+      console.info(`[bootstrap] Reconcile startup recovery selesai: ${recoveryResults.length} intent diproses.`, recoveryResults);
+    }
+  } catch (err) {
+    console.error('[bootstrap] Reconcile startup recovery gagal (Fail-Closed):', err);
+  }
+
   initRouter();
   initWorkspaceViewMode();
   initReviewWorkspace();

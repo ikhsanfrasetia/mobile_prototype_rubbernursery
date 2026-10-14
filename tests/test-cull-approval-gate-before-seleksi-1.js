@@ -36,6 +36,7 @@ import { storage } from '../js/core/storage.js';
 import { getEffectiveDate } from '../js/core/simulation-clock-service.js';
 import {
   canCreatePreGraftingSelection1Document,
+  canPerformPreGraftingSelection1,
   createPreGraftingSelectionDocument,
   syncAllSeedingsToPreGraftingSelectionDocuments,
   createSeleksi1ExecutionTransaction,
@@ -98,7 +99,9 @@ runTest('IT-CULL-GATE-001', 'SOW tanpa CULL (afkir = 0) -> ALLOW', () => {
     lainnya: 0,
     ditolak: 0,
     batchId: 'BATCH-001',
-    batchCode: 'B-001'
+    batchCode: 'B-001',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
 
@@ -123,7 +126,9 @@ runTest('IT-CULL-GATE-002', 'SOW memiliki afkir tetapi belum ada deklarasi CULL 
     totalPolybag: 500,
     rusakQty: 50,
     batchId: 'BATCH-001',
-    batchCode: 'B-001'
+    batchCode: 'B-001',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
   // Simulasikan masuk pool (PENDING_DECLARATION)
@@ -155,7 +160,9 @@ runTest('IT-CULL-GATE-003', 'SOW dengan CULL berstatus MENUNGGU_VERIFIKASI -> BL
     totalDisemai: 1000,
     totalPolybag: 500,
     ditolak: 30,
-    batchCode: 'B-001'
+    batchCode: 'B-001',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
   storage.set(SELECTION_STORAGE_KEY, [{
@@ -180,7 +187,9 @@ runTest('IT-CULL-GATE-004', 'SOW dengan CULL berstatus SUBMITTED_TO_ASB / PENDIN
     docNo: '2026/SOW/004',
     totalDisemai: 1000,
     totalPolybag: 500,
-    ditolak: 20
+    ditolak: 20,
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
   storage.set(SELECTION_STORAGE_KEY, [{
@@ -204,7 +213,9 @@ runTest('IT-CULL-GATE-005', 'SOW dengan CULL berstatus DIKEMBALIKAN / REVISION -
     docNo: '2026/SOW/005',
     totalDisemai: 1000,
     totalPolybag: 500,
-    ditolak: 20
+    ditolak: 20,
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
   storage.set(SELECTION_STORAGE_KEY, [{
@@ -229,7 +240,9 @@ runTest('IT-CULL-GATE-006', 'SOW dengan CULL berstatus DISETUJUI -> ALLOW', () =
     totalDisemai: 1000,
     totalPolybag: 500,
     ditolak: 40,
-    batchCode: 'B-001'
+    batchCode: 'B-001',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
   storage.set(SELECTION_STORAGE_KEY, [{
@@ -257,7 +270,9 @@ runTest('IT-CULL-GATE-007', 'SOW dengan CULL berstatus VERIFIED -> ALLOW', () =>
     docNo: '2026/SOW/007',
     totalDisemai: 1000,
     totalPolybag: 500,
-    ditolak: 40
+    ditolak: 40,
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
   storage.set(SELECTION_STORAGE_KEY, [{
@@ -282,7 +297,9 @@ runTest('IT-CULL-GATE-008', 'Multiple CULL: CULL-A = DISETUJUI, CULL-B = MENUNGG
     totalDisemai: 2000,
     totalPolybag: 1000,
     rusak: 50,
-    mati: 30
+    mati: 30,
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
   storage.set(SELECTION_STORAGE_KEY, [
@@ -317,7 +334,9 @@ runTest('IT-CULL-GATE-009', 'Multiple CULL: CULL-A = DISETUJUI, CULL-B = VERIFIE
     totalDisemai: 2000,
     totalPolybag: 1000,
     rusak: 50,
-    mati: 30
+    mati: 30,
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
   storage.set(SELECTION_STORAGE_KEY, [
@@ -351,7 +370,9 @@ runTest('IT-CULL-GATE-010', 'CULL return -> redeclaration (REVISION -> BLOCK, RE
     docNo: '2026/SOW/010',
     totalDisemai: 1000,
     totalPolybag: 500,
-    ditolak: 50
+    ditolak: 50,
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
 
@@ -400,14 +421,20 @@ runTest('IT-CULL-GATE-011', 'Cross-document isolation (SOW-A pending -> BLOCK, S
     docNo: '2026/SOW/A',
     totalDisemai: 1000,
     totalPolybag: 500,
-    ditolak: 50
+    ditolak: 50,
+    batchCode: 'BATCH-A',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   const sowB = {
     id: 'SOW-B',
     docNo: '2026/SOW/B',
     totalDisemai: 1500,
     totalPolybag: 750,
-    ditolak: 30
+    ditolak: 30,
+    batchCode: 'BATCH-B',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowA, sowB]);
   storage.set(SELECTION_STORAGE_KEY, [
@@ -435,13 +462,17 @@ runTest('IT-CULL-GATE-011', 'Cross-document isolation (SOW-A pending -> BLOCK, S
   assert.strictEqual(gateA.canCreate, false, 'SOW-A dengan CULL pending harus BLOCKED');
   assert.strictEqual(gateB.canCreate, true, 'SOW-B dengan CULL approved harus ALLOW');
 
-  // Test sync function only creates Seleksi I for SOW-B
+  // Test sync function creates container docs for batch visibility (all valid seedings)
   const created = syncAllSeedingsToPreGraftingSelectionDocuments(mockUser);
-  assert.strictEqual(created, 1, 'Sync hanya membuat 1 dokumen Seleksi I untuk SOW-B');
+  assert.strictEqual(created, 2, 'Sync membuat container dokumen untuk kedua SOW agar batch tetap terlihat');
 
   const preDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
-  assert.strictEqual(preDocs.length, 1);
-  assert.strictEqual(preDocs[0].sourceDocNo, '2026/SOW/B');
+  assert.strictEqual(preDocs.length, 2);
+
+  const perfA = canPerformPreGraftingSelection1('2026/SOW/A');
+  const perfB = canPerformPreGraftingSelection1('2026/SOW/B');
+  assert.strictEqual(perfA.canPerform, false, 'SOW-A tidak dapat dieksekusi karena CULL pending');
+  assert.strictEqual(perfB.canPerform, true, 'SOW-B dapat dieksekusi karena CULL disetujui');
 });
 
 // --- IT-CULL-GATE-012 ---
@@ -453,7 +484,9 @@ runTest('IT-CULL-GATE-012', 'Existing Seleksi I document created sebelum gate (C
     totalDisemai: 1000,
     totalPolybag: 500,
     ditolak: 50,
-    batchCode: 'B-012'
+    batchCode: 'B-012',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
 
@@ -569,7 +602,9 @@ runTest('IT-CULL-GATE-014', 'Population integrity (sourceBibitQty = SOW.totalDis
     totalDisemai: 9000,
     totalPolybag: 4500,
     ditolak: 300,
-    batchCode: 'B-014'
+    batchCode: 'B-014',
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
   storage.set(SELECTION_STORAGE_KEY, [{
@@ -594,7 +629,9 @@ runTest('IT-CULL-GATE-015', 'No storage mutation guarantee during gate check (BE
     docNo: '2026/SOW/015',
     totalDisemai: 1000,
     totalPolybag: 500,
-    ditolak: 50
+    ditolak: 50,
+    status: 'DISETUJUI',
+    verificationStatus: 'TERVERIFIKASI'
   };
   storage.set('seeding_transactions', [sowTx]);
 
