@@ -360,18 +360,25 @@ export async function renderRequestKebunSendiriLanding() {
   `;
 
   // Status Filter Pills
+  const statusFilterPills = ['SEMUA', 'DIAJUKAN', 'DIPROSES', 'SELESAI', 'DITOLAK'].map(filter => {
+    const isSelected = activeStatusFilter === filter;
+    const label = filter === 'SEMUA' ? 'Semua' : filter.charAt(0) + filter.slice(1).toLowerCase();
+    const bg = isSelected ? '#116834' : '#FFFFFF';
+    const fg = isSelected ? '#FFFFFF' : '#475569';
+    const border = isSelected ? '#116834' : '#E2E8F0';
+    const fw = isSelected ? '700' : '600';
+    const shadow = isSelected ? '0 1px 2px rgba(17, 104, 52, 0.15)' : 'none';
+    return `
+      <button class="status-filter-btn" data-filter="${filter}" type="button" style="padding: 6px 14px; min-height: 32px; border-radius: 9999px; font-size: 0.76rem; font-weight: ${fw}; border: 1px solid ${border}; background: ${bg}; color: ${fg}; cursor: pointer; white-space: nowrap; line-height: 1.2; box-shadow: ${shadow}; transition: all 0.15s ease;">
+        ${label}
+      </button>
+    `;
+  }).join('');
+
   const statusFiltersHtml = `
     <div style="background: #F8FAFC; padding: 10px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; -ms-overflow-style: none; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
       <div style="display: flex; gap: 8px; min-width: max-content;">
-        ${['SEMUA', 'DIAJUKAN', 'DIPROSES', 'SELESAI', 'DITOLAK'].map(filter => {
-          const isSelected = activeStatusFilter === filter;
-          const label = filter === 'SEMUA' ? 'Semua' : filter.charAt(0) + filter.slice(1).toLowerCase();
-          return `
-            <button class="status-filter-btn" data-filter="${filter}" type="button" style="padding: 6px 14px; min-height: 32px; border-radius: 9999px; font-size: 0.76rem; font-weight: ${isSelected ? '700' : '600'}; border: 1px solid ${isSelected ? '#116834' : '#E2E8F0'}; background: ${isSelected ? '#116834' : '#FFFFFF'}; color: ${isSelected ? '#FFFFFF' : '#475569'}; cursor: pointer; white-space: nowrap; line-height: 1.2; box-shadow: ${isSelected ? '0 1px 2px rgba(17, 104, 52, 0.15)' : 'none'}; transition: all 0.15s ease;">
-              ${label}
-            </button>
-          `;
-        }).join('')}
+        ${statusFilterPills}
       </div>
     </div>
   `;
