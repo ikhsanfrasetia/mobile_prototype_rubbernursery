@@ -1247,7 +1247,7 @@ export function renderReviewPanel() {
         </div>
         <div class="review-actions-group">
           <button class="btn-toggle-all-markers ${isAllMarkersHidden ? 'is-hidden-mode' : ''}" id="btn-toggle-all-markers" type="button" title="Sembunyikan / Tampilkan Semua Pin Marker">
-            ${isAllMarkersHidden ? '🙈 Semua Pin: Tersembunyi' : '👁️ Semua Pin: Tampil'}
+            ${isAllMarkersHidden ? 'Semua Pin: Tersembunyi' : 'Semua Pin: Tampil'}
           </button>
           <button class="btn-toggle-review-mode ${isReviewMode ? 'is-active' : ''}" id="btn-toggle-review" type="button">
             ${isReviewMode ? '🔴 Matikan Mode Pin' : '📍 Mode Pin Marker'}
@@ -1272,21 +1272,21 @@ export function renderReviewPanel() {
         <select class="filter-select" id="review-filter-page">
           <option value="ALL" ${filterPage === 'ALL' ? 'selected' : ''}>Semua Halaman</option>
           ${(() => {
-            const pageFilterOptions = new Map();
-            notes.forEach(n => {
-              if (n.page) {
-                pageFilterOptions.set(n.page, n.pageTitle || getPageTitle(n.page));
-              }
-            });
-            Object.entries(CANONICAL_PAGE_MAP).forEach(([r, title]) => {
-              if (!pageFilterOptions.has(r)) {
-                pageFilterOptions.set(r, title);
-              }
-            });
-            return Array.from(pageFilterOptions.entries()).map(([r, title]) => `
+        const pageFilterOptions = new Map();
+        notes.forEach(n => {
+          if (n.page) {
+            pageFilterOptions.set(n.page, n.pageTitle || getPageTitle(n.page));
+          }
+        });
+        Object.entries(CANONICAL_PAGE_MAP).forEach(([r, title]) => {
+          if (!pageFilterOptions.has(r)) {
+            pageFilterOptions.set(r, title);
+          }
+        });
+        return Array.from(pageFilterOptions.entries()).map(([r, title]) => `
               <option value="${esc(r)}" ${filterPage === r ? 'selected' : ''}>Halaman: ${esc(title)}</option>
             `).join('');
-          })()}
+      })()}
         </select>
       </div>
 

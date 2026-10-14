@@ -328,46 +328,50 @@ export async function renderRequestKebunSendiriLanding() {
 
   // Tabs HTML
   const tabsHtml = isRequesterRole ? `
-    <div style="background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
-      <div style="display: flex; padding: 0 12px;">
-        <button id="tab-my-requests" type="button" style="flex: 1; padding: 10px 4px; background: transparent; border: none; border-bottom: 2.5px solid ${activeTab === 'MY_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'MY_REQUESTS' ? '800' : '600'}; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; position: relative;">
+    <div style="background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 16px; flex-shrink: 0;">
+      <div style="display: flex; gap: 8px;">
+        <button id="tab-my-requests" type="button" style="flex: 1; padding: 12px 6px; min-height: 44px; background: transparent; border: none; border-bottom: 2.5px solid ${activeTab === 'MY_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'MY_REQUESTS' ? '700' : '600'}; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; transition: all 0.15s ease;">
           <span>Permintaan Saya</span>
-          <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; background: ${activeTab === 'MY_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700;">
+          <span style="font-size: 0.70rem; padding: 2px 7px; border-radius: 9999px; background: ${activeTab === 'MY_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700; border: 1px solid ${activeTab === 'MY_REQUESTS' ? '#C8E6C9' : '#E2E8F0'}; line-height: 1; flex-shrink: 0;">
             ${myReqs.length}
           </span>
           ${myActionableCount > 0 ? `
-            <span class="notif-dot" style="display: inline-block; width: 7px; height: 7px; background-color: #D32F2F; border-radius: 50%; margin-left: 2px;"></span>
+            <span class="notif-dot" style="display: inline-block; width: 6px; height: 6px; background-color: #DC2626; border-radius: 50%; flex-shrink: 0;"></span>
           ` : ''}
         </button>
-        <button id="tab-incoming-requests" type="button" style="flex: 1; padding: 10px 4px; background: transparent; border: none; border-bottom: 2.5px solid ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'INCOMING_REQUESTS' ? '800' : '600'}; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; position: relative;">
+        <button id="tab-incoming-requests" type="button" style="flex: 1; padding: 12px 6px; min-height: 44px; background: transparent; border: none; border-bottom: 2.5px solid ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'INCOMING_REQUESTS' ? '700' : '600'}; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; transition: all 0.15s ease;">
           <span>Daftar Permintaan</span>
-          <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; background: ${activeTab === 'INCOMING_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700;">
+          <span style="font-size: 0.70rem; padding: 2px 7px; border-radius: 9999px; background: ${activeTab === 'INCOMING_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700; border: 1px solid ${activeTab === 'INCOMING_REQUESTS' ? '#C8E6C9' : '#E2E8F0'}; line-height: 1; flex-shrink: 0;">
             ${incomingReqs.length}
           </span>
           ${incomingActionableCount > 0 ? `
-            <span class="notif-dot" style="display: inline-block; width: 7px; height: 7px; background-color: #D32F2F; border-radius: 50%; margin-left: 2px;"></span>
+            <span class="notif-dot" style="display: inline-block; width: 6px; height: 6px; background-color: #DC2626; border-radius: 50%; flex-shrink: 0;"></span>
           ` : ''}
         </button>
       </div>
     </div>
   ` : `
-    <div style="padding: 10px 16px; background: #F8FAFC; border-bottom: 1px solid #E2E8F0; font-size: 0.80rem; font-weight: 700; color: #334155; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;">
+    <div style="padding: 12px 16px; background: #F8FAFC; border-bottom: 1px solid #E2E8F0; font-size: 0.82rem; font-weight: 700; color: #1E293B; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;">
       <span>Daftar Permintaan Masuk (${incomingReqs.length})</span>
       ${incomingActionableCount > 0 ? `
-        <span class="notif-dot" style="display: inline-block; width: 8px; height: 8px; background-color: #D32F2F; border-radius: 50%;"></span>
+        <span class="notif-dot" style="display: inline-block; width: 8px; height: 8px; background-color: #DC2626; border-radius: 50%;"></span>
       ` : ''}
     </div>
   `;
 
   // Status Filter Pills
   const statusFiltersHtml = `
-    <div style="background: #FAFAFA; padding: 8px 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
-      <div style="display: flex; gap: 6px;">
-        ${['SEMUA', 'DIAJUKAN', 'DIPROSES', 'SELESAI', 'DITOLAK'].map(filter => `
-          <button class="status-filter-btn" data-filter="${filter}" type="button" style="padding: 4px 10px; border-radius: 16px; font-size: 0.72rem; font-weight: ${activeStatusFilter === filter ? '700' : '600'}; border: 1px solid ${activeStatusFilter === filter ? '#116834' : '#E2E8F0'}; background: ${activeStatusFilter === filter ? '#E8F5E9' : '#FFFFFF'}; color: ${activeStatusFilter === filter ? '#116834' : '#64748B'}; cursor: pointer; white-space: nowrap;">
-            ${filter === 'SEMUA' ? 'Semua' : filter.charAt(0) + filter.slice(1).toLowerCase()}
-          </button>
-        `).join('')}
+    <div style="background: #F8FAFC; padding: 10px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; -ms-overflow-style: none; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
+      <div style="display: flex; gap: 8px; min-width: max-content;">
+        ${['SEMUA', 'DIAJUKAN', 'DIPROSES', 'SELESAI', 'DITOLAK'].map(filter => {
+          const isSelected = activeStatusFilter === filter;
+          const label = filter === 'SEMUA' ? 'Semua' : filter.charAt(0) + filter.slice(1).toLowerCase();
+          return `
+            <button class="status-filter-btn" data-filter="${filter}" type="button" style="padding: 6px 14px; min-height: 32px; border-radius: 9999px; font-size: 0.76rem; font-weight: ${isSelected ? '700' : '600'}; border: 1px solid ${isSelected ? '#116834' : '#E2E8F0'}; background: ${isSelected ? '#116834' : '#FFFFFF'}; color: ${isSelected ? '#FFFFFF' : '#475569'}; cursor: pointer; white-space: nowrap; line-height: 1.2; box-shadow: ${isSelected ? '0 1px 2px rgba(17, 104, 52, 0.15)' : 'none'}; transition: all 0.15s ease;">
+              ${label}
+            </button>
+          `;
+        }).join('')}
       </div>
     </div>
   `;
@@ -392,31 +396,31 @@ export async function renderRequestKebunSendiriLanding() {
     let actionBtnHtml = '';
     if (canAskep) {
       actionBtnHtml = `
-        <button class="btn-action-askep" data-id="${esc(tx.id)}" type="button" style="width: 100%; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 6px; cursor: pointer; margin-top: 10px;">
+        <button class="btn-action-askep" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
           Review Permintaan (Asisten Kepala)
         </button>
       `;
     } else if (canPengurus) {
       actionBtnHtml = `
-        <button class="btn-action-pengurus" data-id="${esc(tx.id)}" type="button" style="width: 100%; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 6px; cursor: pointer; margin-top: 10px;">
+        <button class="btn-action-pengurus" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
           Review Permintaan (Pengurus Kebun)
         </button>
       `;
     } else if (canAsbVerify) {
       actionBtnHtml = `
-        <button class="btn-action-asb-verify" data-id="${esc(tx.id)}" type="button" style="width: 100%; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 6px; cursor: pointer; margin-top: 10px;">
+        <button class="btn-action-asb-verify" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
           Verifikasi Ketersediaan Nursery (ASB)
         </button>
       `;
     } else if (canAsbDispatchVerif) {
       actionBtnHtml = `
-        <button class="btn-action-asb-dispatch-verif" data-id="${esc(tx.id)}" type="button" style="width: 100%; padding: 8px 12px; background: #D97706; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 6px; cursor: pointer; margin-top: 10px;">
+        <button class="btn-action-asb-dispatch-verif" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #D97706; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(217,119,6,0.15);">
           Verifikasi Aktual Pengeluaran (ASB)
         </button>
       `;
     } else if (canRequesterReceipt) {
       actionBtnHtml = `
-        <button class="btn-action-requester-receipt" data-id="${esc(tx.id)}" type="button" style="width: 100%; padding: 8px 12px; background: #16A34A; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 6px; cursor: pointer; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+        <button class="btn-action-requester-receipt" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #16A34A; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(22,163,74,0.15);">
           <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none">
             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
             <circle cx="12" cy="13" r="4"></circle>
@@ -426,104 +430,150 @@ export async function renderRequestKebunSendiriLanding() {
       `;
     }
 
+    // Safely extract audit trail
+    const auditItems = Array.isArray(tx.auditTrail) ? tx.auditTrail : [];
+
     return `
-      <div class="card-request-item" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+      <div class="card-request-item" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); transition: border-color 0.15s ease;">
         
         <!-- Header Dokumen & Badge Status -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #F1F5F9;">
-          <div style="min-width: 0; flex: 1;">
-            <div style="font-size: 0.66rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.02em;">Dokumen NIR</div>
-            <div style="font-size: 0.88rem; font-weight: 800; color: #116834; line-height: 1.25; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(tx.docNo || tx.nir || tx.id)}</div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #F1F5F9; flex-wrap: wrap;">
+          <div style="min-width: 0; flex: 1 1 auto;">
+            <div style="font-size: 0.68rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.2;">Dokumen NIR</div>
+            <div style="font-size: 0.95rem; font-weight: 800; color: #116834; line-height: 1.3; margin-top: 2px; word-break: break-all;">${esc(tx.docNo || tx.nir || tx.id)}</div>
           </div>
-          <div style="flex-shrink: 0; text-align: right; max-width: 52%;">
-            <span style="display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 0.68rem; font-weight: 700; color: ${badge.color}; background: ${badge.bg}; border: 1px solid ${badge.border}; line-height: 1.25;">
+          <div style="flex-shrink: 0; text-align: right; max-width: 100%;">
+            <span style="display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 0.70rem; font-weight: 700; color: ${badge.color}; background: ${badge.bg}; border: 1px solid ${badge.border}; line-height: 1.25; text-align: right;">
               ${esc(badge.label)}
             </span>
           </div>
         </div>
 
         <!-- 2x2 Grid Informasi Rapi & Proporsional -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 0.76rem; margin-bottom: 8px;">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; font-size: 0.78rem; margin-bottom: 12px;">
           <div style="min-width: 0;">
-            <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 1px;">Pemohon:</div>
+            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Pemohon:</div>
             <div style="font-weight: 700; color: #1E293B; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(tx.requestedBy || tx.requesterUserId || 'Asisten')}</div>
           </div>
           <div style="min-width: 0;">
-            <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 1px;">Klon Diminta:</div>
+            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Klon Diminta:</div>
             <div style="font-weight: 700; color: #1E293B; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(tx.klon || tx.cloneId || '-')}</div>
           </div>
           <div style="min-width: 0;">
-            <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 1px;">Jumlah Diminta:</div>
-            <div style="font-weight: 800; color: #116834;">${requestedQty} Pkk</div>
+            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Jumlah Diminta:</div>
+            <div style="font-weight: 800; color: #116834; white-space: nowrap;">${requestedQty} Pkk</div>
           </div>
           <div style="min-width: 0;">
-            <div style="font-size: 0.68rem; color: #64748B; margin-bottom: 1px;">Tanggal Dibutuhkan:</div>
-            <div style="font-weight: 600; color: #475569;">${esc(formatDate(tx.requiredDate))}</div>
+            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Tanggal Dibutuhkan:</div>
+            <div style="font-weight: 600; color: #475569; white-space: nowrap;">${esc(formatDate(tx.requiredDate))}</div>
           </div>
         </div>
 
-        <!-- Detail Expandable Area -->
-        <button class="btn-toggle-expand" data-index="${idx}" type="button" style="width: 100%; background: transparent; border: none; border-top: 1px dashed #E2E8F0; padding: 6px 0 2px 0; font-size: 0.74rem; color: #64748B; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">
-          <span>${isExpanded ? 'Sembunyikan Rincian' : 'Lihat Rincian & Timeline'}</span>
-          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}; transition: transform 0.2s;">
+        <!-- Detail Expandable Area Toggle Button -->
+        <button class="btn-toggle-expand" data-index="${idx}" type="button" style="width: 100%; min-height: 38px; background: transparent; border: none; border-top: 1px dashed #E2E8F0; padding: 8px 0 2px 0; font-size: 0.76rem; color: #116834; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: color 0.15s ease;">
+          <span>${isExpanded ? 'Sembunyikan Rincian' : 'Tampilkan Rincian'}</span>
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}; transition: transform 0.2s ease;">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </button>
 
         ${isExpanded ? `
-          <div style="background: #F8FAFC; border-radius: 8px; padding: 10px; margin-top: 8px; font-size: 0.78rem;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-top: 10px; font-size: 0.78rem;">
             ${tx.distributionItems && tx.distributionItems.length > 0 ? `
-              <div style="margin-bottom: 10px;">
-                <div style="font-weight: 700; color: #334155; margin-bottom: 4px;">Rincian Distribusi Blok:</div>
-                <div style="border: 1px solid #CBD5E1; border-radius: 6px; overflow: hidden;">
-                  <table style="width: 100%; border-collapse: collapse; font-size: 0.74rem;">
-                    <thead>
-                      <tr style="background: #E2E8F0; color: #334155;">
-                        <th style="padding: 4px 6px; text-align: left;">Klon</th>
-                        <th style="padding: 4px 6px; text-align: left;">Blok</th>
-                        <th style="padding: 4px 6px; text-align: right;">Banyaknya</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${tx.distributionItems.map(d => `
-                        <tr style="border-bottom: 1px solid #E2E8F0;">
-                          <td style="padding: 4px 6px; font-weight: 700; color: #1E293B;">${esc(d.cloneId || d.klon || '-')}</td>
-                          <td style="padding: 4px 6px; color: #475569;">${esc(d.blockCode || d.blockName || d.blockId || '-')}</td>
-                          <td style="padding: 4px 6px; text-align: right; font-weight: 700; color: #116834;">${(d.qty || 0).toLocaleString('id-ID')} Pkk</td>
+              <div style="margin-bottom: 14px;">
+                <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                  <span>Rincian Distribusi Blok:</span>
+                </div>
+                <div style="border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                  <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.76rem;">
+                      <thead>
+                        <tr style="background: #F1F5F9; color: #475569; border-bottom: 1px solid #E2E8F0;">
+                          <th style="padding: 7px 10px; text-align: left; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em;">Klon</th>
+                          <th style="padding: 7px 10px; text-align: left; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em;">Blok</th>
+                          <th style="padding: 7px 10px; text-align: right; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em;">Banyaknya</th>
                         </tr>
-                      `).join('')}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        ${tx.distributionItems.map((d, dIdx) => {
+                          const isLast = dIdx === tx.distributionItems.length - 1;
+                          return `
+                            <tr style="${isLast ? '' : 'border-bottom: 1px solid #F1F5F9;'}">
+                              <td style="padding: 8px 10px; font-weight: 700; color: #0F172A; text-align: left;">${esc(d.cloneId || d.klon || '-')}</td>
+                              <td style="padding: 8px 10px; font-weight: 600; color: #334155; text-align: left;">${esc(d.blockCode || d.blockName || d.blockId || '-')}</td>
+                              <td style="padding: 8px 10px; text-align: right; font-weight: 800; color: #116834; white-space: nowrap;">${(d.qty || 0).toLocaleString('id-ID')} Pkk</td>
+                            </tr>
+                          `;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             ` : ''}
 
-            <div style="font-weight: 700; color: #334155; margin-bottom: 6px;">Timeline & Audit Trail:</div>
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-              ${(tx.auditTrail || []).map(a => `
-                <div style="border-left: 2px solid #116834; padding-left: 8px;">
-                  <div style="font-weight: 700; color: #1E293B;">${esc(a.actorName || a.actorId)} (${esc(a.actorRole)})</div>
-                  <div style="font-size: 0.72rem; color: #64748B;">${esc(formatDate(a.timestamp))} — ${esc(a.note || a.event)}</div>
+            <!-- TIMELINE & AUDIT TRAIL -->
+            <div style="margin-bottom: 4px;">
+              <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Timeline & Audit Trail:</div>
+              ${auditItems.length === 0 ? `
+                <div style="font-size: 0.74rem; color: #94A3B8; font-style: italic; padding: 4px 0;">
+                  Belum ada riwayat audit trail tersimpan.
                 </div>
-              `).join('')}
+              ` : `
+                <div style="display: flex; flex-direction: column; gap: 0; padding-left: 2px;">
+                  ${auditItems.map((a, aIdx) => {
+                    const isLast = aIdx === auditItems.length - 1;
+                    const actorName = a.actorName || a.name || a.userName || a.createdByName || a.actorId || a.userId || tx.requestedBy || 'User';
+                    const actorRole = a.position || a.actorRole || a.role || a.rawRole || '';
+                    const eventTime = a.timestamp || a.createdAt || a.date || tx.createdAt || tx.date;
+                    let eventDesc = a.note || a.details || a.description || a.event || a.eventType || 'Permintaan Bibit Diajukan';
+                    if (eventDesc === 'CREATE') eventDesc = 'Permintaan Bibit Kebun Sendiri diajukan';
+                    if (eventDesc === 'UPDATE') eventDesc = 'Pembaruan Dokumen';
+                    if (eventDesc === 'UPDATE_STATUS') eventDesc = 'Pembaruan Status Permintaan';
+                    if (eventDesc === 'SUBMIT') eventDesc = 'Dokumen Berhasil Diajukan';
+
+                    return `
+                      <div style="display: flex; gap: 10px; position: relative;">
+                        <!-- Left indicator & line -->
+                        <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex-shrink: 0;">
+                          <div style="width: 8px; height: 8px; border-radius: 50%; background: #116834; margin-top: 5px; flex-shrink: 0; border: 2px solid #DCFCE7;"></div>
+                          ${!isLast ? `<div style="width: 2px; flex: 1; background: #CBD5E1; margin: 3px 0;"></div>` : ''}
+                        </div>
+                        <!-- Right content -->
+                        <div style="flex: 1; padding-bottom: ${isLast ? '4px' : '12px'}; min-width: 0;">
+                          <div style="font-weight: 700; font-size: 0.78rem; color: #0F172A; line-height: 1.3;">
+                            <span>${esc(actorName)}</span>
+                            ${actorRole ? `<span style="font-size: 0.70rem; font-weight: 600; color: #64748B; margin-left: 4px;">(${esc(actorRole)})</span>` : ''}
+                          </div>
+                          <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px; line-height: 1.3;">
+                            <span style="font-weight: 600; color: #475569;">${esc(formatDate(eventTime))}</span>
+                            <span style="margin: 0 4px; color: #94A3B8;">—</span>
+                            <span style="color: #334155;">${esc(eventDesc)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `}
             </div>
 
             ${tx.dispatchData ? `
-              <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid #E2E8F0;">
-                <span style="font-weight: 700; color: #1E293B;">Pengeluaran Mantri:</span> ${tx.dispatchData.issuedQty} Pkk (Doc: ${esc(tx.dispatchData.dispatchDocNo || '-')})
+              <div style="margin-top: 8px; padding: 8px 10px; background: #FFF7ED; border: 1px solid #FFEDD5; border-radius: 8px; font-size: 0.74rem; color: #9A3412;">
+                <span style="font-weight: 700;">Pengeluaran Mantri:</span> ${tx.dispatchData.issuedQty} Pkk (Doc: ${esc(tx.dispatchData.dispatchDocNo || '-')})
               </div>
             ` : ''}
 
             ${tx.dispatchVerification ? `
-              <div style="margin-top: 4px;">
-                <span style="font-weight: 700; color: #1E293B;">Verifikasi Aktual ASB:</span> ${tx.dispatchVerification.verifiedQty} Pkk (Oleh: ${esc(tx.dispatchVerification.verifiedByName || tx.dispatchVerification.verifiedBy)})
+              <div style="margin-top: 6px; padding: 8px 10px; background: #F0FDF4; border: 1px solid #DCFCE7; border-radius: 8px; font-size: 0.74rem; color: #166534;">
+                <span style="font-weight: 700;">Verifikasi Aktual ASB:</span> ${tx.dispatchVerification.verifiedQty} Pkk (Oleh: ${esc(tx.dispatchVerification.verifiedByName || tx.dispatchVerification.verifiedBy)})
               </div>
             ` : ''}
 
             ${tx.receiptData ? `
-              <div style="margin-top: 4px; background: #DCFCE7; padding: 6px 8px; border-radius: 6px; color: #166534;">
+              <div style="margin-top: 6px; background: #DCFCE7; border: 1px solid #BBF7D0; padding: 8px 10px; border-radius: 8px; color: #166534; font-size: 0.74rem;">
                 <div><strong>Hasil Penerimaan:</strong> Layak: ${tx.receiptData.layakQty} Pkk | Rusak: ${tx.receiptData.rusakQty} Pkk (Total: ${tx.receiptData.totalQty} Pkk)</div>
-                <div style="font-size: 0.72rem; margin-top: 2px;">Foto: <strong>${esc(tx.receiptData.captureSource || 'CAMERA')}</strong> pada ${esc(formatDate(tx.receiptData.capturedAt))}</div>
+                <div style="font-size: 0.72rem; margin-top: 3px; color: #15803D;">Foto: <strong>${esc(tx.receiptData.captureSource || 'CAMERA')}</strong> pada ${esc(formatDate(tx.receiptData.capturedAt))}</div>
               </div>
             ` : ''}
           </div>
@@ -538,18 +588,18 @@ export async function renderRequestKebunSendiriLanding() {
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #FAFAFA; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
       <!-- HEADER -->
-      <header style="display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 12px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
-        <div style="display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1;">
-          <button id="btn-back-request" type="button" aria-label="Kembali" style="padding: 6px; margin-left: -4px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834; flex-shrink: 0;">
-            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0; position: sticky; top: 0; z-index: 10;">
+        <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+          <button id="btn-back-request" type="button" aria-label="Kembali" style="min-width: 40px; min-height: 40px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #116834; border-radius: 8px; flex-shrink: 0; transition: background 0.15s ease;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <line x1="19" y1="12" x2="5" y2="12"></line>
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <h1 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2;">Permintaan Bibit Kebun Sendiri</h1>
+          <h1 style="font-size: 1rem; font-weight: 700; color: #0F172A; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; letter-spacing: -0.01em;">Permintaan Bibit Kebun Sendiri</h1>
         </div>
-        <button id="btn-refresh" type="button" aria-label="Refresh" style="padding: 6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834; flex-shrink: 0;">
-          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none">
+        <button id="btn-refresh" type="button" aria-label="Refresh" style="min-width: 40px; min-height: 40px; margin-right: -8px; background: transparent; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #116834; border-radius: 8px; flex-shrink: 0; transition: background 0.15s ease;">
+          <svg id="sync-icon-svg" viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.4s ease;">
             <polyline points="23 4 23 10 17 10"></polyline>
             <polyline points="1 20 1 14 7 14"></polyline>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
@@ -564,14 +614,14 @@ export async function renderRequestKebunSendiriLanding() {
       ${statusFiltersHtml}
 
       <!-- CARDS LIST BODY -->
-      <main style="flex: 1; overflow-y: auto; padding: 12px 16px;">
+      <main style="flex: 1; overflow-y: auto; padding: 14px 16px 24px 16px;">
         ${cardsHtml}
       </main>
 
       <!-- FOOTER ACTION: Tombol Buat Permintaan Bibit Kebun Sendiri (Hanya ASISTEN_BIBITAN & ASISTEN) -->
       ${showCreateButton ? `
-        <footer style="flex-shrink: 0; background: #FFFFFF; border-top: 1px solid #E5E7EB; padding: 10px 16px; box-shadow: 0 -2px 8px rgba(0,0,0,0.04);">
-          <button id="btn-create-kebun-sendiri" type="button" style="width: 100%; min-height: 44px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s ease;">
+        <footer style="position: sticky; bottom: 0; z-index: 20; background: #FFFFFF; border-top: 1px solid #E2E8F0; padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)); box-shadow: 0 -4px 12px rgba(0,0,0,0.05); flex-shrink: 0;">
+          <button id="btn-create-kebun-sendiri" type="button" style="width: 100%; min-height: 46px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 4px rgba(17,104,52,0.2); transition: background 0.15s ease, transform 0.1s ease;">
             Buat Permintaan Bibit Kebun Sendiri
           </button>
         </footer>
@@ -585,7 +635,11 @@ export async function renderRequestKebunSendiriLanding() {
     navigate('/request');
   });
 
+  let refreshRotation = 0;
   app.querySelector('#btn-refresh')?.addEventListener('click', () => {
+    refreshRotation += 360;
+    const icon = app.querySelector('#sync-icon-svg');
+    if (icon) icon.style.transform = `rotate(${refreshRotation}deg)`;
     renderRequestKebunSendiriLanding();
   });
 

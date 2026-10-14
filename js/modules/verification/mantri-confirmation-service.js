@@ -1085,6 +1085,14 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
+    // Filter out child execution transactions of Seleksi Pra-Okulasi (these belong to Section 10: pre_grafting_selection_documents)
+    const isChildExecution = (
+      (item.transactionType && String(item.transactionType).startsWith('PELAKSANAAN_SELEKSI')) ||
+      Boolean(item.parentSelectionDocumentId || item.parentSelectionDocNo) ||
+      (item.selectionStage && ['SELEKSI_I', 'SELEKSI_1', 'SELEKSI_II', 'SELEKSI_2', 'SELEKSI_III', 'SELEKSI_3'].includes(String(item.selectionStage).toUpperCase()) && !String(item.docNo || '').includes('/CULL/'))
+    );
+    if (isChildExecution) return;
+
     const docNo = item.docNo || item.selectionNo || item.id || `SEL-${id}`;
     const actor = item.mantri || item.createdByName || item.actorName || user?.name || 'Mantri Bibitan';
     const layak = item.actualBibitRetainedQty !== undefined ? item.actualBibitRetainedQty : (item.bibitDipertahankan !== undefined ? item.bibitDipertahankan : (item.jumlahLayak || 0));

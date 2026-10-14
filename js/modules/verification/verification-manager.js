@@ -203,7 +203,7 @@ export const CANONICAL_STORAGE_MAP = Object.freeze({
   PEMERIKSAAN_DEDERAN: ['dederan_inspections'],
   PENYELEKSIAN: ['selection_transactions'],
   SELECTION: ['selection_transactions'],
-  SELEKSI_PRA_OKULASI: ['pre_grafting_selection_documents'],
+  SELEKSI_PRA_OKULASI: ['pre_grafting_selection_documents', 'selection_transactions'],
   KEBUN_ENTRES: ['entres_topping_transactions', 'entres_menunas_transactions', 'entres_transactions'],
   ENTRES: ['entres_topping_transactions', 'entres_menunas_transactions', 'entres_transactions'],
   MENUNAS: ['entres_menunas_transactions', 'entres_transactions'],
@@ -393,26 +393,55 @@ export function findSourceRecord(referenceType, referenceId, userCtx = null) {
     let match = filteredItems.find(item =>
       String(item.id || item.requestId || item.dispatchId || item.receiptId || item.selectionId || item.destructionId || '') === targetId
     );
-    if (match) return { ...match, _storeKey: storeKey };
+    if (match) return resolveRecordContext(match, storeKey, referenceType);
 
     // 2. Match by docNo / nomorDokumen / selectionDocNo / issueDocNo
     match = filteredItems.find(item =>
       String(item.docNo || item.nomorDokumen || item.selectionDocNo || item.issueDocNo || '') === targetId
     );
-    if (match) return { ...match, _storeKey: storeKey };
+    if (match) return resolveRecordContext(match, storeKey, referenceType);
 
     // 3. Match by nir
     match = filteredItems.find(item => String(item.nir || '') === targetId);
-    if (match) return { ...match, _storeKey: storeKey };
+    if (match) return resolveRecordContext(match, storeKey, referenceType);
 
     // 4. Match by referenceDocNo / selectionNo / dispatchNo / receiptDocNo / destructionNo
     match = filteredItems.find(item =>
       String(item.referenceDocNo || item.selectionNo || item.dispatchNo || item.receiptDocNo || item.destructionNo || '') === targetId
     );
-    if (match) return { ...match, _storeKey: storeKey };
+    if (match) return resolveRecordContext(match, storeKey, referenceType);
   }
 
   return null;
+}
+
+function resolveRecordContext(match, storeKey, referenceType) {
+  if (referenceType === 'SELEKSI_PRA_OKULASI' && storeKey === 'selection_transactions') {
+    const parentDocs = storage.get('pre_grafting_selection_documents', []);
+    const parentDoc = parentDocs.find(p =>
+      (match.parentSelectionDocumentId && p.id === match.parentSelectionDocumentId) ||
+      (match.selectionDocumentId && p.id === match.selectionDocumentId) ||
+      (match.parentSelectionDocNo && p.docNo === match.parentSelectionDocNo) ||
+      (match.selectionDocNo && p.docNo === match.selectionDocNo) ||
+      (match.docNo && p.docNo === match.docNo) ||
+      (match.batchCode && (p.batchCode === match.batchCode || p.batchNo === match.batchCode))
+    );
+    if (parentDoc) {
+      return {
+        ...parentDoc,
+        ...match,
+        _storeKey: storeKey,
+        _parentDoc: parentDoc,
+        _parentDocId: parentDoc.id,
+        totalLayak: parentDoc.totalLayak !== undefined && parentDoc.totalLayak !== null ? parentDoc.totalLayak : (match.totalLayak !== undefined ? match.totalLayak : match.actualBibitRetainedQty),
+        totalAfkir: parentDoc.totalAfkir !== undefined && parentDoc.totalAfkir !== null ? parentDoc.totalAfkir : (match.totalAfkir !== undefined ? match.totalAfkir : match.actualBibitSelectedQty),
+        totalDiperiksa: parentDoc.totalDiperiksa !== undefined && parentDoc.totalDiperiksa !== null ? parentDoc.totalDiperiksa : (match.totalDiperiksa !== undefined ? match.totalDiperiksa : match.actualPolybagInspectedQty),
+        bedengan: match.bedengan || match.bedenganCode || parentDoc.bedengan,
+        batchCode: match.batchCode || parentDoc.batchCode
+      };
+    }
+  }
+  return { ...match, _storeKey: storeKey };
 }
 
 /**
@@ -649,14 +678,38 @@ function _computeVerificationDetailData(raw, userCtx = null, refType = 'PENERIMA
 
     case 'SELEKSI_PRA_OKULASI': {
       const stage = raw.selectionStage || 'Seleksi I';
-      const layak = raw.totalLayak !== undefined ? raw.totalLayak : (raw.finalBibitQty !== undefined ? raw.finalBibitQty : '-');
-      const afkir = raw.totalAfkir !== undefined ? raw.totalAfkir : (raw.rejectedBibitQty !== undefined ? raw.rejectedBibitQty : '-');
-      const diperiksa = raw.totalDiperiksa !== undefined ? raw.totalDiperiksa : (layak !== '-' && afkir !== '-' ? Number(layak) + Number(afkir) : '-');
+      const layak = raw.totalLayak !== undefined && raw.totalLayak !== null ? raw.totalLayak : (
+        raw.finalBibitQty !== undefined && raw.finalBibitQty !== null ? raw.finalBibitQty : (
+          raw.actualBibitRetainedQty !== undefined && raw.actualBibitRetainedQty !== null ? raw.actualBibitRetainedQty : (
+            raw.bibitDipertahankan !== undefined && raw.bibitDipertahankan !== null ? raw.bibitDipertahankan : (
+              raw.jumlahLayak !== undefined && raw.jumlahLayak !== null ? raw.jumlahLayak : '-'
+            )
+          )
+        )
+      );
+      const afkir = raw.totalAfkir !== undefined && raw.totalAfkir !== null ? raw.totalAfkir : (
+        raw.rejectedBibitQty !== undefined && raw.rejectedBibitQty !== null ? raw.rejectedBibitQty : (
+          raw.actualBibitSelectedQty !== undefined && raw.actualBibitSelectedQty !== null ? raw.actualBibitSelectedQty : (
+            raw.bibitReject !== undefined && raw.bibitReject !== null ? raw.bibitReject : (
+              raw.jumlahAfkir !== undefined && raw.jumlahAfkir !== null ? raw.jumlahAfkir : '-'
+            )
+          )
+        )
+      );
+      const diperiksa = raw.totalDiperiksa !== undefined && raw.totalDiperiksa !== null ? raw.totalDiperiksa : (
+        raw.actualPolybagInspectedQty !== undefined && raw.actualPolybagInspectedQty !== null ? raw.actualPolybagInspectedQty : (
+          raw.jumlahDiperiksa !== undefined && raw.jumlahDiperiksa !== null ? raw.jumlahDiperiksa : (
+            raw.polybagScope !== undefined && raw.polybagScope !== null ? raw.polybagScope : (
+              layak !== '-' && afkir !== '-' ? Number(layak) + Number(afkir) : '-'
+            )
+          )
+        )
+      );
       const formattedLayak = formatSafeNumber(layak);
       const formattedAfkir = formatSafeNumber(afkir);
       const formattedDiperiksa = formatSafeNumber(diperiksa);
       const batch = raw.batchCode || raw.batchNo || '-';
-      const bedengan = raw.bedengan || '-';
+      const bedengan = raw.bedengan || raw.bedenganCode || '-';
       const summary = `${stage}: ${formattedLayak} Layak, ${formattedAfkir} Afkir (Batch: ${batch})`;
 
       return {
@@ -672,7 +725,7 @@ function _computeVerificationDetailData(raw, userCtx = null, refType = 'PENERIMA
           { label: 'Populasi Diperiksa', value: diperiksa !== '-' ? `${formattedDiperiksa} Pkk` : '-' },
           { label: 'Bibit Layak', value: layak !== '-' ? `${formattedLayak} Pkk` : '-', highlight: true },
           { label: 'Bibit Afkir', value: afkir !== '-' ? `${formattedAfkir} Pkk` : '-' },
-          { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
+          { label: 'Keterangan', value: raw.keterangan || raw.notes || raw.catatan || raw.alasan || '-' }
         ]
       };
     }
@@ -1933,7 +1986,8 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
             tx.selectionDocumentId === targetRecord.id ||
             tx.parentSelectionDocumentId === targetRecord.id ||
             tx.selectionDocNo === targetRecord.docNo ||
-            tx.parentSelectionDocNo === targetRecord.docNo
+            tx.parentSelectionDocNo === targetRecord.docNo ||
+            tx.id === targetRecord.id
           ) {
             tx.status = 'DISETUJUI';
             tx.isFinal = true;
@@ -1948,6 +2002,26 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
         });
         if (childTxsModified) {
           storage.set('selection_transactions', allSelTxs);
+        }
+
+        // Sinkronkan juga Dokumen Induk di pre_grafting_selection_documents jika targetRecord adalah child execution
+        const parentDocId = targetRecord.parentSelectionDocumentId || targetRecord.selectionDocumentId || targetRecord._parentDocId;
+        const parentDocNo = targetRecord.parentSelectionDocNo || targetRecord.selectionDocNo;
+        if (parentDocId || parentDocNo) {
+          const allPreDocs = storage.get('pre_grafting_selection_documents', []);
+          const pIdx = allPreDocs.findIndex(d => (parentDocId && d.id === parentDocId) || (parentDocNo && d.docNo === parentDocNo));
+          if (pIdx !== -1) {
+            allPreDocs[pIdx].status = 'DISETUJUI';
+            allPreDocs[pIdx].isFinal = true;
+            allPreDocs[pIdx].verificationStatus = VERIFICATION_STATUS.TERVERIFIKASI;
+            allPreDocs[pIdx].verifiedByUserId = currentUser.userId || currentUser.id;
+            allPreDocs[pIdx].verifiedByName = currentUser.name || 'Asisten Bibitan';
+            allPreDocs[pIdx].verifiedByRole = currentUser.role || ROLES.ASISTEN_BIBITAN;
+            allPreDocs[pIdx].verifiedAt = nowIso;
+            allPreDocs[pIdx].approvalNotes = notes || 'Disetujui oleh Asisten Bibitan via Central Hub Verifikasi';
+            allPreDocs[pIdx].updatedAt = nowIso;
+            storage.set('pre_grafting_selection_documents', allPreDocs);
+          }
         }
 
         // Downstream Document Generation
@@ -2132,7 +2206,8 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
             tx.selectionDocumentId === returnedDoc.id ||
             tx.parentSelectionDocumentId === returnedDoc.id ||
             tx.selectionDocNo === returnedDoc.docNo ||
-            tx.parentSelectionDocNo === returnedDoc.docNo
+            tx.parentSelectionDocNo === returnedDoc.docNo ||
+            tx.id === returnedDoc.id
           ) {
             tx.status = 'DIKEMBALIKAN';
             tx.returnReason = returnReason.trim();
@@ -2142,6 +2217,22 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
         });
         if (childTxsModified) {
           storage.set('selection_transactions', allSelTxs);
+        }
+
+        const parentDocId = returnedDoc.parentSelectionDocumentId || returnedDoc.selectionDocumentId || returnedDoc._parentDocId;
+        const parentDocNo = returnedDoc.parentSelectionDocNo || returnedDoc.selectionDocNo;
+        if (parentDocId || parentDocNo) {
+          const allPreDocs = storage.get('pre_grafting_selection_documents', []);
+          const pIdx = allPreDocs.findIndex(d => (parentDocId && d.id === parentDocId) || (parentDocNo && d.docNo === parentDocNo));
+          if (pIdx !== -1) {
+            allPreDocs[pIdx].status = 'DIKEMBALIKAN';
+            allPreDocs[pIdx].verificationStatus = VERIFICATION_STATUS.DIKEMBALIKAN;
+            allPreDocs[pIdx].returnReason = returnReason.trim();
+            allPreDocs[pIdx].returnedAt = nowIso;
+            allPreDocs[pIdx].returnedByUserId = currentUser.userId || currentUser.id;
+            allPreDocs[pIdx].isCompleted = false;
+            storage.set('pre_grafting_selection_documents', allPreDocs);
+          }
         }
       } else if (referenceType === 'PENYELEKSIAN' || referenceType === 'SELECTION' || sourceRecord._storeKey === 'selection_transactions') {
         // Sinkronkan status selection_pool item agar dapat dikoreksi/dipilih ulang oleh Mantri

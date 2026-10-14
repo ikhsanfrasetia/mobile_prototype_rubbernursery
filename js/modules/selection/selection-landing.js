@@ -3816,7 +3816,7 @@ export function openSelectionCameraModal({ item, displayDocNo, user, category = 
     ctx.textAlign = 'right';
     ctx.fillText(`DEKLARASI ${category.toUpperCase()}`, w - 10, h - 40);
 
-    return canvasEl.toDataURL('image/jpeg', 0.85);
+    return canvasEl.toDataURL('image/jpeg', 0.65);
   }
 
   btnShutter?.addEventListener('click', () => {
@@ -4087,9 +4087,9 @@ export function openExecutionCameraModal({ batchCode, bedenganCode, stageLabel =
     });
     const captureTimeFormatted = `${timeFormatter.format(now).replace(/\\./g, ':')} WIB`;
 
-    const vWidth = videoEl.videoWidth || 720;
-    const vHeight = videoEl.videoHeight || 960;
-    const targetW = 720;
+    const vWidth = videoEl.videoWidth || 640;
+    const vHeight = videoEl.videoHeight || 480;
+    const targetW = 480;
     const targetH = Math.round((vHeight / vWidth) * targetW);
 
     canvasEl.width = targetW;
@@ -4122,7 +4122,7 @@ export function openExecutionCameraModal({ batchCode, bedenganCode, stageLabel =
     ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillText(`GPS: ${capturedLat.toFixed(6)}, ${capturedLon.toFixed(6)} • ${stageLabel}`, 16, targetH - barH + 62);
 
-    const dataUrl = canvasEl.toDataURL('image/jpeg', 0.85);
+    const dataUrl = canvasEl.toDataURL('image/jpeg', 0.65);
 
     const photoRecord = {
       id: `PHOTO-SEL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,

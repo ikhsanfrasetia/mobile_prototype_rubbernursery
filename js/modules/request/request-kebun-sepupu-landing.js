@@ -1127,7 +1127,7 @@ export async function renderRequestKebunSepupuLanding() {
         class="filter-pill-btn" 
         data-status="${pill.key}"
         type="button" 
-        style="padding: 4px 10px; font-size: 0.72rem; font-weight: ${isSelected ? '700' : '600'}; border-radius: 16px; border: 1px solid ${isSelected ? '#116834' : '#E2E8F0'}; background: ${isSelected ? '#116834' : '#FFFFFF'}; color: ${isSelected ? '#FFFFFF' : '#475569'}; white-space: nowrap; cursor: pointer; transition: all 0.15s ease; line-height: 1.3;"
+        style="display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 14px; font-size: 0.74rem; font-weight: ${isSelected ? '700' : '600'}; border-radius: 9999px; border: 1px solid ${isSelected ? '#116834' : '#E2E8F0'}; background: ${isSelected ? '#116834' : '#FFFFFF'}; color: ${isSelected ? '#FFFFFF' : '#475569'}; white-space: nowrap; cursor: pointer; box-shadow: ${isSelected ? '0 1px 3px rgba(17,104,52,0.2)' : 'none'}; transition: all 0.15s ease;"
       >
         ${pill.label} (${count})
       </button>
@@ -1137,20 +1137,20 @@ export async function renderRequestKebunSepupuLanding() {
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #FAFAFA; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
-      <!-- HEADER (compact, single line) -->
-      <header style="display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 6px 14px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0; gap: 8px;">
-        <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
-          <button id="btn-back" type="button" aria-label="Kembali" style="padding: 6px; margin-left: -6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834; flex-shrink: 0;">
-            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <!-- HEADER -->
+      <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; flex-shrink: 0; position: sticky; top: 0; z-index: 10;">
+        <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+          <button id="btn-back" type="button" aria-label="Kembali" style="min-width: 40px; min-height: 40px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #116834; border-radius: 8px; flex-shrink: 0; transition: background 0.15s ease;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <line x1="19" y1="12" x2="5" y2="12"></line>
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <h1 style="font-size: 0.80rem; font-weight: 700; color: #111111; margin: 0; letter-spacing: -0.015em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;">Permintaan Bibit Kebun Sepupu</h1>
+          <h1 style="font-size: 1rem; font-weight: 700; color: #0F172A; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; letter-spacing: -0.01em;">Permintaan Bibit Kebun Sepupu</h1>
         </div>
         <div style="display: flex; align-items: center; flex-shrink: 0;">
-          <button id="btn-refresh" type="button" aria-label="Refresh" style="padding: 6px; margin-right: -6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
-            <svg id="sync-icon-svg" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <button id="btn-refresh" type="button" aria-label="Refresh" style="min-width: 40px; min-height: 40px; margin-right: -8px; background: transparent; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #116834; border-radius: 8px; flex-shrink: 0; transition: background 0.15s ease;">
+            <svg id="sync-icon-svg" viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);">
               <polyline points="23 4 23 10 17 10"></polyline>
               <polyline points="1 20 1 14 7 14"></polyline>
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
@@ -1161,14 +1161,14 @@ export async function renderRequestKebunSepupuLanding() {
 
       <!-- TABS NAV (Permintaan Saya vs Permintaan Masuk + Notif Bubble 🔴) -->
       <div style="background: #FFFFFF; border-bottom: 1px solid #E2E8F0; padding: 0 16px; flex-shrink: 0;">
-        <div style="display: flex; gap: 4px;">
+        <div style="display: flex; gap: 8px;">
           <button 
             id="tab-my-requests" 
             type="button" 
-            style="flex: 1; padding: 8px 4px; background: transparent; border: none; border-bottom: 2px solid ${activeTab === 'MY_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'MY_REQUESTS' ? '800' : '600'}; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;"
+            style="flex: 1; min-height: 44px; padding: 10px 4px; background: transparent; border: none; border-bottom: 2px solid ${activeTab === 'MY_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'MY_REQUESTS' ? '800' : '600'}; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease;"
           >
             <span>Permintaan Saya</span>
-            <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; background: ${activeTab === 'MY_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700;">
+            <span style="display: inline-flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: ${activeTab === 'MY_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; line-height: 1;">
               ${myRequests.length}
             </span>
           </button>
@@ -1176,11 +1176,11 @@ export async function renderRequestKebunSepupuLanding() {
           <button 
             id="tab-incoming-requests" 
             type="button" 
-            style="flex: 1; padding: 8px 4px; background: transparent; border: none; border-bottom: 2px solid ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'INCOMING_REQUESTS' ? '800' : '600'}; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;"
+            style="flex: 1; min-height: 44px; padding: 10px 4px; background: transparent; border: none; border-bottom: 2px solid ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'INCOMING_REQUESTS' ? '800' : '600'}; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease; position: relative;"
           >
             <span>Permintaan Masuk</span>
-            ${hasActionableIncoming ? `<span class="notif-dot" style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #DC2626;"></span>` : ''}
-            <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; background: ${activeTab === 'INCOMING_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700;">
+            ${hasActionableIncoming ? `<span class="notif-dot" style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #DC2626; margin-right: -2px;"></span>` : ''}
+            <span style="display: inline-flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: ${activeTab === 'INCOMING_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'INCOMING_REQUESTS' ? '#116834' : '#64748B'}; line-height: 1;">
               ${incomingRequests.length}
             </span>
           </button>
@@ -1188,21 +1188,25 @@ export async function renderRequestKebunSepupuLanding() {
       </div>
 
       <!-- FILTER STATUS BAR -->
-      <div style="background: #FAFAFA; padding: 8px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; flex-shrink: 0;">
-        <div style="display: flex; gap: 6px;">
+      <div style="background: #FAFAFA; padding: 10px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; flex-shrink: 0; scrollbar-width: none;">
+        <div style="display: flex; gap: 8px; align-items: center;">
           ${filterPills}
         </div>
       </div>
 
       <!-- MAIN CONTENT: LIST TRANSAKSI / EMPTY STATE -->
-      <main style="flex: 1; overflow-y: auto; padding: 10px 16px;">
+      <main style="flex: 1; overflow-y: auto; padding: 12px 16px 24px 16px;">
         ${filteredItems.length === 0 ? renderEmptyState(activeTab) : renderRequestCards(filteredItems, currentUser)}
       </main>
 
       <!-- FOOTER ACTION: Create button hanya untuk PENGURUS -->
       ${normalizedUserRole === 'PENGURUS' ? `
-      <div style="flex-shrink: 0; background: #FFFFFF; border-top: 1px solid #E2E8F0; padding: 10px 16px;">
-        <button id="btn-create-request" type="button" style="width: 100%; min-height: 42px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 -1px 4px rgba(17,104,52,0.12);">
+      <div style="flex-shrink: 0; background: #FFFFFF; border-top: 1px solid #E2E8F0; padding: 12px 16px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -2px 10px rgba(0,0,0,0.05);">
+        <button id="btn-create-request" type="button" style="width: 100%; min-height: 46px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 6px rgba(17,104,52,0.2); transition: background 0.15s ease;">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
           Buat Permintaan
         </button>
       </div>
@@ -1213,6 +1217,120 @@ export async function renderRequestKebunSepupuLanding() {
 
   // Attach Event Handlers
   attachLandingEvents(filteredItems, currentUser);
+}
+
+/**
+ * Render visual Timeline & Audit Trail stepper (Harmonisasi dengan Kebun Sendiri)
+ */
+function renderTimelineStepper(item) {
+  let auditItems = Array.isArray(item.auditTrail) ? [...item.auditTrail] : [];
+
+  // Synthesize initial audit trail if empty but record has historical metadata
+  if (auditItems.length === 0) {
+    if (item.createdAt || item.date || item.requestedBy || item.createdByName) {
+      auditItems.push({
+        eventType: 'CREATE',
+        name: item.requestedBy || item.createdByName || 'Pemohon',
+        position: 'Pengurus Kebun',
+        timestamp: item.createdAt || item.date,
+        details: 'Permintaan Bibit Kebun Sepupu diajukan'
+      });
+    }
+    if (item.processedByName) {
+      auditItems.push({
+        eventType: 'UPDATE',
+        name: item.processedByName,
+        position: 'Pengurus Kebun Tujuan',
+        timestamp: item.updatedAt || item.processedAt || item.createdAt,
+        details: 'Permintaan disetujui dan diteruskan ke Asisten Kepala'
+      });
+    }
+    if (item.verifiedAskepByName) {
+      auditItems.push({
+        eventType: 'VERIFY',
+        name: item.verifiedAskepByName,
+        position: 'Asisten Kepala',
+        timestamp: item.verifiedAskepAt || item.updatedAt,
+        details: 'Permintaan diverifikasi oleh Asisten Kepala dan diteruskan ke Asisten Bibitan'
+      });
+    }
+    if (item.returnedByName || item.revisionReason || item.returnReason) {
+      auditItems.push({
+        eventType: 'UPDATE',
+        name: item.returnedByName || 'Verifikator',
+        position: 'Pemeriksa',
+        timestamp: item.returnedAt || item.updatedAt,
+        details: (item.revisionReason || item.returnReason) ? `Dikembalikan untuk revisi: "${item.revisionReason || item.returnReason}"` : 'Dokumen dikembalikan untuk revisi'
+      });
+    }
+    if (item.verifiedByName) {
+      auditItems.push({
+        eventType: 'VERIFY',
+        name: item.verifiedByName,
+        position: 'Asisten Bibitan',
+        timestamp: item.verifiedAt || item.updatedAt,
+        details: 'Permintaan diverifikasi oleh Asisten Bibitan'
+      });
+    }
+    if (item.rejectionReason) {
+      auditItems.push({
+        eventType: 'UPDATE',
+        name: item.rejectedByName || item.processedByName || 'Pengurus',
+        position: 'Pengurus Kebun Tujuan',
+        timestamp: item.rejectedAt || item.updatedAt,
+        details: `Permintaan ditolak: "${item.rejectionReason}"`
+      });
+    }
+  }
+
+  return `
+    <!-- TIMELINE & AUDIT TRAIL -->
+    <div style="margin-top: 12px; margin-bottom: 6px; padding-top: 10px; border-top: 1px dashed #E2E8F0;">
+      <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Timeline & Audit Trail:</div>
+      ${auditItems.length === 0 ? `
+        <div style="font-size: 0.74rem; color: #94A3B8; font-style: italic; padding: 4px 0;">
+          Belum ada riwayat audit trail tersimpan.
+        </div>
+      ` : `
+        <div style="display: flex; flex-direction: column; gap: 0; padding-left: 2px;">
+          ${auditItems.map((a, aIdx) => {
+            const isLast = aIdx === auditItems.length - 1;
+            const actorName = a.actorName || a.name || a.userName || a.createdByName || a.actorId || a.userId || item.requestedBy || 'User';
+            const actorRole = a.position || a.actorRole || a.role || a.rawRole || '';
+            const eventTime = a.timestamp || a.createdAt || a.date || item.createdAt || item.date;
+            let eventDesc = a.note || a.details || a.description || a.event || a.eventType || 'Permintaan Bibit Diajukan';
+            if (eventDesc === 'CREATE') eventDesc = 'Permintaan Bibit Kebun Sepupu diajukan';
+            if (eventDesc === 'UPDATE') eventDesc = 'Pembaruan Dokumen';
+            if (eventDesc === 'VERIFY') eventDesc = 'Verifikasi Dokumen';
+            if (eventDesc === 'APPROVE') eventDesc = 'Persetujuan Dokumen';
+            if (eventDesc === 'SUBMIT') eventDesc = 'Dokumen Berhasil Diajukan';
+
+            return `
+              <div style="display: flex; gap: 10px; position: relative;">
+                <!-- Left indicator & line -->
+                <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex-shrink: 0;">
+                  <div style="width: 8px; height: 8px; border-radius: 50%; background: #116834; margin-top: 5px; flex-shrink: 0; border: 2px solid #DCFCE7;"></div>
+                  ${!isLast ? `<div style="width: 2px; flex: 1; background: #CBD5E1; margin: 3px 0;"></div>` : ''}
+                </div>
+                <!-- Right content -->
+                <div style="flex: 1; padding-bottom: ${isLast ? '4px' : '12px'}; min-width: 0;">
+                  <div style="font-weight: 700; font-size: 0.78rem; color: #0F172A; line-height: 1.3;">
+                    <span>${esc(actorName)}</span>
+                    ${actorRole ? `<span style="font-size: 0.70rem; font-weight: 600; color: #64748B; margin-left: 4px;">(${esc(actorRole)})</span>` : ''}
+                  </div>
+                  <div style="font-size: 0.72rem; color: #64748B; margin-top: 2px; line-height: 1.3;">
+                    <span style="font-weight: 600; color: #475569;">${esc(formatDate(eventTime))}</span>
+                    <span style="margin: 0 4px; color: #94A3B8;">—</span>
+                    <span style="color: #334155;">${esc(eventDesc)}</span>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `}
+    </div>
+  `;
 }
 
 /**
@@ -1425,6 +1543,8 @@ function renderSingleCard(item, index, currentUser) {
         ` : ''}
       </div>
 
+      ${renderTimelineStepper(item)}
+
       ${cardActionButtons}
 
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 6px; border-top: 1px solid #F1F5F9;">
@@ -1513,35 +1633,53 @@ function renderSingleCard(item, index, currentUser) {
   }
 
   return `
-    <div class="request-card" data-card-index="${index}" style="background: #FFFFFF; border: 1px solid ${isExpanded ? '#116834' : '#E2E8F0'}; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); transition: border-color 0.15s ease;">
+    <div class="request-card" data-card-index="${index}" style="background: #FFFFFF; border: 1px solid ${isExpanded ? '#116834' : '#E2E8F0'}; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: border-color 0.15s ease;">
       
       <!-- ROW 1: NO DOKUMEN & BADGE STATUS -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <div style="font-size: 0.88rem; font-weight: 800; color: #116834;">${esc(docNo)}</div>
-        <span style="font-size: 0.65rem; font-weight: 700; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; padding: 2px 7px; border-radius: 5px; text-transform: uppercase;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #F1F5F9;">
+        <div style="min-width: 0; flex: 1;">
+          <div style="font-size: 0.68rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.2;">Dokumen Permintaan</div>
+          <div style="font-size: 0.95rem; font-weight: 800; color: #116834; line-height: 1.3; margin-top: 2px; word-break: break-all;">${esc(docNo)}</div>
+        </div>
+        <span style="font-size: 0.65rem; font-weight: 700; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; padding: 3px 8px; border-radius: 6px; text-transform: uppercase; flex-shrink: 0; line-height: 1.25;">
           ${esc(badgeText)}
         </span>
       </div>
 
       <!-- ROW 2: KEBUN ASAL → KEBUN DITUJU -->
-      <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.78rem;">
-        <span style="font-weight: 700; color: #1E293B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42%;">${esc(sourceName)}</span>
-        <span style="color: #94A3B8; font-weight: 700; flex-shrink: 0;">→</span>
-        <span style="font-weight: 700; color: #116834; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42%;">${esc(targetName)}</span>
+      <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 0.78rem; background: #F8FAFC; padding: 6px 10px; border-radius: 6px; border: 1px solid #F1F5F9;">
+        <span style="font-weight: 700; color: #1E293B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;">${esc(sourceName)}</span>
+        <span style="color: #94A3B8; font-weight: 800; flex-shrink: 0;">→</span>
+        <span style="font-weight: 700; color: #116834; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;">${esc(targetName)}</span>
       </div>
 
-      <!-- ROW 3: KLON • KATEGORI -->
-      <div style="font-size: 0.75rem; color: #475569; margin-bottom: 4px;">
-        <span style="font-weight: 700;">${esc(item.klon || '-')}</span>
-        <span style="color: #CBD5E1; margin: 0 4px;">•</span>
-        <span style="font-weight: 600;">${esc(item.category || '-')}</span>
+      <!-- ROW 3: 2x2 Grid Informasi Permintaan -->
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; font-size: 0.78rem; margin-bottom: 8px;">
+        <div style="min-width: 0;">
+          <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 1px;">Pemohon:</div>
+          <div style="font-weight: 700; color: #1E293B; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(item.requestedBy || item.createdByName || '-')}</div>
+        </div>
+        <div style="min-width: 0;">
+          <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 1px;">Klon Diminta:</div>
+          <div style="font-weight: 700; color: #1E293B; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(item.requestedClone || item.klon || '-')}</div>
+        </div>
+        <div style="min-width: 0;">
+          <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 1px;">Banyaknya Diminta:</div>
+          <div style="font-weight: 800; color: #116834; white-space: nowrap;">${qtyFormatted} Pkk</div>
+        </div>
+        <div style="min-width: 0;">
+          <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 1px;">Tanggal Dibutuhkan:</div>
+          <div style="font-weight: 600; color: #475569; white-space: nowrap;">${esc(formattedDate)}</div>
+        </div>
       </div>
 
-      <!-- ROW 4: BANYAKNYA & TANGGAL -->
-      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-bottom: ${isExpanded ? '0' : '6px'};">
-        <span style="font-weight: 800; color: #116834;">${qtyFormatted} Pkk</span>
-        <span style="color: #64748B;">Dibutuhkan ${esc(formattedDate)}</span>
-      </div>
+      <!-- Detail Expandable Area Toggle Button -->
+      <button class="btn-toggle-expand btn-expand-card" data-index="${index}" type="button" style="width: 100%; min-height: 36px; background: transparent; border: none; border-top: 1px dashed #E2E8F0; padding: 6px 0 2px 0; font-size: 0.74rem; color: #116834; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: color 0.15s ease;">
+        <span>${isExpanded ? 'Sembunyikan Rincian' : 'Tampilkan Rincian'}</span>
+        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.2" fill="none" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}; transition: transform 0.2s ease;">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
 
       ${expandedSection}
       ${unexpandedFooter}
@@ -1727,6 +1865,8 @@ function showDetailModal(item, currentUser) {
             <span style="font-weight: 800; font-size: 0.95rem; color: #116834; text-align: right;">${qtyFormatted} Pkk</span>
           </div>
 
+          ${renderTimelineStepper(item)}
+
         </div>
       </div>
     `,
@@ -1753,8 +1893,15 @@ function attachLandingEvents(items, currentUser) {
     navigate('/request');
   });
 
-  // Refresh Button
+  // Refresh Button dengan animasi putar
   app.querySelector('#btn-refresh')?.addEventListener('click', () => {
+    const icon = app.querySelector('#sync-icon-svg');
+    if (icon) {
+      icon.style.transform = 'rotate(360deg)';
+      setTimeout(() => {
+        if (icon) icon.style.transform = 'rotate(0deg)';
+      }, 600);
+    }
     renderRequestKebunSepupuLanding();
   });
 
@@ -1794,12 +1941,12 @@ function attachLandingEvents(items, currentUser) {
     });
   });
 
-  // Expand Card Buttons
-  app.querySelectorAll('.btn-expand-card').forEach(btn => {
+  // Expand Card Buttons & Toggle Expand
+  app.querySelectorAll('.btn-expand-card, .btn-toggle-expand').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(btn.getAttribute('data-index'), 10);
-      expandedCardIndex = idx;
+      expandedCardIndex = expandedCardIndex === idx ? -1 : idx;
       renderRequestKebunSepupuLanding();
     });
   });
