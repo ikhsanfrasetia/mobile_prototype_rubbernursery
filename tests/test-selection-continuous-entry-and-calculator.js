@@ -273,7 +273,7 @@ assert(alasanSelect.disabled === true, 'Alasan dropdown is disabled when bibit =
 // Bibit > sisa bibit tersedia triggers error
 bibitInput.value = '1005'; // Exceeds 1000
 bibitInput.dispatchEvent({ type: 'input' });
-assert(bibitErrEl.style.display === 'block' && bibitErrEl.textContent.includes('melebihi sisa bibit tersedia'), 'Bibit exceeding sisa bibit tersedia (1005 > 1000) triggers inline error');
+assert(bibitErrEl.style.display === 'block' && bibitErrEl.textContent.includes('melebihi Bibit Tersedia'), 'Bibit exceeding Bibit Tersedia (1005 > 1000) triggers inline error');
 
 // Bibit within sisa bibit activates alasan dropdown
 bibitInput.value = '300';

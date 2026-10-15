@@ -202,3 +202,4 @@ window.addEventListener('DOMContentLoaded', async () => {
   initReviewWorkspace();
   initExportScreenToolbar();
 });
+

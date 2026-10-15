@@ -10,7 +10,7 @@
  */
 
 import { storage } from '../../core/storage.js';
-import { todayISO, todayDDMMYYYY } from '../../core/utils.js';
+import { todayISO, todayDDMMYYYY, isCullDocNo } from '../../core/utils.js';
 import { getCurrentUserContext, resolveUserContext, ROLES } from '../../core/user-context.js';
 import { VERIFICATION_STORAGE_KEY, VERIFICATION_STATUS } from './verification-manager.js';
 import { 
@@ -1085,11 +1085,13 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     if (!isToday && !isOutstanding) return;
     if (!matchActor(item, user)) return;
 
-    // Filter out child execution transactions of Seleksi Pra-Okulasi (these belong to Section 10: pre_grafting_selection_documents)
-    const isChildExecution = (
+    // CULL declarations for Seleksi Pra-Okulasi also carry parent document IDs.
+    // Keep those declarations in the hub; exclude only physical execution rows.
+    const isCullDeclaration = isCullDocNo(item.docNo) || isCullDocNo(item.selectionNo) || isCullDocNo(item.selectionPoolDocNo);
+    const isChildExecution = !isCullDeclaration && (
       (item.transactionType && String(item.transactionType).startsWith('PELAKSANAAN_SELEKSI')) ||
       Boolean(item.parentSelectionDocumentId || item.parentSelectionDocNo) ||
-      (item.selectionStage && ['SELEKSI_I', 'SELEKSI_1', 'SELEKSI_II', 'SELEKSI_2', 'SELEKSI_III', 'SELEKSI_3'].includes(String(item.selectionStage).toUpperCase()) && !String(item.docNo || '').includes('/CULL/'))
+      (item.selectionStage && ['SELEKSI_I', 'SELEKSI_1', 'SELEKSI_II', 'SELEKSI_2', 'SELEKSI_III', 'SELEKSI_3'].includes(String(item.selectionStage).toUpperCase()))
     );
     if (isChildExecution) return;
 

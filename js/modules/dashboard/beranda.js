@@ -15,6 +15,7 @@ import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
 import { 
   syncAllSeedingsToSelectionPool, 
   syncAllSeedingsToPreGraftingSelectionDocuments, 
+  syncAllApprovedPreGraftingSelectionDocuments,
   filterSelectionByScope, 
   hasActionableSelection, 
   getActionableSelectionCount 
@@ -98,7 +99,7 @@ import { getActionableDestructionCount } from '../destruction/destruction-manage
 import { getActionableDispatchCount } from '../dispatch/dispatch-landing.js';
 import { getPendingVerificationCount } from '../verification/verification-manager.js';
 import { getActionableConsolidationCount } from '../consolidation/consolidation-manager.js';
-import { hasActionableInspection, hasReturnedInspection } from '../inspection/inspection-landing.js';
+import { hasActionableInspection, hasReturnedInspection, hasActionablePreGraftingInspection } from '../inspection/inspection-landing.js';
 import { ASISTEN_BIBITAN_MAIN_MENUS } from '../../core/menu-registry.js';
 
 export function hasActionablePermintaan(requests, userCtx) {
@@ -660,7 +661,17 @@ export function renderBeranda() {
     }
   }
 
-  // Hitung pending pemeriksaan (Dederan Siap Periksa ATAU Okulasi Siap Periksa ATAU Pemeriksaan Dikembalikan)
+  // Sinkronisasi bibit ditolak (Rusak, Mati, Lainnya), Dederan Rejections & Dokumen Seleksi Pra-Okulasi dari transaksi penyemaian
+  try {
+    syncAllSeedingsToSelectionPool();
+    syncAllDederanRejectionsToSelectionPool();
+    syncAllSeedingsToPreGraftingSelectionDocuments(userCtx);
+    syncAllApprovedPreGraftingSelectionDocuments(userCtx);
+  } catch (err) {
+    console.warn('[beranda] Gagal sinkronisasi data seeding/dederan:', err);
+  }
+
+  // Hitung pending pemeriksaan (Dederan Siap Periksa ATAU Seleksi Pra-Okulasi Siap Periksa ATAU Okulasi Siap Periksa ATAU Pemeriksaan Dikembalikan)
   const dederTxs = getDederanTransactions();
   let hasPendingDederanInspection = false;
   for (const dtx of dederTxs) {
@@ -673,7 +684,13 @@ export function renderBeranda() {
       }
     }
   }
-  const hasPendingPemeriksaan = hasPendingDederanInspection || hasActionableInspection(userCtx) || hasReturnedInspection(userCtx);
+  const hasPendingPreGraftingInspection = hasActionablePreGraftingInspection(userCtx);
+  const hasPendingPemeriksaan = Boolean(
+    hasPendingDederanInspection ||
+    hasActionableInspection(userCtx) ||
+    hasReturnedInspection(userCtx) ||
+    hasPendingPreGraftingInspection
+  );
 
   const regraftPool = storage.get('regrafting_pool', []);
   const regraftTxs = storage.get('budding_transactions', []).filter(b => b.type === 'REGRAFTING');
@@ -696,15 +713,6 @@ export function renderBeranda() {
       hasPendingRegrafting = true;
       break;
     }
-  }
-
-  // Sinkronisasi bibit ditolak (Rusak, Mati, Lainnya), Dederan Rejections & Dokumen Seleksi Pra-Okulasi dari transaksi penyemaian
-  try {
-    syncAllSeedingsToSelectionPool();
-    syncAllDederanRejectionsToSelectionPool();
-    syncAllSeedingsToPreGraftingSelectionDocuments(userCtx);
-  } catch (err) {
-    console.warn('[beranda] Gagal sinkronisasi data seeding/dederan:', err);
   }
 
   // Hitung apakah terdapat tindakan penyeleksian (Dokumen Seleksi Pra-Okulasi ATAU Selection Pool)

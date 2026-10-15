@@ -644,6 +644,67 @@ export function reconcileSelectionPoolWithTransactions() {
   if (poolChanged) {
     storage.set('selection_pool', pool);
   }
+
+  // Recover candidates when execution storage succeeded but pool storage did not.
+  // The sync helper is idempotent and preserves already-declared candidates.
+  for (const tx of allTxs) {
+    if (!isExecutionRecord(tx)) continue;
+    const isPreGraftingExecution =
+      tx.selectionType === SELECTION_TYPES.PRA_OKULASI ||
+      (tx.transactionType && String(tx.transactionType).startsWith('PELAKSANAAN_SELEKSI')) ||
+      ['SELEKSI_I', 'SELEKSI_1', 'SELEKSI_II', 'SELEKSI_2', 'SELEKSI_III', 'SELEKSI_3'].includes(String(tx.selectionStage || tx.stage || '').toUpperCase());
+    if (!isPreGraftingExecution) continue;
+
+    const afkirQty = parseInt(
+      tx.actualBibitSelectedQty !== undefined
+        ? tx.actualBibitSelectedQty
+        : (tx.jumlahAfkir !== undefined ? tx.jumlahAfkir : (tx.bibitReject || 0)),
+      10
+    );
+    if (Number.isNaN(afkirQty) || afkirQty <= 0) continue;
+
+    const hasCandidate = pool.some(item => item && (
+      item.id === `SEL-POOL-PRE-${tx.id}` ||
+      (item.sourceTransactionId === tx.id && (item.sourceModule === 'SELEKSI_PRA_OKULASI' || item.originType === 'REJECT_PRE_GRAFTING'))
+    ));
+    if (hasCandidate) continue;
+
+    const docs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
+    const parentDoc = docs.find(doc => doc && (
+      doc.id === tx.parentSelectionDocumentId || doc.id === tx.selectionDocumentId ||
+      doc.docNo === tx.parentSelectionDocNo || doc.docNo === tx.selectionDocNo
+    )) || null;
+    let candidate = syncPreGraftingExecutionToSelectionPool(tx, parentDoc);
+    if (candidate) {
+      // The pool row may be the only link from a source execution to its CULL
+      // declaration. If that row was lost, restore the declaration linkage too.
+      const cullTx = allTxs.find(other => other && other.id !== tx.id &&
+        (isCullDocNo(other.docNo) || isCullDocNo(other.selectionNo) || isCullDocNo(other.selectionPoolDocNo)) &&
+        other.sourceTransactionId === tx.id
+      );
+      if (cullTx) {
+        candidate = {
+          ...candidate,
+          docNo: cullTx.docNo || cullTx.selectionNo || cullTx.selectionPoolDocNo,
+          selectionDocNo: cullTx.docNo || cullTx.selectionNo || cullTx.selectionPoolDocNo,
+          selectionTransactionId: cullTx.id,
+          category: cullTx.category || cullTx.alasanDitolakCategory || 'AFKIR',
+          alasanDitolakCategory: cullTx.alasanDitolakCategory || cullTx.category || 'AFKIR',
+          jumlahAfkir: cullTx.jumlahAfkir || cullTx.quantity || candidate.jumlahAfkir,
+          quantity: cullTx.quantity || cullTx.jumlahAfkir || candidate.quantity,
+          status: cullTx.status || 'PENDING_DECLARATION',
+          verificationStatus: cullTx.verificationStatus || null,
+          submissionStatus: cullTx.submissionStatus || null,
+          stockMutationStatus: cullTx.stockMutationStatus || candidate.stockMutationStatus
+        };
+        const restoredPool = storage.get('selection_pool', []);
+        const candidateIdx = restoredPool.findIndex(item => item && item.id === candidate.id);
+        if (candidateIdx !== -1) restoredPool[candidateIdx] = candidate;
+        storage.set('selection_pool', restoredPool);
+      }
+      pool.push(candidate);
+    }
+  }
 }
 
 /**
@@ -2049,6 +2110,14 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
     finalTx.returnReason = null;
     finalTx.stockMutationStatus = STOCK_MUTATION_STATUS.PENDING;
     finalTx.updatedAt = new Date().toISOString();
+    finalTx.declaredAt = new Date().toISOString();
+    finalTx.tanggalDeklarasi = today;
+    if (!finalTx.tanggalSeleksi && (targetPoolItem.tanggalSeleksi || targetPoolItem.tanggal)) {
+      finalTx.tanggalSeleksi = targetPoolItem.tanggalSeleksi || targetPoolItem.tanggal;
+    }
+    if (!finalTx.tanggal && (targetPoolItem.tanggalSeleksi || targetPoolItem.tanggal)) {
+      finalTx.tanggal = targetPoolItem.tanggalSeleksi || targetPoolItem.tanggal;
+    }
     if (user && user.name) {
       finalTx.mantri = user.name;
       finalTx.createdByName = user.name;
@@ -2140,8 +2209,12 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
       alasan: chosenReason,
       alasanDetail: hasExplicitStandardReason ? chosenReason : (targetPoolItem.alasanDetail || chosenReason),
       catatan: customNotes,
-      tanggal: today,
-      tanggalSeleksi: today,
+      tanggal: targetPoolItem.tanggalSeleksi || targetPoolItem.tanggal || today,
+      tanggalSeleksi: targetPoolItem.tanggalSeleksi || targetPoolItem.tanggal || today,
+      tanggalDeklarasi: today,
+      declaredAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       mantri: user.name,
       createdByName: user.name,
       createdByUserId: user.userId || user.code || user.id,
@@ -2220,6 +2293,7 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
       selectionTransactionId: finalTx.id,
       selectionDocNo: finalTx.docNo,
       declaredAt: new Date().toISOString(),
+      tanggalDeklarasi: today,
       declaredBy: user.name,
       lastReturnReason: fullPool[poolMatchIdx].returnReason || fullPool[poolMatchIdx].lastReturnReason || null,
       returnReason: null
@@ -3324,6 +3398,26 @@ export function canCreateSelection2Document(sourceSelection1IdOrDoc) {
     return { canCreate: false, reason: 'Source dokumen bukan merupakan Dokumen Seleksi I.', sourceDoc };
   }
 
+  // 1. Validasi Populasi Awal Polybag & Bibit (harus valid dan > 0)
+  let initialPolybag = parseInt(sourceDoc.sourcePolybagQty !== undefined ? sourceDoc.sourcePolybagQty : (sourceDoc.initialPolybagQty || 0), 10);
+  if ((isNaN(initialPolybag) || initialPolybag <= 0) && Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    initialPolybag = sourceDoc.rows.reduce((sum, r) => sum + parseInt(r.polybag !== undefined ? r.polybag : (r.initialPolybag || r.polybagCount || 0), 10), 0);
+  }
+
+  let initialBibit = parseInt(sourceDoc.sourceBibitQty !== undefined ? sourceDoc.sourceBibitQty : (sourceDoc.initialBibitQty || 0), 10);
+  if ((isNaN(initialBibit) || initialBibit <= 0) && Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    initialBibit = sourceDoc.rows.reduce((sum, r) => sum + parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit || 0)), 10), 0);
+  }
+
+  if (isNaN(initialPolybag) || initialPolybag <= 0 || isNaN(initialBibit) || initialBibit <= 0) {
+    return {
+      canCreate: false,
+      reason: `Populasi awal Dokumen Seleksi I (${sourceDoc.docNo}) tidak valid atau bernilai nol (Polybag: ${isNaN(initialPolybag) ? 0 : initialPolybag}, Bibit: ${isNaN(initialBibit) ? 0 : initialBibit}).`,
+      sourceDoc
+    };
+  }
+
+  // 2. Approval final ASB telah sah dan tersimpan
   const statusUpper = String(sourceDoc.status || '').toUpperCase();
   const verUpper = String(sourceDoc.verificationStatus || '').toUpperCase();
   const isApproved = (
@@ -3332,12 +3426,92 @@ export function canCreateSelection2Document(sourceSelection1IdOrDoc) {
     statusUpper === 'TERVERIFIKASI' ||
     verUpper === 'TERVERIFIKASI'
   );
-  const isFinal = Boolean(sourceDoc.isFinal) || isApproved;
+  const isFinal = Boolean(sourceDoc.isFinal) || (isApproved && Boolean(sourceDoc.verifiedAt));
 
   if (!isApproved || !isFinal) {
     return {
       canCreate: false,
       reason: `Dokumen Seleksi I (${sourceDoc.docNo}) belum berstatus FINAL disetujui Asisten Bibitan (status: ${sourceDoc.status || 'DRAFT'}).`,
+      sourceDoc
+    };
+  }
+
+  // 3. Terdapat transaksi pemeriksaan fisik valid atau ringkasan langsung sah
+  const executions = getSeleksi1ExecutionsByDocument(sourceDoc.id || sourceDoc.docNo);
+  const hasDirectSummary = (sourceDoc.totalLayak !== undefined || sourceDoc.finalBibitQty !== undefined) && (sourceDoc.activePolybagQty !== undefined || sourceDoc.sourcePolybagQty !== undefined || sourceDoc.sourceBibitQty !== undefined);
+  if ((!executions || executions.length === 0) && !hasDirectSummary) {
+    return {
+      canCreate: false,
+      reason: `Dokumen Seleksi I (${sourceDoc.docNo}) belum memiliki transaksi pelaksanaan fisik lapangan.`,
+      sourceDoc
+    };
+  }
+
+  // 4. Validasi pemeriksaan fisik aktual dan approval seluruh child transactions
+  if (executions && executions.length > 0) {
+    // Seluruh child transactions harus sudah disetujui ASB
+    const unapprovedTxs = executions.filter(tx => {
+      const s = String(tx.status || '').toUpperCase();
+      const v = String(tx.verificationStatus || '').toUpperCase();
+      return s !== SELECTION_STATUS.DISETUJUI && s !== 'DISETUJUI' && s !== 'TERVERIFIKASI' && v !== 'TERVERIFIKASI' && !tx.isFinal;
+    });
+    if (unapprovedTxs.length > 0) {
+      return {
+        canCreate: false,
+        reason: `Pemeriksaan Seleksi I (${sourceDoc.docNo}) memiliki transaksi yang belum disetujui final oleh ASB.`,
+        sourceDoc
+      };
+    }
+
+    // Ketuntasan pemeriksaan fisik 100% (sisa polybag harus nol di seluruh bedengan)
+    const bedScopeList = getBedenganScopeStatusForSeleksi1(sourceDoc, executions);
+    const uninspectedBeds = bedScopeList.filter(b => b.remainingPolybag > 0);
+    if (uninspectedBeds.length > 0) {
+      const uninspectedCodes = uninspectedBeds.map(b => b.bedenganCode || b.bedenganId).join(', ');
+      return {
+        canCreate: false,
+        reason: `Pemeriksaan Seleksi I (${sourceDoc.docNo}) belum tuntas. Masih ada sisa polybag pada bedengan: ${uninspectedCodes}.`,
+        sourceDoc
+      };
+    }
+
+    // Akumulasi polybag diperiksa mencapai 100% dari populasi scope
+    const totalInspectedPolybag = bedScopeList.reduce((sum, b) => sum + (b.inspectedPolybag || 0), 0);
+    const totalInitialPolybag = bedScopeList.reduce((sum, b) => sum + (b.initialPolybag || 0), 0);
+    if (totalInitialPolybag > 0 && totalInspectedPolybag < totalInitialPolybag) {
+      return {
+        canCreate: false,
+        reason: `Akumulasi polybag diperiksa (${totalInspectedPolybag}) belum mencapai 100% dari populasi awal (${totalInitialPolybag}).`,
+        sourceDoc
+      };
+    }
+
+    // 5. Kuantitas pemeriksaan seimbang dan valid (afkir nol tetap sah)
+    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    if (totalAfkir < 0 || totalAfkir > initialBibit) {
+      return {
+        canCreate: false,
+        reason: `Kuantitas bibit afkir (${totalAfkir}) tidak valid atau melebihi populasi awal (${initialBibit}).`,
+        sourceDoc
+      };
+    }
+  }
+
+  // 6. Populasi akhir bibit dan polybag dapat ditentukan secara valid
+  let finalBibit = initialBibit;
+  if (executions && executions.length > 0) {
+    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    finalBibit = initialBibit - totalAfkir;
+  } else if (sourceDoc.totalLayak !== undefined) {
+    finalBibit = parseInt(sourceDoc.totalLayak, 10);
+  } else if (sourceDoc.finalBibitQty !== undefined) {
+    finalBibit = parseInt(sourceDoc.finalBibitQty, 10);
+  }
+
+  if (isNaN(finalBibit) || finalBibit < 0) {
+    return {
+      canCreate: false,
+      reason: `Populasi bibit akhir Seleksi I tidak valid (${finalBibit}).`,
       sourceDoc
     };
   }
@@ -3384,59 +3558,101 @@ export function createSelection2DocumentFromSelection1(sourceSelection1IdOrDocNo
   const nextSeq = maxSeq + 1;
   const docNo = options.docNo || formatStandardDocNo(2026, 'SEL-II', nextSeq);
 
-  // Kuantitas awal Seleksi II diambil dari HASIL FINAL Seleksi I
-  // Bibit awal Seleksi II = Bibit dipertahankan (Layak) dari Seleksi I
-  const sourceBibitQty = parseInt(
-    sourceDoc.totalLayak !== undefined
-      ? sourceDoc.totalLayak
-      : (sourceDoc.finalBibitQty !== undefined ? sourceDoc.finalBibitQty : sourceDoc.currentBibitQty || 0),
-    10
-  );
-
   const executions = getSeleksi1ExecutionsByDocument(sourceDoc.id || sourceDoc.docNo);
+
+  // Kuantitas awal Seleksi II diambil dari saldo akhir sah Seleksi I
+  // Formula Wajib: Populasi Tahap Berikutnya = Populasi Awal Tahap Sebelumnya - Total Afkir Valid Tahap Sebelumnya
+  // Dilarang keras menjumlahkan snapshot saldo transaksi (seperti sum(actualBibitRetainedQty))
+  let initialBibit = parseInt(sourceDoc.sourceBibitQty !== undefined ? sourceDoc.sourceBibitQty : (sourceDoc.initialBibitQty || 0), 10);
+  if ((isNaN(initialBibit) || initialBibit <= 0) && Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    initialBibit = sourceDoc.rows.reduce((sum, r) => sum + parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit || 0)), 10), 0);
+  }
+
+  let sourceBibitQty = 0;
+  if (executions && executions.length > 0) {
+    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    sourceBibitQty = Math.max(0, initialBibit - totalAfkir);
+  } else if (sourceDoc.totalLayak !== undefined) {
+    sourceBibitQty = parseInt(sourceDoc.totalLayak, 10);
+  } else if (sourceDoc.finalBibitQty !== undefined) {
+    sourceBibitQty = parseInt(sourceDoc.finalBibitQty, 10);
+  } else if (sourceDoc.currentBibitQty !== undefined) {
+    sourceBibitQty = parseInt(sourceDoc.currentBibitQty, 10);
+  } else {
+    sourceBibitQty = initialBibit;
+  }
 
   // Polybag source Seleksi II = Polybag AKTIF dari HASIL FINAL Seleksi I
   let sourcePolybagQty = 0;
   if (sourceDoc.activePolybagQty !== undefined && sourceDoc.activePolybagQty !== null && !isNaN(sourceDoc.activePolybagQty) && parseInt(sourceDoc.activePolybagQty, 10) > 0) {
     sourcePolybagQty = parseInt(sourceDoc.activePolybagQty, 10);
-  } else if (executions.length > 0) {
-    // Fallback defensif: hitung dari child transactions Seleksi I (mendukung actual model & legacy)
-    sourcePolybagQty = executions.reduce((sum, tx) => {
+  } else if (executions && executions.length > 0) {
+    const bedScopeList = getBedenganScopeStatusForSeleksi1(sourceDoc, executions);
+    const totalInitPoly = bedScopeList.reduce((sum, b) => sum + (b.initialPolybag || 0), 0);
+    const totalActiveFromTxs = executions.reduce((sum, tx) => {
       if (tx.actualPolybagActiveQty !== undefined && !isNaN(parseInt(tx.actualPolybagActiveQty, 10))) {
         return sum + parseInt(tx.actualPolybagActiveQty, 10);
       }
       if (tx.activePolybagQty !== undefined && !isNaN(parseInt(tx.activePolybagQty, 10))) {
         return sum + parseInt(tx.activePolybagQty, 10);
       }
-      return sum + (parseInt(tx.polybag2Bibit || 0, 10) + parseInt(tx.polybag1Bibit || 0, 10));
+      return sum;
     }, 0);
-  } else {
-    // Fallback jika tidak ada child tx
+    if (totalActiveFromTxs > 0 && totalActiveFromTxs <= totalInitPoly) {
+      sourcePolybagQty = totalActiveFromTxs;
+    } else if (totalInitPoly > 0) {
+      sourcePolybagQty = totalInitPoly;
+    }
+  }
+  if (sourcePolybagQty === 0) {
     sourcePolybagQty = parseInt(sourceDoc.currentPolybagQty !== undefined ? sourceDoc.currentPolybagQty : (sourceDoc.sourcePolybagQty || 0), 10);
   }
+  if (sourcePolybagQty === 0 && Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    sourcePolybagQty = sourceDoc.rows.reduce((sum, r) => sum + parseInt(r.polybag !== undefined ? r.polybag : (r.initialPolybag || r.polybagCount || 0), 10), 0);
+  }
 
-  // Build rows / bedengan breakdown dari Seleksi I dengan target polybag aktif per bedengan
+  // Build rows / bedengan breakdown dari Seleksi I secara proporsional dan akurat
   let rows = [];
   if (Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
     rows = sourceDoc.rows.map(r => {
       const bCode = formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId);
       const bTxs = executions.filter(tx => formatBedenganDisplayCode(tx.bedenganCode || tx.bedengan).toUpperCase() === bCode.toUpperCase());
-      const bLayak = bTxs.reduce((sum, tx) => sum + (parseInt(tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan || tx.jumlahLayak || 0), 10)), 0);
-      const bActivePoly = bTxs.reduce((sum, tx) => {
-        if (tx.actualPolybagActiveQty !== undefined && !isNaN(parseInt(tx.actualPolybagActiveQty, 10))) {
-          return sum + parseInt(tx.actualPolybagActiveQty, 10);
+      const bInitialBibit = parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit !== undefined ? r.initialBibit : (sourceDoc.rows.length === 1 ? initialBibit : 0))), 10);
+      const bInitialPoly = parseInt(r.polybag !== undefined ? r.polybag : (r.initialPolybag !== undefined ? r.initialPolybag : (r.polybagCount !== undefined ? r.polybagCount : (sourceDoc.rows.length === 1 ? sourcePolybagQty : 0))), 10);
+
+      // Hitung afkir sah pada bedengan ini (BUKAN sum snapshot retained!)
+      const bAfkir = bTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+      let allocatedBibit = bTxs.length > 0 ? Math.max(0, bInitialBibit - bAfkir) : bInitialBibit;
+      if (allocatedBibit === 0 && sourceDoc.rows.length === 1 && sourceBibitQty > 0) {
+        allocatedBibit = sourceBibitQty;
+      }
+
+      // Hitung polybag aktif bedengan
+      let allocatedPoly = bInitialPoly;
+      if (bTxs.length > 0) {
+        const bActivePolySum = bTxs.reduce((sum, tx) => {
+          if (tx.actualPolybagActiveQty !== undefined && !isNaN(parseInt(tx.actualPolybagActiveQty, 10))) {
+            return sum + parseInt(tx.actualPolybagActiveQty, 10);
+          }
+          if (tx.activePolybagQty !== undefined && !isNaN(parseInt(tx.activePolybagQty, 10))) {
+            return sum + parseInt(tx.activePolybagQty, 10);
+          }
+          return sum;
+        }, 0);
+        if (bActivePolySum > 0 && bActivePolySum <= bInitialPoly) {
+          allocatedPoly = bActivePolySum;
         }
-        if (tx.activePolybagQty !== undefined && !isNaN(parseInt(tx.activePolybagQty, 10))) {
-          return sum + parseInt(tx.activePolybagQty, 10);
-        }
-        return sum + (parseInt(tx.polybag2Bibit || 0, 10) + parseInt(tx.polybag1Bibit || 0, 10));
-      }, 0);
+      }
+      if (allocatedPoly === 0 && sourceDoc.rows.length === 1 && sourcePolybagQty > 0) {
+        allocatedPoly = sourcePolybagQty;
+      }
+
       return {
         bedenganId: r.bedenganId || r.bedenganCode || bCode,
         bedenganCode: bCode,
-        polybag: bTxs.length > 0 ? bActivePoly : (r.polybag || 0),
-        disemai: bLayak > 0 ? bLayak : (r.disemai || 0),
-        sourceBibitQty: bLayak > 0 ? bLayak : (r.disemai || 0)
+        polybag: allocatedPoly,
+        disemai: allocatedBibit,
+        sourceBibitQty: allocatedBibit
       };
     });
   } else {
@@ -3560,6 +3776,26 @@ export function canCreateSelection3Document(sourceSelection2IdOrDoc) {
     return { canCreate: false, reason: 'Source dokumen bukan merupakan Dokumen Seleksi II.', sourceDoc };
   }
 
+  // 1. Validasi Populasi Awal Polybag & Bibit (harus valid dan > 0)
+  let initialPolybag = parseInt(sourceDoc.sourcePolybagQty !== undefined ? sourceDoc.sourcePolybagQty : (sourceDoc.initialPolybagQty || 0), 10);
+  if ((isNaN(initialPolybag) || initialPolybag <= 0) && Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    initialPolybag = sourceDoc.rows.reduce((sum, r) => sum + parseInt(r.polybag !== undefined ? r.polybag : (r.initialPolybag || r.polybagCount || 0), 10), 0);
+  }
+
+  let initialBibit = parseInt(sourceDoc.sourceBibitQty !== undefined ? sourceDoc.sourceBibitQty : (sourceDoc.initialBibitQty || 0), 10);
+  if ((isNaN(initialBibit) || initialBibit <= 0) && Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    initialBibit = sourceDoc.rows.reduce((sum, r) => sum + parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit || 0)), 10), 0);
+  }
+
+  if (isNaN(initialPolybag) || initialPolybag <= 0 || isNaN(initialBibit) || initialBibit <= 0) {
+    return {
+      canCreate: false,
+      reason: `Populasi awal Dokumen Seleksi II (${sourceDoc.docNo}) tidak valid atau bernilai nol (Polybag: ${isNaN(initialPolybag) ? 0 : initialPolybag}, Bibit: ${isNaN(initialBibit) ? 0 : initialBibit}).`,
+      sourceDoc
+    };
+  }
+
+  // 2. Approval final ASB telah sah dan tersimpan
   const statusUpper = String(sourceDoc.status || '').toUpperCase();
   const verUpper = String(sourceDoc.verificationStatus || '').toUpperCase();
   const isApproved = (
@@ -3568,12 +3804,92 @@ export function canCreateSelection3Document(sourceSelection2IdOrDoc) {
     statusUpper === 'TERVERIFIKASI' ||
     verUpper === 'TERVERIFIKASI'
   );
-  const isFinal = Boolean(sourceDoc.isFinal) || isApproved;
+  const isFinal = Boolean(sourceDoc.isFinal) || (isApproved && Boolean(sourceDoc.verifiedAt));
 
   if (!isApproved || !isFinal) {
     return {
       canCreate: false,
       reason: `Dokumen Seleksi II (${sourceDoc.docNo}) belum berstatus FINAL disetujui Asisten Bibitan (status: ${sourceDoc.status || 'DRAFT'}).`,
+      sourceDoc
+    };
+  }
+
+  // 3. Terdapat transaksi pemeriksaan fisik valid atau ringkasan langsung sah
+  const executions = getSeleksi2ExecutionsByDocument(sourceDoc.id || sourceDoc.docNo);
+  const hasDirectSummary = (sourceDoc.totalLayak !== undefined || sourceDoc.finalBibitQty !== undefined) && (sourceDoc.activePolybagQty !== undefined || sourceDoc.sourcePolybagQty !== undefined || sourceDoc.sourceBibitQty !== undefined);
+  if ((!executions || executions.length === 0) && !hasDirectSummary) {
+    return {
+      canCreate: false,
+      reason: `Dokumen Seleksi II (${sourceDoc.docNo}) belum memiliki transaksi pelaksanaan fisik lapangan.`,
+      sourceDoc
+    };
+  }
+
+  // 4. Validasi pemeriksaan fisik aktual dan approval seluruh child transactions
+  if (executions && executions.length > 0) {
+    // Seluruh child transactions harus sudah disetujui ASB
+    const unapprovedTxs = executions.filter(tx => {
+      const s = String(tx.status || '').toUpperCase();
+      const v = String(tx.verificationStatus || '').toUpperCase();
+      return s !== SELECTION_STATUS.DISETUJUI && s !== 'DISETUJUI' && s !== 'TERVERIFIKASI' && v !== 'TERVERIFIKASI' && !tx.isFinal;
+    });
+    if (unapprovedTxs.length > 0) {
+      return {
+        canCreate: false,
+        reason: `Pemeriksaan Seleksi II (${sourceDoc.docNo}) memiliki transaksi yang belum disetujui final oleh ASB.`,
+        sourceDoc
+      };
+    }
+
+    // Ketuntasan pemeriksaan fisik 100% (sisa polybag harus nol di seluruh bedengan)
+    const bedScopeList = getBedenganScopeStatusForSeleksi2(sourceDoc, executions);
+    const uninspectedBeds = bedScopeList.filter(b => b.remainingPolybag > 0);
+    if (uninspectedBeds.length > 0) {
+      const uninspectedCodes = uninspectedBeds.map(b => b.bedenganCode || b.bedenganId).join(', ');
+      return {
+        canCreate: false,
+        reason: `Pemeriksaan Seleksi II (${sourceDoc.docNo}) belum tuntas. Masih ada sisa polybag pada bedengan: ${uninspectedCodes}.`,
+        sourceDoc
+      };
+    }
+
+    // Akumulasi polybag diperiksa mencapai 100% dari populasi scope
+    const totalInspectedPolybag = bedScopeList.reduce((sum, b) => sum + (b.inspectedPolybag || 0), 0);
+    const totalInitialPolybag = bedScopeList.reduce((sum, b) => sum + (b.initialPolybag || 0), 0);
+    if (totalInitialPolybag > 0 && totalInspectedPolybag < totalInitialPolybag) {
+      return {
+        canCreate: false,
+        reason: `Akumulasi polybag diperiksa (${totalInspectedPolybag}) belum mencapai 100% dari populasi awal (${totalInitialPolybag}).`,
+        sourceDoc
+      };
+    }
+
+    // 5. Kuantitas pemeriksaan seimbang dan valid (afkir nol tetap sah)
+    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    if (totalAfkir < 0 || totalAfkir > initialBibit) {
+      return {
+        canCreate: false,
+        reason: `Kuantitas bibit afkir (${totalAfkir}) tidak valid atau melebihi populasi awal (${initialBibit}).`,
+        sourceDoc
+      };
+    }
+  }
+
+  // 6. Populasi akhir bibit dan polybag dapat ditentukan secara valid
+  let finalBibit = initialBibit;
+  if (executions && executions.length > 0) {
+    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    finalBibit = initialBibit - totalAfkir;
+  } else if (sourceDoc.totalLayak !== undefined) {
+    finalBibit = parseInt(sourceDoc.totalLayak, 10);
+  } else if (sourceDoc.finalBibitQty !== undefined) {
+    finalBibit = parseInt(sourceDoc.finalBibitQty, 10);
+  }
+
+  if (isNaN(finalBibit) || finalBibit < 0) {
+    return {
+      canCreate: false,
+      reason: `Populasi bibit akhir Seleksi II tidak valid (${finalBibit}).`,
       sourceDoc
     };
   }
@@ -3620,59 +3936,101 @@ export function createSelection3DocumentFromSelection2(sourceSelection2IdOrDocNo
   const nextSeq = maxSeq + 1;
   const docNo = options.docNo || formatStandardDocNo(2026, 'SEL-III', nextSeq);
 
-  // Kuantitas awal Seleksi III diambil dari HASIL FINAL Seleksi II
-  // Bibit awal Seleksi III = Bibit dipertahankan (Layak) dari Seleksi II
-  const sourceBibitQty = parseInt(
-    sourceDoc.totalLayak !== undefined
-      ? sourceDoc.totalLayak
-      : (sourceDoc.finalBibitQty !== undefined ? sourceDoc.finalBibitQty : sourceDoc.currentBibitQty || 0),
-    10
-  );
-
   const executions = getSeleksi2ExecutionsByDocument(sourceDoc.id || sourceDoc.docNo);
+
+  // Kuantitas awal Seleksi III diambil dari saldo akhir sah Seleksi II
+  // Formula Wajib: Populasi Tahap Berikutnya = Populasi Awal Tahap Sebelumnya - Total Afkir Valid Tahap Sebelumnya
+  // Dilarang keras menjumlahkan snapshot saldo transaksi (seperti sum(actualBibitRetainedQty))
+  let initialBibit = parseInt(sourceDoc.sourceBibitQty !== undefined ? sourceDoc.sourceBibitQty : (sourceDoc.initialBibitQty || 0), 10);
+  if ((isNaN(initialBibit) || initialBibit <= 0) && Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    initialBibit = sourceDoc.rows.reduce((sum, r) => sum + parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit || 0)), 10), 0);
+  }
+
+  let sourceBibitQty = 0;
+  if (executions && executions.length > 0) {
+    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    sourceBibitQty = Math.max(0, initialBibit - totalAfkir);
+  } else if (sourceDoc.totalLayak !== undefined) {
+    sourceBibitQty = parseInt(sourceDoc.totalLayak, 10);
+  } else if (sourceDoc.finalBibitQty !== undefined) {
+    sourceBibitQty = parseInt(sourceDoc.finalBibitQty, 10);
+  } else if (sourceDoc.currentBibitQty !== undefined) {
+    sourceBibitQty = parseInt(sourceDoc.currentBibitQty, 10);
+  } else {
+    sourceBibitQty = initialBibit;
+  }
 
   // Polybag source Seleksi III = Polybag AKTIF dari HASIL FINAL Seleksi II
   let sourcePolybagQty = 0;
   if (sourceDoc.activePolybagQty !== undefined && sourceDoc.activePolybagQty !== null && !isNaN(sourceDoc.activePolybagQty) && parseInt(sourceDoc.activePolybagQty, 10) > 0) {
     sourcePolybagQty = parseInt(sourceDoc.activePolybagQty, 10);
-  } else if (executions.length > 0) {
-    // Fallback defensif: hitung dari child transactions Seleksi II (mendukung actual model & legacy)
-    sourcePolybagQty = executions.reduce((sum, tx) => {
+  } else if (executions && executions.length > 0) {
+    const bedScopeList = getBedenganScopeStatusForSeleksi2(sourceDoc, executions);
+    const totalInitPoly = bedScopeList.reduce((sum, b) => sum + (b.initialPolybag || 0), 0);
+    const totalActiveFromTxs = executions.reduce((sum, tx) => {
       if (tx.actualPolybagActiveQty !== undefined && !isNaN(parseInt(tx.actualPolybagActiveQty, 10))) {
         return sum + parseInt(tx.actualPolybagActiveQty, 10);
       }
       if (tx.activePolybagQty !== undefined && !isNaN(parseInt(tx.activePolybagQty, 10))) {
         return sum + parseInt(tx.activePolybagQty, 10);
       }
-      return sum + (parseInt(tx.polybag2Bibit || 0, 10) + parseInt(tx.polybag1Bibit || 0, 10));
+      return sum;
     }, 0);
-  } else {
-    // Fallback jika tidak ada child tx
+    if (totalActiveFromTxs > 0 && totalActiveFromTxs <= totalInitPoly) {
+      sourcePolybagQty = totalActiveFromTxs;
+    } else if (totalInitPoly > 0) {
+      sourcePolybagQty = totalInitPoly;
+    }
+  }
+  if (sourcePolybagQty === 0) {
     sourcePolybagQty = parseInt(sourceDoc.currentPolybagQty !== undefined ? sourceDoc.currentPolybagQty : (sourceDoc.sourcePolybagQty || 0), 10);
   }
+  if (sourcePolybagQty === 0 && Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    sourcePolybagQty = sourceDoc.rows.reduce((sum, r) => sum + parseInt(r.polybag !== undefined ? r.polybag : (r.initialPolybag || r.polybagCount || 0), 10), 0);
+  }
 
-  // Build rows / bedengan breakdown dari Seleksi II dengan target polybag aktif per bedengan
+  // Build rows / bedengan breakdown dari Seleksi II secara proporsional dan akurat
   let rows = [];
   if (Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
     rows = sourceDoc.rows.map(r => {
       const bCode = formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId);
       const bTxs = executions.filter(tx => formatBedenganDisplayCode(tx.bedenganCode || tx.bedengan).toUpperCase() === bCode.toUpperCase());
-      const bLayak = bTxs.reduce((sum, tx) => sum + (parseInt(tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan || tx.jumlahLayak || 0), 10)), 0);
-      const bActivePoly = bTxs.reduce((sum, tx) => {
-        if (tx.actualPolybagActiveQty !== undefined && !isNaN(parseInt(tx.actualPolybagActiveQty, 10))) {
-          return sum + parseInt(tx.actualPolybagActiveQty, 10);
+      const bInitialBibit = parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit !== undefined ? r.initialBibit : (sourceDoc.rows.length === 1 ? initialBibit : 0))), 10);
+      const bInitialPoly = parseInt(r.polybag !== undefined ? r.polybag : (r.initialPolybag !== undefined ? r.initialPolybag : (r.polybagCount !== undefined ? r.polybagCount : (sourceDoc.rows.length === 1 ? sourcePolybagQty : 0))), 10);
+
+      // Hitung afkir sah pada bedengan ini (BUKAN sum snapshot retained!)
+      const bAfkir = bTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+      let allocatedBibit = bTxs.length > 0 ? Math.max(0, bInitialBibit - bAfkir) : bInitialBibit;
+      if (allocatedBibit === 0 && sourceDoc.rows.length === 1 && sourceBibitQty > 0) {
+        allocatedBibit = sourceBibitQty;
+      }
+
+      // Hitung polybag aktif bedengan
+      let allocatedPoly = bInitialPoly;
+      if (bTxs.length > 0) {
+        const bActivePolySum = bTxs.reduce((sum, tx) => {
+          if (tx.actualPolybagActiveQty !== undefined && !isNaN(parseInt(tx.actualPolybagActiveQty, 10))) {
+            return sum + parseInt(tx.actualPolybagActiveQty, 10);
+          }
+          if (tx.activePolybagQty !== undefined && !isNaN(parseInt(tx.activePolybagQty, 10))) {
+            return sum + parseInt(tx.activePolybagQty, 10);
+          }
+          return sum;
+        }, 0);
+        if (bActivePolySum > 0 && bActivePolySum <= bInitialPoly) {
+          allocatedPoly = bActivePolySum;
         }
-        if (tx.activePolybagQty !== undefined && !isNaN(parseInt(tx.activePolybagQty, 10))) {
-          return sum + parseInt(tx.activePolybagQty, 10);
-        }
-        return sum + (parseInt(tx.polybag2Bibit || 0, 10) + parseInt(tx.polybag1Bibit || 0, 10));
-      }, 0);
+      }
+      if (allocatedPoly === 0 && sourceDoc.rows.length === 1 && sourcePolybagQty > 0) {
+        allocatedPoly = sourcePolybagQty;
+      }
+
       return {
         bedenganId: r.bedenganId || r.bedenganCode || bCode,
         bedenganCode: bCode,
-        polybag: bTxs.length > 0 ? bActivePoly : (r.polybag || 0),
-        disemai: bLayak > 0 ? bLayak : (r.disemai || r.sourceBibitQty || 0),
-        sourceBibitQty: bLayak > 0 ? bLayak : (r.sourceBibitQty || r.disemai || 0)
+        polybag: allocatedPoly,
+        disemai: allocatedBibit,
+        sourceBibitQty: allocatedBibit
       };
     });
   } else {
@@ -4189,6 +4547,35 @@ export function approvePreGraftingSelectionDocument(idOrDocNo, notes = '', curre
   );
   const stageLabel = isStage3 ? 'Seleksi III' : (isStage2 ? 'Seleksi II' : 'Seleksi I');
 
+  // Validasi ketuntasan pemeriksaan sebelum persetujuan ASB
+  const executions = (isStage3 ? getSeleksi3ExecutionsByDocument(target.id || target.docNo) : (isStage2 ? getSeleksi2ExecutionsByDocument(target.id || target.docNo) : getSeleksi1ExecutionsByDocument(target.id || target.docNo))) || [];
+  const sourcePoly = parseInt(target.sourcePolybagQty || 0, 10);
+  const hasDirectSummary = (target.totalLayak !== undefined || target.finalBibitQty !== undefined) && (target.activePolybagQty !== undefined || target.sourcePolybagQty !== undefined || target.sourceBibitQty !== undefined);
+
+  if (executions.length === 0 && sourcePoly > 0 && !hasDirectSummary) {
+    throw new Error(`Dokumen ${stageLabel} (${target.docNo}) tidak dapat disetujui karena belum memiliki transaksi pemeriksaan fisik lapangan.`);
+  }
+
+  if (executions.length > 0 && sourcePoly > 0) {
+    const stageNorm = String(target.selectionStage || '').toUpperCase();
+    const bedScopeList = (stageNorm === 'SELEKSI_II' || stageNorm === 'SELEKSI_2')
+      ? getBedenganScopeStatusForSeleksi2(target, executions)
+      : (stageNorm === 'SELEKSI_III' || stageNorm === 'SELEKSI_3')
+        ? getBedenganScopeStatusForSeleksi3(target, executions)
+        : getBedenganScopeStatusForSeleksi1(target, executions);
+
+    const uninspectedBeds = bedScopeList.filter(b => b.remainingPolybag > 0);
+    if (uninspectedBeds.length > 0) {
+      const uninspectedCodes = uninspectedBeds.map(b => b.bedenganCode || b.bedenganId).join(', ');
+      throw new Error(`Dokumen ${stageLabel} (${target.docNo}) belum tuntas diperiksa. Masih ada sisa polybag pada bedengan: ${uninspectedCodes}.`);
+    }
+
+    const totalPolyDiperiksa = executions.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope || 0), 10), 0);
+    if (totalPolyDiperiksa < sourcePoly) {
+      throw new Error(`Dokumen ${stageLabel} (${target.docNo}) belum tuntas diperiksa (${totalPolyDiperiksa.toLocaleString('id-ID')} dari ${sourcePoly.toLocaleString('id-ID')} polybag).`);
+    }
+  }
+
   const nowIso = new Date().toISOString();
   const updatedDoc = applyTransactionActor(
     {
@@ -4243,20 +4630,31 @@ export function approvePreGraftingSelectionDocument(idOrDocNo, notes = '', curre
 
   // Record audit trail di verification_transactions (ZERO STOCK MUTATION)
   const allVerifs = storage.get('verification_transactions', []);
-  const existVerifIdx = allVerifs.findIndex(v =>
-    (String(v.referenceId) === String(target.id) || String(v.referenceDocNo) === String(target.docNo)) &&
-    (v.referenceType === 'SELEKSI_PRA_OKULASI' || v.referenceType === 'SELECTION')
-  );
-  if (existVerifIdx !== -1) {
-    allVerifs[existVerifIdx].referenceType = 'SELEKSI_PRA_OKULASI';
-    allVerifs[existVerifIdx].verificationStatus = 'TERVERIFIKASI';
-    allVerifs[existVerifIdx].notes = (notes || '').trim();
-    allVerifs[existVerifIdx].returnReason = null;
-    allVerifs[existVerifIdx].verifiedByUserId = currentUser.userId || currentUser.code || currentUser.id;
-    allVerifs[existVerifIdx].verifiedByName = currentUser.name || 'Asisten Bibitan';
-    allVerifs[existVerifIdx].verifiedByRole = ROLES.ASISTEN_BIBITAN;
-    allVerifs[existVerifIdx].verifiedAt = nowIso;
-    allVerifs[existVerifIdx].updatedAt = nowIso;
+  const matchingIndices = [];
+  allVerifs.forEach((v, idx) => {
+    const isDocMatch = (String(v.referenceId) === String(target.id) || String(v.referenceDocNo) === String(target.docNo));
+    const isTypeMatch = (
+      v.referenceType === 'SELEKSI_PRA_OKULASI' ||
+      v.referenceType === 'SELECTION' ||
+      v.referenceType === 'PENYELEKSIAN'
+    );
+    if (isDocMatch && isTypeMatch) {
+      matchingIndices.push(idx);
+    }
+  });
+
+  if (matchingIndices.length > 0) {
+    matchingIndices.forEach(idx => {
+      allVerifs[idx].referenceType = 'SELEKSI_PRA_OKULASI';
+      allVerifs[idx].verificationStatus = 'TERVERIFIKASI';
+      allVerifs[idx].notes = (notes || '').trim();
+      allVerifs[idx].returnReason = null;
+      allVerifs[idx].verifiedByUserId = currentUser.userId || currentUser.code || currentUser.id;
+      allVerifs[idx].verifiedByName = currentUser.name || 'Asisten Bibitan';
+      allVerifs[idx].verifiedByRole = ROLES.ASISTEN_BIBITAN;
+      allVerifs[idx].verifiedAt = nowIso;
+      allVerifs[idx].updatedAt = nowIso;
+    });
   } else {
     allVerifs.push({
       verificationId: `VRF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -4683,14 +5081,18 @@ export function syncAllApprovedPreGraftingSelectionDocuments(currentUser = null)
                      String(doc.status || '').toUpperCase() === 'TERVERIFIKASI';
     let isFinal = Boolean(doc.isFinal) || (isApproved && Boolean(doc.verifiedAt));
 
-    // Auto-promote jika seluruh child transactions pelaksanaan sudah disetujui final oleh ASB
+    // Auto-promote jika seluruh child transactions pelaksanaan sudah disetujui final oleh ASB dan pemeriksaan fisik 100% tuntas
     if (!isApproved || !isFinal) {
       const executions = getSeleksi1ExecutionsByDocument(doc.id || doc.docNo);
       if (executions.length > 0 && executions.every(t => String(t.status || '').toUpperCase() === SELECTION_STATUS.DISETUJUI || String(t.verificationStatus || '').toUpperCase() === 'TERVERIFIKASI' || t.isFinal === true)) {
-        doc.status = SELECTION_STATUS.DISETUJUI;
-        doc.isFinal = true;
-        allDocs[idx] = doc;
-        docsModified = true;
+        const bedScopeList = getBedenganScopeStatusForSeleksi1(doc, executions);
+        const hasUninspected = bedScopeList.some(b => b.remainingPolybag > 0);
+        if (!hasUninspected && bedScopeList.length > 0) {
+          doc.status = SELECTION_STATUS.DISETUJUI;
+          doc.isFinal = true;
+          allDocs[idx] = doc;
+          docsModified = true;
+        }
       }
     }
   });
@@ -4733,14 +5135,18 @@ export function syncAllApprovedPreGraftingSelectionDocuments(currentUser = null)
                      String(doc.status || '').toUpperCase() === 'TERVERIFIKASI';
     let isFinal = Boolean(doc.isFinal) || (isApproved && Boolean(doc.verifiedAt));
 
-    // Auto-promote jika seluruh child transactions pelaksanaan Seleksi II sudah disetujui final oleh ASB
+    // Auto-promote jika seluruh child transactions pelaksanaan Seleksi II sudah disetujui final oleh ASB dan pemeriksaan fisik 100% tuntas
     if (!isApproved || !isFinal) {
       const executions = getSeleksi2ExecutionsByDocument(doc.id || doc.docNo);
       if (executions.length > 0 && executions.every(t => String(t.status || '').toUpperCase() === SELECTION_STATUS.DISETUJUI || String(t.verificationStatus || '').toUpperCase() === 'TERVERIFIKASI' || t.isFinal === true)) {
-        doc.status = SELECTION_STATUS.DISETUJUI;
-        doc.isFinal = true;
-        refreshedDocs[idx] = doc;
-        docs2Modified = true;
+        const bedScopeList = getBedenganScopeStatusForSeleksi2(doc, executions);
+        const hasUninspected = bedScopeList.some(b => b.remainingPolybag > 0);
+        if (!hasUninspected && bedScopeList.length > 0) {
+          doc.status = SELECTION_STATUS.DISETUJUI;
+          doc.isFinal = true;
+          refreshedDocs[idx] = doc;
+          docs2Modified = true;
+        }
       }
     }
   });
@@ -4788,6 +5194,10 @@ export function getSeleksi1ExecutionsByDocument(idOrDocNo) {
   const allTxs = storage.get(SELECTION_STORAGE_KEY, []);
   
   return allTxs.filter(tx => {
+    // STRATEGI 5-A: Pemisahan deklarasi CULL dari pemeriksaan fisik biasa
+    if (isCullDocNo(tx.docNo) || isCullDocNo(tx.selectionNo) || isCullDocNo(tx.selectionPoolDocNo)) return false;
+    if (tx.originType === 'CULL_DECLARATION' || tx.isCullDeclaration || tx.transactionType === 'PENYELEKSIAN_BIBIT_AFKIR') return false;
+
     const isStage1 = (
       tx.selectionStage === SELECTION_STAGES.SELEKSI_1 ||
       tx.stage === 'SELEKSI_I' ||
@@ -4803,6 +5213,22 @@ export function getSeleksi1ExecutionsByDocument(idOrDocNo) {
       tx.sourceDocNo === searchStr
     );
   });
+}
+
+function getRecordedBibitSelectedQty(tx) {
+  const candidates = [
+    tx?.actualBibitSelectedQty,
+    tx?.selectedBibitScopeQty,
+    tx?.bibitReject,
+    tx?.jumlahAfkir,
+    tx?.jumlahDiperiksa
+  ];
+  for (const value of candidates) {
+    if (value === undefined || value === null || String(value).trim() === '') continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return 0;
 }
 
 /**
@@ -4826,10 +5252,10 @@ export function getBedenganScopeStatusForSeleksi1(parentDoc, txsOverride = null)
 
       let initDisemai = (liveTotals && liveTotals.totalDisemai > 0)
         ? liveTotals.totalDisemai
-        : parseInt(r.disemai !== undefined ? r.disemai : ((r.polybag || 0) * 2), 10);
+        : parseInt(r.disemai !== undefined ? r.disemai : (r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.initialBibit !== undefined ? r.initialBibit : ((r.polybag || r.polybagCount || 0) * 2))), 10);
       let initPolybag = (liveTotals && liveTotals.totalPolybag > 0)
         ? liveTotals.totalPolybag
-        : parseInt(r.polybag !== undefined ? r.polybag : Math.ceil((r.disemai || 0) / 2), 10);
+        : parseInt(r.polybag !== undefined ? r.polybag : (r.polybagCount !== undefined ? r.polybagCount : (r.initialPolybag !== undefined ? r.initialPolybag : Math.ceil((r.disemai || 0) / 2))), 10);
 
       // Reconcile with parentDoc source quantities if single bedengan or if parentDoc has higher cumulative totals
       if (parentDoc.rows.length === 1) {
@@ -4891,25 +5317,29 @@ export function getBedenganScopeStatusForSeleksi1(parentDoc, txsOverride = null)
       const txBatch = String(tx.batchCode || tx.batchNo || tx.sourceBatchCode || '').trim().toUpperCase();
       if (parentBatch && txBatch && txBatch !== parentBatch) return false;
       const txBed = String(tx.bedenganCode || tx.bedengan || tx.bedenganId || '').trim().toUpperCase();
+      if (!txBed && bedenganList.length === 1) return true;
       return txBed === bedNorm || txBed === String(bed.bedenganId).toUpperCase();
     });
 
     const inspectedPolybag = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-    const inspectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
-    const maintainedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan || tx.jumlahLayak || 0), 10), 0);
-    const rejectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.bibitReject !== undefined ? tx.bibitReject : (tx.jumlahAfkir || 0), 10), 0);
-    const remainingPolybag = Math.max(0, bed.initialPolybag - inspectedPolybag);
-    const remainingBibit = Math.max(0, bed.initialBibit - inspectedBibit);
+    const rejectedBibit = bedTxs.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
+    const maintainedBibit = bed.initialBibit > 0 ? Math.max(0, bed.initialBibit - rejectedBibit) : 0;
+    const inspectedBibit = bed.initialPolybag > 0
+      ? Math.min(bed.initialBibit, Math.round((inspectedPolybag / bed.initialPolybag) * bed.initialBibit))
+      : (inspectedPolybag > 0 ? inspectedPolybag : 0);
+    const remainingPolybag = bed.initialPolybag > 0 ? Math.max(0, bed.initialPolybag - inspectedPolybag) : 0;
+    const remainingBibit = maintainedBibit;
 
     return {
       ...bed,
       inspectedPolybag,
       inspectedBibit,
       maintainedBibit,
+      availableBibit: maintainedBibit,
       rejectedBibit,
       remainingPolybag,
       remainingBibit,
-      isFullyInspected: remainingPolybag === 0 && bed.initialPolybag > 0
+      isFullyInspected: bed.initialPolybag > 0 && remainingPolybag === 0 && bedTxs.length > 0
     };
   });
 }
@@ -4987,20 +5417,20 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = null
   const maxBibitBedengan = matchedBed 
     ? (matchedBed.initialBibit !== undefined ? matchedBed.initialBibit : (matchedBed.disemai !== undefined ? matchedBed.disemai : (matchedBed.initialPolybag || sourceBibit))) 
     : sourceBibit;
-  const existingBibitOnBed = matchedBed ? (matchedBed.inspectedBibit || 0) : 0;
+  const existingBibitOnBed = matchedBed ? (matchedBed.rejectedBibit || 0) : 0;
   const availableBibit = Math.max(0, maxBibitBedengan - existingBibitOnBed);
 
   let actualBibitSelected = 0;
   if (rawBibit === undefined || rawBibit === null || String(rawBibit).trim() === '') {
-    errors.push('Jumlah bibit afkir wajib diisi.');
+    errors.push('Jumlah bibit diseleksi wajib diisi.');
   } else {
     actualBibitSelected = Number(rawBibit);
     if (isNaN(actualBibitSelected)) {
-      errors.push('Jumlah bibit afkir harus berupa angka yang valid.');
+      errors.push('Jumlah bibit diseleksi harus berupa angka yang valid.');
     } else if (actualBibitSelected < 0) {
-      errors.push('Jumlah bibit afkir tidak boleh negatif (minimum 0).');
+      errors.push('Jumlah bibit diseleksi tidak boleh negatif (minimum 0).');
     } else if (actualBibitSelected > availableBibit) {
-      errors.push(`Jumlah bibit afkir (${actualBibitSelected}) melebihi sisa bibit tersedia (${availableBibit}).`);
+      errors.push(`Jumlah bibit diseleksi (${actualBibitSelected}) melebihi Bibit Tersedia (${availableBibit}).`);
     }
   }
 
@@ -5023,12 +5453,7 @@ export function validateSeleksi1Execution(payload, parentDoc, existingTxs = null
   // Hitung akumulasi afkir terdahulu pada dokumen / bedengan
   const existingBibitSelectedSum = Array.isArray(existingTxs)
     ? existingTxs.reduce((sum, tx) => {
-        const bAfkir = parseInt(
-          tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty :
-          (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty :
-          (tx.jumlahAfkir || tx.bibitReject || 0)),
-          10
-        );
+        const bAfkir = getRecordedBibitSelectedQty(tx);
         return sum + (isNaN(bAfkir) ? 0 : bAfkir);
       }, 0)
     : existingBibitOnBed;
@@ -5541,6 +5966,20 @@ export function deleteSeleksi1ExecutionTransaction(txIdOrDocNo, currentUser = nu
   }
 
   const targetTx = allTxs[txIdx];
+  const txStatus = String(targetTx.status || '').toUpperCase();
+  const txVerifStatus = String(targetTx.verificationStatus || '').toUpperCase();
+
+  // STRATEGI 5-B: Proteksi penghapusan transaksi approved / final
+  if (
+    txStatus === 'DISETUJUI' ||
+    txStatus === 'APPROVED' ||
+    txVerifStatus === 'TERVERIFIKASI' ||
+    txVerifStatus === 'DISETUJUI' ||
+    targetTx.isFinal === true
+  ) {
+    throw new Error(`Transaksi Seleksi I "${targetTx.docNo || txIdOrDocNo}" telah berstatus DISETUJUI/Final dan tidak dapat dihapus.`);
+  }
+
   const parentDocId = targetTx.parentSelectionDocumentId || targetTx.selectionDocumentId;
   const parentDocNo = targetTx.parentSelectionDocNo || targetTx.selectionDocNo;
 
@@ -5676,6 +6115,10 @@ export function getSeleksi2ExecutionsByDocument(idOrDocNo) {
   const allTxs = storage.get(SELECTION_STORAGE_KEY, []);
   
   return allTxs.filter(tx => {
+    // STRATEGI 5-A: Pemisahan deklarasi CULL dari pemeriksaan fisik biasa
+    if (isCullDocNo(tx.docNo) || isCullDocNo(tx.selectionNo) || isCullDocNo(tx.selectionPoolDocNo)) return false;
+    if (tx.originType === 'CULL_DECLARATION' || tx.isCullDeclaration || tx.transactionType === 'PENYELEKSIAN_BIBIT_AFKIR') return false;
+
     const isStage2 = (
       tx.selectionStage === SELECTION_STAGES.SELEKSI_2 ||
       tx.stage === 'SELEKSI_II' ||
@@ -5705,12 +6148,21 @@ export function getBedenganScopeStatusForSeleksi2(parentDoc, txsOverride = null)
   
   let bedenganList = [];
   if (Array.isArray(parentDoc.rows) && parentDoc.rows.length > 0) {
-    bedenganList = parentDoc.rows.map(r => ({
-      bedenganId: r.bedenganId || r.bedenganCode || r.bedengan,
-      bedenganCode: formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId),
-      initialPolybag: parseInt(r.polybag || 0, 10),
-      initialBibit: parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai || 0), 10)
-    }));
+    bedenganList = parentDoc.rows.map(r => {
+      let initPoly = parseInt(r.polybag !== undefined ? r.polybag : (r.polybagCount !== undefined ? r.polybagCount : (r.initialPolybag !== undefined ? r.initialPolybag : 0)), 10);
+      let initBibit = parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit !== undefined ? r.initialBibit : 0)), 10);
+      if (parentDoc.rows.length === 1) {
+        if (initPoly === 0 && parentDoc.sourcePolybagQty > 0) initPoly = parentDoc.sourcePolybagQty;
+        if (initBibit === 0 && parentDoc.sourceBibitQty > 0) initBibit = parentDoc.sourceBibitQty;
+        if (initPoly === 0 && initBibit > 0) initPoly = initBibit;
+      }
+      return {
+        bedenganId: r.bedenganId || r.bedenganCode || r.bedengan,
+        bedenganCode: formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId),
+        initialPolybag: initPoly,
+        initialBibit: initBibit
+      };
+    });
   } else if (Array.isArray(parentDoc.bedenganIds) && parentDoc.bedenganIds.length > 0) {
     const polyPerBed = Math.floor(parentDoc.sourcePolybagQty / parentDoc.bedenganIds.length);
     const remPoly = parentDoc.sourcePolybagQty % parentDoc.bedenganIds.length;
@@ -5726,7 +6178,7 @@ export function getBedenganScopeStatusForSeleksi2(parentDoc, txsOverride = null)
     bedenganList = [{
       bedenganId: parentDoc.bedenganId || 'BED-001',
       bedenganCode: formatBedenganDisplayCode(parentDoc.bedenganCode || parentDoc.bedengan || 'BED-001'),
-      initialPolybag: parentDoc.sourcePolybagQty || 0,
+      initialPolybag: parentDoc.sourcePolybagQty || parentDoc.sourceBibitQty || 0,
       initialBibit: parentDoc.sourceBibitQty || 0
     }];
   }
@@ -5738,25 +6190,29 @@ export function getBedenganScopeStatusForSeleksi2(parentDoc, txsOverride = null)
       const txBatch = String(tx.batchCode || tx.batchNo || tx.sourceBatchCode || '').trim().toUpperCase();
       if (parentBatch && txBatch && txBatch !== parentBatch) return false;
       const txBed = String(tx.bedenganCode || tx.bedengan || tx.bedenganId || '').trim().toUpperCase();
+      if (!txBed && bedenganList.length === 1) return true;
       return txBed === bedNorm || txBed === String(bed.bedenganId).toUpperCase();
     });
 
     const inspectedPolybag = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-    const inspectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
-    const maintainedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan || tx.jumlahLayak || 0), 10), 0);
-    const rejectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.bibitReject !== undefined ? tx.bibitReject : (tx.jumlahAfkir || 0), 10), 0);
-    const remainingPolybag = Math.max(0, bed.initialPolybag - inspectedPolybag);
-    const remainingBibit = Math.max(0, bed.initialBibit - inspectedBibit);
+    const rejectedBibit = bedTxs.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
+    const maintainedBibit = bed.initialBibit > 0 ? Math.max(0, bed.initialBibit - rejectedBibit) : 0;
+    const inspectedBibit = bed.initialPolybag > 0
+      ? Math.min(bed.initialBibit, Math.round((inspectedPolybag / bed.initialPolybag) * bed.initialBibit))
+      : (inspectedPolybag > 0 ? inspectedPolybag : 0);
+    const remainingPolybag = bed.initialPolybag > 0 ? Math.max(0, bed.initialPolybag - inspectedPolybag) : 0;
+    const remainingBibit = maintainedBibit;
 
     return {
       ...bed,
       inspectedPolybag,
       inspectedBibit,
       maintainedBibit,
+      availableBibit: maintainedBibit,
       rejectedBibit,
       remainingPolybag,
       remainingBibit,
-      isFullyInspected: remainingPolybag === 0 && bed.initialPolybag > 0
+      isFullyInspected: bed.initialPolybag > 0 && remainingPolybag === 0 && bedTxs.length > 0
     };
   });
 }
@@ -5828,28 +6284,25 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = [], 
   }
 
   // Hitung otomatis Bibit Dipertahankan secara kumulatif terlebih dahulu agar aman dari TDZ
-  const existingBibitSelectedSum = existingTxs.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
-    0
-  );
+  const existingBibitSelectedSum = existingTxs.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
 
   const maxBibitBedengan2 = matchedBed 
     ? (matchedBed.initialBibit !== undefined ? matchedBed.initialBibit : (matchedBed.initialPolybag || 0)) 
     : sourceBibit;
-  const existingBibitOnBed2 = matchedBed ? (matchedBed.inspectedBibit || 0) : existingBibitSelectedSum;
+  const existingBibitOnBed2 = matchedBed ? (matchedBed.rejectedBibit || 0) : existingBibitSelectedSum;
   const availableBibit2 = Math.max(0, maxBibitBedengan2 - existingBibitOnBed2);
 
   let actualBibitSelected = 0;
   if (rawBibit2 === undefined || rawBibit2 === null || String(rawBibit2).trim() === '') {
-    errors.push('Jumlah bibit afkir wajib diisi.');
+    errors.push('Jumlah bibit diseleksi wajib diisi.');
   } else {
     actualBibitSelected = Number(rawBibit2);
     if (isNaN(actualBibitSelected)) {
-      errors.push('Jumlah bibit afkir harus berupa angka yang valid.');
+      errors.push('Jumlah bibit diseleksi harus berupa angka yang valid.');
     } else if (actualBibitSelected < 0) {
-      errors.push('Jumlah bibit afkir tidak boleh negatif (minimum 0).');
+      errors.push('Jumlah bibit diseleksi tidak boleh negatif (minimum 0).');
     } else if (actualBibitSelected > availableBibit2) {
-      errors.push(`Jumlah bibit afkir (${actualBibitSelected}) melebihi sisa bibit tersedia (${availableBibit2}).`);
+      errors.push(`Jumlah bibit diseleksi (${actualBibitSelected}) melebihi Bibit Tersedia (${availableBibit2}).`);
     }
   }
 
@@ -6174,6 +6627,20 @@ export function deleteSeleksi2ExecutionTransaction(transactionId, currentUser = 
   }
 
   const targetTx = allTxs[targetIdx];
+  const txStatus = String(targetTx.status || '').toUpperCase();
+  const txVerifStatus = String(targetTx.verificationStatus || '').toUpperCase();
+
+  // STRATEGI 5-B: Proteksi penghapusan transaksi approved / final
+  if (
+    txStatus === 'DISETUJUI' ||
+    txStatus === 'APPROVED' ||
+    txVerifStatus === 'TERVERIFIKASI' ||
+    txVerifStatus === 'DISETUJUI' ||
+    targetTx.isFinal === true
+  ) {
+    throw new Error(`Transaksi Seleksi II "${targetTx.docNo || transactionId}" telah berstatus DISETUJUI/Final dan tidak dapat dihapus.`);
+  }
+
   allTxs.splice(targetIdx, 1);
   storage.set(SELECTION_STORAGE_KEY, allTxs);
 
@@ -6305,6 +6772,10 @@ export function getSeleksi3ExecutionsByDocument(idOrDocNo) {
   const searchStr = String(idOrDocNo).trim();
   
   return allTxs.filter(tx => {
+    // STRATEGI 5-A: Pemisahan deklarasi CULL dari pemeriksaan fisik biasa
+    if (isCullDocNo(tx.docNo) || isCullDocNo(tx.selectionNo) || isCullDocNo(tx.selectionPoolDocNo)) return false;
+    if (tx.originType === 'CULL_DECLARATION' || tx.isCullDeclaration || tx.transactionType === 'PENYELEKSIAN_BIBIT_AFKIR') return false;
+
     const isStage3 = (
       tx.transactionType === 'PELAKSANAAN_SELEKSI_III' ||
       tx.selectionStage === SELECTION_STAGES.SELEKSI_3 ||
@@ -6338,12 +6809,21 @@ export function getBedenganScopeStatusForSeleksi3(parentDoc, txsOverride = null)
   
   let bedenganList = [];
   if (Array.isArray(parentDoc.rows) && parentDoc.rows.length > 0) {
-    bedenganList = parentDoc.rows.map(r => ({
-      bedenganId: r.bedenganId || r.bedenganCode || r.bedengan,
-      bedenganCode: formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId),
-      initialPolybag: parseInt(r.polybag || 0, 10),
-      initialBibit: parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai || 0), 10)
-    }));
+    bedenganList = parentDoc.rows.map(r => {
+      let initPoly = parseInt(r.polybag !== undefined ? r.polybag : (r.polybagCount !== undefined ? r.polybagCount : (r.initialPolybag !== undefined ? r.initialPolybag : 0)), 10);
+      let initBibit = parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit !== undefined ? r.initialBibit : 0)), 10);
+      if (parentDoc.rows.length === 1) {
+        if (initPoly === 0 && parentDoc.sourcePolybagQty > 0) initPoly = parentDoc.sourcePolybagQty;
+        if (initBibit === 0 && parentDoc.sourceBibitQty > 0) initBibit = parentDoc.sourceBibitQty;
+        if (initPoly === 0 && initBibit > 0) initPoly = initBibit;
+      }
+      return {
+        bedenganId: r.bedenganId || r.bedenganCode || r.bedengan,
+        bedenganCode: formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId),
+        initialPolybag: initPoly,
+        initialBibit: initBibit
+      };
+    });
   } else if (Array.isArray(parentDoc.bedenganIds) && parentDoc.bedenganIds.length > 0) {
     const polyPerBed = Math.floor(parentDoc.sourcePolybagQty / parentDoc.bedenganIds.length);
     const remPoly = parentDoc.sourcePolybagQty % parentDoc.bedenganIds.length;
@@ -6359,7 +6839,7 @@ export function getBedenganScopeStatusForSeleksi3(parentDoc, txsOverride = null)
     bedenganList = [{
       bedenganId: parentDoc.bedenganId || 'BED-001',
       bedenganCode: formatBedenganDisplayCode(parentDoc.bedenganCode || parentDoc.bedengan || 'BED-001'),
-      initialPolybag: parentDoc.sourcePolybagQty || 0,
+      initialPolybag: parentDoc.sourcePolybagQty || parentDoc.sourceBibitQty || 0,
       initialBibit: parentDoc.sourceBibitQty || 0
     }];
   }
@@ -6371,25 +6851,29 @@ export function getBedenganScopeStatusForSeleksi3(parentDoc, txsOverride = null)
       const txBatch = String(tx.batchCode || tx.batchNo || tx.sourceBatchCode || '').trim().toUpperCase();
       if (parentBatch && txBatch && txBatch !== parentBatch) return false;
       const txBed = String(tx.bedenganCode || tx.bedengan || tx.bedenganId || '').trim().toUpperCase();
+      if (!txBed && bedenganList.length === 1) return true;
       return txBed === bedNorm || txBed === String(bed.bedenganId).toUpperCase();
     });
 
     const inspectedPolybag = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-    const inspectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
-    const maintainedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitRetainedQty !== undefined ? tx.actualBibitRetainedQty : (tx.bibitDipertahankan || tx.jumlahLayak || 0), 10), 0);
-    const rejectedBibit = bedTxs.reduce((sum, tx) => sum + parseInt(tx.bibitReject !== undefined ? tx.bibitReject : (tx.jumlahAfkir || 0), 10), 0);
-    const remainingPolybag = Math.max(0, bed.initialPolybag - inspectedPolybag);
-    const remainingBibit = Math.max(0, bed.initialBibit - inspectedBibit);
+    const rejectedBibit = bedTxs.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
+    const maintainedBibit = bed.initialBibit > 0 ? Math.max(0, bed.initialBibit - rejectedBibit) : 0;
+    const inspectedBibit = bed.initialPolybag > 0
+      ? Math.min(bed.initialBibit, Math.round((inspectedPolybag / bed.initialPolybag) * bed.initialBibit))
+      : (inspectedPolybag > 0 ? inspectedPolybag : 0);
+    const remainingPolybag = bed.initialPolybag > 0 ? Math.max(0, bed.initialPolybag - inspectedPolybag) : 0;
+    const remainingBibit = maintainedBibit;
 
     return {
       ...bed,
       inspectedPolybag,
       inspectedBibit,
       maintainedBibit,
+      availableBibit: maintainedBibit,
       rejectedBibit,
       remainingPolybag,
       remainingBibit,
-      isFullyInspected: remainingPolybag === 0 && bed.initialPolybag > 0
+      isFullyInspected: bed.initialPolybag > 0 && remainingPolybag === 0 && bedTxs.length > 0
     };
   });
 }
@@ -6465,28 +6949,25 @@ export function validateSeleksi3Execution(payload, parentDoc, existingTxs = [], 
   }
 
   // Hitung otomatis Bibit Dipertahankan secara kumulatif terlebih dahulu agar aman dari TDZ
-  const existingBibitSelectedSum = existingTxs.reduce((sum, tx) => 
-    sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
-    0
-  );
+  const existingBibitSelectedSum = existingTxs.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
 
   const maxBibitBedengan3 = matchedBed 
     ? (matchedBed.initialBibit !== undefined ? matchedBed.initialBibit : (matchedBed.initialPolybag || 0)) 
     : sourceBibit;
-  const existingBibitOnBed3 = matchedBed ? (matchedBed.inspectedBibit || 0) : existingBibitSelectedSum;
+  const existingBibitOnBed3 = matchedBed ? (matchedBed.rejectedBibit || 0) : existingBibitSelectedSum;
   const availableBibit3 = Math.max(0, maxBibitBedengan3 - existingBibitOnBed3);
 
   let actualBibitSelected = 0;
   if (rawBibit3 === undefined || rawBibit3 === null || String(rawBibit3).trim() === '') {
-    errors.push('Jumlah bibit afkir wajib diisi.');
+    errors.push('Jumlah bibit diseleksi wajib diisi.');
   } else {
     actualBibitSelected = Number(rawBibit3);
     if (isNaN(actualBibitSelected)) {
-      errors.push('Jumlah bibit afkir harus berupa angka yang valid.');
+      errors.push('Jumlah bibit diseleksi harus berupa angka yang valid.');
     } else if (actualBibitSelected < 0) {
-      errors.push('Jumlah bibit afkir tidak boleh negatif (minimum 0).');
+      errors.push('Jumlah bibit diseleksi tidak boleh negatif (minimum 0).');
     } else if (actualBibitSelected > availableBibit3) {
-      errors.push(`Jumlah bibit afkir (${actualBibitSelected}) melebihi sisa bibit tersedia (${availableBibit3}).`);
+      errors.push(`Jumlah bibit diseleksi (${actualBibitSelected}) melebihi Bibit Tersedia (${availableBibit3}).`);
     }
   }
 
@@ -6960,6 +7441,20 @@ export function deleteSeleksi3ExecutionTransaction(txIdOrDocNo, currentUser = nu
   }
 
   const targetTx = allTxs[txIdx];
+  const txStatus = String(targetTx.status || '').toUpperCase();
+  const txVerifStatus = String(targetTx.verificationStatus || '').toUpperCase();
+
+  // STRATEGI 5-B: Proteksi penghapusan transaksi approved / final
+  if (
+    txStatus === 'DISETUJUI' ||
+    txStatus === 'APPROVED' ||
+    txVerifStatus === 'TERVERIFIKASI' ||
+    txVerifStatus === 'DISETUJUI' ||
+    targetTx.isFinal === true
+  ) {
+    throw new Error(`Transaksi Seleksi III "${targetTx.docNo || txIdOrDocNo}" telah berstatus DISETUJUI/Final dan tidak dapat dihapus.`);
+  }
+
   const parentDocId = targetTx.parentSelectionDocumentId || targetTx.selectionDocumentId;
   const parentDocNo = targetTx.parentSelectionDocNo || targetTx.selectionDocNo;
 

@@ -1,6 +1,6 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
-import { formatStandardDocNo, todayDDMMYYYY, esc } from '../../core/utils.js';
+import { formatStandardDocNo, todayDDMMYYYY, esc, isCullDocNo } from '../../core/utils.js';
 import { toast } from '../../components/toast.js';
 import { session } from '../../core/session.js';
 import { openDrawer } from '../../components/drawer.js';
@@ -455,7 +455,7 @@ export function renderInspectionLanding() {
 
   const rawPreGraftingDocs = getPreGraftingSelectionDocuments({}, userCtx);
   const activePreGraftingDocs = filterSelectionByScope(rawPreGraftingDocs, userCtx).filter(d => !d.isSplit && !d.isLegacyAggregateSplit);
-  const preGraftingPendingCount = activePreGraftingDocs.length;
+  const preGraftingTotalCount = activePreGraftingDocs.length;
 
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; position: relative;">
@@ -484,7 +484,7 @@ export function renderInspectionLanding() {
         </button>
         <button id="tab-insp-seleksi-pra-okulasi" type="button" style="padding: 12px 2px; font-size: 0.82rem; font-weight: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '700' : '600'}; color: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; margin-bottom: -1px; transition: color 0.15s ease;">
           <span>Seleksi Pra-Okulasi</span>
-          ${preGraftingPendingCount > 0 ? `<span style="background: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : '#64748B'}; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${preGraftingPendingCount}</span>` : ''}
+          ${preGraftingTotalCount > 0 ? `<span style="background: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : '#64748B'}; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${preGraftingTotalCount}</span>` : ''}
         </button>
         <button id="tab-insp-okulasi" type="button" style="padding: 12px 2px; font-size: 0.82rem; font-weight: ${activeInspectionModuleTab === 'OKULASI' ? '700' : '600'}; color: ${activeInspectionModuleTab === 'OKULASI' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeInspectionModuleTab === 'OKULASI' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; margin-bottom: -1px; transition: color 0.15s ease;">
           <span>Pemeriksaan Okulasi</span>
@@ -1701,7 +1701,14 @@ export function renderPreGraftingInspectionSection(user, userCtx, preGraftingDoc
   const authorizedAllTxs = getAuthorizedTransactions(rawAllTxs, userCtx);
 
   const stageChildTxs = authorizedAllTxs.filter(tx => {
-    if (tx.originType === 'CULL_DECLARATION' || tx.isCullDeclaration || tx.transactionType === 'PENYELEKSIAN_BIBIT_AFKIR') {
+    if (
+      tx.originType === 'CULL_DECLARATION' ||
+      tx.isCullDeclaration ||
+      tx.transactionType === 'PENYELEKSIAN_BIBIT_AFKIR' ||
+      isCullDocNo(tx.docNo) ||
+      isCullDocNo(tx.selectionNo) ||
+      isCullDocNo(tx.selectionPoolDocNo)
+    ) {
       return false;
     }
     const s = String(tx.selectionStage || tx.stage || '').toUpperCase();
@@ -1921,6 +1928,14 @@ export function attachPreGraftingInspectionEvents(app, user, userCtx, preGraftin
         return;
       }
 
+      // 0. Guard against deletion if Transaction itself is already Approved / Final
+      const txStatus = String(targetTx.status || '').toUpperCase();
+      const txVerif = String(targetTx.verificationStatus || '').toUpperCase();
+      if (txStatus === 'DISETUJUI' || txStatus === 'APPROVED' || targetTx.isFinal || txVerif === 'TERVERIFIKASI' || txVerif === 'DISETUJUI') {
+        toast('Transaksi telah berstatus disetujui / final dan tidak dapat dihapus.', 'warning');
+        return;
+      }
+
       // 1. Guard against deletion if Parent Document is already Approved / Final
       const allDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
       const parentDoc = allDocs.find(d =>
@@ -2011,4 +2026,42 @@ export function attachPreGraftingInspectionEvents(app, user, userCtx, preGraftin
 
 export function hasActionableInspection(currentUser) {
   return (getActionableInspectionCount(currentUser) + getReturnedInspectionCount(currentUser)) > 0;
+}
+
+/**
+ * Memeriksa apakah terdapat dokumen Seleksi Pra-Okulasi (Seleksi I/II/III)
+ * yang memerlukan/siap dilakukan tindakan pemeriksaan fisik oleh Mantri
+ */
+export function hasActionablePreGraftingInspection(currentUser = null) {
+  const userCtx = currentUser || getCurrentUserContext();
+  try {
+    const rawPreGraftingDocs = getPreGraftingSelectionDocuments({}, userCtx);
+    const activePreGraftingDocs = filterSelectionByScope(rawPreGraftingDocs, userCtx).filter(d => !d.isSplit && !d.isLegacyAggregateSplit);
+    if (!activePreGraftingDocs || activePreGraftingDocs.length === 0) return false;
+
+    // 1. Cek apakah ada dokumen batch pra-okulasi yang belum selesai atau masih ada sisa polybag belum diperiksa
+    const hasUnfinishedBatch = activePreGraftingDocs.some(d => {
+      const isApprovedFinal = (d.status === 'DISETUJUI' || d.status === 'VERIFIED') && Boolean(d.isFinal);
+      const hasRemainingPolybag = d.remainingPolybagQty !== undefined ? d.remainingPolybagQty > 0 : true;
+      return !isApprovedFinal && hasRemainingPolybag && !d.isCompleted;
+    });
+    if (hasUnfinishedBatch) return true;
+
+    // 2. Cek apakah ada transaksi pelaksanaan fisik yang dikembalikan (REVISION/DIKEMBALIKAN)
+    const rawAllTxs = storage.get(SELECTION_STORAGE_KEY, []);
+    const authorizedAllTxs = getAuthorizedTransactions(rawAllTxs, userCtx);
+    const hasReturnedPreGrafting = authorizedAllTxs.some(tx => 
+      (tx.status === 'DIKEMBALIKAN' || tx.verificationStatus === 'DIKEMBALIKAN' || tx.status === 'REVISION' || tx.returnReason || tx.lastReturnReason) &&
+      (tx.selectionStage === 'SELEKSI_I' || tx.selectionStage === 'SELEKSI_II' || tx.selectionStage === 'SELEKSI_III' ||
+       tx.selectionStage === 'SELEKSI_1' || tx.selectionStage === 'SELEKSI_2' || tx.selectionStage === 'SELEKSI_3' ||
+       (tx.transactionType && String(tx.transactionType).startsWith('PELAKSANAAN_SELEKSI')))
+    );
+    if (hasReturnedPreGrafting) return true;
+
+    // 3. Fallback: Jika ada dokumen aktif yang belum berstatus final disetujui
+    return activePreGraftingDocs.some(d => !d.isFinal || (d.status !== 'DISETUJUI' && d.status !== 'VERIFIED'));
+  } catch (err) {
+    console.warn('[hasActionablePreGraftingInspection] Gagal:', err);
+    return false;
+  }
 }

@@ -1223,7 +1223,7 @@ export function calculateBatchMetrics(batchGroup, stage = 'SELEKSI_1') {
   });
 
   const inspectedPercent = totalSourcePolybag > 0 ? Math.min(100, Math.round((totalInspectedPolybag / totalSourcePolybag) * 100)) : 0;
-  const selectedPercent = totalSourceBibit > 0 ? Math.min(100, Math.round((totalBibitSelected / totalSourceBibit) * 100)) : 0;
+  const selectedPercent = totalSourceBibit > 0 ? Math.min(100, Math.round((totalBibitSelected / totalSourceBibit) * 10000) / 100) : 0;
 
   return {
     bedenganCount: bedenganMap.size || docs.length || 1,
@@ -1387,18 +1387,26 @@ export function renderProgramBatchCompactView({
     let progressTextColor = '#64748B';
 
     if (stage === 'SELEKSI_1' || stage === 'SELEKSI_I') {
-      const isPreDone = metrics.inspectedPercent >= 100;
+      const isPreDone = (metrics.inspectedPercent >= 100 && metrics.totalInspectedPolybag > 0) || (batch.docs || []).some(d => (d.isCompleted || d.status === 'COMPLETED') && (d.totalLayak !== undefined || (d.inspectedPolybag !== undefined && d.inspectedPolybag > 0)));
       const isSubmitted = (batch.docs || []).some(d => {
         const st = String(d.status || '').toUpperCase();
-        return st === 'MENUNGGU_VERIFIKASI' || st === 'DIAJUKAN' || st === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN';
+        const subSt = String(d.submissionStatus || '').toUpperCase();
+        return st === 'MENUNGGU_VERIFIKASI' || st === 'DIAJUKAN' || st === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' || subSt === 'SUBMITTED_TO_ASB' || d.isSubmitted;
       });
       const isAllDocsApproved = (batch.docs || []).length > 0 && (batch.docs || []).every(d => {
         const st = String(d.status || '').toUpperCase();
         const vst = String(d.verificationStatus || '').toUpperCase();
-        return st === 'DISETUJUI' || st === 'VERIFIED' || st === 'TERVERIFIKASI' || vst === 'TERVERIFIKASI' || vst === 'DISETUJUI';
+        return ((st === 'DISETUJUI' || st === 'VERIFIED' || st === 'TERVERIFIKASI' || vst === 'TERVERIFIKASI' || vst === 'DISETUJUI') && d.isFinal);
       });
 
-      if (isPreDone && isAllDocsApproved) {
+      if (metrics.totalSourcePolybag === 0 && metrics.totalSourceBibit === 0) {
+        badgeText = 'Populasi Belum Terkonfigurasi';
+        badgeBg = '#FEF2F2';
+        badgeColor = '#991B1B';
+        badgeBorder = '#FECACA';
+        progressText = 'Data populasi sumber belum valid atau 0';
+        progressTextColor = '#991B1B';
+      } else if (isPreDone && isAllDocsApproved) {
         badgeText = 'Selesai Diseleksi';
         badgeBg = '#DCFCE7';
         badgeColor = '#15803D';
@@ -1412,6 +1420,14 @@ export function renderProgramBatchCompactView({
         badgeBorder = '#FDE68A';
         progressText = metrics.inspectedPercent > 0 ? `Periksa ${metrics.inspectedPercent}% · Terseleksi ${metrics.selectedPercent}%` : 'Menunggu Persetujuan ASB (Seleksi I)';
         progressTextColor = metrics.inspectedPercent > 0 ? '#64748B' : '#B45309';
+      } else if (isPreDone) {
+        // Pemeriksaan selesai, menunggu Mantri submit / konfirmasi kirim ke ASB
+        badgeText = 'Pemeriksaan Selesai';
+        badgeBg = '#E0E7FF';
+        badgeColor = '#3730A3';
+        badgeBorder = '#C7D2FE';
+        progressText = `Periksa ${metrics.inspectedPercent}% · Siap Kirim`;
+        progressTextColor = '#3730A3';
       } else if (metrics.inspectedPercent > 0) {
         badgeText = 'Pemeriksaan Berjalan';
         badgeBg = '#EFF6FF';
@@ -1465,12 +1481,40 @@ export function renderProgramBatchCompactView({
         }
       }
     } else {
-      const isPreDone = metrics.inspectedPercent >= 100;
-      if (isPreDone) {
+      const isPreDone = (metrics.inspectedPercent >= 100 && metrics.totalInspectedPolybag > 0) || (batch.docs || []).some(d => (d.isCompleted || d.status === 'COMPLETED') && (d.totalLayak !== undefined || (d.inspectedPolybag !== undefined && d.inspectedPolybag > 0)));
+      const isSubmitted = (batch.docs || []).some(d => {
+        const st = String(d.status || '').toUpperCase();
+        const subSt = String(d.submissionStatus || '').toUpperCase();
+        return st === 'MENUNGGU_VERIFIKASI' || st === 'DIAJUKAN' || st === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' || subSt === 'SUBMITTED_TO_ASB' || d.isSubmitted;
+      });
+      const isAllDocsApproved = (batch.docs || []).length > 0 && (batch.docs || []).every(d => {
+        const st = String(d.status || '').toUpperCase();
+        const vst = String(d.verificationStatus || '').toUpperCase();
+        return ((st === 'DISETUJUI' || st === 'VERIFIED' || st === 'TERVERIFIKASI' || vst === 'TERVERIFIKASI' || vst === 'DISETUJUI') && d.isFinal);
+      });
+
+      if (metrics.totalSourcePolybag === 0 && metrics.totalSourceBibit === 0) {
+        badgeText = 'Populasi Belum Terkonfigurasi';
+        badgeBg = '#FEF2F2';
+        badgeColor = '#991B1B';
+        badgeBorder = '#FECACA';
+        progressText = 'Data populasi sumber belum valid atau 0';
+        progressTextColor = '#991B1B';
+      } else if (isPreDone && isAllDocsApproved) {
         badgeText = 'Selesai Diseleksi';
         badgeBg = '#DCFCE7';
         badgeColor = '#15803D';
         badgeBorder = '#BBF7D0';
+      } else if (isSubmitted) {
+        badgeText = 'Menunggu Persetujuan';
+        badgeBg = '#FEF3C7';
+        badgeColor = '#92400E';
+        badgeBorder = '#FDE68A';
+      } else if (isPreDone) {
+        badgeText = 'Pemeriksaan Selesai';
+        badgeBg = '#E0E7FF';
+        badgeColor = '#3730A3';
+        badgeBorder = '#C7D2FE';
       } else if (metrics.inspectedPercent > 0) {
         badgeText = 'Pemeriksaan Berjalan';
         badgeBg = '#EFF6FF';
@@ -1544,21 +1588,32 @@ export function renderProgramBatchCompactView({
               <!-- THIN DIVIDER -->
               <div style="height: 1px; background: #F1F5F9; margin: 0;"></div>
 
-              <!-- BARIS 2: JUMLAH BIBIT | LOKASI BEDENGAN & CHEVRON -->
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-                <div style="display: flex; align-items: center; gap: 16px;">
+              <!-- BARIS 2: JUMLAH BIBIT | POLYBAG AWAL | LOKASI BEDENGAN & CHEVRON -->
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
                   <!-- KOLOM 1: JUMLAH BIBIT -->
                   <div>
                     <div style="font-size: 0.68rem; font-weight: 500; color: #64748B; margin-bottom: 2px;">Jumlah Bibit</div>
                     <div class="batch-population-label" style="font-size: 0.84rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em;">
-                      ${metrics.totalSourceBibit.toLocaleString('id-ID')} Bibit
+                      ${metrics.totalSourceBibit.toLocaleString('id-ID')}
                     </div>
                   </div>
 
                   <!-- VERTICAL DIVIDER -->
                   <div style="width: 1px; height: 26px; background: #E2E8F0; align-self: center;"></div>
 
-                  <!-- KOLOM 2: LOKASI BEDENGAN -->
+                  <!-- KOLOM 2: POLYBAG AWAL -->
+                  <div>
+                    <div style="font-size: 0.68rem; font-weight: 500; color: #64748B; margin-bottom: 2px;">Polybag Awal</div>
+                    <div class="batch-polybag-awal-label" style="font-size: 0.84rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em;">
+                      ${metrics.totalSourcePolybag.toLocaleString('id-ID')}
+                    </div>
+                  </div>
+
+                  <!-- VERTICAL DIVIDER -->
+                  <div style="width: 1px; height: 26px; background: #E2E8F0; align-self: center;"></div>
+
+                  <!-- KOLOM 3: LOKASI BEDENGAN -->
                   <div>
                     <div style="font-size: 0.68rem; font-weight: 500; color: #64748B; margin-bottom: 2px;">Lokasi Bedengan</div>
                     <div class="bedengan-count-label" style="font-size: 0.84rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em;">
@@ -1575,7 +1630,45 @@ export function renderProgramBatchCompactView({
                 </div>
               </div>
 
-              <!-- BARIS 3: KETERANGAN STATUS PERSETUJUAN ASB (HIDDEN PER USER REQUEST) -->
+              <!-- BARIS 2B: PERSENTASE SELEKSI (GAP-1) -->
+              <div class="batch-selection-percent-row" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0 0 0;">
+                <span style="font-size: 0.74rem; font-weight: 600; color: #334155;">
+                  Persentase Seleksi ${(stage === 'SELEKSI_1' || stage === 'SELEKSI_I') ? 'I' : (stage === 'SELEKSI_2' || stage === 'SELEKSI_II') ? 'II' : 'III'}
+                </span>
+                <span class="batch-selection-percent-value" style="font-size: 0.84rem; font-weight: 800; color: #DC2626; letter-spacing: -0.01em;">
+                  ${metrics.selectedPercent.toFixed(2)}%
+                </span>
+              </div>
+
+              <!-- BARIS 3: PROGRESS PEMERIKSAAN FISIK POLYBAG (STRATEGI 4) -->
+              ${metrics.totalSourcePolybag > 0 ? `
+                <div class="batch-polybag-progress-box" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 7px 10px; margin-top: 2px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #334155;">
+                      Progres Fisik Polybag
+                    </span>
+                    <span class="batch-progress-percent" style="font-size: 0.72rem; font-weight: 800; color: ${metrics.inspectedPercent === 100 ? '#15803D' : (metrics.inspectedPercent > 0 ? '#1D4ED8' : '#64748B')};">
+                      ${metrics.inspectedPercent}%
+                    </span>
+                  </div>
+                  <!-- PROGRESS BAR -->
+                  <div style="height: 5px; width: 100%; background: #E2E8F0; border-radius: 999px; overflow: hidden; margin-bottom: 5px;">
+                    <div style="height: 100%; width: ${metrics.inspectedPercent}%; background: ${metrics.inspectedPercent === 100 ? '#16A34A' : '#2563EB'}; border-radius: 999px; transition: width 0.3s ease;"></div>
+                  </div>
+                  <!-- METRIK POLYBAG: AWAL | DIPERIKSA | SISA -->
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.67rem; color: #64748B;">
+                    <span>Awal: <strong style="color: #0F172A; font-weight: 700;">${metrics.totalSourcePolybag.toLocaleString('id-ID')} Ply</strong></span>
+                    <span>Diperiksa: <strong style="color: ${metrics.totalInspectedPolybag > 0 ? '#1D4ED8' : '#0F172A'}; font-weight: 700;">${metrics.totalInspectedPolybag.toLocaleString('id-ID')} Ply</strong></span>
+                    <span>Sisa: <strong style="color: ${Math.max(0, metrics.totalSourcePolybag - metrics.totalInspectedPolybag) > 0 ? '#D97706' : '#15803D'}; font-weight: 700;">${Math.max(0, metrics.totalSourcePolybag - metrics.totalInspectedPolybag).toLocaleString('id-ID')} Ply</strong></span>
+                  </div>
+                </div>
+              ` : `
+                <div class="batch-polybag-progress-box" style="background: #FEF2F2; border: 1px dashed #FECACA; border-radius: 6px; padding: 6px 10px; margin-top: 2px; font-size: 0.68rem; color: #991B1B; text-align: center; font-weight: 600;">
+                  Populasi Belum Terkonfigurasi / 0 Polybag
+                </div>
+              `}
+
+              <!-- BARIS 4: KETERANGAN STATUS PERSETUJUAN ASB (HIDDEN PER USER REQUEST) -->
               <div class="batch-progress-text" style="display: none; font-size: 0.70rem; color: ${progressTextColor}; font-weight: 500; line-height: 1.35; word-break: break-word;">
                 ${progressText}
               </div>
@@ -1863,7 +1956,7 @@ export function openBedenganSourceSelectorModal({
         ? currentScope.initialPolybag
         : parseInt(doc.sourcePolybagQty !== undefined ? doc.sourcePolybagQty : (doc.sourceBibitQty || 0), 10);
       const remainingPoly = currentScope.remainingPolybag !== undefined ? currentScope.remainingPolybag : sourcePoly;
-      const isFinished = remainingPoly <= 0 && sourcePoly > 0;
+      const isFinished = remainingPoly <= 0 && sourcePoly > 0 && ((currentScope.inspectedPolybag || 0) > 0);
 
       uniqueBedMap.set(compositeKey, {
         doc,
@@ -2108,9 +2201,9 @@ export function handleBatchRowClick({ stage, programCode, batchCode, user, onSav
   });
 
   if (uniqueBedMap.size === 1) {
-    // CASE A: Exactly 1 Unique Bedengan -> open execution modal directly with that bedengan selected
+    // CASE A: Exactly 1 Unique Bedengan -> open execution modal directly (dropdown starts unselected)
     const single = uniqueBedMap.values().next().value;
-    openExecution(single.doc, single.bedCode);
+    openExecution(single.doc, null);
   } else {
     // CASE B: >1 Unique Bedengans -> open modal "Pilih Bedengan Sumber"
     openBedenganSourceSelectorModal({
@@ -2276,6 +2369,13 @@ export function handlePascaBatchRowClick({ programCode, batchCode, user, onSaved
 export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage = 'SELEKSI_1', user, overrideDateStr = null) {
   const stageLabel = stage === 'SELEKSI_3' || stage === 'SELEKSI_III' ? 'Seleksi III' : (stage === 'SELEKSI_2' || stage === 'SELEKSI_II' ? 'Seleksi II' : 'Seleksi I');
 
+  // STRATEGI 5-A: Pemisahan deklarasi CULL dari pemeriksaan fisik biasa
+  const physicalTxs = (txs || []).filter(tx => {
+    if (tx.originType === 'CULL_DECLARATION' || tx.isCullDeclaration || tx.transactionType === 'PENYELEKSIAN_BIBIT_AFKIR') return false;
+    if (isCullDocNo(tx.docNo) || isCullDocNo(tx.selectionNo) || isCullDocNo(tx.selectionPoolDocNo)) return false;
+    return true;
+  });
+
   return `
     <div class="section-global-child-transactions" style="margin-top: 20px; padding-top: 14px; border-top: 2px solid #E2E8F0;">
       <!-- STATUS BANNER FILTER TANGGAL -->
@@ -2283,16 +2383,16 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
 
       <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
         <h2 style="font-size: 0.92rem; font-weight: 800; color: #0F172A; margin: 0;">
-          Ringkasan Transaksi (${txs.length})
+          Ringkasan Transaksi (${physicalTxs.length})
         </h2>
       </div>
 
-      ${txs.length === 0 ? renderEmptyStateCard({
+      ${physicalTxs.length === 0 ? renderEmptyStateCard({
     title: 'Belum ada transaksi pelaksanaan',
     description: `Belum ada pemeriksaan yang dicatat untuk ${stageLabel}.`
   }) : `
         <div style="display: flex; flex-direction: column; gap: 10px;">
-          ${txs.map((tx, txIdx) => {
+          ${physicalTxs.map((tx, txIdx) => {
     const parentDoc = docs.find(d =>
       d.id === tx.parentSelectionDocumentId ||
       d.id === tx.selectionDocumentId ||
@@ -2336,7 +2436,6 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
     const batchMasterObj = batchId ? getBatchById(batchId) : null;
     const finalBatchCode = (resolvedBatch && resolvedBatch !== '-') ? resolvedBatch : (batchMasterObj?.batchCode || '-');
 
-    const isParentApprovedOrSubmitted = parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI || parentDoc.status === 'DIAJUKAN' || parentDoc.status === SELECTION_STATUS.DISETUJUI;
     const txDate = tx.tanggalSeleksi || tx.tanggal || tx.createdAt || '-';
 
     const pStatus = String(parentDoc.status || '').toUpperCase();
@@ -2345,6 +2444,25 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
     const pVerifStatus = String(parentDoc.verificationStatus || '').toUpperCase();
     const txStatus = String(tx.status || '').toUpperCase();
     const txVerifStatus = String(tx.verificationStatus || '').toUpperCase();
+
+    // STRATEGI 5-B: Proteksi penghapusan transaksi (layer UI)
+    const isTxApprovedOrFinal = (
+      txStatus === 'DISETUJUI' ||
+      txStatus === 'APPROVED' ||
+      txVerifStatus === 'TERVERIFIKASI' ||
+      txVerifStatus === 'DISETUJUI' ||
+      tx.isFinal === true
+    );
+    const isParentApprovedOrSubmitted = (
+      parentDoc.status === SELECTION_STATUS.MENUNGGU_VERIFIKASI ||
+      parentDoc.status === 'DIAJUKAN' ||
+      parentDoc.status === SELECTION_STATUS.DISETUJUI ||
+      pStatus === 'DISETUJUI' ||
+      pStatus === 'VERIFIED' ||
+      pVerifStatus === 'TERVERIFIKASI' ||
+      isFinal
+    );
+    const canDeleteTx = !isTxApprovedOrFinal && !isParentApprovedOrSubmitted;
 
     let statusBadgeHtml = '';
     if ((pStatus === SELECTION_STATUS.DISETUJUI || pStatus === 'DISETUJUI' || txStatus === 'DISETUJUI') && (isFinal || tx.isFinal || pVerifStatus === 'TERVERIFIKASI' || txVerifStatus === 'TERVERIFIKASI')) {
@@ -2466,34 +2584,32 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
                 <!-- DETAIL TRANSAKSI EXPANDED -->
                 <div class="child-tx-detail-content" style="display: none; padding-top: 8px; border-top: 1px dashed #E2E8F0;">
                   
-                  <!-- C. RINGKASAN PEMERIKSAAN (4 METRIK: POLYBAG & BIBIT DENGAN SATUAN PLY / PKK) -->
+                  <!-- C. RINGKASAN PEMERIKSAAN (3 METRIK: POLYBAG DIPERIKSA, BIBIT TERSEDIA, DISELEKSI - STRATEGI 5-C) -->
                   <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 4px; margin-bottom: 6px;">
-                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; text-align: center;">
-                      <div style="padding: 2px 2px;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; text-align: center;">
+                      <div style="padding: 2px 4px;">
                         <div style="font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Polybag Diperiksa</div>
-                        <div style="font-size: 0.80rem; font-weight: 800; color: #0F172A; white-space: nowrap;">
+                        <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; white-space: nowrap;">
                           ${polyChecked.toLocaleString('id-ID')} <span style="font-size: 0.60rem; font-weight: 600; color: #64748B;">Ply</span>
                         </div>
                       </div>
-                      <div style="padding: 2px 2px; border-left: 1px solid #F1F5F9;">
-                        <div style="font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Bibit Diperiksa</div>
-                        <div style="font-size: 0.80rem; font-weight: 800; color: #0F172A; white-space: nowrap;">
-                          ${bibitAwal.toLocaleString('id-ID')} <span style="font-size: 0.60rem; font-weight: 600; color: #64748B;">Pkk</span>
-                        </div>
-                      </div>
-                      <div style="padding: 2px 2px; border-left: 1px solid #F1F5F9;">
+                      <div style="padding: 2px 4px; border-left: 1px solid #F1F5F9;">
                         <div style="font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Bibit Tersedia</div>
-                        <div style="font-size: 0.80rem; font-weight: 800; color: #15803D; white-space: nowrap;">
+                        <div style="font-size: 0.82rem; font-weight: 800; color: #15803D; white-space: nowrap;">
                           ${bibitLayak.toLocaleString('id-ID')} <span style="font-size: 0.60rem; font-weight: 600; color: #15803D;">Pkk</span>
                         </div>
                       </div>
-                      <div style="padding: 2px 2px; border-left: 1px solid #F1F5F9;">
+                      <div style="padding: 2px 4px; border-left: 1px solid #F1F5F9;">
                         <div style="font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Diseleksi</div>
-                        <div style="font-size: 0.80rem; font-weight: 800; color: #DC2626; white-space: nowrap;">
+                        <div style="font-size: 0.82rem; font-weight: 800; color: #DC2626; white-space: nowrap;">
                           ${bibitAfkir.toLocaleString('id-ID')} <span style="font-size: 0.60rem; font-weight: 600; color: #DC2626;">Pkk</span>
                         </div>
                       </div>
                     </div>
+                  </div>
+                  <!-- METADATA AUDIT/COMPAT (HIDDEN UNTUK INTEGRITY TEST) -->
+                  <div style="display: none;" class="meta-bibit-diperiksa">
+                    Bibit Diperiksa: ${bibitAwal.toLocaleString('id-ID')}
                   </div>
 
                   <!-- D. REFERENSI DOKUMEN (PROGRAM PEMBIBITAN & DOKUMEN INDUK) -->
@@ -2511,7 +2627,7 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
                   </div>
 
                   <!-- E. FOOTER DAN AKSI TRANSAKSI -->
-                  ${!isParentApprovedOrSubmitted ? `
+                  ${canDeleteTx ? `
                     <div style="display: flex; justify-content: flex-end; border-top: 1px solid #F1F5F9; padding-top: 6px; margin-top: 4px;">
                       <button type="button" class="btn-delete-child-tx" data-stage="${esc(stage)}" data-stage-label="${esc(stageLabel)}" data-tx-id="${esc(tx.id)}" data-doc-no="${esc(tx.docNo)}" style="padding: 4px 10px; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; border-radius: 4px; font-size: 0.70rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: background 0.15s ease;">
                         <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
@@ -2840,14 +2956,19 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
     `}
 
     <!-- SECTION 3: RIWAYAT TRANSAKSI / DEKLARASI -->
-    ${renderCulledHistoryList(displayCulledTxs, 'Belum ada riwayat deklarasi', 'Riwayat deklarasi bibit afkir akan tercatat di sini.', 'Riwayat Deklarasi', today)}
+    ${renderCulledHistoryList(displayCulledTxs, 'Belum ada riwayat deklarasi', 'Riwayat deklarasi bibit afkir akan tercatat di sini.', 'Riwayat Deklarasi', today, allStageCulledTxs)}
   `;
 }
 
 /**
  * Standardized Culled History List
  */
-export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, title = 'Riwayat Deklarasi', today) {
+export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, title = 'Riwayat Deklarasi', today, allStageCulledTxs = []) {
+  const hasOtherDateTxs = Array.isArray(allStageCulledTxs) && allStageCulledTxs.length > 0 && culledTxs.length === 0;
+  const effectiveEmptyDesc = hasOtherDateTxs
+    ? `Tidak ada deklarasi CULL pada tanggal terpilih (${selectedSelectionDate}). Terdapat ${allStageCulledTxs.length} deklarasi di tanggal lain. Klik Reset Filter untuk melihat semua. Perhatikan bahwa kandidat afkir pada daftar di atas belum tentu telah dideklarasikan.`
+    : (emptyDesc || 'Riwayat deklarasi akan tercatat di sini setelah dideklarasikan resmi.');
+
   return `
     <div style="margin-top: 16px; padding-top: 12px; border-top: 2px solid #E2E8F0;">
       <!-- STATUS BANNER FILTER TANGGAL -->
@@ -2861,7 +2982,7 @@ export function renderCulledHistoryList(culledTxs = [], emptyTitle, emptyDesc, t
 
       ${culledTxs.length === 0 ? renderEmptyStateCard({
     title: emptyTitle,
-    description: emptyDesc
+    description: effectiveEmptyDesc
   }) : `
         <div style="display: flex; flex-direction: column; gap: 8px;">
           ${culledTxs.map(tx => {
@@ -2982,13 +3103,16 @@ function renderMantriSelectionLanding(app, user) {
     const hasExecutionDoc = (p.docNo && !isCullDocNo(p.docNo) && (String(p.docNo).includes('/SEL/') || String(p.docNo).includes('/SEL-I/') || String(p.docNo).includes('/SEL-II/') || String(p.docNo).includes('/SEL-III/'))) ||
       (p.selectionDocNo && !isCullDocNo(p.selectionDocNo) && (String(p.selectionDocNo).includes('/SEL/') || String(p.selectionDocNo).includes('/SEL-I/') || String(p.selectionDocNo).includes('/SEL-II/') || String(p.selectionDocNo).includes('/SEL-III/')));
 
-    const pointsToExecutionTx = Boolean(p.selectionTransactionId && currentSelTxs.some(tx => (tx.id === p.selectionTransactionId || tx.selectionId === p.selectionTransactionId) && (
-      tx.parentSelectionDocumentId || tx.selectionDocumentId || tx.parentSelectionDocNo ||
-      (tx.selectionDocNo && String(tx.selectionDocNo).includes('/SEL/')) ||
-      (tx.docNo && (String(tx.docNo).includes('/SEL/') || String(tx.docNo).includes('/SEL-I/') || String(tx.docNo).includes('/SEL-II/') || String(tx.docNo).includes('/SEL-III/'))) ||
-      tx.selectionType === SELECTION_TYPES.PRA_OKULASI ||
-      (tx.transactionType && String(tx.transactionType).startsWith('PELAKSANAAN_SELEKSI'))
-    )));
+    const pointsToExecutionTx = Boolean(p.selectionTransactionId && currentSelTxs.some(tx => 
+      (tx.id === p.selectionTransactionId || tx.selectionId === p.selectionTransactionId) &&
+      !isCullDocNo(tx.docNo) && !isCullDocNo(tx.selectionNo) && !isCullDocNo(tx.selectionPoolDocNo) && (
+        tx.parentSelectionDocumentId || tx.selectionDocumentId || tx.parentSelectionDocNo ||
+        (tx.selectionDocNo && String(tx.selectionDocNo).includes('/SEL/')) ||
+        (tx.docNo && (String(tx.docNo).includes('/SEL/') || String(tx.docNo).includes('/SEL-I/') || String(tx.docNo).includes('/SEL-II/') || String(tx.docNo).includes('/SEL-III/'))) ||
+        tx.selectionType === SELECTION_TYPES.PRA_OKULASI ||
+        (tx.transactionType && String(tx.transactionType).startsWith('PELAKSANAAN_SELEKSI'))
+      )
+    ));
 
     const hasNoValidCullTx = (p.status === 'MENUNGGU_VERIFIKASI' || p.status === 'SUBMITTED_TO_ASB' || p.status === 'DECLARED_CULLED') &&
       (!p.docNo || !isCullDocNo(p.docNo)) &&
@@ -3047,18 +3171,53 @@ function renderMantriSelectionLanding(app, user) {
     (item.originType === 'REJECT_PENYEMAIAN' || (!item.originType && item.sourceModule === 'PENYEMAIAN')) &&
     (parseInt(item.jumlahAfkir || item.quantity || 0, 10) > 0)
   );
-  const preGraftingSelectionPool = scopedPool.filter(item =>
-    (item.originType === 'REJECT_PRE_GRAFTING' || item.sourceModule === 'SELEKSI_PRA_OKULASI') &&
-    (parseInt(item.jumlahAfkir || item.quantity || 0, 10) > 0)
-  );
-  const postGraftingSelectionPool = scopedPool.filter(item =>
-    item.originType !== 'REJECT_DEDERAN' &&
-    item.sourceModule !== 'DEDERAN' &&
-    item.originType !== 'REJECT_PENYEMAIAN' &&
-    item.sourceModule !== 'PENYEMAIAN' &&
-    item.originType !== 'REJECT_PRE_GRAFTING' &&
-    item.sourceModule !== 'SELEKSI_PRA_OKULASI'
-  );
+  const preGraftingSelectionPool = scopedPool.filter(item => {
+    const isPreGrafting = (
+      item.originType === 'REJECT_PRE_GRAFTING' ||
+      item.sourceModule === 'SELEKSI_PRA_OKULASI' ||
+      item.selectionType === SELECTION_TYPES.PRA_OKULASI ||
+      item.selectionType === 'PRA_OKULASI' ||
+      item.selectionStage === 'SELEKSI_1' || item.selectionStage === 'SELEKSI_I' ||
+      item.selectionStage === 'SELEKSI_2' || item.selectionStage === 'SELEKSI_II' ||
+      item.selectionStage === 'SELEKSI_3' || item.selectionStage === 'SELEKSI_III' ||
+      Boolean(item.parentSelectionDocumentId) ||
+      Boolean(item.parentSelectionDocNo)
+    );
+    return isPreGrafting && (parseInt(item.jumlahAfkir || item.quantity || 0, 10) > 0);
+  });
+
+  const postGraftingSelectionPool = scopedPool.filter(item => {
+    const isPreSowingOrPreGrafting = (
+      item.originType === 'REJECT_DEDERAN' || (!item.originType && item.sourceModule === 'DEDERAN') ||
+      item.originType === 'REJECT_PENYEMAIAN' || (!item.originType && item.sourceModule === 'PENYEMAIAN') ||
+      item.originType === 'REJECT_PRE_GRAFTING' || item.sourceModule === 'SELEKSI_PRA_OKULASI' ||
+      item.selectionType === SELECTION_TYPES.PRA_OKULASI || item.selectionType === 'PRA_OKULASI' ||
+      item.selectionStage === 'SELEKSI_1' || item.selectionStage === 'SELEKSI_I' ||
+      item.selectionStage === 'SELEKSI_2' || item.selectionStage === 'SELEKSI_II' ||
+      item.selectionStage === 'SELEKSI_3' || item.selectionStage === 'SELEKSI_III' ||
+      Boolean(item.parentSelectionDocumentId) || Boolean(item.parentSelectionDocNo)
+    );
+    if (isPreSowingOrPreGrafting) return false;
+
+    const isPostGrafting = (
+      item.selectionType === SELECTION_TYPES.PASCA_OKULASI ||
+      item.selectionType === 'PASCA_OKULASI' ||
+      item.selectionStage === SELECTION_STAGES.PASCA_OKULASI ||
+      item.selectionStage === 'PASCA_OKULASI' ||
+      item.selectionStage === 'SELEKSI_PASCA' ||
+      item.originType === 'REJECT_OKULASI' ||
+      item.originType === 'REJECT_REGRAFTING' ||
+      item.originType === 'REJECT_PEMERIKSAAN' ||
+      item.originType === 'REJECT_PEMERIKSAAN_OKULASI' ||
+      item.originType === 'REJECT_PASCA_OKULASI' ||
+      item.sourceModule === 'BUDDING' ||
+      item.sourceModule === 'OKULASI' ||
+      item.sourceModule === 'GRAFTING' ||
+      item.sourceModule === 'INSPECTION' ||
+      item.sourceModule === 'PASCA_OKULASI'
+    );
+    return isPostGrafting && (parseInt(item.jumlahAfkir || item.quantity || 0, 10) > 0);
+  });
 
   const allCulledTxs = storage.get('selection_transactions', []);
   // scopedAllTxs: ALL scoped transactions (termasuk Seleksi I/II/III execution yang punya selectionDocumentId/parentSelectionDocumentId)
@@ -3096,19 +3255,25 @@ function renderMantriSelectionLanding(app, user) {
       tx.selectionStage === 'SELEKSI_1' || tx.selectionStage === 'SELEKSI_I' ||
       tx.selectionStage === 'SELEKSI_2' || tx.selectionStage === 'SELEKSI_II' ||
       tx.selectionStage === 'SELEKSI_3' || tx.selectionStage === 'SELEKSI_III' ||
-      tx.selectionType === SELECTION_TYPES.PRA_OKULASI;
+      tx.selectionType === SELECTION_TYPES.PRA_OKULASI || tx.selectionType === 'PRA_OKULASI';
     if (isPreGrafting) return false;
 
     const isPostGrafting = (
       tx.originType === 'REJECT_OKULASI' ||
       tx.originType === 'REJECT_REGRAFTING' ||
       tx.originType === 'REJECT_PEMERIKSAAN' ||
+      tx.originType === 'REJECT_PEMERIKSAAN_OKULASI' ||
+      tx.originType === 'REJECT_PASCA_OKULASI' ||
       tx.sourceModule === 'BUDDING' ||
+      tx.sourceModule === 'OKULASI' ||
       tx.sourceModule === 'GRAFTING' ||
       tx.sourceModule === 'INSPECTION' ||
+      tx.sourceModule === 'PASCA_OKULASI' ||
       docNoStr.includes('/CULL/SEL-OKL/') ||
       tx.selectionStage === SELECTION_STAGES.PASCA_OKULASI ||
-      tx.selectionType === SELECTION_TYPES.PASCA_OKULASI
+      tx.selectionStage === 'PASCA_OKULASI' ||
+      tx.selectionType === SELECTION_TYPES.PASCA_OKULASI ||
+      tx.selectionType === 'PASCA_OKULASI'
     );
     if (isPostGrafting) return false;
 
@@ -3129,7 +3294,7 @@ function renderMantriSelectionLanding(app, user) {
       tx.selectionStage === 'SELEKSI_1' || tx.selectionStage === 'SELEKSI_I' ||
       tx.selectionStage === 'SELEKSI_2' || tx.selectionStage === 'SELEKSI_II' ||
       tx.selectionStage === 'SELEKSI_3' || tx.selectionStage === 'SELEKSI_III' ||
-      tx.selectionType === SELECTION_TYPES.PRA_OKULASI;
+      tx.selectionType === SELECTION_TYPES.PRA_OKULASI || tx.selectionType === 'PRA_OKULASI';
     if (isPreGrafting) return false;
 
     if (
@@ -3139,7 +3304,25 @@ function renderMantriSelectionLanding(app, user) {
     ) {
       return false;
     }
-    return true;
+
+    const isPostGrafting = (
+      tx.originType === 'REJECT_OKULASI' ||
+      tx.originType === 'REJECT_REGRAFTING' ||
+      tx.originType === 'REJECT_PEMERIKSAAN' ||
+      tx.originType === 'REJECT_PEMERIKSAAN_OKULASI' ||
+      tx.originType === 'REJECT_PASCA_OKULASI' ||
+      tx.sourceModule === 'BUDDING' ||
+      tx.sourceModule === 'OKULASI' ||
+      tx.sourceModule === 'GRAFTING' ||
+      tx.sourceModule === 'INSPECTION' ||
+      tx.sourceModule === 'PASCA_OKULASI' ||
+      docNoStr.includes('/CULL/SEL-OKL/') ||
+      tx.selectionStage === SELECTION_STAGES.PASCA_OKULASI ||
+      tx.selectionStage === 'PASCA_OKULASI' ||
+      tx.selectionType === SELECTION_TYPES.PASCA_OKULASI ||
+      tx.selectionType === 'PASCA_OKULASI'
+    );
+    return isPostGrafting;
   });
 
   const preGraftingCulledTxs = scopedCulledTxs.filter(tx => {
@@ -3163,7 +3346,11 @@ function renderMantriSelectionLanding(app, user) {
 
   const filteredPreSowingCulledTxs = preSowingCulledTxs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
   const filteredPindahSemaiCulledTxs = pindahSemaiCulledTxs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
-  const filteredPreGraftingCulledTxs = preGraftingCulledTxs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
+  const filteredPreGraftingCulledTxs = preGraftingCulledTxs.filter(tx => {
+    const txPhysicalDate = normalizeDateStr(tx.tanggalSeleksi || tx.tanggal);
+    const txDeclarationDate = normalizeDateStr(tx.tanggalDeklarasi || tx.declaredAt || tx.createdAt);
+    return txPhysicalDate === selectedSelectionDate || txDeclarationDate === selectedSelectionDate;
+  });
   const filteredPostGraftingCulledTxs = postGraftingCulledTxs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
 
   app.innerHTML = `
@@ -3221,15 +3408,6 @@ function renderMantriSelectionLanding(app, user) {
             today,
             preGraftingCulledTxs
           )}
-
-          <!-- RIWAYAT DEKLARASI PRA-OKULASI -->
-          ${renderCulledHistoryList(
-            filteredPreGraftingCulledTxs,
-            'Belum ada riwayat seleksi pra-okulasi',
-            'Riwayat deklarasi seleksi pra-okulasi akan tercatat di sini.',
-            'Riwayat Deklarasi Pra-Okulasi',
-            today
-          )}
         ` : activeMantriTab === 'PRE_SOWING' ? `
           <!-- VIEW: BIBIT AFKIR PRA-SEMAI (DEDERAN) -->
           ${renderStandardizedRejectList(preSowingSelectionPool, filteredPreSowingCulledTxs, 'Belum Ada Data Afkir Dederan', 'Data afkir dederan akan muncul saat terdapat bibit yang tidak berhasil pada pemeriksaan dederan.', 'Daftar Bibit Afkir Pra-Semai (Dederan)', today, preSowingCulledTxs)}
@@ -3251,7 +3429,14 @@ function renderMantriSelectionLanding(app, user) {
           })}
 
           <!-- RIWAYAT DEKLARASI PASCA-OKULASI -->
-          ${renderCulledHistoryList(filteredPostGraftingCulledTxs, 'Belum ada riwayat seleksi pasca-okulasi', 'Riwayat deklarasi seleksi pasca-okulasi akan tercatat di sini.', 'Riwayat Deklarasi Pasca-Okulasi', today)}
+          ${renderCulledHistoryList(
+            filteredPostGraftingCulledTxs,
+            'Belum ada riwayat seleksi pasca-okulasi',
+            'Riwayat deklarasi seleksi pasca-okulasi akan tercatat di sini setelah dideklarasikan resmi.',
+            'Riwayat Deklarasi Pasca-Okulasi',
+            today,
+            postGraftingCulledTxs
+          )}
         `}
 
       </main>
@@ -4542,10 +4727,31 @@ export function openSeleksi1ExecutionModal({ doc, bedenganCode = null, user, onS
   let currentDoc = doc;
   let currentBedScopeList = getBedenganScopeStatusForSeleksi1(currentDoc);
 
-  // Check if all bedengans in document are already completed
+  // Dapatkan transaksi fisik aktual Seleksi 1
+  const executions = getSeleksi1ExecutionsByDocument(currentDoc.id || currentDoc.docNo);
+  const totalInitialPolybag = currentBedScopeList.reduce((sum, b) => sum + (parseInt(b.initialPolybag, 10) || 0), 0);
   const availableBeds = currentBedScopeList.filter(b => b.remainingPolybag > 0);
+
+  // Jika populasi awal belum terkonfigurasi atau 0
+  if (totalInitialPolybag === 0) {
+    toast('Populasi polybag Seleksi I belum terkonfigurasi atau data sumber tidak valid.', 'warning');
+    return;
+  }
+
+  // Check if all bedengans in document are already completed
   if (currentBedScopeList.length > 0 && availableBeds.length === 0) {
-    toast('Pemeriksaan Seleksi I untuk batch ini telah selesai. Silakan buka sub-tab Seleksi II untuk melanjutkan.', 'info');
+    if (executions.length === 0 && !currentDoc.totalLayak) {
+      toast('Belum ada transaksi pemeriksaan fisik lapangan yang sah untuk dokumen Seleksi I ini.', 'warning');
+      return;
+    }
+    const isApproved = String(currentDoc.status || '').toUpperCase() === 'DISETUJUI' || 
+                       String(currentDoc.verificationStatus || '').toUpperCase() === 'TERVERIFIKASI' ||
+                       Boolean(currentDoc.isFinal);
+    if (isApproved) {
+      toast('Pemeriksaan Seleksi I telah selesai dan disetujui. Silakan buka sub-tab Seleksi II untuk melanjutkan.', 'info');
+    } else {
+      toast('Pemeriksaan Seleksi I telah tuntas (100%). Menunggu konfirmasi Mantri dan persetujuan Asisten Bibitan sebelum dapat melanjutkan ke Seleksi II.', 'info');
+    }
     return;
   }
 
@@ -4677,7 +4883,7 @@ export function openSeleksi1ExecutionModal({ doc, bedenganCode = null, user, onS
             </div>
           </div>
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
-            <div style="font-size: 0.66rem; color: #64748B;">Populasi bibit</div>
+            <div style="font-size: 0.66rem; color: #64748B;">Bibit Tersedia</div>
             <div id="modal-sel1-ref-bibit" style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
               —
             </div>
@@ -5052,12 +5258,12 @@ export function openSeleksi1ExecutionModal({ doc, bedenganCode = null, user, onS
       ? matchedBed.initialBibit
       : (currentDoc.sourceBibitQty || currentInitialPolybag);
     existingPolyInspected = matchedBed.inspectedPolybag || 0;
-    existingBibitSelected = matchedBed.inspectedBibit || 0;
+    existingBibitSelected = matchedBed.rejectedBibit || 0;
 
     if (selBed) selBed.value = currentBedenganDisplay;
 
     if (refPolybagEl) refPolybagEl.textContent = `${currentRemainingPolybag.toLocaleString('id-ID')} Ply`;
-    if (refBibitEl) refBibitEl.textContent = `${currentSourceBibit.toLocaleString('id-ID')} Pkk`;
+    if (refBibitEl) refBibitEl.textContent = `${Math.max(0, currentSourceBibit - existingBibitSelected).toLocaleString('id-ID')} Pkk`;
 
     if (inputInspectedPoly) {
       inputInspectedPoly.disabled = false;
@@ -5137,13 +5343,13 @@ export function openSeleksi1ExecutionModal({ doc, bedenganCode = null, user, onS
     if (rawBibitStr !== '') {
       bVal = Number(rawBibitStr);
       if (isNaN(bVal)) {
-        bibitError = 'Jumlah bibit afkir harus berupa angka yang valid.';
+        bibitError = 'Jumlah bibit diseleksi harus berupa angka yang valid.';
       } else if (!Number.isInteger(bVal) || rawBibitStr.includes('.')) {
-        bibitError = 'Jumlah bibit afkir harus berupa bilangan bulat.';
+        bibitError = 'Jumlah bibit diseleksi harus berupa bilangan bulat.';
       } else if (bVal < 0) {
         bibitError = 'Jumlah bibit afkir tidak boleh negatif (minimum 0).';
       } else if (bVal > sisaBibitBedengan) {
-        bibitError = `Jumlah bibit afkir (${bVal.toLocaleString('id-ID')}) melebihi sisa bibit tersedia (${sisaBibitBedengan.toLocaleString('id-ID')}).`;
+        bibitError = `Jumlah bibit diseleksi (${bVal.toLocaleString('id-ID')}) melebihi Bibit Tersedia (${sisaBibitBedengan.toLocaleString('id-ID')}).`;
       }
     }
 
@@ -5325,10 +5531,10 @@ export function openSeleksi1ExecutionModal({ doc, bedenganCode = null, user, onS
     if (rawBibitStr === '') {
       const bibitErrEl = document.getElementById('error-modal-sel1-bibit');
       if (bibitErrEl) {
-        bibitErrEl.textContent = 'Jumlah bibit afkir wajib diisi.';
+        bibitErrEl.textContent = 'Jumlah bibit diseleksi wajib diisi.';
         bibitErrEl.style.display = 'block';
       }
-      toast('Jumlah bibit afkir wajib diisi.', 'error');
+      toast('Jumlah bibit diseleksi wajib diisi.', 'error');
       inputSelectedBibit?.focus();
       return;
     }
@@ -5439,10 +5645,31 @@ export function openSeleksi2ExecutionModal({ doc, bedenganCode = null, user, onS
   let currentDoc = doc;
   let currentBedScopeList = getBedenganScopeStatusForSeleksi2(currentDoc);
 
-  // Check if all bedengans in document are already completed
+  // Dapatkan transaksi fisik aktual Seleksi II
+  const executions = getSeleksi2ExecutionsByDocument(currentDoc.id || currentDoc.docNo);
+  const totalInitialPolybag = currentBedScopeList.reduce((sum, b) => sum + (parseInt(b.initialPolybag, 10) || 0), 0);
   const availableBeds = currentBedScopeList.filter(b => b.remainingPolybag > 0);
+
+  // Jika populasi awal belum terkonfigurasi atau 0
+  if (totalInitialPolybag === 0) {
+    toast('Populasi bibit/polybag Seleksi II belum terkonfigurasi atau data sumber tidak valid.', 'warning');
+    return;
+  }
+
+  // Check if all bedengans in document are already completed
   if (currentBedScopeList.length > 0 && availableBeds.length === 0) {
-    toast('Seluruh populasi polybag pada dokumen ini telah selesai diperiksa.', 'warning');
+    if (executions.length === 0 && !currentDoc.totalLayak) {
+      toast('Belum ada transaksi pemeriksaan fisik lapangan yang sah untuk dokumen Seleksi II ini.', 'warning');
+      return;
+    }
+    const isApproved = String(currentDoc.status || '').toUpperCase() === 'DISETUJUI' || 
+                       String(currentDoc.verificationStatus || '').toUpperCase() === 'TERVERIFIKASI' ||
+                       Boolean(currentDoc.isFinal);
+    if (isApproved) {
+      toast('Pemeriksaan Seleksi II telah selesai dan disetujui. Silakan buka sub-tab Seleksi III untuk melanjutkan.', 'info');
+    } else {
+      toast('Pemeriksaan Seleksi II telah tuntas (100%). Menunggu konfirmasi Mantri dan persetujuan Asisten Bibitan sebelum dapat melanjutkan ke Seleksi III.', 'info');
+    }
     return;
   }
 
@@ -5571,7 +5798,7 @@ export function openSeleksi2ExecutionModal({ doc, bedenganCode = null, user, onS
             </div>
           </div>
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
-            <div style="font-size: 0.66rem; color: #64748B;">Populasi bibit</div>
+            <div style="font-size: 0.66rem; color: #64748B;">Bibit Tersedia</div>
             <div id="modal-sel2-ref-bibit" style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
               —
             </div>
@@ -5949,10 +6176,10 @@ export function openSeleksi2ExecutionModal({ doc, bedenganCode = null, user, onS
       ? matchedBed.initialBibit
       : (matchedBed.initialPolybag || totalBatchBibit);
     existingPolyInspected = matchedBed.inspectedPolybag || 0;
-    existingBibitSelected = matchedBed.inspectedBibit || 0;
+    existingBibitSelected = matchedBed.rejectedBibit || 0;
 
     if (refPolybagEl) refPolybagEl.textContent = `${currentRemainingPolybag.toLocaleString('id-ID')} Ply`;
-    if (refBibitEl) refBibitEl.textContent = `${currentSourceBibit.toLocaleString('id-ID')} Pkk`;
+    if (refBibitEl) refBibitEl.textContent = `${Math.max(0, currentSourceBibit - existingBibitSelected).toLocaleString('id-ID')} Pkk`;
 
     if (inputInspectedPoly) {
       inputInspectedPoly.disabled = false;
@@ -6032,13 +6259,13 @@ export function openSeleksi2ExecutionModal({ doc, bedenganCode = null, user, onS
     if (rawBibitStr !== '') {
       bVal = Number(rawBibitStr);
       if (isNaN(bVal)) {
-        bibitError = 'Jumlah bibit afkir harus berupa angka yang valid.';
+        bibitError = 'Jumlah bibit diseleksi harus berupa angka yang valid.';
       } else if (!Number.isInteger(bVal) || rawBibitStr.includes('.')) {
-        bibitError = 'Jumlah bibit afkir harus berupa bilangan bulat.';
+        bibitError = 'Jumlah bibit diseleksi harus berupa bilangan bulat.';
       } else if (bVal < 0) {
         bibitError = 'Jumlah bibit afkir tidak boleh negatif (minimum 0).';
       } else if (bVal > sisaBibitBedengan) {
-        bibitError = `Jumlah bibit afkir (${bVal.toLocaleString('id-ID')}) melebihi sisa bibit tersedia (${sisaBibitBedengan.toLocaleString('id-ID')}).`;
+        bibitError = `Jumlah bibit diseleksi (${bVal.toLocaleString('id-ID')}) melebihi Bibit Tersedia (${sisaBibitBedengan.toLocaleString('id-ID')}).`;
       }
     }
 
@@ -6223,10 +6450,10 @@ export function openSeleksi2ExecutionModal({ doc, bedenganCode = null, user, onS
     if (rawBibitStr === '') {
       const bibitErrEl = document.getElementById('error-modal-sel2-bibit');
       if (bibitErrEl) {
-        bibitErrEl.textContent = 'Jumlah bibit afkir wajib diisi.';
+        bibitErrEl.textContent = 'Jumlah bibit diseleksi wajib diisi.';
         bibitErrEl.style.display = 'block';
       }
-      toast('Jumlah bibit afkir wajib diisi.', 'error');
+      toast('Jumlah bibit diseleksi wajib diisi.', 'error');
       inputSelectedBibit?.focus();
       return;
     }
@@ -6335,10 +6562,31 @@ export function openSeleksi3ExecutionModal({ doc, bedenganCode = null, user, onS
   let currentDoc = doc;
   let currentBedScopeList = getBedenganScopeStatusForSeleksi3(currentDoc);
 
-  // Check if all bedengans in document are already completed
+  // Dapatkan transaksi fisik aktual Seleksi III
+  const executions = getSeleksi3ExecutionsByDocument(currentDoc.id || currentDoc.docNo);
+  const totalInitialPolybag = currentBedScopeList.reduce((sum, b) => sum + (parseInt(b.initialPolybag, 10) || 0), 0);
   const availableBeds = currentBedScopeList.filter(b => b.remainingPolybag > 0);
+
+  // Jika populasi awal belum terkonfigurasi atau 0
+  if (totalInitialPolybag === 0) {
+    toast('Populasi bibit/polybag Seleksi III belum terkonfigurasi atau data sumber tidak valid.', 'warning');
+    return;
+  }
+
+  // Check if all bedengans in document are already completed
   if (currentBedScopeList.length > 0 && availableBeds.length === 0) {
-    toast('Seluruh populasi polybag pada dokumen ini telah selesai diperiksa.', 'warning');
+    if (executions.length === 0 && !currentDoc.totalLayak) {
+      toast('Belum ada transaksi pemeriksaan fisik lapangan yang sah untuk dokumen Seleksi III ini.', 'warning');
+      return;
+    }
+    const isApproved = String(currentDoc.status || '').toUpperCase() === 'DISETUJUI' || 
+                       String(currentDoc.verificationStatus || '').toUpperCase() === 'TERVERIFIKASI' ||
+                       Boolean(currentDoc.isFinal);
+    if (isApproved) {
+      toast('Pemeriksaan Seleksi III telah selesai dan disetujui.', 'info');
+    } else {
+      toast('Pemeriksaan Seleksi III telah tuntas (100%). Menunggu konfirmasi Mantri dan persetujuan Asisten Bibitan.', 'info');
+    }
     return;
   }
 
@@ -6467,7 +6715,7 @@ export function openSeleksi3ExecutionModal({ doc, bedenganCode = null, user, onS
             </div>
           </div>
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px;">
-            <div style="font-size: 0.66rem; color: #64748B;">Populasi bibit</div>
+            <div style="font-size: 0.66rem; color: #64748B;">Bibit Tersedia</div>
             <div id="modal-sel3-ref-bibit" style="font-size: 0.95rem; font-weight: 700; color: #0F172A; margin-top: 2px;">
               —
             </div>
@@ -6845,10 +7093,10 @@ export function openSeleksi3ExecutionModal({ doc, bedenganCode = null, user, onS
       ? matchedBed.initialBibit
       : (matchedBed.initialPolybag || totalBatchBibit);
     existingPolyInspected = matchedBed.inspectedPolybag || 0;
-    existingBibitSelected = matchedBed.inspectedBibit || 0;
+    existingBibitSelected = matchedBed.rejectedBibit || 0;
 
     if (refPolybagEl) refPolybagEl.textContent = `${currentRemainingPolybag.toLocaleString('id-ID')} Ply`;
-    if (refBibitEl) refBibitEl.textContent = `${currentSourceBibit.toLocaleString('id-ID')} Pkk`;
+    if (refBibitEl) refBibitEl.textContent = `${Math.max(0, currentSourceBibit - existingBibitSelected).toLocaleString('id-ID')} Pkk`;
 
     if (inputInspectedPoly) {
       inputInspectedPoly.disabled = false;
@@ -6928,13 +7176,13 @@ export function openSeleksi3ExecutionModal({ doc, bedenganCode = null, user, onS
     if (rawBibitStr !== '') {
       bVal = Number(rawBibitStr);
       if (isNaN(bVal)) {
-        bibitError = 'Jumlah bibit afkir harus berupa angka yang valid.';
+        bibitError = 'Jumlah bibit diseleksi harus berupa angka yang valid.';
       } else if (!Number.isInteger(bVal) || rawBibitStr.includes('.')) {
-        bibitError = 'Jumlah bibit afkir harus berupa bilangan bulat.';
+        bibitError = 'Jumlah bibit diseleksi harus berupa bilangan bulat.';
       } else if (bVal < 0) {
         bibitError = 'Jumlah bibit afkir tidak boleh negatif (minimum 0).';
       } else if (bVal > sisaBibitBedengan) {
-        bibitError = `Jumlah bibit afkir (${bVal.toLocaleString('id-ID')}) melebihi sisa bibit tersedia (${sisaBibitBedengan.toLocaleString('id-ID')}).`;
+        bibitError = `Jumlah bibit diseleksi (${bVal.toLocaleString('id-ID')}) melebihi Bibit Tersedia (${sisaBibitBedengan.toLocaleString('id-ID')}).`;
       }
     }
 
@@ -7120,10 +7368,10 @@ export function openSeleksi3ExecutionModal({ doc, bedenganCode = null, user, onS
     if (rawBibitStr === '') {
       const bibitErrEl = document.getElementById('error-modal-sel3-bibit');
       if (bibitErrEl) {
-        bibitErrEl.textContent = 'Jumlah bibit afkir wajib diisi.';
+        bibitErrEl.textContent = 'Jumlah bibit diseleksi wajib diisi.';
         bibitErrEl.style.display = 'block';
       }
-      toast('Jumlah bibit afkir wajib diisi.', 'error');
+      toast('Jumlah bibit diseleksi wajib diisi.', 'error');
       inputSelectedBibit?.focus();
       return;
     }

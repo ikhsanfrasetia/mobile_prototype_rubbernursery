@@ -122,50 +122,52 @@ export function renderToppingScan() {
 
       </main>
 
-      <!-- MODAL BOTTOM SHEET: PILIH PLOT MANUAL -->
-      <div id="overlay-manual-plot-sheet" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 50; backdrop-filter: blur(2px);"></div>
+      <!-- MODAL BOTTOM SHEET: PILIH PLOT MANUAL (TERBATAS DI DALAM FRAME HP) -->
+      <div id="overlay-manual-plot-sheet" style="display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.65); z-index: 50; backdrop-filter: blur(2px);"></div>
       
-      <div id="sheet-manual-plot" style="display: none; position: fixed; left: 0; right: 0; bottom: 0; background: #FFFFFF; color: #111827; border-radius: 18px 18px 0 0; padding: 18px 16px 24px; z-index: 51; flex-direction: column; max-height: 75vh; box-shadow: 0 -8px 24px rgba(0,0,0,0.3); box-sizing: border-box;">
-        <div style="width: 36px; height: 4px; background: #E2E8F0; border-radius: 2px; margin: 0 auto 12px;"></div>
+      <div id="sheet-manual-plot" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; color: #111827; border-radius: 20px 20px 0 0; padding: 16px 16px 20px; z-index: 51; flex-direction: column; max-height: 80%; box-shadow: 0 -8px 24px rgba(0,0,0,0.3); box-sizing: border-box;">
+        <div style="width: 36px; height: 4px; background: #CBD5E1; border-radius: 2px; margin: 0 auto 12px; flex-shrink: 0;"></div>
         
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; flex-shrink: 0;">
           <div>
             <h2 style="font-size: 0.95rem; font-weight: 800; color: #111827; margin: 0 0 2px;">Pilih Plot Kebun Entres</h2>
             <p style="font-size: 0.70rem; color: #64748B; margin: 0;">Pilih plot untuk kegiatan Topping (Panen Mata Entres).</p>
           </div>
-          <button id="btn-close-manual-sheet" type="button" style="background: #F1F5F9; border: none; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569;">✕</button>
+          <button id="btn-close-manual-sheet" type="button" aria-label="Tutup" style="background: #F1F5F9; border: none; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #475569; font-size: 14px; font-weight: 700;">✕</button>
         </div>
 
-        <div style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 4px; padding-bottom: 10px;">
-          ${plots.map((p, idx) => `
-            <div class="card-pick-manual-plot" data-index="${idx}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer;">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                  <div style="font-weight: 800; font-size: 0.86rem; color: #111827;">${p.kodePlot}</div>
-                  <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 2px;">
-                    Klon: ${p.namaKlon}
-                  </div>
-                  <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">
-                    Populasi: ${parseInt(p.jlhPokok || 0).toLocaleString('id-ID')} Pkk • Tanam: ${p.tahunTanam || '-'}
-                  </div>
-                </div>
-                <span style="font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #DCFCE7; color: #15803D;">
-                  Pilih →
-                </span>
-              </div>
-            </div>
-          `).join('')}
+        <!-- KOLOM SEARCH PENCARIAN PLOT & KLON -->
+        <div style="position: relative; margin-bottom: 10px; flex-shrink: 0;">
+          <div style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; pointer-events: none; color: #94A3B8;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+          <input id="input-search-manual-plot" type="text" placeholder="Cari plot atau klon (misal: IA, IRCA, PB)..." autocomplete="off" style="width: 100%; height: 38px; padding: 0 32px 0 32px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.80rem; color: #0F172A; box-sizing: border-box; outline: none; transition: border-color 0.15s ease;" onfocus="this.style.borderColor='#116834'; this.style.background='#FFFFFF';" onblur="this.style.borderColor='#CBD5E1'; this.style.background='#F8FAFC';">
+          <button id="btn-clear-search-plot" type="button" aria-label="Hapus pencarian" style="display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: #E2E8F0; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; color: #64748B; font-size: 11px; line-height: 1; align-items: center; justify-content: center; padding: 0;">✕</button>
+        </div>
+
+        <!-- CONTAINER DAFTAR PLOT -->
+        <div id="container-plot-list" style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 2px; padding-bottom: 8px; flex: 1; min-height: 0;">
         </div>
       </div>
 
     </div>
 
-    <!-- STYLE ANIMASI SCANNER -->
+    <!-- STYLE ANIMASI SCANNER & KARTU PLOT -->
     <style>
       @keyframes scanLineAnim {
         0% { top: 10px; opacity: 0.8; }
         50% { top: 190px; opacity: 1; }
         100% { top: 10px; opacity: 0.8; }
+      }
+      .card-pick-manual-plot {
+        transition: all 0.15s ease;
+      }
+      .card-pick-manual-plot:hover {
+        background: #F0FDF4 !important;
+        border-color: #86EFAC !important;
       }
     </style>
   `;
@@ -243,10 +245,81 @@ export function renderToppingScan() {
   // Manual Select Modal Sheet
   const overlayManual = app.querySelector('#overlay-manual-plot-sheet');
   const sheetManual = app.querySelector('#sheet-manual-plot');
+  const plotListContainer = app.querySelector('#container-plot-list');
+  const searchInput = app.querySelector('#input-search-manual-plot');
+  const clearSearchBtn = app.querySelector('#btn-clear-search-plot');
+
+  const renderPlotCards = (items) => {
+    if (!plotListContainer) return;
+    if (items.length === 0) {
+      plotListContainer.innerHTML = `
+        <div style="padding: 28px 16px; text-align: center; color: #64748B;">
+          <div style="font-size: 1.6rem; margin-bottom: 6px;">🔍</div>
+          <div style="font-weight: 700; font-size: 0.84rem; color: #1E293B; margin-bottom: 4px;">Plot atau Klon Tidak Ditemukan</div>
+          <div style="font-size: 0.72rem; color: #64748B; line-height: 1.4;">Tidak ada hasil yang sesuai dengan kata kunci pencarian. Coba gunakan nama plot atau klon lain.</div>
+        </div>
+      `;
+      return;
+    }
+
+    plotListContainer.innerHTML = items.map((p) => `
+      <div class="card-pick-manual-plot" data-plot-name="${p.plotName}" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div style="font-weight: 800; font-size: 0.86rem; color: #111827;">${p.kodePlot}</div>
+            <div style="font-size: 0.74rem; font-weight: 700; color: #116834; margin-top: 2px;">
+              Klon: ${p.namaKlon}
+            </div>
+            <div style="font-size: 0.68rem; color: #64748B; margin-top: 2px;">
+              Populasi: ${parseInt(p.jlhPokok || 0).toLocaleString('id-ID')} Pkk • Tanam: ${p.tahunTanam || '-'}
+            </div>
+          </div>
+          <span style="font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #DCFCE7; color: #15803D; white-space: nowrap;">
+            Pilih →
+          </span>
+        </div>
+      </div>
+    `).join('');
+  };
+
+  const handleSearch = () => {
+    const q = (searchInput?.value || '').toLowerCase().trim();
+    if (clearSearchBtn) {
+      clearSearchBtn.style.display = q ? 'flex' : 'none';
+    }
+    const filtered = plots.filter(p =>
+      (p.kodePlot && p.kodePlot.toLowerCase().includes(q)) ||
+      (p.plotName && p.plotName.toLowerCase().includes(q)) ||
+      (p.namaKlon && p.namaKlon.toLowerCase().includes(q)) ||
+      (p.budwoodCode && p.budwoodCode.toLowerCase().includes(q)) ||
+      (p.tahunTanam && String(p.tahunTanam).includes(q))
+    );
+    renderPlotCards(filtered);
+  };
+
+  searchInput?.addEventListener('input', handleSearch);
+
+  clearSearchBtn?.addEventListener('click', () => {
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.focus();
+    }
+    handleSearch();
+  });
 
   const openManualSheet = () => {
+    if (searchInput) {
+      searchInput.value = '';
+    }
+    if (clearSearchBtn) {
+      clearSearchBtn.style.display = 'none';
+    }
+    renderPlotCards(plots);
     if (overlayManual) overlayManual.style.display = 'block';
     if (sheetManual) sheetManual.style.display = 'flex';
+    setTimeout(() => {
+      searchInput?.focus();
+    }, 100);
   };
 
   const closeManualSheet = () => {
@@ -258,14 +331,14 @@ export function renderToppingScan() {
   overlayManual?.addEventListener('click', closeManualSheet);
   app.querySelector('#btn-close-manual-sheet')?.addEventListener('click', closeManualSheet);
 
-  app.querySelectorAll('.card-pick-manual-plot').forEach(card => {
-    card.addEventListener('click', (e) => {
-      const idx = parseInt(e.currentTarget.dataset.index, 10);
-      const chosen = plots[idx];
-      if (chosen) {
-        closeManualSheet();
-        proceedToForm(chosen, 'MANUAL_SELECT');
-      }
-    });
+  plotListContainer?.addEventListener('click', (e) => {
+    const card = e.target.closest('.card-pick-manual-plot');
+    if (!card) return;
+    const pName = card.dataset.plotName;
+    const chosen = plots.find(p => p.plotName === pName || p.kodePlot === pName);
+    if (chosen) {
+      closeManualSheet();
+      proceedToForm(chosen, 'MANUAL_SELECT');
+    }
   });
 }

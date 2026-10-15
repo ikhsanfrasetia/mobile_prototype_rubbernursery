@@ -17,6 +17,7 @@ import { ROLES } from '../js/core/user-context.js';
 import {
   checkAsbSelectionGate,
   canSubmitFinalVerificationToServer,
+  submitFinalVerificationToServer,
   approveVerification
 } from '../js/modules/verification/verification-manager.js';
 import {
@@ -91,16 +92,12 @@ assert(gate1.pendingSelectionCount === 1, 'Gate reports exact pending count (1)'
 const canSubmit1 = canSubmitFinalVerificationToServer(asbUser);
 assert(canSubmit1 === false, 'canSubmitFinalVerificationToServer returns false when gated');
 
-// Test 3: approveVerification throws when gated
+// Test 3: Final submit to server throws when ASB is gated
 try {
-  approveVerification({
-    referenceType: 'RECEIPT',
-    referenceId: 'REC-001',
-    currentUser: asbUser
-  });
-  assert(false, 'approveVerification should throw error when ASB is gated');
+  submitFinalVerificationToServer(asbUser);
+  assert(false, 'submitFinalVerificationToServer should throw error when ASB is gated');
 } catch (err) {
-  assert(err.message.includes('Verifikasi diblokir: Harap selesaikan'), 'approveVerification throws gate requirement error');
+  assert(err.message.includes('Pengiriman ke server diblokir: Harap selesaikan'), 'submitFinalVerificationToServer throws gate requirement error');
 }
 
 // Test 4: Non-ASB user is not blocked

@@ -24,6 +24,8 @@ import {
   getSelectionStageLabel,
   createSelection2DocumentFromSelection1,
   createSelection3DocumentFromSelection2,
+  canCreateSelection2Document,
+  canCreateSelection3Document,
   validateSelectionTransactionAgainstSource,
   getActionableSelectionCount,
   syncAllSeedingsToPreGraftingSelectionDocuments,
@@ -1148,26 +1150,49 @@ export function evaluateRecordConsistency(referenceType, record, fullDataset = n
  * EXCLUDE: REQUEST
  */
 export function getActionableRecordsForAsb(currentUser, filters = {}) {
-  try {
-    syncAllDederanRejectionsToSelectionPool();
-  } catch (_) {}
-
   const allVerifRecords = getAllVerifications();
 
   // Deduplicate: ambil verifikasi terbaru per (referenceType:referenceId)
+  // Untuk dokumen seleksi (2026/SEL/xxx, 2026/SEL-II/xxx, dll), satukan key ke 'SELEKSI_PRA_OKULASI:<docNo>'
+  // agar Dokumen Induk dan Transaksi Seleksi lama tidak menduplikasi kartu di ASB
   const latestMap = new Map();
   allVerifRecords.forEach(v => {
-    const key = `${v.referenceType}:${v.referenceId}`;
-    if (!latestMap.has(key) || new Date(v.createdAt || v.submittedAt || 0) > new Date(latestMap.get(key).createdAt || latestMap.get(key).submittedAt || 0)) {
+    const isSelDoc = Boolean(
+      String(v.referenceDocNo || '').match(/^2026\/SEL(-[I|V|X]+)?\/\d+$/i) ||
+      v.referenceType === 'SELEKSI_PRA_OKULASI'
+    );
+    const key = (isSelDoc && v.referenceDocNo) ? `SELEKSI_PRA_OKULASI:${v.referenceDocNo}` : `${v.referenceType}:${v.referenceId}`;
+    if (!latestMap.has(key)) {
       latestMap.set(key, v);
+    } else {
+      const existing = latestMap.get(key);
+      const isVPre = v.referenceType === 'SELEKSI_PRA_OKULASI';
+      const isExistPre = existing.referenceType === 'SELEKSI_PRA_OKULASI';
+      if (isVPre && !isExistPre) {
+        latestMap.set(key, v);
+      } else if (isVPre === isExistPre) {
+        const vTime = new Date(v.updatedAt || v.submittedAt || v.createdAt || 0).getTime();
+        const existTime = new Date(existing.updatedAt || existing.submittedAt || existing.createdAt || 0).getTime();
+        if (vTime >= existTime) {
+          latestMap.set(key, v);
+        }
+      }
     }
   });
 
   const actionableList = [];
 
   latestMap.forEach((verifRecord) => {
-    const refType = verifRecord.referenceType;
-    const refId = verifRecord.referenceId;
+    let refType = verifRecord.referenceType;
+    let refId = verifRecord.referenceId;
+    const docNo = verifRecord.referenceDocNo || refId;
+    const isSelDoc = Boolean(
+      String(docNo || '').match(/^2026\/SEL(-[I|V|X]+)?\/\d+$/i) ||
+      verifRecord.referenceType === 'SELEKSI_PRA_OKULASI'
+    );
+    if (isSelDoc) {
+      refType = 'SELEKSI_PRA_OKULASI';
+    }
 
     // 1. Exclude logistics types (REQUEST)
     if (LOGISTICS_TYPES.includes(refType)) return;
@@ -1182,17 +1207,33 @@ export function getActionableRecordsForAsb(currentUser, filters = {}) {
     ) return;
 
     // 3. Resolve source record untuk enrichment & scope check
-    const sourceRecord = findSourceRecord(refType, refId, currentUser);
+    let sourceRecord = findSourceRecord(refType, refId, currentUser);
+    if (!sourceRecord && isSelDoc) {
+      sourceRecord = findSourceRecord('SELEKSI_PRA_OKULASI', docNo, currentUser);
+    }
     const rawRecord = sourceRecord || verifRecord;
+
+    // Filter out pure child execution transactions (e.g. PELAKSANAAN_SELEKSI_I, 2026/SEL-I/xxx)
+    // Transaksi eksekusi pelaksanaan bukanlah dokumen audit mandiri, melainkan bagian dari Dokumen Induk
+    if (rawRecord.transactionType && String(rawRecord.transactionType).startsWith('PELAKSANAAN_SELEKSI')) {
+      return;
+    }
+    if (String(docNo || '').match(/^2026\/SEL-[I|II|III]/i) && rawRecord.parentSelectionDocNo) {
+      return;
+    }
 
     // Jika source record berstatus DIKEMBALIKAN / REVISION, tidak actionable untuk pending queue Asisten
     if (rawRecord.status === 'DIKEMBALIKAN' || rawRecord.status === 'REVISION' || rawRecord.materialSubmissionStatus === 'DIKEMBALIKAN') return;
 
+    // 4. PENGAMANAN ASB APPROVAL: Jika dokumen sumber sudah disetujui sah & final, jangan hitung sebagai pending!
+    const rawStatusNorm = String(rawRecord.status || '').toUpperCase();
+    if (rawStatusNorm === 'DISETUJUI' && rawRecord.isFinal) return;
+    if (rawRecord.verificationStatus === VERIFICATION_STATUS.TERVERIFIKASI || rawRecord.verificationStatus === 'DATA_TERKONFIRMASI') return;
+
     const estateId = verifRecord.estateId || rawRecord.targetEstateId || rawRecord.estateId || rawRecord.sourceEstateId;
     const divisionId = verifRecord.divisionId || rawRecord.targetDivisionId || rawRecord.divisionId || rawRecord.sourceDivisionId;
-    const docNo = verifRecord.referenceDocNo || rawRecord.docNo || rawRecord.id || refId;
 
-    // 4. ROLE + ESTATE + DIVISION ISOLATION
+    // 5. ROLE + ESTATE + DIVISION ISOLATION
     if (currentUser?.role && normalizeRole(currentUser.role) === ROLES.ASISTEN_BIBITAN) {
       if (currentUser.estateId && estateId && estateId !== currentUser.estateId) return;
       if (currentUser.divisionId && divisionId && divisionId !== currentUser.divisionId) return;
@@ -1200,7 +1241,7 @@ export function getActionableRecordsForAsb(currentUser, filters = {}) {
       return;
     }
 
-    // 5. Evaluate consistency
+    // 6. Evaluate consistency
     let evalResult = { canApprove: true, errors: [], warnings: [] };
     if (sourceRecord) {
       try {
@@ -1637,6 +1678,12 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
     throw new Error('Otorisasi gagal: User aktif tidak ditemukan.');
   }
 
+  // [CATATAN OPSI 1 - SELECTION GATE HARMONIZATION]:
+  // Approval dokumen satuan (seperti Absensi, Penerimaan, SOW, Perawatan, dll.) dapat diproses
+  // secara mandiri agar tidak menimbulkan deadlock operasional harian Asisten Bibitan.
+  // Selection Gate (checkAsbSelectionGate) tetap ditegakkan secara ketat pada tahap akhir (Final Sync):
+  // canSubmitFinalVerificationToServer & submitFinalVerificationToServer.
+  // Jika diperlukan audit notice, catat warning secara non-blocking:
   const isSelectionType = (
     referenceType === 'SELEKSI_PRA_OKULASI' ||
     referenceType === 'PENYELEKSIAN' ||
@@ -1645,7 +1692,7 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
   if (!isSelectionType) {
     const gateCheck = checkAsbSelectionGate(currentUser);
     if (gateCheck.isGated) {
-      throw new Error(`Verifikasi diblokir: Harap selesaikan ${gateCheck.pendingSelectionCount} dokumen Pemeriksaan Hasil Seleksi terlebih dahulu.`);
+      console.warn(`[approveVerification] ASB selection gate active (${gateCheck.pendingSelectionCount} pending selection docs). Final sync to server will be blocked until completed.`);
     }
   }
 
@@ -2024,21 +2071,32 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
           }
         }
 
-        // Downstream Document Generation
+        records[idx] = targetRecord;
+        storage.set(sourceRecord._storeKey, records);
+        persistVerificationRecord();
+
+        // Downstream Document Generation (Hanya jika persyaratan bisnis & ketuntasan terpenuhi)
+        // Dijalankan setelah targetRecord tersimpan agar tidak menimpa dokumen turunan di storage
         const stageNorm = String(targetRecord.selectionStage || '').toUpperCase();
         try {
           if (stageNorm === 'SELEKSI_I' || stageNorm === 'SELEKSI_1') {
-            createSelection2DocumentFromSelection1(targetRecord, currentUser);
+            const gate = canCreateSelection2Document(targetRecord);
+            if (gate.canCreate) {
+              createSelection2DocumentFromSelection1(targetRecord, currentUser);
+            } else {
+              console.warn('[approveVerification] Seleksi II creation blocked by gate:', gate.reason);
+            }
           } else if (stageNorm === 'SELEKSI_II' || stageNorm === 'SELEKSI_2') {
-            createSelection3DocumentFromSelection2(targetRecord, currentUser);
+            const gate = canCreateSelection3Document(targetRecord);
+            if (gate.canCreate) {
+              createSelection3DocumentFromSelection2(targetRecord, currentUser);
+            } else {
+              console.warn('[approveVerification] Seleksi III creation blocked by gate:', gate.reason);
+            }
           }
         } catch (genErr) {
           console.warn('[approveVerification] Downstream generation notice:', genErr.message);
         }
-
-        records[idx] = targetRecord;
-        storage.set(sourceRecord._storeKey, records);
-        persistVerificationRecord();
       } else if (referenceType === 'MATERIAL') {
         targetRecord.materialSubmissionStatus = 'DISETUJUI';
         targetRecord.verifiedAt = nowIso;
