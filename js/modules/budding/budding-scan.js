@@ -8,7 +8,6 @@
 import { navigate } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
-import { formatStandardDocNo } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
 
 export function renderBuddingScan() {
@@ -33,20 +32,16 @@ export function renderBuddingScan() {
   if (!selectedBatch && targetDocId) {
     selectedBatch = seleksi3FinalDocs.find(d => d.id === targetDocId);
   }
-  if (!selectedBatch && seleksi3FinalDocs.length > 0) {
+  if (!selectedBatch && !targetDocNo && !targetDocId && seleksi3FinalDocs.length > 0) {
     selectedBatch = seleksi3FinalDocs[parseInt(batchIdx)] || seleksi3FinalDocs[0];
   }
 
   if (!selectedBatch) {
-    selectedBatch = {
-      batchNo: `Batch-0${parseInt(batchIdx) + 1}`,
-      batchCode: `Batch-0${parseInt(batchIdx) + 1}`,
-      docNo: formatStandardDocNo(2026, 'SEL-III', 1),
-      programCode: 'PRG/NUR/01/2026',
-      klon: 'GT 1',
-      totalLayak: 2000,
-      rows: [{ bedengan: 'Bedengan 01', bedenganCode: 'BED-001', disemai: 2000 }]
-    };
+    toast('Dokumen Seleksi III final tidak ditemukan. Okulasi hanya bisa dimulai dari sumber yang sudah disetujui.', 'error');
+    storage.remove('selected_grafting_batch_doc_no');
+    storage.remove('selected_grafting_batch_id');
+    navigate('/budding/grafting');
+    return;
   }
 
   const batchNo = selectedBatch.batchCode || selectedBatch.batchNo || `Batch-0${parseInt(batchIdx) + 1}`;

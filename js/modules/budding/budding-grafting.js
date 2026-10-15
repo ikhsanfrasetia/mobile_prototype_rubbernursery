@@ -3,6 +3,7 @@ import { storage } from '../../core/storage.js';
 import { formatStandardDocNo, todayDDMMYYYY, esc } from '../../core/utils.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { guardDependency } from '../../core/dependency-guard.js';
 import { toast } from '../../components/toast.js';
@@ -151,6 +152,47 @@ export function renderBuddingGrafting() {
     return a.isCompleted ? 1 : -1;
   });
 
+  // Satu kartu per batch; dokumen sumber per bedengan tetap disimpan untuk pemilihan transaksi.
+  const groupedBatchMap = new Map();
+  processedBatchList.forEach(item => {
+    const programKey = item.s3Doc.programCode || item.s3Doc.programName || item.s3Doc.program || '';
+    const key = `${programKey}::${item.batchNo}`;
+    if (!groupedBatchMap.has(key)) groupedBatchMap.set(key, { ...item, sources: [] });
+    groupedBatchMap.get(key).sources.push(item);
+  });
+  const groupedBatchList = Array.from(groupedBatchMap.values()).map(group => {
+    if (group.sources.length === 1) return group;
+    const sum = field => group.sources.reduce((total, source) => total + (Number(source[field]) || 0), 0);
+    const rows = group.sources.flatMap(source => {
+      const sourceRows = source.s3Doc.rows || [];
+      return sourceRows.length ? sourceRows : [{
+        bedengan: source.s3Doc.bedengan,
+        bedenganCode: source.s3Doc.bedenganCode,
+        disemai: source.populasiBibit,
+        klon: source.s3Doc.klon || source.s3Doc.clone
+      }];
+    });
+    group.s3Doc = { ...group.s3Doc, rows };
+    group.populasiBibit = sum('populasiBibit');
+    group.ttlDiokulasi = sum('ttlDiokulasi');
+    group.ttlDitolak = sum('ttlDitolak');
+    group.ttlKayu = sum('ttlKayu');
+    group.totalRealisasi = sum('totalRealisasi');
+    group.sisaBelumOkulasi = sum('sisaBelumOkulasi');
+    group.persenSelesai = group.populasiBibit > 0
+      ? Math.min(100, Math.round((group.totalRealisasi / group.populasiBibit) * 100)) : 0;
+    group.isCompleted = group.sources.every(source => source.isCompleted);
+    group.statusFlagKey = group.isCompleted ? 'OKULASI_SELESAI'
+      : group.totalRealisasi > 0 ? 'OKULASI_BELUM_SELESAI' : 'OKULASI_PERLU';
+    group.statusBadgeText = group.isCompleted ? 'Selesai Diokulasi'
+      : group.totalRealisasi > 0 ? 'Okulasi Belum Selesai' : 'Perlu Diokulasi';
+    group.bedenganDisplay = Array.from(new Set(group.sources.map(source => source.bedenganDisplay))).join(', ');
+    group.docNo = `${group.sources.length} dokumen Seleksi III FINAL`;
+    group.relatedBuddings = group.sources.flatMap(source => source.relatedBuddings);
+    return group;
+  });
+  groupedBatchList.sort((a, b) => Number(a.isCompleted) - Number(b.isCompleted));
+
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
       
@@ -177,9 +219,9 @@ export function renderBuddingGrafting() {
           <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Daftar Batch Siap Okulasi</h2>
         </div>
 
-        ${processedBatchList.length > 0 ? `
+        ${groupedBatchList.length > 0 ? `
           <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
-            ${processedBatchList.map((item) => {
+            ${groupedBatchList.map((item, groupIndex) => {
               const {
                 s3Doc,
                 originalIdx,
@@ -204,9 +246,14 @@ export function renderBuddingGrafting() {
                   
                   <!-- HEADER BARIS 1: NOMOR BATCH & BADGE STATUS -->
                   <div style="display: flex; align-items: center; margin-bottom: 4px; gap: 6px;">
-                    ${renderStatusDots([{ key: statusFlagKey, label: statusBadgeText }])}
-                    <div style="font-size: 0.95rem; font-weight: 800; color: #116834; white-space: nowrap; letter-spacing: -0.01em;">
-                      ${batchNo}
+                    <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+                      ${renderStatusDots([{ key: statusFlagKey, label: statusBadgeText }])}
+                      <div style="font-size: 0.95rem; font-weight: 800; color: #116834; white-space: nowrap; letter-spacing: -0.01em;">
+                        ${batchNo}
+                      </div>
+                    </div>
+                    <div style="margin-left:auto;flex-shrink:0;padding:3px 8px;border-radius:999px;background:#EAF6EE;color:#116834;font-size:.78rem;font-weight:800;line-height:1.2;">
+                      ${persenSelesai}% diokulasi
                     </div>
                   </div>
 
@@ -218,30 +265,8 @@ export function renderBuddingGrafting() {
                     Dokumen Seleksi III FINAL • Disetujui Asisten Bibitan
                   </div>
 
-                  <hr style="border: none; border-top: 1px solid #F3F4F6; margin: 0 0 10px 0;" />
-
-                  <!-- GRID DETAIL 2x2 -->
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 12px;">
-                    <div>
-                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Klon Batang Bawah</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.3;">${s3Doc.klon ? normalizeKlonName(s3Doc.klon) : (s3Doc.clone ? normalizeKlonName(s3Doc.clone) : 'GT 1')}</div>
-                    </div>
-                    <div>
-                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Lokasi Bedengan</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.35; word-break: break-word;">${bedenganDisplay}</div>
-                    </div>
-                    <div>
-                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Populasi Siap Okulasi (Layak)</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #116834; line-height: 1.3;">${populasiBibit.toLocaleString('id-ID')} Pkk</div>
-                    </div>
-                    <div>
-                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Belum Diokulasi</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: ${sisaBelumOkulasi > 0 ? '#D32F2F' : '#116834'}; line-height: 1.3;">${sisaBelumOkulasi.toLocaleString('id-ID')} Pkk</div>
-                    </div>
-                  </div>
-
                   <!-- TOMBOL TOGGLE EXPAND DETAIL -->
-                  <div style="margin-bottom: 8px;">
+                  <div style="margin:8px 0;">
                     <button type="button" class="btn-toggle-expand-batch" style="background: #F0FDF4; border: 1px solid #DCFCE7; border-radius: 6px; width: 100%; padding: 6px 10px; font-size: 0.74rem; font-weight: 700; color: #116834; cursor: pointer; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box;">
                       <span class="text-expand-batch">Tampilkan Detail</span>
                       <svg class="icon-expand-batch" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease;">
@@ -252,6 +277,26 @@ export function renderBuddingGrafting() {
 
                   <!-- EXPANDABLE ACCORDION DETAIL (LOCATED DIRECTLY BELOW BUTTON) -->
                   <div class="batch-expand-content" style="display: none; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-size: 0.74rem; line-height: 1.45;">
+                    <hr style="border:none;border-top:1px solid #E2E8F0;margin:0 0 10px;" />
+                    <!-- RINGKASAN BATCH, DITAMPILKAN SAAT DETAIL DIBUKA -->
+                    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;margin-bottom:12px;">
+                      <div>
+                        <div style="font-size:.70rem;color:#6B7280;margin-bottom:2px;">Klon Batang Bawah</div>
+                        <div style="font-size:.82rem;font-weight:700;color:#111827;line-height:1.3;">${s3Doc.klon ? normalizeKlonName(s3Doc.klon) : (s3Doc.clone ? normalizeKlonName(s3Doc.clone) : 'GT 1')}</div>
+                      </div>
+                      <div>
+                        <div style="font-size:.70rem;color:#6B7280;margin-bottom:2px;">Lokasi Bedengan</div>
+                        <div style="font-size:.82rem;font-weight:700;color:#111827;line-height:1.35;word-break:break-word;">${bedenganDisplay}</div>
+                      </div>
+                      <div>
+                        <div style="font-size:.70rem;color:#6B7280;margin-bottom:2px;">Populasi Siap Okulasi (Layak)</div>
+                        <div style="font-size:.82rem;font-weight:700;color:#116834;line-height:1.3;">${populasiBibit.toLocaleString('id-ID')} Pkk</div>
+                      </div>
+                      <div>
+                        <div style="font-size:.70rem;color:#6B7280;margin-bottom:2px;">Belum Diokulasi</div>
+                        <div style="font-size:.82rem;font-weight:700;color:${sisaBelumOkulasi > 0 ? '#D32F2F' : '#116834'};line-height:1.3;">${sisaBelumOkulasi.toLocaleString('id-ID')} Pkk</div>
+                      </div>
+                    </div>
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px;">
                       <span style="color: #6B7280; flex-shrink: 0;">Program Nursery:</span>
                       <span style="font-weight: 700; color: #111827; text-align: right; word-break: break-word;">${s3Doc.programCode || s3Doc.programName || s3Doc.program || 'PRG/NUR/01/2026'}</span>
@@ -307,15 +352,12 @@ export function renderBuddingGrafting() {
                       </div>
                     </div>
                   ` : `
-                    <div class="card-action-rekam" data-index="${originalIdx}" data-doc="${docNo}" data-id="${s3Doc.id || ''}" data-completed="false" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: pointer;">
-                      <span style="font-size: 0.74rem; color: #116834; font-weight: 600;">Ketuk untuk Rekam Okulasi</span>
-                      <div style="display: flex; align-items: center; gap: 3px; color: #116834; font-weight: 700; font-size: 0.76rem;">
-                        <span>Input Data</span>
-                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none">
+                    <button type="button" class="card-action-rekam" data-group-index="${groupIndex}" data-completed="false" style="width: 100%; min-height: 44px; margin-top: 10px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; box-sizing: border-box; border: 0; border-radius: 7px; background: #116834; color: #fff; font: inherit; font-size: 0.9rem; font-weight: 700; text-align: left; cursor: pointer;">
+                      <span>Rekam Okulasi</span>
+                      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" style="flex: 0 0 auto;">
                           <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                      </div>
-                    </div>
+                      </svg>
+                    </button>
                   `}
 
                 </div>
@@ -650,15 +692,52 @@ export function renderBuddingGrafting() {
   app.querySelectorAll('.card-action-rekam').forEach(card => {
     card.addEventListener('click', (e) => {
       if (e.currentTarget.dataset.completed === 'true') return;
-      const idx = e.currentTarget.dataset.index;
-      const doc = e.currentTarget.dataset.doc;
-      const id = e.currentTarget.dataset.id;
-      storage.remove('editing_budding_index');
-      storage.set('selected_grafting_batch_index', idx);
-      if (doc) storage.set('selected_grafting_batch_doc_no', doc);
-      if (id) storage.set('selected_grafting_batch_id', id);
-      storage.remove('budding_qr_verified');
-      navigate('/budding/grafting/scan');
+      const group = groupedBatchList[Number(e.currentTarget.dataset.groupIndex)];
+      if (!group) return;
+      const choices = group.sources.filter(source => source.sisaBelumOkulasi > 0);
+      const modal = document.createElement('div');
+      modal.className = 'grafting-bedengan-picker';
+      modal.style.cssText = 'position:absolute;inset:0;z-index:1;pointer-events:auto;background:rgba(15,23,42,.48);display:flex;align-items:flex-end;justify-content:center;padding:0;box-sizing:border-box;';
+      modal.innerHTML = `
+        <section style="width:100%;max-height:80%;overflow:auto;background:#fff;border-radius:16px 16px 0 0;padding:18px 16px 20px;box-sizing:border-box;box-shadow:0 -8px 28px rgba(0,0,0,.16);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div>
+              <div style="font-size:1rem;font-weight:800;color:#111827;">Pilih Bedengan</div>
+              <div style="font-size:.78rem;color:#64748B;margin-top:3px;">${esc(group.batchNo)} • ${choices.length} bedengan tersedia</div>
+            </div>
+            <button type="button" class="btn-close-bedengan-picker" aria-label="Tutup" style="border:0;background:transparent;color:#64748B;font-size:1.4rem;cursor:pointer;padding:4px 8px;">×</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${choices.map(source => `
+              <button type="button" class="btn-select-grafting-source" data-index="${source.originalIdx}" data-doc="${esc(source.docNo)}" data-id="${esc(source.s3Doc.id || '')}" style="width:100%;padding:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;background:#fff;border:1px solid #DCE5EF;border-radius:9px;color:#111827;cursor:pointer;">
+                <span>
+                  <strong style="display:block;font-size:.9rem;">${esc(source.bedenganDisplay)}</strong>
+                  <span style="display:block;margin-top:4px;font-size:.74rem;color:#64748B;">Dokumen: ${esc(source.docNo)}</span>
+                </span>
+                <span style="flex-shrink:0;text-align:right;">
+                  <strong style="display:block;color:#116834;font-size:.82rem;">${source.sisaBelumOkulasi.toLocaleString('id-ID')} Pkk</strong>
+                  <span style="font-size:.7rem;color:#64748B;">tersedia</span>
+                </span>
+              </button>
+            `).join('')}
+          </div>
+        </section>`;
+      const modalRoot = document.getElementById('modal-root') || document.getElementById('device-screen') || app;
+      modalRoot.appendChild(modal);
+      const closePicker = () => modal.remove();
+      modal.querySelector('.btn-close-bedengan-picker').addEventListener('click', closePicker);
+      modal.addEventListener('click', event => { if (event.target === modal) closePicker(); });
+      modal.querySelectorAll('.btn-select-grafting-source').forEach(option => {
+        option.addEventListener('click', () => {
+          storage.remove('editing_budding_index');
+          storage.set('selected_grafting_batch_index', option.dataset.index);
+          storage.set('selected_grafting_batch_doc_no', option.dataset.doc);
+          if (option.dataset.id) storage.set('selected_grafting_batch_id', option.dataset.id);
+          else storage.remove('selected_grafting_batch_id');
+          storage.remove('budding_qr_verified');
+          navigate('/budding/grafting/scan');
+        });
+      });
     });
   });
 

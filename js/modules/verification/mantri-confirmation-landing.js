@@ -47,6 +47,34 @@ const MODULE_SECTION_TITLES = {
   [MODULE_TYPES.PENGELUARAN]: 'Pengeluaran Bibit'
 };
 
+const SUBMITTED_LIFECYCLE_STATUSES = new Set([
+  MANTRI_TRANSACTION_STATUS.SUBMITTED_TO_ASB,
+  MANTRI_TRANSACTION_STATUS.PENDING_ASB,
+  MANTRI_TRANSACTION_STATUS.VERIFIED,
+  MANTRI_TRANSACTION_STATUS.APPROVED,
+  MANTRI_TRANSACTION_STATUS.REVISION
+].filter(Boolean).map(status => String(status).toUpperCase()));
+const SUBMITTED_STATUS_LABELS = new Set([
+  'SUBMITTED_TO_ASB', 'PENDING_ASB', 'DIKIRIM_KE_ASISTEN',
+  'MENUNGGU_VERIFIKASI', 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN',
+  'TERVERIFIKASI', 'DISETUJUI', 'VERIFIED', 'APPROVED',
+  'DIKEMBALIKAN', 'REVISION', 'DATA_TERKONFIRMASI', 'TERKONFIRMASI'
+]);
+
+function hasBeenSentForVerification(tx) {
+  const raw = tx.rawRecord || {};
+  const statuses = [
+    tx.status, tx.verificationStatus,
+    raw.status, raw.verificationStatus, raw.submissionStatus,
+    tx.latestVerification?.verificationStatus, tx.latestVerification?.status
+  ].filter(Boolean).map(status => String(status).trim().toUpperCase());
+  const explicitSubmittedAt = [tx.latestVerification?.submittedAt, raw.submittedAt, raw.confirmedAt]
+    .some(value => Boolean(value && String(value).trim() && String(value).trim() !== '-'));
+
+  return Boolean(tx.latestVerification) || explicitSubmittedAt ||
+    statuses.some(status => SUBMITTED_LIFECYCLE_STATUSES.has(status) || SUBMITTED_STATUS_LABELS.has(status));
+}
+
 export function renderMantriConfirmationLanding() {
   const app = document.getElementById('app');
   if (!app) return;
@@ -95,6 +123,9 @@ export function renderMantriConfirmationLanding() {
   const visibleTxs = currentModuleType
     ? allTodayTxs.filter(tx => tx.moduleType === currentModuleType)
     : [];
+  // Unsubmitted documents lead in every tab; previously submitted/revision records follow.
+  // Sorting this display-only array leaves transaction storage and submission flow untouched.
+  visibleTxs.sort((a, b) => Number(hasBeenSentForVerification(a)) - Number(hasBeenSentForVerification(b)));
 
   // Hitung status eligibilitas modul (hanya item yang belum expired & canSubmit !== false)
   const moduleEligibleTxs = visibleTxs.filter(tx =>
@@ -312,10 +343,9 @@ function renderTidakHadirList(txs) {
  * Helper: Merender transaksi Kebun Entres terkelompok berdasarkan MENUNAS dan TOPPING
  */
 function renderKebunEntresGroupedList(txs) {
-  const menunasTxs = txs.filter(t => (t.activityType || t.rawRecord?.type || t.type || '').toUpperCase() === 'MENUNAS');
-  const toppingTxs = txs.filter(t => (t.activityType || t.rawRecord?.type || t.type || '').toUpperCase() === 'TOPPING');
+  const activityType = tx => (tx.activityType || tx.rawRecord?.type || tx.type || '').toUpperCase();
 
-  if (menunasTxs.length === 0 && toppingTxs.length === 0) {
+  if (!txs.some(tx => ['MENUNAS', 'TOPPING'].includes(activityType(tx)))) {
     return `
       <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; text-align: center; color: #64748B; font-size: 0.78rem;">
         Tidak ada data transaksi Kebun Entres hari ini.
@@ -323,31 +353,26 @@ function renderKebunEntresGroupedList(txs) {
     `;
   }
 
-  return `
-    <div style="display: flex; flex-direction: column; gap: 14px;">
-      ${menunasTxs.length > 0 ? `
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="font-size: 0.74rem; font-weight: 800; color: #116834; letter-spacing: 0.5px; text-transform: uppercase; padding-left: 2px;">
-            MENUNAS
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 10px;">
-            ${menunasTxs.map(tx => renderUniversalCard(tx)).join('')}
-          </div>
-        </div>
-      ` : ''}
+  const renderActivityGroup = (title, list) => list.length > 0 ? `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="font-size:.74rem;font-weight:800;color:#116834;letter-spacing:.5px;text-transform:uppercase;padding-left:2px;">${title}</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">${list.map(tx => renderUniversalCard(tx)).join('')}</div>
+    </div>` : '';
+  const renderSentSection = (sent, label) => {
+    const scopedTxs = txs.filter(tx => hasBeenSentForVerification(tx) === sent);
+    if (scopedTxs.length === 0) return '';
+    return `
+      <section style="display:flex;flex-direction:column;gap:10px;">
+        <h3 style="margin:0;font-size:.78rem;font-weight:800;color:#334155;">${label}</h3>
+        ${renderActivityGroup('MENUNAS', scopedTxs.filter(tx => activityType(tx) === 'MENUNAS'))}
+        ${renderActivityGroup('TOPPING', scopedTxs.filter(tx => activityType(tx) === 'TOPPING'))}
+      </section>`;
+  };
 
-      ${toppingTxs.length > 0 ? `
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="font-size: 0.74rem; font-weight: 800; color: #116834; letter-spacing: 0.5px; text-transform: uppercase; padding-left: 2px;">
-            TOPPING
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 10px;">
-            ${toppingTxs.map(tx => renderUniversalCard(tx)).join('')}
-          </div>
-        </div>
-      ` : ''}
-    </div>
-  `;
+  return `<div style="display:flex;flex-direction:column;gap:14px;">
+    ${renderSentSection(false, 'Belum Pernah Dikirim')}
+    ${renderSentSection(true, 'Sudah Pernah Dikirim')}
+  </div>`;
 }
 
 /**
@@ -530,7 +555,7 @@ export function getUniversalCardConfig(tx) {
 
     case MODULE_TYPES.SELEKSI_PRA_OKULASI: {
       const stageLabel = getSelectionStageLabel(raw);
-      const primaryEntity = disp.title || `Seleksi Pra-Okulasi (${stageLabel})`;
+      const primaryEntity = disp.title || `Pemeriksaan Pra-Okulasi (${stageLabel})`;
       const primaryDoc = tx.docNo;
       const mainQty = disp.mainQty || `${formatSafeNumber(raw.totalLayak || raw.finalBibitQty || 0)} Layak`;
       const batch = raw.batchCode || '-';
@@ -538,7 +563,7 @@ export function getUniversalCardConfig(tx) {
       const afkir = formatSafeNumber(raw.totalAfkir || raw.rejectedBibitQty || 0);
 
       return {
-        moduleLabel: 'SELEKSI PRA-OKULASI',
+        moduleLabel: 'PEMERIKSAAN PRA-OKULASI',
         primaryEntity,
         primaryDoc,
         quantityText: mainQty,
@@ -636,7 +661,7 @@ export function renderUniversalCard(tx) {
   let centralFlags = [{ key: 'CENTRAL_SIAP_KIRIM', label: 'Siap Dikirim' }];
   if (isVerified) {
     centralFlags = [{ key: 'CENTRAL_TERVERIFIKASI', label: 'Terverifikasi' }];
-  } else if (isRevision && !isExpired) {
+  } else if (isRevision) {
     centralFlags = [{ key: 'CENTRAL_DIKEMBALIKAN', label: 'Perlu Revisi' }];
   } else if (isSubmitted) {
     centralFlags = [{ key: 'CENTRAL_SUDAH_DIAJUKAN', label: 'Menunggu Verifikasi' }];

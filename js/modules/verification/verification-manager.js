@@ -171,7 +171,7 @@ export const REFERENCE_TYPE_LABELS = Object.freeze({
   OKULASI: 'Okulasi',
   PEMERIKSAAN: 'Pemeriksaan Okulasi',
   PEMERIKSAAN_DEDERAN: 'Pemeriksaan Dederan',
-  SELEKSI_PRA_OKULASI: 'Seleksi Pra-Okulasi',
+  SELEKSI_PRA_OKULASI: 'Pemeriksaan Pra-Okulasi',
   PENYELEKSIAN: 'Penyeleksian Bibit',
   PEMELIHARAAN: 'Rekam Pemeliharaan',
   MATERIAL: 'Material & Bahan',
@@ -715,7 +715,7 @@ function _computeVerificationDetailData(raw, userCtx = null, refType = 'PENERIMA
       const summary = `${stage}: ${formattedLayak} Layak, ${formattedAfkir} Afkir (Batch: ${batch})`;
 
       return {
-        title: `Seleksi Pra-Okulasi (${stage})`,
+        title: `Pemeriksaan Pra-Okulasi (${stage})`,
         info: `Batch ${batch} · Bedengan ${bedengan}`,
         mainQty: layak !== '-' ? `${formattedLayak} Layak` : '-',
         unit: 'Pkk',
@@ -1183,6 +1183,7 @@ export function getActionableRecordsForAsb(currentUser, filters = {}) {
   const actionableList = [];
 
   latestMap.forEach((verifRecord) => {
+    if (['DIBATALKAN', 'DITARIK', 'WITHDRAWN'].includes(String(verifRecord.verificationStatus || '').toUpperCase())) return;
     let refType = verifRecord.referenceType;
     let refId = verifRecord.referenceId;
     const docNo = verifRecord.referenceDocNo || refId;
@@ -1349,6 +1350,7 @@ export function getVerificationRecordsByScope(currentUser, filters = {}) {
   const list = [];
 
   latestMap.forEach((verifRecord) => {
+    if (['DIBATALKAN', 'DITARIK', 'WITHDRAWN'].includes(String(verifRecord.verificationStatus || '').toUpperCase())) return;
     let refType = verifRecord.referenceType;
     let refId = verifRecord.referenceId;
     const docNo = verifRecord.referenceDocNo || refId;

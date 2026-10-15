@@ -54,6 +54,7 @@ import {
   declareSelectionItem,
   findExistingSelectionTransaction,
   reconcileSelectionPoolWithTransactions,
+  syncInspectionRejectionsToSelectionPool,
   mutateStockFromSelection,
   syncAllSeedingsToSelectionPool,
   getSelectionSourceLabel,
@@ -72,6 +73,7 @@ import {
   submitPreGraftingSelectionDocumentToAsisten,
   approvePreGraftingSelectionDocument,
   returnPreGraftingSelectionDocument,
+  returnPreGraftingSelectionExecution,
   validatePreGraftingSelectionCompletion,
   canCreatePreGraftingSelection1Document,
   canPerformPreGraftingSelection1,
@@ -295,6 +297,9 @@ function renderAsistenSelectionReview(app, currentUser) {
     const isActionable = canPerformAsistenSelectionAction(doc, currentUser);
     const stageBadgeText = isSeleksi3 ? 'Seleksi III (Pra-Okulasi)' : (isSeleksi2 ? 'Seleksi II (Pra-Okulasi)' : 'Seleksi I (Pra-Okulasi)');
     const stageLabel = isSeleksi3 ? 'Seleksi III' : (isSeleksi2 ? 'Seleksi II' : 'Seleksi I');
+    const sourceDocNo = isSeleksi2 || isSeleksi3
+      ? (doc.sourceSelectionDocNo || doc.sourceDocNo || '-')
+      : (doc.sourceDocNo || '-');
 
     let activeFlags = [{ key: 'SELECTION_WAIT_ASB', label: 'Menunggu Pemeriksaan' }];
     if (isApproved) {
@@ -314,19 +319,14 @@ function renderAsistenSelectionReview(app, currentUser) {
                       </span>
                     </div>
                     
-                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
-                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <div style="display:flex;flex-direction:column;align-items:stretch;gap:3px;min-width:0;">
+                      <div style="display:flex;align-items:center;gap:6px;min-width:0;">
                         ${renderStatusDots(activeFlags)}
-                        <strong style="font-size: 0.95rem; font-weight: 800; color: #0F172A; letter-spacing: -0.01em;">${esc(doc.docNo)}</strong>
+                        <strong style="min-width:0;overflow-wrap:anywhere;font-size:0.95rem;font-weight:800;color:#0F172A;letter-spacing:-0.01em;line-height:1.2;">${esc(doc.docNo)}</strong>
                       </div>
-                      <div style="font-size: 0.70rem; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;">
-                        ${isSeleksi3 ? `
-                          Sumber: <strong style="color: #334155;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</strong>
-                        ` : (isSeleksi2 ? `
-                          Sumber: <strong style="color: #334155;">${esc(doc.sourceSelectionDocNo || doc.sourceDocNo || '-')}</strong>
-                        ` : `
-                          Sumber: <strong style="color: #334155;">${esc(doc.sourceDocNo || '-')}</strong>
-                        `)}
+                      <div style="display:flex;align-items:baseline;gap:4px;min-width:0;padding-left:15px;font-size:0.68rem;color:#64748B;line-height:1.3;overflow-wrap:anywhere;">
+                        <span style="flex-shrink:0;">Sumber:</span>
+                        <strong style="min-width:0;color:#334155;font-weight:700;overflow-wrap:anywhere;">${esc(sourceDocNo)}</strong>
                       </div>
                     </div>
                   </div>
@@ -384,6 +384,7 @@ function renderAsistenSelectionReview(app, currentUser) {
                             <div style="font-size: 0.62rem; font-weight: 600; color: #DC2626;">-${(tx.bibitReject !== undefined ? tx.bibitReject : (tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0))).toLocaleString('id-ID')} Reject</div>
                           </div>
                         </div>
+                        ${isActionable ? `<button type="button" class="btn-asb-pre-return-execution" data-parent-id="${esc(doc.id)}" data-execution-id="${esc(tx.id)}" style="align-self: flex-end; margin-top: -3px; padding: 3px 8px; background: #FFF; color: #B91C1C; border: 1px solid #FCA5A5; border-radius: 5px; font-size: 0.63rem; font-weight: 700; cursor: pointer;">Kembalikan untuk revisi</button>` : ''}
                       `).join('')}
                     </div>
                   </div>
@@ -407,14 +408,7 @@ function renderAsistenSelectionReview(app, currentUser) {
                   <!-- AKSI ASISTEN BIBITAN UNTUK PRE-GRAFTING DOC -->
                   ${isActionable ? `
                     <div style="display: flex; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #F1F5F9;">
-                      <button type="button" class="btn-asb-pre-return" data-id="${esc(doc.id)}" style="flex: 1; height: 34px; background: #FFFFFF; color: #DC2626; border: 1px solid #FCA5A5; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
-                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-                          <polyline points="9 14 4 9 9 4"></polyline>
-                          <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
-                        </svg>
-                        Kembalikan
-                      </button>
-                      <button type="button" class="btn-asb-pre-approve" data-id="${esc(doc.id)}" style="flex: 1.3; height: 34px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 2px rgba(17,104,52,0.2); white-space: nowrap;">
+                      <button type="button" class="btn-asb-pre-approve" data-id="${esc(doc.id)}" style="flex: 1; height: 34px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 2px rgba(17,104,52,0.2); white-space: nowrap;">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none">
                           <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
@@ -945,35 +939,34 @@ function renderAsistenSelectionReview(app, currentUser) {
     });
   });
 
-  // Action Pre-Grafting Return
-  app.querySelectorAll('.btn-asb-pre-return').forEach(btn => {
+  // Return only the selected execution session; sibling sessions stay intact.
+  app.querySelectorAll('.btn-asb-pre-return-execution').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const docId = e.currentTarget.dataset.id;
+      const docId = e.currentTarget.dataset.parentId;
+      const executionId = e.currentTarget.dataset.executionId;
       const targetDoc = allPreDocs.find(d => d.id === docId);
       if (!targetDoc) return;
+      const stage = String(targetDoc.selectionStage || '').toUpperCase();
+      const isSeleksi3 = stage === 'SELEKSI_III' || stage === 'SELEKSI_3';
+      const isSeleksi2 = stage === 'SELEKSI_II' || stage === 'SELEKSI_2';
+      const executions = isSeleksi3
+        ? getSeleksi3ExecutionsByDocument(targetDoc.id || targetDoc.docNo)
+        : (isSeleksi2 ? getSeleksi2ExecutionsByDocument(targetDoc.id || targetDoc.docNo) : getSeleksi1ExecutionsByDocument(targetDoc.id || targetDoc.docNo));
+      const targetExecution = executions.find(tx => tx.id === executionId);
+      if (!targetExecution) return;
 
-      const isSeleksi3 = (
-        targetDoc.selectionStage === SELECTION_STAGES.SELEKSI_3 ||
-        targetDoc.selectionStage === 'SELEKSI_III' ||
-        targetDoc.selectionStage === 'SELEKSI_3'
-      );
-      const isSeleksi2 = (
-        targetDoc.selectionStage === SELECTION_STAGES.SELEKSI_2 ||
-        targetDoc.selectionStage === 'SELEKSI_II' ||
-        targetDoc.selectionStage === 'SELEKSI_2'
-      );
       const stageLabel = isSeleksi3 ? 'Seleksi III' : (isSeleksi2 ? 'Seleksi II' : 'Seleksi I');
 
       openModal({
-        title: `Kembalikan Dokumen ${stageLabel}`,
+        title: `Kembalikan Sesi ${stageLabel}`,
         body: `
           <div style="font-size: 0.84rem; color: #334155; line-height: 1.5;">
             <p style="margin: 0 0 12px 0;">
-              Kembalikan Dokumen Seleksi <strong>${esc(targetDoc.docNo)}</strong> ke Mantri untuk perbaikan atau penyesuaian sesi transaksi.
+              Kembalikan hanya sesi <strong>${esc(targetExecution.docNo || targetExecution.id)}</strong> pada bedengan <strong>${esc(targetExecution.bedenganCode || targetExecution.bedengan || '-')}</strong>. Sesi lain dalam dokumen induk tetap tersimpan.
             </p>
             <div style="margin-bottom: 14px;">
               <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #0F172A; margin-bottom: 4px;">Alasan Pengembalian (Wajib) <span style="color: #DC2626;">*</span></label>
-              <textarea id="modal-pre-return-reason" rows="3" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;" placeholder="Jelaskan alasan pengembalian dokumen..."></textarea>
+              <textarea id="modal-pre-return-reason" rows="3" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;" placeholder="Jelaskan kesalahan pada sesi ini..."></textarea>
             </div>
             <div style="display: flex; gap: 8px;">
               <button id="btn-cancel-modal" type="button" style="flex: 1; height: 38px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 600; cursor: pointer;">Batal</button>
@@ -991,9 +984,9 @@ function renderAsistenSelectionReview(app, currentUser) {
           return;
         }
         try {
-          returnPreGraftingSelectionDocument(docId, reason, currentUser);
+          returnPreGraftingSelectionExecution(docId, executionId, reason, currentUser);
           closeModal();
-          toast(`Dokumen ${stageLabel} (${targetDoc.docNo}) berhasil dikembalikan ke Mantri.`, 'info');
+          toast(`Sesi ${targetExecution.docNo || targetExecution.id} dikembalikan. Mantri dapat mengoreksi sesi pada bedengan ${targetExecution.bedenganCode || targetExecution.bedengan || '-'}.`, 'info');
           renderAsistenSelectionReview(app, currentUser);
         } catch (err) {
           toast(err.message || 'Gagal mengembalikan dokumen seleksi', 'error');
@@ -1097,12 +1090,31 @@ export function groupPreGraftingDocsByProgram(docs) {
 export function calculateBatchMetrics(batchGroup, stage = 'SELEKSI_1') {
   const docs = batchGroup.docs || [];
   const batchCode = batchGroup.batchCode || (docs[0] && (docs[0].batchCode || docs[0].batchNo)) || 'BATCH-UNKNOWN';
+  const normalizedStage = String(stage || '').trim().toUpperCase();
+  const metricDocs = ['SELEKSI_3', 'SELEKSI_III'].includes(normalizedStage)
+    ? docs.flatMap(doc => Array.isArray(doc.rows) && doc.rows.length > 1
+      ? doc.rows.map(row => {
+          const rowBed = row.bedenganCode || row.bedengan || row.bedenganId;
+          const rowBibit = row.disemai !== undefined ? row.disemai : (row.sourceBibitQty !== undefined ? row.sourceBibitQty : row.initialBibit);
+          const rowPolybag = row.polybag !== undefined ? row.polybag : (row.initialPolybag !== undefined ? row.initialPolybag : row.polybagCount);
+          return {
+            ...doc,
+            bedenganId: row.bedenganId || rowBed,
+            bedenganCode: rowBed,
+            bedengan: rowBed,
+            sourceBibitQty: rowBibit !== undefined ? rowBibit : doc.sourceBibitQty,
+            sourcePolybagQty: rowPolybag !== undefined ? rowPolybag : doc.sourcePolybagQty,
+            rows: [row]
+          };
+        })
+      : [doc])
+    : docs;
 
   // Group documents by unique composite key: `${batchCode}::${bedenganCode}`
   const bedenganMap = new Map();
   const seenExecutionTxIds = new Set();
 
-  docs.forEach(doc => {
+  metricDocs.forEach(doc => {
     const rawBed = doc.bedenganCode || doc.bedengan || (doc.bedenganList && doc.bedenganList[0]) || (doc.rows && doc.rows[0] && (doc.rows[0].bedenganCode || doc.rows[0].bedenganId)) || (doc.bedenganIds && doc.bedenganIds[0]) || 'BED-UNKNOWN';
     const bedCode = formatBedenganDisplayCode(rawBed);
     const compositeKey = `${batchCode}::${bedCode}`;
@@ -1124,8 +1136,71 @@ export function calculateBatchMetrics(batchGroup, stage = 'SELEKSI_1') {
       sourceBibit = stage === 'PINDAH_SEMAI' ? sourcePoly * 2 : sourcePoly;
     }
 
-    // Selalu pastikan sourceBibit dan sourcePoly merefleksikan akumulasi seeding aktual
-    const liveBedTotals = calculateEligibleSeedingTotalsForBedengan(batchCode, bedCode);
+    // Untuk Seleksi II, angka pada kartu mengikuti saldo final dokumen Seleksi I
+    // yang menjadi sumbernya, bukan snapshot sourceBibitQty lama di dokumen II.
+    if (normalizedStage === 'SELEKSI_2' || normalizedStage === 'SELEKSI_II') {
+      const sourceS1 = getPreGraftingSelectionDocumentById(
+        doc.sourceSelectionDocumentId || doc.sourceSelectionDocNo || doc.sourceDocNo
+      );
+      if (sourceS1 && ['SELEKSI_1', 'SELEKSI_I'].includes(String(sourceS1.selectionStage || '').toUpperCase())) {
+        const sourceS1Executions = getSeleksi1ExecutionsByDocument(sourceS1.id || sourceS1.docNo);
+        const sourceS1BedScope = getBedenganScopeStatusForSeleksi1(sourceS1, sourceS1Executions);
+        const sourceS1Bed = sourceS1BedScope.find(b =>
+          formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === bedCode.toUpperCase()
+        );
+        if (sourceS1Bed) {
+          sourceBibit = Math.max(0, Number(sourceS1Bed.maintainedBibit) || 0);
+        }
+        let sourceInitialBibit = parseInt(sourceS1.sourceBibitQty !== undefined ? sourceS1.sourceBibitQty : (sourceS1.initialBibitQty || 0), 10);
+        if ((!Number.isFinite(sourceInitialBibit) || sourceInitialBibit <= 0) && Array.isArray(sourceS1.rows)) {
+          sourceInitialBibit = sourceS1.rows.reduce((sum, row) => sum + parseInt(row.sourceBibitQty !== undefined ? row.sourceBibitQty : (row.disemai || row.initialBibit || 0), 10), 0);
+        }
+        if (sourceS1Executions.length > 0 && sourceInitialBibit > 0) {
+          const rejectedBibit = sourceS1Executions.reduce((sum, tx) => {
+            const raw = tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || tx.bibitReject || 0);
+            const qty = Number(raw);
+            return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
+          }, 0);
+          if (!sourceS1Bed) sourceBibit = Math.max(0, sourceInitialBibit - rejectedBibit);
+        } else {
+          const finalizedQty = sourceS1.totalLayak !== undefined
+            ? sourceS1.totalLayak
+            : (sourceS1.finalBibitQty !== undefined ? sourceS1.finalBibitQty : sourceS1.currentBibitQty);
+          const parsedFinalizedQty = parseInt(finalizedQty, 10);
+          if (Number.isFinite(parsedFinalizedQty) && parsedFinalizedQty >= 0) sourceBibit = parsedFinalizedQty;
+        }
+
+        const finalizedPolybag = parseInt(
+          sourceS1.activePolybagQty !== undefined ? sourceS1.activePolybagQty : (sourceS1.currentPolybagQty || sourceS1.sourcePolybagQty || 0),
+          10
+        );
+        if (Number.isFinite(finalizedPolybag) && finalizedPolybag > 0) sourcePoly = finalizedPolybag;
+      }
+    }
+
+    if (normalizedStage === 'SELEKSI_3' || normalizedStage === 'SELEKSI_III') {
+      const sourceS2 = getPreGraftingSelectionDocumentById(
+        doc.sourceSelectionDocumentId || doc.sourceSelectionDocNo || doc.sourceDocNo
+      );
+      if (sourceS2 && ['SELEKSI_2', 'SELEKSI_II'].includes(String(sourceS2.selectionStage || '').toUpperCase())) {
+        const sourceS2Executions = getSeleksi2ExecutionsByDocument(sourceS2.id || sourceS2.docNo);
+        const sourceS2BedScope = getBedenganScopeStatusForSeleksi2(sourceS2, sourceS2Executions);
+        const sourceS2Bed = sourceS2BedScope.find(b =>
+          formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === bedCode.toUpperCase()
+        );
+        if (sourceS2Bed) {
+          sourceBibit = Math.max(0, Number(sourceS2Bed.maintainedBibit) || 0);
+          const finalBedPolybag = Number(sourceS2Bed.inspectedPolybag || sourceS2Bed.initialPolybag || 0);
+          if (finalBedPolybag > 0) sourcePoly = finalBedPolybag;
+        }
+      }
+    }
+
+    // Total semai hanya menjadi sumber populasi Seleksi I. Seleksi II/III harus
+    // mempertahankan saldo turunan dari hasil final tahap sebelumnya, jangan
+    // dinaikkan kembali ke jumlah semai awal.
+    const usesSeedingSource = normalizedStage === 'SELEKSI_1' || normalizedStage === 'SELEKSI_I' || normalizedStage === 'PINDAH_SEMAI';
+    const liveBedTotals = usesSeedingSource ? calculateEligibleSeedingTotalsForBedengan(batchCode, bedCode) : null;
     if (liveBedTotals && liveBedTotals.totalDisemai > 0) {
       if (liveBedTotals.totalDisemai > sourceBibit) {
         sourceBibit = liveBedTotals.totalDisemai;
@@ -1546,9 +1621,15 @@ export function renderProgramBatchCompactView({
       }
       return 'GT 1';
     })();
+    const hasSourceChangePending = (stage === 'SELEKSI_2' || stage === 'SELEKSI_II') &&
+      (batch.docs || []).some(d => d.sourceChangePending);
 
     return `
           <div class="card-program-group card-batch-document row-batch-item row-batch-clickable" 
+               data-inspection-list-card="SELEKSI_PRA_OKULASI"
+               data-program="${esc(prog.programCode)}"
+               data-batch="${esc(batch.batchCode)}"
+               data-search="${esc([prog.programCode, batch.batchCode, batch.clone, ...(batch.docs || []).map(d => [d.docNo, d.sourceDocNo, d.bedenganCode, d.bedengan].filter(Boolean).join(' '))].filter(Boolean).join(' '))}"
                data-stage="${esc(stage)}" 
                data-program-code="${esc(prog.programCode)}" 
                data-batch-code="${esc(batch.batchCode)}" 
@@ -1569,6 +1650,11 @@ export function renderProgramBatchCompactView({
 
             <!-- KONTEN BATCH -->
             <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+              ${hasSourceChangePending ? `
+                <div style="padding: 8px 10px; background: #FFF7ED; border: 1px solid #FDBA74; border-radius: 7px; color: #9A3412; font-size: 0.70rem; line-height: 1.4; font-weight: 600;">
+                  Saldo sumber Seleksi I berubah setelah pemeriksaan Seleksi II dimulai. Pemeriksaan batch ini ditahan sampai rekonsiliasi dilakukan.
+                </div>
+              ` : ''}
               
               <!-- BARIS 1: KODE BATCH, KLON & BADGE STATUS -->
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -1946,15 +2032,30 @@ export function openBedenganSourceSelectorModal({
       bedScopeList = getBedenganScopeStatusForSeleksi1(doc);
     }
 
-    const rawBed = doc.bedenganCode || doc.bedengan || (bedScopeList[0] && bedScopeList[0].bedenganCode) || (doc.rows && doc.rows[0] && (doc.rows[0].bedenganCode || doc.rows[0].bedenganId)) || 'BED-001';
-    const bedCode = formatBedenganDisplayCode(rawBed);
-    const compositeKey = `${batchCode}::${bedCode}`;
+    const bedScopes = bedScopeList.length > 0
+      ? bedScopeList
+      : [{
+          bedenganId: doc.bedenganId || doc.bedenganCode || doc.bedengan || 'BED-001',
+          bedenganCode: doc.bedenganCode || doc.bedengan || 'BED-001',
+          initialPolybag: doc.sourcePolybagQty || 0,
+          initialBibit: doc.sourceBibitQty || 0,
+          remainingPolybag: doc.sourcePolybagQty || 0,
+          inspectedPolybag: 0
+        }];
 
-    if (!uniqueBedMap.has(compositeKey)) {
-      const currentScope = bedScopeList.find(b => formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === bedCode.toUpperCase()) || { remainingPolybag: 0, initialPolybag: 0 };
+    bedScopes.forEach(currentScope => {
+      const bedCode = formatBedenganDisplayCode(currentScope.bedenganCode || currentScope.bedenganId);
+      const compositeKey = `${batchCode}::${bedCode}`;
+      if (uniqueBedMap.has(compositeKey)) return;
+
       const sourcePoly = (currentScope.initialPolybag !== undefined && currentScope.initialPolybag > 0)
         ? currentScope.initialPolybag
         : parseInt(doc.sourcePolybagQty !== undefined ? doc.sourcePolybagQty : (doc.sourceBibitQty || 0), 10);
+      const sourceBibit = (currentScope.initialBibit !== undefined && currentScope.initialBibit > 0)
+        ? currentScope.initialBibit
+        : ((doc.sourceBibitQty !== undefined && doc.sourceBibitQty > 0)
+          ? parseInt(doc.sourceBibitQty, 10)
+          : sourcePoly * (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' ? 2 : 1));
       const remainingPoly = currentScope.remainingPolybag !== undefined ? currentScope.remainingPolybag : sourcePoly;
       const isFinished = remainingPoly <= 0 && sourcePoly > 0 && ((currentScope.inspectedPolybag || 0) > 0);
 
@@ -1962,10 +2063,11 @@ export function openBedenganSourceSelectorModal({
         doc,
         bedCode,
         sourcePoly,
+        sourceBibit,
         remainingPoly,
         isFinished
       });
-    }
+    });
   });
 
   const uniqueBedList = Array.from(uniqueBedMap.values());
@@ -1977,46 +2079,46 @@ export function openBedenganSourceSelectorModal({
       : 'Seleksi I (Pra-Okulasi)';
 
   const totalBatchPoly = uniqueBedList.reduce((sum, b) => sum + (b.sourcePoly || 0), 0);
-  const totalBatchBibit = uniqueBedList.reduce((sum, b) => {
-    const bibitQty = (b.doc.sourceBibitQty !== undefined && b.doc.sourceBibitQty > 0) ? b.doc.sourceBibitQty : ((b.sourcePoly || 0) * (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' ? 2 : 1));
-    return sum + bibitQty;
-  }, 0);
+  const totalBatchBibit = uniqueBedList.reduce((sum, b) => sum + (b.sourceBibit || 0), 0);
 
   const bodyContent = `
     <div style="font-size: 0.82rem; color: #334155; line-height: 1.45; display: flex; flex-direction: column; gap: 14px;">
       
       <!-- BATCH & STAGE CONTEXT CARD -->
-      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px;">
         <!-- ROW 1: Stage badge + Bedengan count -->
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 0.66rem; font-weight: 700; background: #E2E8F0; color: #334155; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.03em;">
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px;">
+          <span style="min-width: 0; justify-self: start; font-size: 0.68rem; font-weight: 700; background: #E2E8F0; color: #334155; padding: 4px 8px; border-radius: 6px; line-height: 1.25; overflow-wrap: anywhere;">
             ${esc(stageBadgeLabel)}
           </span>
-          <span style="font-size: 0.72rem; font-weight: 600; color: #64748B;">
-            ${uniqueBedList.length} Bedengan Tersedia
+          <span style="max-width: 96px; padding-top: 3px; font-size: 0.70rem; font-weight: 600; color: #64748B; text-align: right; line-height: 1.3;">
+            ${uniqueBedList.length} bedengan tersedia
           </span>
         </div>
         
         <!-- ROW 2: Batch code + Total populasi -->
-        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px;">
+        <div style="display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr); align-items: end; gap: 10px;">
           <div style="min-width: 0;">
-            <span style="font-size: 0.66rem; color: #94A3B8; display: block; margin-bottom: 1px;">Kode Batch</span>
-            <div style="font-size: 1.05rem; font-weight: 800; color: #0284C7; letter-spacing: -0.01em;">
+            <span style="font-size: 0.66rem; color: #64748B; display: block; margin-bottom: 2px;">Kode Batch</span>
+            <div style="font-size: 1rem; font-weight: 800; color: #0284C7; letter-spacing: -0.01em; overflow-wrap: anywhere;">
               ${esc(batchCode)}
             </div>
           </div>
-          <div style="text-align: right; flex-shrink: 0;">
-            <span style="font-size: 0.66rem; color: #94A3B8; display: block; margin-bottom: 1px;">Total Populasi Bibit</span>
-            <div style="font-size: 0.92rem; font-weight: 800; color: #116834;">
+          <div style="min-width: 0; text-align: right;">
+            <span style="font-size: 0.66rem; color: #64748B; display: block; margin-bottom: 2px;">Total Populasi</span>
+            <div style="font-size: 0.90rem; font-weight: 800; color: #116834; line-height: 1.25; overflow-wrap: anywhere;">
               ${totalBatchBibit.toLocaleString('id-ID')} Bibit
-              <span style="font-size: 0.72rem; color: #64748B; font-weight: 600;">(${totalBatchPoly.toLocaleString('id-ID')} Ply)</span>
+            </div>
+            <div style="font-size: 0.70rem; color: #64748B; font-weight: 600; line-height: 1.25;">
+              ${totalBatchPoly.toLocaleString('id-ID')} Polybag
             </div>
           </div>
         </div>
 
         <!-- ROW 3: Program -->
-        <div style="font-size: 0.72rem; color: #64748B; border-top: 1px dashed #CBD5E1; padding-top: 7px;">
-          Program: <strong style="color: #1E293B; font-family: monospace;">${esc(programCode)}</strong>
+        <div style="border-top: 1px dashed #CBD5E1; padding-top: 8px; min-width: 0;">
+          <span style="font-size: 0.66rem; color: #64748B; display: block; margin-bottom: 2px;">Program Pembibitan</span>
+          <strong style="font-size: 0.72rem; color: #1E293B; font-family: monospace; overflow-wrap: anywhere;">${esc(programCode)}</strong>
         </div>
       </div>
 
@@ -2033,9 +2135,7 @@ export function openBedenganSourceSelectorModal({
       <!-- BEDENGAN LIST (COMPOSITE SCOPE CARDS) -->
       <div style="display: flex; flex-direction: column; gap: 10px;">
         ${uniqueBedList.map(item => {
-    const bedBibit = (item.doc.sourceBibitQty !== undefined && item.doc.sourceBibitQty > 0)
-      ? item.doc.sourceBibitQty
-      : (item.sourcePoly * (stage === 'SELEKSI_1' || stage === 'SELEKSI_I' ? 2 : 1));
+    const bedBibit = item.sourceBibit || 0;
 
     const bedGate = (stage === 'SELEKSI_1' || stage === 'SELEKSI_I')
       ? canPerformPreGraftingSelection1(item.doc, item.bedCode)
@@ -2430,6 +2530,37 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
       bibitLayak = Math.max(0, maxAvailableBasis - bibitAfkir);
     }
 
+    // Seleksi II menampilkan saldo tersedia per bedengan. Snapshot lama pada
+    // transaksi bisa bernilai 0 meskipun bibit diseleksi 0; hitung ulang dari
+    // populasi bedengan dan afkir transaksi sebelumnya pada bedengan yang sama.
+    if (['SELEKSI_2', 'SELEKSI_II'].includes(String(stage || '').toUpperCase()) && (parentDoc.id || parentDoc.docNo)) {
+      const parentExecutions = getSeleksi2ExecutionsByDocument(parentDoc.id || parentDoc.docNo);
+      const currentExecutionIndex = parentExecutions.findIndex(record =>
+        (tx.id && String(record.id || '') === String(tx.id)) ||
+        (tx.docNo && String(record.docNo || record.selectionNo || '') === String(tx.docNo))
+      );
+      const txBedCode = formatBedenganDisplayCode(tx.bedenganCode || tx.bedengan || tx.bedenganId).toUpperCase();
+      const sourceBed = getBedenganScopeStatusForSeleksi2(parentDoc, []).find(bed =>
+        formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId).toUpperCase() === txBedCode
+      );
+      const bedPopulation = Number(sourceBed?.initialBibit);
+      if (Number.isFinite(bedPopulation) && bedPopulation >= 0) {
+        const earlierExecutions = currentExecutionIndex >= 0
+          ? parentExecutions.slice(0, currentExecutionIndex)
+          : [];
+        const earlierRejectedOnBed = earlierExecutions.reduce((sum, record) => {
+          const recordBed = formatBedenganDisplayCode(record.bedenganCode || record.bedengan || record.bedenganId).toUpperCase();
+          if (recordBed !== txBedCode) return sum;
+          const raw = record.actualBibitSelectedQty !== undefined
+            ? record.actualBibitSelectedQty
+            : (record.jumlahAfkir !== undefined ? record.jumlahAfkir : (record.bibitReject || 0));
+          const qty = Number(raw);
+          return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
+        }, 0);
+        bibitLayak = Math.max(0, bedPopulation - earlierRejectedOnBed - bibitAfkir);
+      }
+    }
+
     const rowMatch = parentDoc.rows?.find(r => (r.bedenganCode || r.bedenganId) === (tx.bedenganCode || tx.bedengan || tx.bedenganId));
     const resolvedBatch = tx.batchCode || tx.batchNo || parentDoc.batchCode || parentDoc.batchNo || rowMatch?.batchCode || '-';
     const batchId = tx.batchId || parentDoc.batchId || rowMatch?.batchId;
@@ -2586,22 +2717,22 @@ export function renderGlobalChildTransactionsSection(txs = [], docs = [], stage 
                   
                   <!-- C. RINGKASAN PEMERIKSAAN (3 METRIK: POLYBAG DIPERIKSA, BIBIT TERSEDIA, DISELEKSI - STRATEGI 5-C) -->
                   <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 4px; margin-bottom: 6px;">
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; text-align: center;">
-                      <div style="padding: 2px 4px;">
-                        <div style="font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Polybag Diperiksa</div>
-                        <div style="font-size: 0.82rem; font-weight: 800; color: #0F172A; white-space: nowrap;">
+                    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; text-align: center; align-items: stretch;">
+                      <div style="min-width: 0; padding: 2px 4px; display: flex; flex-direction: column; align-items: center;">
+                        <div style="width: 100%; min-height: 1.5rem; display: flex; align-items: center; justify-content: center; font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Polybag Diperiksa</div>
+                        <div style="min-height: 1.25rem; display: flex; align-items: baseline; justify-content: center; gap: 3px; font-size: 0.82rem; font-weight: 800; color: #0F172A; white-space: nowrap;">
                           ${polyChecked.toLocaleString('id-ID')} <span style="font-size: 0.60rem; font-weight: 600; color: #64748B;">Ply</span>
                         </div>
                       </div>
-                      <div style="padding: 2px 4px; border-left: 1px solid #F1F5F9;">
-                        <div style="font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Bibit Tersedia</div>
-                        <div style="font-size: 0.82rem; font-weight: 800; color: #15803D; white-space: nowrap;">
+                      <div style="min-width: 0; padding: 2px 4px; border-left: 1px solid #F1F5F9; display: flex; flex-direction: column; align-items: center;">
+                        <div style="width: 100%; min-height: 1.5rem; display: flex; align-items: center; justify-content: center; font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Bibit Tersedia</div>
+                        <div style="min-height: 1.25rem; display: flex; align-items: baseline; justify-content: center; gap: 3px; font-size: 0.82rem; font-weight: 800; color: #15803D; white-space: nowrap;">
                           ${bibitLayak.toLocaleString('id-ID')} <span style="font-size: 0.60rem; font-weight: 600; color: #15803D;">Pkk</span>
                         </div>
                       </div>
-                      <div style="padding: 2px 4px; border-left: 1px solid #F1F5F9;">
-                        <div style="font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Diseleksi</div>
-                        <div style="font-size: 0.82rem; font-weight: 800; color: #DC2626; white-space: nowrap;">
+                      <div style="min-width: 0; padding: 2px 4px; border-left: 1px solid #F1F5F9; display: flex; flex-direction: column; align-items: center;">
+                        <div style="width: 100%; min-height: 1.5rem; display: flex; align-items: center; justify-content: center; font-size: 0.62rem; color: #64748B; margin-bottom: 2px; line-height: 1.2;">Diseleksi</div>
+                        <div style="min-height: 1.25rem; display: flex; align-items: baseline; justify-content: center; gap: 3px; font-size: 0.82rem; font-weight: 800; color: #DC2626; white-space: nowrap;">
                           ${bibitAfkir.toLocaleString('id-ID')} <span style="font-size: 0.60rem; font-weight: 600; color: #DC2626;">Pkk</span>
                         </div>
                       </div>
@@ -2701,6 +2832,8 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
   const isDederanStage = (pageTitle && (pageTitle.includes('Pra-Semai') || pageTitle.includes('Dederan'))) ||
     poolItems.some(p => p.originType === 'REJECT_DEDERAN' || p.sourceModule === 'DEDERAN') ||
     allStageCulledTxs.some(t => t.originType === 'REJECT_DEDERAN' || t.sourceModule === 'DEDERAN');
+  const isPostGraftingStage = String(pageTitle || '').toLocaleLowerCase('id-ID').includes('pasca-okulasi') ||
+    poolItems.some(p => ['REJECT_OKULASI', 'REJECT_REGRAFTING', 'REJECT_PEMERIKSAAN', 'REJECT_PEMERIKSAAN_OKULASI', 'REJECT_PASCA_OKULASI'].includes(String(p.originType || '').toUpperCase()));
 
   const returnedSectionTitle = 'Transaksi Perlu Perbaikan';
 
@@ -2863,7 +2996,7 @@ export function renderStandardizedRejectList(rawPoolItems = [], culledTxs = [], 
                 <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
                   <div>
                     <span style="font-size: 0.68rem; font-weight: 700; color: #991B1B; text-transform: uppercase;">Jumlah Tidak Berhasil</span>
-                    <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">${esc(isDederan ? 'Afkir Pemeriksaan Dederan' : 'Ditolak Pindah Semai')}</div>
+                    <div style="font-size: 0.70rem; color: #64748B; margin-top: 1px;">${esc(isDederan ? 'Afkir Pemeriksaan Dederan' : (isPostGraftingStage ? 'Mati / Gagal Pemeriksaan Okulasi' : 'Ditolak Pindah Semai'))}</div>
                   </div>
                   <div style="text-align: right;">
                     <span style="font-size: 1.15rem; font-weight: 900; color: #DC2626;">${qtyAfkir.toLocaleString('id-ID')}</span>
@@ -3060,6 +3193,7 @@ function renderMantriSelectionLanding(app, user) {
   // Pastikan sinkronisasi dederan, seeding rejections, dan dokumen seleksi pra-okulasi selalu dilakukan saat render mantri view
   try {
     reconcileSelectionPoolWithTransactions();
+    syncInspectionRejectionsToSelectionPool();
     syncAllDederanRejectionsToSelectionPool();
     syncAllSeedingsToSelectionPool(user);
     syncAllSeedingsToPreGraftingSelectionDocuments(user);
@@ -3342,8 +3476,6 @@ function renderMantriSelectionLanding(app, user) {
       tx.selectionType === SELECTION_TYPES.PRA_OKULASI;
   });
 
-  const postGraftingProgGroups = groupPostGraftingDocsByProgram(postGraftingSelectionPool);
-
   const filteredPreSowingCulledTxs = preSowingCulledTxs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
   const filteredPindahSemaiCulledTxs = pindahSemaiCulledTxs.filter(tx => normalizeDateStr(tx.tanggalSeleksi || tx.tanggal || tx.createdAt) === selectedSelectionDate);
   const filteredPreGraftingCulledTxs = preGraftingCulledTxs.filter(tx => {
@@ -3415,25 +3547,13 @@ function renderMantriSelectionLanding(app, user) {
           <!-- VIEW: BIBIT DITOLAK PINDAH SEMAI -->
           ${renderStandardizedRejectList(pindahSemaiSelectionPool, filteredPindahSemaiCulledTxs, 'Belum Ada Data Ditolak Pindah Semai', 'Data bibit ditolak akan muncul saat transaksi Pindah Semai mencatat adanya bibit yang ditolak/afkir.', 'Daftar Hasil Ditolak Pindah Semai', today, pindahSemaiCulledTxs)}
         ` : `
-          <!-- VIEW: BIBIT AFKIR PASCA-OKULASI (COMPACT PROGRAM/BATCH VIEW) -->
-          <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="font-size: 0.88rem; font-weight: 700; color: #0F172A; margin: 0;">Seleksi Pasca-Okulasi (${postGraftingSelectionPool.length})</h2>
-          </div>
-
-          ${renderProgramBatchCompactView({
-            programGroups: postGraftingProgGroups,
-            stage: 'POST_GRAFTING',
-            emptyTitle: 'Belum Ada Data Afkir Pasca-Okulasi',
-            emptyDesc: 'Data bibit afkir akan muncul saat terdapat bibit yang ditolak pada transaksi Okulasi, Pemeriksaan Okulasi, atau Okulasi Janda.',
-            isPasca: true
-          })}
-
-          <!-- RIWAYAT DEKLARASI PASCA-OKULASI -->
-          ${renderCulledHistoryList(
+          <!-- VIEW: BIBIT AFKIR PASCA-OKULASI DENGAN KARTU STANDAR -->
+          ${renderStandardizedRejectList(
+            postGraftingSelectionPool,
             filteredPostGraftingCulledTxs,
-            'Belum ada riwayat seleksi pasca-okulasi',
-            'Riwayat deklarasi seleksi pasca-okulasi akan tercatat di sini setelah dideklarasikan resmi.',
-            'Riwayat Deklarasi Pasca-Okulasi',
+            'Belum Ada Data Afkir Pasca-Okulasi',
+            'Data afkir muncul untuk bibit gagal yang tidak dialokasikan ke Okulasi Janda atau gagal setelah Okulasi Janda.',
+            'Daftar Bibit Afkir Pasca-Okulasi',
             today,
             postGraftingCulledTxs
           )}
@@ -5643,6 +5763,10 @@ export function openSeleksi1ExecutionModal({ doc, bedenganCode = null, user, onS
 export function openSeleksi2ExecutionModal({ doc, bedenganCode = null, user, onSaved }) {
   const today = getEffectiveTodayDDMMYYYY();
   let currentDoc = doc;
+  if (currentDoc?.sourceChangePending) {
+    toast('Pemeriksaan ditahan. Saldo sumber Seleksi I berubah; dokumen ini perlu direkonsiliasi terlebih dahulu.', 'warning');
+    return;
+  }
   let currentBedScopeList = getBedenganScopeStatusForSeleksi2(currentDoc);
 
   // Dapatkan transaksi fisik aktual Seleksi II

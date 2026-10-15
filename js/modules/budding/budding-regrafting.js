@@ -9,6 +9,7 @@ import { toast } from '../../components/toast.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
 import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
+import { normalizeKlonName } from '../../data/klon-master.js';
 import {
   normalizeDateStr,
   renderCalendarHeaderButton,
@@ -96,7 +97,7 @@ export function renderBuddingRegrafting() {
   // AUTO-SYNC: Ensure all inspections with Regrafting allocation are present in regraftPool
   inspectionTxs.forEach((insp, i) => {
     const isInspCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.status || '').toUpperCase()) ||
-                            ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.verificationStatus || '').toUpperCase());
+      ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.verificationStatus || '').toUpperCase());
     if (isInspCancelled) return;
     const gagal = parseInt(insp.jumlahGagal || 0);
     const toRegraft = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : gagal;
@@ -123,7 +124,7 @@ export function renderBuddingRegrafting() {
   // AUTO-SYNC: Ensure any existing Regrafting transaction has its parent document in regraftPool
   allRegraftTxs.forEach((rtx, i) => {
     const isRtxCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(rtx.status || '').toUpperCase()) ||
-                           ['BATAL', 'CANCELLED', 'VOID'].includes(String(rtx.verificationStatus || '').toUpperCase());
+      ['BATAL', 'CANCELLED', 'VOID'].includes(String(rtx.verificationStatus || '').toUpperCase());
     if (isRtxCancelled) return;
     const exists = regraftPool.some(p => (rtx.regraftPoolDocNo && p.docNo === rtx.regraftPoolDocNo) || (rtx.inspectionDocNo && p.inspectionDocNo === rtx.inspectionDocNo));
     if (!exists) {
@@ -155,12 +156,12 @@ export function renderBuddingRegrafting() {
     let ttlKayu = 0;
     const relatedRegrafts = allRegraftTxs.filter(r => {
       const isCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(r.status || '').toUpperCase()) ||
-                          ['BATAL', 'CANCELLED', 'VOID'].includes(String(r.verificationStatus || '').toUpperCase());
+        ['BATAL', 'CANCELLED', 'VOID'].includes(String(r.verificationStatus || '').toUpperCase());
       if (isCancelled) return false;
-      return (r.regraftPoolDocNo && r.regraftPoolDocNo === docNo) || 
-             (r.inspectionDocNo && poolItem.inspectionDocNo && r.inspectionDocNo === poolItem.inspectionDocNo);
+      return (r.regraftPoolDocNo && r.regraftPoolDocNo === docNo) ||
+        (r.inspectionDocNo && poolItem.inspectionDocNo && r.inspectionDocNo === poolItem.inspectionDocNo);
     });
-    
+
     relatedRegrafts.forEach(r => {
       ttlRegrafted += parseInt(r.jumlah || 0);
       ttlDitolak += parseInt(r.jumlahDitolak || 0);
@@ -246,23 +247,28 @@ export function renderBuddingRegrafting() {
       <main style="flex: 1; overflow-y: auto; padding: 16px;">
         
         <div style="margin-bottom: 12px;">
-          <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Daftar Bibit Gagal Okulasi (Siap Regrafting)</h2>
+          <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Bibit Gagal Okulasi (Siap Regrafting)</h2>
         </div>
 
         ${processedRegraftPool.length > 0 ? `
           <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
             ${processedRegraftPool.map((item) => {
-              const { poolItem, originalIndex, batchNo, docNo, populasiGagal, relatedRegrafts, ttlRegrafted, ttlDitolak, ttlKayu, totalRealisasi, sisaBelumRegraft, persenSelesai, statusFlagKey, statusBadgeText } = item;
-              const idx = originalIndex;
+    const { poolItem, originalIndex, batchNo, docNo, populasiGagal, relatedRegrafts, ttlRegrafted, ttlDitolak, ttlKayu, totalRealisasi, sisaBelumRegraft, persenSelesai, statusFlagKey, statusBadgeText } = item;
+    const idx = originalIndex;
 
-              return `
+    return `
                 <div class="card-regraft-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
                   
-                  <!-- CARD HEADER: NOMOR BATCH & BADGE STATUS -->
+                  <!-- CARD HEADER: NOMOR BATCH & PROGRESS -->
                   <div style="display: flex; align-items: center; margin-bottom: 4px; gap: 6px;">
-                    ${renderStatusDots([{ key: statusFlagKey, label: statusBadgeText }])}
-                    <div style="font-size: 0.95rem; font-weight: 800; color: #116834; white-space: nowrap; letter-spacing: -0.01em;">
-                      ${batchNo}
+                    <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+                      ${renderStatusDots([{ key: statusFlagKey, label: statusBadgeText }])}
+                      <div style="font-size: 0.95rem; font-weight: 800; color: #116834; white-space: nowrap; letter-spacing: -0.01em;">
+                        ${batchNo}
+                      </div>
+                    </div>
+                    <div style="margin-left:auto;flex-shrink:0;padding:3px 8px;border-radius:999px;background:#EAF6EE;color:#116834;font-size:.78rem;font-weight:800;line-height:1.2;">
+                      ${persenSelesai}% selesai
                     </div>
                   </div>
 
@@ -270,36 +276,14 @@ export function renderBuddingRegrafting() {
                   <div style="font-size: 0.82rem; font-weight: 700; color: #111111; margin-bottom: 2px;">
                     ${docNo}
                   </div>
-                  <div style="font-size: 0.72rem; color: #888888; margin-bottom: 10px;">
+                  <div style="font-size: 0.72rem; color: #6B7280; margin-bottom: 10px;">
                     Pemeriksaan Asal: ${poolItem.inspectionDocNo || '-'}
                   </div>
 
-                  <hr style="border: none; border-top: 1px solid #F3F4F6; margin: 0 0 10px 0;" />
-
-                  <!-- GRID DETAIL 2x2 -->
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 12px;">
-                    <div>
-                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Klon Awal (Gagal)</div>
-                      <div style="font-size: 0.84rem; font-weight: 800; color: #D32F2F; line-height: 1.3;">${poolItem.klonAwal ? normalizeKlonName(poolItem.klonAwal) : 'PB 260'}</div>
-                    </div>
-                    <div>
-                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Lokasi Bedengan</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #111827; line-height: 1.35; word-break: break-word;">${formatBedenganCode(poolItem.bedengan, poolItem.bedenganCode) || 'BED-001'}</div>
-                    </div>
-                    <div>
-                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Populasi Gagal Okulasi</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: #D32F2F; line-height: 1.3;">${populasiGagal.toLocaleString('id-ID')} Pkk</div>
-                    </div>
-                    <div>
-                      <div style="font-size: 0.70rem; color: #6B7280; margin-bottom: 2px;">Sisa Belum Regrafting</div>
-                      <div style="font-size: 0.82rem; font-weight: 700; color: ${sisaBelumRegraft > 0 ? '#D32F2F' : '#116834'}; line-height: 1.3;">${sisaBelumRegraft.toLocaleString('id-ID')} Pkk</div>
-                    </div>
-                  </div>
-
-                  <!-- TOMBOL TOGGLE EXPAND DETAIL AKUMULASI -->
-                  <div style="margin-bottom: 6px;">
+                  <!-- TOMBOL TOGGLE EXPAND DETAIL -->
+                  <div style="margin:8px 0;">
                     <button type="button" class="btn-toggle-expand-regraft" style="background: #F0FDF4; border: 1px solid #DCFCE7; border-radius: 6px; width: 100%; padding: 6px 10px; font-size: 0.74rem; font-weight: 700; color: #116834; cursor: pointer; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box;">
-                      <span class="text-expand-regraft">Tampilkan Detail Akumulasi</span>
+                      <span class="text-expand-regraft">Tampilkan Detail</span>
                       <svg class="icon-expand-regraft" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.2s ease;">
                         <polyline points="6 9 12 15 18 9"></polyline>
                       </svg>
@@ -308,6 +292,13 @@ export function renderBuddingRegrafting() {
 
                   <!-- EXPANDABLE ACCORDION DETAIL AKUMULASI -->
                   <div class="regraft-expand-content" style="display: none; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; font-size: 0.74rem;">
+
+                    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;margin-bottom:12px;">
+                      <div><div style="font-size:.70rem;color:#6B7280;margin-bottom:2px;">Klon Awal (Gagal)</div><div style="font-size:.82rem;font-weight:700;color:#D32F2F;line-height:1.3;">${poolItem.klonAwal ? normalizeKlonName(poolItem.klonAwal) : 'PB 260'}</div></div>
+                      <div><div style="font-size:.70rem;color:#6B7280;margin-bottom:2px;">Lokasi Bedengan</div><div style="font-size:.82rem;font-weight:700;color:#111827;line-height:1.35;word-break:break-word;">${formatBedenganCode(poolItem.bedengan, poolItem.bedenganCode) || 'BED-001'}</div></div>
+                      <div><div style="font-size:.70rem;color:#6B7280;margin-bottom:2px;">Populasi Gagal Okulasi</div><div style="font-size:.82rem;font-weight:700;color:#D32F2F;line-height:1.3;">${populasiGagal.toLocaleString('id-ID')} Pkk</div></div>
+                      <div><div style="font-size:.70rem;color:#6B7280;margin-bottom:2px;">Sisa Belum Regrafting</div><div style="font-size:.82rem;font-weight:700;color:${sisaBelumRegraft > 0 ? '#D32F2F' : '#116834'};line-height:1.3;">${sisaBelumRegraft.toLocaleString('id-ID')} Pkk</div></div>
+                    </div>
                     
                     <!-- 1. DATA DASAR ALOKASI (KIRI: LABEL, KANAN: NILAI) -->
                     <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -354,7 +345,7 @@ export function renderBuddingRegrafting() {
                             <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">
                               <div>
                                 <span style="font-weight: 700; color: #111827; font-size: 0.76rem;">Sesi ${sIdx + 1} - ${rtx.klonEntres || 'PB 260'}</span>
-                                <div style="font-size: 0.70rem; color: #6B7280; margin-top: 2px;">${rtx.tanggal || 'Hari ini'} • ${rtx.docNo || `OKL/REG/0${sIdx+1}`}</div>
+                                <div style="font-size: 0.70rem; color: #6B7280; margin-top: 2px;">${rtx.tanggal || 'Hari ini'} • ${rtx.docNo || `OKL/REG/0${sIdx + 1}`}</div>
                               </div>
                               <span style="font-weight: 800; color: #116834; font-size: 0.80rem; text-align: right;">${rtx.jumlah || 0} Pkk</span>
                             </div>
@@ -367,18 +358,17 @@ export function renderBuddingRegrafting() {
 
                   <!-- FOOTER ACTION ROW -->
                   ${sisaBelumRegraft <= 0 ? `
-                    <div class="card-action-regraft" data-index="${idx}" data-completed="true" data-batch="${batchNo}" data-total="${populasiGagal}" style="display: flex; justify-content: space-between; align-items: center; background: #E8F5E9; border: 1px solid #C8E6C9; border-radius: 6px; padding: 8px 12px; margin-top: 10px; cursor: default;">
-                      <span style="font-size: 0.74rem; color: #116834; font-weight: 700;">✓ Selesai Regrafting (100% Selesai)</span>
+                    <div class="card-action-regraft" data-index="${idx}" data-completed="true" data-batch="${batchNo}" data-total="${populasiGagal}" style="display: flex; justify-content: flex-end; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: default;">
                       <div style="display: flex; align-items: center; gap: 4px; color: #116834; font-weight: 700; font-size: 0.74rem;">
-                        <span>Selesai</span>
+                        <span>Regrafting Selesai</span>
                         <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none">
                           <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
                       </div>
                     </div>
                   ` : `
-                    <div class="card-action-regraft" data-index="${idx}" data-completed="false" data-batch="${batchNo}" data-total="${populasiGagal}" style="display: flex; justify-content: space-between; align-items: center; background: #116834; color: #FFFFFF; border-radius: 6px; padding: 10px 14px; margin-top: 10px; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.22); transition: opacity 0.15s ease;">
-                      <span style="font-size: 0.78rem; color: #FFFFFF; font-weight: 700; letter-spacing: -0.01em;">Ketuk untuk Rekam Okulasi Janda</span>
+                    <div class="card-action-regraft" data-index="${idx}" data-completed="false" data-batch="${batchNo}" data-total="${populasiGagal}" style="width: 100%; min-height: 44px; margin-top: 10px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; box-sizing: border-box; border: 0; border-radius: 7px; background: #116834; color: #fff; font: inherit; font-size: 0.9rem; font-weight: 700; text-align: left; cursor: pointer;">
+                      <span style="font-size: 0.9rem; color: #FFFFFF; font-weight: 700; letter-spacing: -0.01em;">Rekam Okulasi Janda</span>
                       <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="9 18 15 12 9 6"></polyline>
                       </svg>
@@ -387,13 +377,13 @@ export function renderBuddingRegrafting() {
 
                 </div>
               `;
-            }).join('')}
+  }).join('')}
           </div>
         ` : renderEmptyStateCard({
-          title: 'Belum Ada Bibit Siap Regrafting',
-          description: 'Saat hasil Pemeriksaan Okulasi memiliki bibit tidak berhasil dan opsi "Perlu Okulasi Janda" dicentang, data otomatis akan masuk ke sini.',
-          customStyle: 'margin-top: 24px;'
-        })}
+    title: 'Belum Ada Bibit Siap Regrafting',
+    description: 'Saat hasil Pemeriksaan Okulasi memiliki bibit tidak berhasil dan opsi "Perlu Okulasi Janda" dicentang, data otomatis akan masuk ke sini.',
+    customStyle: 'margin-top: 24px;'
+  })}
 
         <!-- SECTION: OKULASI JANDA PERLU PERBAIKAN (RETURNED FROM ASISTEN) -->
         ${returnedRegraftTxs.length > 0 ? `
@@ -412,14 +402,14 @@ export function renderBuddingRegrafting() {
 
             <div style="display: flex; flex-direction: column; gap: 10px;">
               ${returnedRegraftTxs.map((rtx, idx) => {
-                const originalIndex = allBuddingTxs.indexOf(rtx);
-                const docNo = rtx.docNo ? rtx.docNo.replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/').replace('/OKJ/', '/RGRF/') : formatStandardDocNo(2026, 'RGRF', idx + 1);
-                const returnNote = rtx.returnReason || rtx.lastReturnReason || 'Perlu perbaikan data.';
-                const jmlDiokulasi = parseInt(rtx.jumlah || 0);
-                const jmlKayu = parseInt(rtx.jumlahKayu || 0);
-                const bedenganStr = rtx.bedengan ? formatBedenganCode(rtx.bedengan, rtx.bedenganCode) : 'BED-001';
+    const originalIndex = allBuddingTxs.indexOf(rtx);
+    const docNo = rtx.docNo ? rtx.docNo.replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/').replace('/OKJ/', '/RGRF/') : formatStandardDocNo(2026, 'RGRF', idx + 1);
+    const returnNote = rtx.returnReason || rtx.lastReturnReason || 'Perlu perbaikan data.';
+    const jmlDiokulasi = parseInt(rtx.jumlah || 0);
+    const jmlKayu = parseInt(rtx.jumlahKayu || 0);
+    const bedenganStr = rtx.bedengan ? formatBedenganCode(rtx.bedengan, rtx.bedenganCode) : 'BED-001';
 
-                return `
+    return `
                   <div class="card-summary-wrapper card-returned-regraft-wrapper" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;">
                     
                     <!-- BARIS 1: IDENTITAS DOKUMEN & BADGE DIKEMBALIKAN -->
@@ -496,7 +486,7 @@ export function renderBuddingRegrafting() {
 
                   </div>
                 `;
-              }).join('')}
+  }).join('')}
             </div>
           </div>
         ` : ''}
@@ -511,26 +501,26 @@ export function renderBuddingRegrafting() {
           </div>
           <div style="display: flex; flex-direction: column; gap: 8px;">
             ${regraftTxs.map((rtx, rIdx) => {
-              const originalIndex = allBuddingTxs.indexOf(rtx);
-              const workersList = rtx.workers || [];
-              const docNo = rtx.docNo ? rtx.docNo.replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/').replace('/OKJ/', '/RGRF/') : formatStandardDocNo(2026, 'RGRF', rIdx + 1);
-              const jmlDiokulasi = parseInt(rtx.jumlah || 0);
-              const jmlKayu = parseInt(rtx.jumlahKayu || 0);
-              const jmlMataEntres = (rtx.jumlahMataEntres !== undefined && rtx.jumlahMataEntres !== null && rtx.jumlahMataEntres !== '') 
-                ? parseInt(rtx.jumlahMataEntres).toLocaleString('id-ID') 
-                : (jmlDiokulasi > 0 ? jmlDiokulasi.toLocaleString('id-ID') : '-');
+    const originalIndex = allBuddingTxs.indexOf(rtx);
+    const workersList = rtx.workers || [];
+    const docNo = rtx.docNo ? rtx.docNo.replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/').replace('/OKJ/', '/RGRF/') : formatStandardDocNo(2026, 'RGRF', rIdx + 1);
+    const jmlDiokulasi = parseInt(rtx.jumlah || 0);
+    const jmlKayu = parseInt(rtx.jumlahKayu || 0);
+    const jmlMataEntres = (rtx.jumlahMataEntres !== undefined && rtx.jumlahMataEntres !== null && rtx.jumlahMataEntres !== '')
+      ? parseInt(rtx.jumlahMataEntres).toLocaleString('id-ID')
+      : (jmlDiokulasi > 0 ? jmlDiokulasi.toLocaleString('id-ID') : '-');
 
-              const batchNo = rtx.batchNo || '-';
-              const klonEntres = rtx.klonEntres || rtx.klon || '-';
-              const bedengan = rtx.bedengan || '-';
-              const tanggal = rtx.tanggal || '-';
-              const klonRootstock = rtx.klonRootstock || '-';
-              const regraftPoolDocNo = (rtx.regraftPoolDocNo || '-').replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/').replace('/OKJ/', '/RGRF/');
-              const inspectionDocNo = (rtx.inspectionDocNo || '-').replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
-              const alasan = rtx.alasan || '-';
-              const jumlahDitolak = parseInt(rtx.jumlahDitolak || 0);
+    const batchNo = rtx.batchNo || '-';
+    const klonEntres = rtx.klonEntres || rtx.klon || '-';
+    const bedengan = rtx.bedengan || '-';
+    const tanggal = rtx.tanggal || '-';
+    const klonRootstock = rtx.klonRootstock || '-';
+    const regraftPoolDocNo = (rtx.regraftPoolDocNo || '-').replace('/OKL/', '/RGRF/').replace('/REG/', '/RGRF/').replace('/OKJ/', '/RGRF/');
+    const inspectionDocNo = (rtx.inspectionDocNo || '-').replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
+    const alasan = rtx.alasan || '-';
+    const jumlahDitolak = parseInt(rtx.jumlahDitolak || 0);
 
-              return `
+    return `
                 <div class="card-regraft-summary-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 16px; font-size: 0.78rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative; margin-bottom: 8px;">
                   
                   <!-- BAGIAN A: IDENTITAS DOKUMEN -->
@@ -555,9 +545,9 @@ export function renderBuddingRegrafting() {
 
                     <!-- TOMBOL AKSI 3-DOTS / STATUS BADGE -->
                     ${(() => {
-                      const isRegraftLocked = isTransactionLockedForMantri(rtx);
-                      if (!isRegraftLocked) {
-                        return `
+        const isRegraftLocked = isTransactionLockedForMantri(rtx);
+        if (!isRegraftLocked) {
+          return `
                           <div style="position: relative; flex-shrink: 0; margin-top: 2px;">
                             <button type="button" class="btn-tx-action-trigger" data-index="${rIdx}" aria-label="Menu Aksi" style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #4B5563; padding: 0;">
                               <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -580,14 +570,14 @@ export function renderBuddingRegrafting() {
                             </div>
                           </div>
                         `;
-                      } else {
-                        return `
+        } else {
+          return `
                           <span style="font-size: 0.65rem; font-weight: 700; color: #64748B; background: #F1F5F9; border: 1px solid #CBD5E1; padding: 2px 7px; border-radius: 4px; margin-top: 2px;">
                             ${rtx.status === 'DISETUJUI' || rtx.verificationStatus === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu Verifikasi'}
                           </span>
                         `;
-                      }
-                    })()}
+        }
+      })()}
                   </div>
 
                   <!-- BAGIAN B: TOMBOL LIHAT DETAIL -->
@@ -664,7 +654,7 @@ export function renderBuddingRegrafting() {
 
                 </div>
               `;
-            }).join('')}
+  }).join('')}
           </div>
         ` : ''}
 
@@ -724,7 +714,7 @@ export function renderBuddingRegrafting() {
         e.stopPropagation();
         const isOpen = content.style.display === 'block';
         content.style.display = isOpen ? 'none' : 'block';
-        if (textSpan) textSpan.textContent = isOpen ? 'Tampilkan Detail Akumulasi' : 'Sembunyikan Detail';
+        if (textSpan) textSpan.textContent = isOpen ? 'Tampilkan Detail' : 'Sembunyikan Detail';
         if (icon) icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
       });
     }
@@ -801,7 +791,7 @@ export function renderBuddingRegrafting() {
       e.stopPropagation();
       const wrapper = e.currentTarget.closest('.card-regraft-summary-wrapper');
       const menu = wrapper?.querySelector('.tx-action-menu');
-      
+
       // Close other open menus
       app.querySelectorAll('.tx-action-menu').forEach(m => {
         if (m !== menu) m.style.display = 'none';

@@ -550,7 +550,7 @@ export function allocateCullDocNo(subCode, targetYear = 2026, existingRecords = 
  * Menangani recovery saat browser terhenti setelah transaksi tersimpan tetapi sebelum pool terupdate
  */
 export function reconcileSelectionPoolWithTransactions() {
-  const allTxs = storage.get(SELECTION_STORAGE_KEY, []);
+  let allTxs = storage.get(SELECTION_STORAGE_KEY, []);
   let pool = storage.get('selection_pool', []);
   let poolChanged = false;
 
@@ -568,6 +568,148 @@ export function reconcileSelectionPoolWithTransactions() {
       (tx.transactionType && String(tx.transactionType).startsWith('PELAKSANAAN_SELEKSI'))
     );
   };
+
+  const isPreGraftingExecution = (tx) => Boolean(tx && (
+    tx.selectionType === SELECTION_TYPES.PRA_OKULASI ||
+    (tx.transactionType && String(tx.transactionType).startsWith('PELAKSANAAN_SELEKSI')) ||
+    ['SELEKSI_I', 'SELEKSI_1', 'SELEKSI_II', 'SELEKSI_2', 'SELEKSI_III', 'SELEKSI_3'].includes(String(tx.selectionStage || tx.stage || '').toUpperCase())
+  ));
+  const isPreGraftingCullDeclaration = (tx) => Boolean(tx &&
+    isCullDocNo(tx.docNo || tx.selectionNo || tx.selectionPoolDocNo) && (
+      tx.sourceModule === 'SELEKSI_PRA_OKULASI' ||
+      tx.originType === 'REJECT_PRE_GRAFTING' ||
+      String(tx.sourceTransactionType || '').toUpperCase().startsWith('PELAKSANAAN_SELEKSI') ||
+      tx.selectionType === SELECTION_TYPES.PRA_OKULASI
+    ));
+
+  // CULL Pra-Okulasi adalah turunan dari sesi pemeriksaan. Jika sesi sumber
+  // pernah terhapus oleh versi lama, tarik CULL yang belum final dari antrean.
+  const cancelledPreGraftingCullIds = new Set();
+  const cancelledPreGraftingCullRefs = [];
+  let transactionsChanged = false;
+  allTxs.forEach(tx => {
+    if (!isPreGraftingCullDeclaration(tx)) return;
+    const sourceId = String(tx.sourceTransactionId || '').trim();
+    const sourceDocNo = String(tx.sourceDocNo || '').trim();
+    const sourceExists = allTxs.some(source => source !== tx && isPreGraftingExecution(source) && (
+      (sourceId && (String(source.id || '') === sourceId || String(source.docNo || source.selectionNo || '') === sourceId)) ||
+      (sourceDocNo && String(source.docNo || source.selectionNo || '').trim() === sourceDocNo)
+    ));
+    if (sourceExists) return;
+
+    const verificationStatus = String(tx.verificationStatus || '').toUpperCase();
+    const status = String(tx.status || '').toUpperCase();
+    const isFinal = tx.isFinal === true ||
+      tx.stockMutationStatus === 'COMPLETED' ||
+      ['TERVERIFIKASI', 'DATA_TERKONFIRMASI', 'DISETUJUI', 'APPROVED', 'VERIFIED'].includes(verificationStatus) ||
+      ['DISETUJUI', 'APPROVED', 'VERIFIED'].includes(status);
+    if (isFinal) return;
+
+    tx.status = 'DIBATALKAN';
+    tx.verificationStatus = 'DIBATALKAN';
+    tx.submissionStatus = 'DIBATALKAN';
+    tx.withdrawalReason = 'Sesi pemeriksaan Pra-Okulasi sumber sudah tidak tersedia.';
+    tx.withdrawnAt = new Date().toISOString();
+    tx.updatedAt = tx.withdrawnAt;
+    cancelledPreGraftingCullIds.add(String(tx.id || tx.selectionId || ''));
+    cancelledPreGraftingCullRefs.push({
+      id: String(tx.id || tx.selectionId || ''),
+      docNo: String(tx.docNo || tx.selectionNo || tx.selectionPoolDocNo || ''),
+      sourceId,
+      sourceDocNo
+    });
+    transactionsChanged = true;
+  });
+  if (transactionsChanged) {
+    storage.set(SELECTION_STORAGE_KEY, allTxs);
+    const verifications = storage.get('verification_transactions', []);
+    let verificationsChanged = false;
+    verifications.forEach(record => {
+      const matchesCull = cancelledPreGraftingCullRefs.some(ref =>
+        (ref.id && String(record.referenceId || '') === ref.id) ||
+        (ref.docNo && String(record.referenceDocNo || '') === ref.docNo)
+      );
+      if (!matchesCull) return;
+      const status = String(record.verificationStatus || '').toUpperCase();
+      if (['TERVERIFIKASI', 'DATA_TERKONFIRMASI', 'DISETUJUI', 'APPROVED', 'VERIFIED'].includes(status)) return;
+      record.verificationStatus = 'DIBATALKAN';
+      record.withdrawalReason = 'Sesi pemeriksaan Pra-Okulasi sumber sudah tidak tersedia.';
+      record.withdrawnAt = new Date().toISOString();
+      record.updatedAt = record.withdrawnAt;
+      verificationsChanged = true;
+    });
+    if (verificationsChanged) storage.set('verification_transactions', verifications);
+  }
+  const isPreGraftingPoolCandidate = (item) => Boolean(item && (
+    item.id?.startsWith?.('SEL-POOL-PRE-') ||
+    item.sourceModule === 'SELEKSI_PRA_OKULASI' ||
+    item.originType === 'REJECT_PRE_GRAFTING' ||
+    item.selectionType === SELECTION_TYPES.PRA_OKULASI ||
+    ['PRA_OKULASI', 'SELEKSI_PRA_OKULASI'].includes(String(item.selectionType || '').toUpperCase()) ||
+    ['SELEKSI_1', 'SELEKSI_I', 'SELEKSI_2', 'SELEKSI_II', 'SELEKSI_3', 'SELEKSI_III'].includes(String(item.selectionStage || item.stage || '').toUpperCase()) ||
+    Boolean(item.parentSelectionDocumentId || item.parentSelectionDocNo)
+  ));
+  const isPendingPoolCandidate = (item) => {
+    const status = String(item?.status || 'PENDING_DECLARATION').toUpperCase();
+    return ['PENDING_DECLARATION', 'PENDING', 'DRAFT'].includes(status) &&
+      !isCullDocNo(item?.docNo || item?.selectionDocNo || item?.selectionPoolDocNo);
+  };
+  const sourceExecutionIdForCandidate = (item) => {
+    if (item?.sourceTransactionId) return String(item.sourceTransactionId);
+    const itemId = String(item?.id || '');
+    return itemId.startsWith('SEL-POOL-PRE-') ? itemId.slice('SEL-POOL-PRE-'.length) : '';
+  };
+
+  // Buang kandidat pending Pra-Okulasi yang sumbernya sudah dihapus. Kandidat
+  // dengan relasi deklarasi Cull atau status selain pending tetap dipertahankan.
+  pool = pool.filter(item => {
+    if (!isPreGraftingPoolCandidate(item) || !isPendingPoolCandidate(item)) return true;
+    const sourceId = sourceExecutionIdForCandidate(item);
+    const candidateSourceDocNo = String(item.sourceDocNo || '').trim();
+    const sourceExecutionById = sourceId
+      ? allTxs.find(tx => String(tx.id || '') === sourceId && isPreGraftingExecution(tx))
+      : null;
+    const sourceExecutionByDocNo = candidateSourceDocNo
+      ? allTxs.find(tx =>
+          isPreGraftingExecution(tx) &&
+          String(tx.docNo || tx.selectionNo || '').trim() === candidateSourceDocNo
+        )
+      : null;
+    const sourceExecution = sourceExecutionByDocNo || sourceExecutionById;
+    // A recreated execution can leave an old pool candidate whose source ID was
+    // reused while its source document number still points to the deleted session.
+    // Use source document number as a fallback for legacy candidates without IDs.
+    const sourceExists = Boolean(sourceExecution && (
+      !candidateSourceDocNo ||
+      String(sourceExecution.docNo || sourceExecution.selectionNo || '').trim() === candidateSourceDocNo
+    ));
+    if (sourceExists) return true;
+    // If neither stable source reference exists, retain the row for manual review.
+    if (!sourceId && !candidateSourceDocNo) return true;
+    const cullExists = allTxs.some(tx => {
+      if (!isCullDocNo(tx.docNo || tx.selectionNo || tx.selectionPoolDocNo)) return false;
+      return (sourceId && String(tx.sourceTransactionId || '') === sourceId) ||
+        (candidateSourceDocNo && String(tx.sourceTransactionId || '') === candidateSourceDocNo) ||
+        String(tx.id || tx.selectionId || '') === String(item.selectionTransactionId || '');
+    });
+    if (cullExists) return true;
+    poolChanged = true;
+    return false;
+  });
+
+  if (cancelledPreGraftingCullRefs.length) {
+    const beforeCullCleanup = pool.length;
+    pool = pool.filter(item => {
+      if (!isPreGraftingPoolCandidate(item)) return true;
+      return !cancelledPreGraftingCullRefs.some(ref =>
+        (ref.id && String(item.selectionTransactionId || '') === ref.id) ||
+        (ref.docNo && String(item.docNo || item.selectionDocNo || item.selectionPoolDocNo || '') === ref.docNo) ||
+        (ref.sourceId && String(item.sourceTransactionId || '') === ref.sourceId) ||
+        (ref.sourceDocNo && String(item.sourceDocNo || '').trim() === ref.sourceDocNo)
+      );
+    });
+    if (pool.length !== beforeCullCleanup) poolChanged = true;
+  }
 
   pool = pool.map(p => {
     if (!p) return p;
@@ -649,11 +791,7 @@ export function reconcileSelectionPoolWithTransactions() {
   // The sync helper is idempotent and preserves already-declared candidates.
   for (const tx of allTxs) {
     if (!isExecutionRecord(tx)) continue;
-    const isPreGraftingExecution =
-      tx.selectionType === SELECTION_TYPES.PRA_OKULASI ||
-      (tx.transactionType && String(tx.transactionType).startsWith('PELAKSANAAN_SELEKSI')) ||
-      ['SELEKSI_I', 'SELEKSI_1', 'SELEKSI_II', 'SELEKSI_2', 'SELEKSI_III', 'SELEKSI_3'].includes(String(tx.selectionStage || tx.stage || '').toUpperCase());
-    if (!isPreGraftingExecution) continue;
+    if (!isPreGraftingExecution(tx)) continue;
 
     const afkirQty = parseInt(
       tx.actualBibitSelectedQty !== undefined
@@ -665,7 +803,7 @@ export function reconcileSelectionPoolWithTransactions() {
 
     const hasCandidate = pool.some(item => item && (
       item.id === `SEL-POOL-PRE-${tx.id}` ||
-      (item.sourceTransactionId === tx.id && (item.sourceModule === 'SELEKSI_PRA_OKULASI' || item.originType === 'REJECT_PRE_GRAFTING'))
+      (String(item.sourceTransactionId || '') === String(tx.id || '') && (item.sourceModule === 'SELEKSI_PRA_OKULASI' || item.originType === 'REJECT_PRE_GRAFTING'))
     ));
     if (hasCandidate) continue;
 
@@ -827,6 +965,13 @@ export function hasActionableSelection(currentUser) {
 
   // Untuk Mantri Tanaman / Mantri Bibitan
   if (role === ROLES.MANTRI_TANAMAN || role === 'MANTRI' || role === 'MANTRI_BIBITAN' || isMantriRole(currentUser)) {
+    // Buat kandidat pasca-okulasi dari hasil pemeriksaan sebelum Beranda
+    // menghitung badge. Sebelumnya bridge ini hanya berjalan saat halaman
+    // Penyeleksian dirender, sehingga red dot baru muncul setelah halaman itu dibuka.
+    try {
+      syncInspectionRejectionsToSelectionPool();
+    } catch (_) {}
+
     // Sinkronkan status selection_pool dengan transaksi CULL
     try {
       reconcileSelectionPoolWithTransactions();
@@ -834,6 +979,17 @@ export function hasActionableSelection(currentUser) {
 
     const rawPool = storage.get('selection_pool', []);
     const scopedPool = filterSelectionByScope(rawPool, currentUser);
+
+    // The Mantri dashboard dot should follow the same source of truth as the
+    // declaration cards: an active pool item awaiting declaration is actionable
+    // even when a legacy transaction happens to match its source document.
+    for (const item of scopedPool) {
+      const qty = parseInt(item.jumlahAfkir !== undefined ? item.jumlahAfkir : (item.quantity || 0), 10);
+      const status = String(item.status || 'PENDING_DECLARATION').toUpperCase().trim();
+      if (qty > 0 && ['PENDING_DECLARATION', 'PENDING', 'DRAFT', 'DIKEMBALIKAN', 'REVISION'].includes(status)) {
+        return true;
+      }
+    }
 
     for (const item of scopedPool) {
       const qty = parseInt(item.jumlahAfkir !== undefined ? item.jumlahAfkir : (item.quantity || 0), 10);
@@ -872,6 +1028,99 @@ export function hasActionableSelection(currentUser) {
   }
 
   return false;
+}
+
+/**
+ * Bridge hasil Mati/Gagal pemeriksaan Okulasi ke kandidat deklarasi afkir.
+ * Idempoten agar aman dipanggil dari Beranda maupun halaman Penyeleksian.
+ */
+export function syncInspectionRejectionsToSelectionPool() {
+  let pool = storage.get('selection_pool', []);
+  if (!Array.isArray(pool)) pool = [];
+  const inspections = storage.get('inspection_transactions', []);
+  const buddingTxs = storage.get('budding_transactions', []);
+  if (!Array.isArray(inspections) || inspections.length === 0) return false;
+
+  let changed = false;
+  inspections.forEach(insp => {
+    if (!insp || ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.status || '').toUpperCase())) return;
+    const isRegrafting = String(insp.buddingType || '').toUpperCase() === 'REGRAFTING';
+    const workerFailures = (Array.isArray(insp.workers) ? insp.workers : []).reduce((sum, worker) => {
+      const gagal = Number(worker.jlhTidakBerhasil || 0);
+      return sum + (worker.perluRegrafting === false ? gagal : 0);
+    }, 0);
+    const jumlahAfkir = insp.totalToSelection !== undefined
+      ? Number(insp.totalToSelection || 0)
+      : (isRegrafting
+        ? Number(insp.jumlahGagal || 0)
+        : workerFailures);
+    const inspectionDocNo = String(insp.docNo || '').replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
+    const existingIndex = pool.findIndex(item =>
+      item.originType === 'REJECT_PEMERIKSAAN' &&
+      String(item.inspectionDocNo || '').replace('/PRK/', '/INS/').replace('/INSP/', '/INS/') === inspectionDocNo
+    );
+    const existing = existingIndex >= 0 ? pool[existingIndex] : null;
+    const existingStatus = String(existing?.status || 'PENDING_DECLARATION').toUpperCase();
+    if (existing && !['PENDING_DECLARATION', 'PENDING', 'DRAFT', 'DIKEMBALIKAN', 'REVISION'].includes(existingStatus)) return;
+    const sourceBudding = (Array.isArray(buddingTxs) ? buddingTxs : []).find(tx => tx.docNo === insp.buddingDocNo) || {};
+
+    if (jumlahAfkir <= 0) {
+      if (existing && ['PENDING_DECLARATION', 'PENDING', 'DRAFT'].includes(String(existing.status || '').toUpperCase())) {
+        pool.splice(existingIndex, 1);
+        changed = true;
+      }
+      return;
+    }
+
+    const candidate = {
+      ...(existing || {}),
+      id: existing?.id || `SEL-POOL-INS-${inspectionDocNo}`,
+      docNo: existing?.docNo || null,
+      originType: 'REJECT_PEMERIKSAAN',
+      sourceModule: 'INSPECTION',
+      sourceTransactionType: isRegrafting ? 'REGRAFTING' : 'GRAFTING',
+      selectionType: 'PASCA_OKULASI',
+      selectionStage: 'SELEKSI_PASCA_OKULASI',
+      inspectionDocNo,
+      sourceBuddingDocNo: insp.buddingDocNo || sourceBudding.docNo || null,
+      sourceDocNo: insp.sourceDocNo || sourceBudding.sourceDocNo || insp.buddingDocNo || null,
+      batchNo: insp.batchNo || sourceBudding.batchNo || 'Batch',
+      batchCode: insp.batchCode || sourceBudding.batchCode || sourceBudding.batchNo || insp.batchNo || 'Batch',
+      programCode: insp.programCode || sourceBudding.programCode || sourceBudding.programId || sourceBudding.programName || '',
+      programId: insp.programId || sourceBudding.programId || sourceBudding.programCode || '',
+      tanggal: insp.tanggal || insp.date || getEffectiveTodayDDMMYYYY(),
+      bedengan: insp.bedengan || sourceBudding.bedengan || '',
+      bedenganCode: insp.bedenganCode || sourceBudding.bedenganCode || insp.bedengan || sourceBudding.bedengan || '',
+      klon: insp.klonEntres || sourceBudding.klonEntres || '',
+      klonRootstock: insp.klonRootstock || sourceBudding.klonRootstock || '',
+      jumlahAfkir,
+      alasan: isRegrafting ? 'Mati / Gagal setelah Okulasi Janda (Regrafting)' : 'Mati / Gagal Pemeriksaan Okulasi (tidak dialokasikan ke Okulasi Janda)',
+      status: existing?.status || 'PENDING_DECLARATION',
+      estateId: insp.estateId || sourceBudding.estateId,
+      divisionId: insp.divisionId || sourceBudding.divisionId,
+      actorName: insp.actorName || insp.mantri || insp.createdByName,
+      actorCode: insp.actorCode || insp.createdByLoginCode,
+      userId: insp.userId || insp.createdByUserId,
+      createdBy: insp.createdBy || insp.createdByUserId || insp.userId,
+      createdByName: insp.createdByName || insp.actorName || insp.mantri,
+      createdByUserId: insp.createdByUserId || insp.userId,
+      createdByEstateId: insp.createdByEstateId || insp.estateId || sourceBudding.estateId,
+      createdByDivisionId: insp.createdByDivisionId || insp.divisionId || sourceBudding.divisionId
+    };
+
+    if (existingIndex >= 0) {
+      if (JSON.stringify(pool[existingIndex]) !== JSON.stringify(candidate)) {
+        pool[existingIndex] = candidate;
+        changed = true;
+      }
+    } else {
+      pool.push(candidate);
+      changed = true;
+    }
+  });
+
+  if (changed) storage.set('selection_pool', pool);
+  return changed;
 }
 
 /**
@@ -3487,7 +3736,7 @@ export function canCreateSelection2Document(sourceSelection1IdOrDoc) {
     }
 
     // 5. Kuantitas pemeriksaan seimbang dan valid (afkir nol tetap sah)
-    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    const totalAfkir = executions.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
     if (totalAfkir < 0 || totalAfkir > initialBibit) {
       return {
         canCreate: false,
@@ -3500,7 +3749,7 @@ export function canCreateSelection2Document(sourceSelection1IdOrDoc) {
   // 6. Populasi akhir bibit dan polybag dapat ditentukan secara valid
   let finalBibit = initialBibit;
   if (executions && executions.length > 0) {
-    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    const totalAfkir = executions.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
     finalBibit = initialBibit - totalAfkir;
   } else if (sourceDoc.totalLayak !== undefined) {
     finalBibit = parseInt(sourceDoc.totalLayak, 10);
@@ -3532,16 +3781,6 @@ export function createSelection2DocumentFromSelection1(sourceSelection1IdOrDocNo
   const sourceDoc = gateCheck.sourceDoc;
   const allDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
 
-  // Idempotency: Cek apakah Dokumen Seleksi II untuk source Seleksi I ini sudah ada
-  const existing = allDocs.find(d => 
-    (d.selectionStage === SELECTION_STAGES.SELEKSI_2 || d.selectionStage === 'SELEKSI_II' || d.selectionStage === 'SELEKSI_2') &&
-    (d.sourceSelectionDocumentId === sourceDoc.id || d.sourceSelectionDocNo === sourceDoc.docNo || d.sourceDocNo === sourceDoc.docNo)
-  );
-
-  if (existing) {
-    return { ...existing, isNewlyCreated: false };
-  }
-
   // Generate Dokumen Seleksi II No (Format: 2026/SEL-II/001)
   let maxSeq = 0;
   allDocs.forEach(d => {
@@ -3570,7 +3809,7 @@ export function createSelection2DocumentFromSelection1(sourceSelection1IdOrDocNo
 
   let sourceBibitQty = 0;
   if (executions && executions.length > 0) {
-    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    const totalAfkir = executions.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
     sourceBibitQty = Math.max(0, initialBibit - totalAfkir);
   } else if (sourceDoc.totalLayak !== undefined) {
     sourceBibitQty = parseInt(sourceDoc.totalLayak, 10);
@@ -3614,14 +3853,18 @@ export function createSelection2DocumentFromSelection1(sourceSelection1IdOrDocNo
   // Build rows / bedengan breakdown dari Seleksi I secara proporsional dan akurat
   let rows = [];
   if (Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    const sourceBedScope = getBedenganScopeStatusForSeleksi1(sourceDoc, executions);
     rows = sourceDoc.rows.map(r => {
       const bCode = formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId);
       const bTxs = executions.filter(tx => formatBedenganDisplayCode(tx.bedenganCode || tx.bedengan).toUpperCase() === bCode.toUpperCase());
-      const bInitialBibit = parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit !== undefined ? r.initialBibit : (sourceDoc.rows.length === 1 ? initialBibit : 0))), 10);
+      // Selaraskan prioritas dengan scope Seleksi I: `disemai` adalah populasi
+      // awal bedengan, sedangkan sourceBibitQty pada data lama bisa tersimpan 0.
+      const scopedBed = sourceBedScope.find(b => formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === bCode.toUpperCase());
+      const bInitialBibit = Number(scopedBed?.initialBibit || resolveSelectionRowBibitQty(r, sourceDoc.rows.length === 1 ? initialBibit : 0));
       const bInitialPoly = parseInt(r.polybag !== undefined ? r.polybag : (r.initialPolybag !== undefined ? r.initialPolybag : (r.polybagCount !== undefined ? r.polybagCount : (sourceDoc.rows.length === 1 ? sourcePolybagQty : 0))), 10);
 
       // Hitung afkir sah pada bedengan ini (BUKAN sum snapshot retained!)
-      const bAfkir = bTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+      const bAfkir = bTxs.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
       let allocatedBibit = bTxs.length > 0 ? Math.max(0, bInitialBibit - bAfkir) : bInitialBibit;
       if (allocatedBibit === 0 && sourceDoc.rows.length === 1 && sourceBibitQty > 0) {
         allocatedBibit = sourceBibitQty;
@@ -3663,6 +3906,85 @@ export function createSelection2DocumentFromSelection1(sourceSelection1IdOrDocNo
       disemai: sourceBibitQty,
       sourceBibitQty: sourceBibitQty
     }];
+  }
+
+  // Sinkronkan dokumen downstream yang sudah ada dengan saldo final Seleksi I.
+  // Dokumen yang masih draft tanpa pemeriksaan aman diperbarui; dokumen yang sudah
+  // memiliki pemeriksaan tidak ditimpa dan diberi tanda agar direkonsiliasi manual.
+  const existingIdx = allDocs.findIndex(d =>
+    (d.selectionStage === SELECTION_STAGES.SELEKSI_2 || d.selectionStage === 'SELEKSI_II' || d.selectionStage === 'SELEKSI_2') &&
+    (d.sourceSelectionDocumentId === sourceDoc.id || d.sourceSelectionDocNo === sourceDoc.docNo || d.sourceDocNo === sourceDoc.docNo)
+  );
+  if (existingIdx !== -1) {
+    const existing = allDocs[existingIdx];
+    const existingExecutions = getSeleksi2ExecutionsByDocument(existing.id || existing.docNo);
+    const normalizeRows = value => (Array.isArray(value) ? value : []).map(row => ({
+      bedenganCode: formatBedenganDisplayCode(row.bedenganCode || row.bedengan || row.bedenganId).toUpperCase(),
+      polybag: parseInt(row.polybag !== undefined ? row.polybag : (row.initialPolybag || 0), 10) || 0,
+      bibit: parseInt(row.sourceBibitQty !== undefined ? row.sourceBibitQty : (row.disemai || 0), 10) || 0
+    })).sort((a, b) => a.bedenganCode.localeCompare(b.bedenganCode));
+    const sourceChanged =
+      parseInt(existing.sourceBibitQty || 0, 10) !== sourceBibitQty ||
+      parseInt(existing.sourcePolybagQty || 0, 10) !== sourcePolybagQty ||
+      JSON.stringify(normalizeRows(existing.rows)) !== JSON.stringify(normalizeRows(rows));
+
+    const existingStatus = String(existing.status || '').toUpperCase();
+    const existingVerificationStatus = String(existing.verificationStatus || '').toUpperCase();
+    const existingIsFinal = existing.isFinal || existingStatus === 'DISETUJUI' || existingStatus === 'TERVERIFIKASI' ||
+      existingVerificationStatus === 'DISETUJUI' || existingVerificationStatus === 'TERVERIFIKASI';
+
+    if (sourceChanged && existingExecutions.length === 0 && !existing.isCompleted && !existingIsFinal) {
+      const synced = {
+        ...existing,
+        rows,
+        sourceBibitQty,
+        sourcePolybagQty,
+        currentBibitQty: sourceBibitQty,
+        currentPolybagQty: sourcePolybagQty,
+        sourceFinalStatus: SELECTION_STATUS.DISETUJUI,
+        sourceFinalId: sourceDoc.id,
+        sourcePopulationSyncedAt: new Date().toISOString(),
+        sourceChangePending: false,
+        sourceChangeDetails: null,
+        updatedAt: new Date().toISOString()
+      };
+      allDocs[existingIdx] = synced;
+      storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+      return { ...synced, isNewlyCreated: false, sourceReconciled: true };
+    }
+
+    if (sourceChanged) {
+      const flagged = {
+        ...existing,
+        sourceChangePending: true,
+        sourceChangeDetails: {
+          previousBibitQty: parseInt(existing.sourceBibitQty || 0, 10),
+          currentBibitQty: sourceBibitQty,
+          previousPolybagQty: parseInt(existing.sourcePolybagQty || 0, 10),
+          currentPolybagQty: sourcePolybagQty,
+          detectedAt: new Date().toISOString(),
+          sourceSelectionDocNo: sourceDoc.docNo
+        },
+        updatedAt: new Date().toISOString()
+      };
+      allDocs[existingIdx] = flagged;
+      storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+      return { ...flagged, isNewlyCreated: false, sourceReconciled: false };
+    }
+
+    if (existing.sourceChangePending && existingExecutions.length === 0 && !existing.isCompleted && !existingIsFinal) {
+      const reconciled = {
+        ...existing,
+        sourceChangePending: false,
+        sourceChangeDetails: null,
+        updatedAt: new Date().toISOString()
+      };
+      allDocs[existingIdx] = reconciled;
+      storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+      return { ...reconciled, isNewlyCreated: false, sourceReconciled: true };
+    }
+
+    return { ...existing, isNewlyCreated: false, sourceReconciled: !sourceChanged };
   }
 
   const baseDoc = {
@@ -3771,6 +4093,10 @@ export function canCreateSelection3Document(sourceSelection2IdOrDoc) {
     return { canCreate: false, reason: 'Dokumen Seleksi II tidak ditemukan.', sourceDoc: null };
   }
 
+  if (sourceDoc.sourceChangePending) {
+    return { canCreate: false, reason: `Dokumen Seleksi II (${sourceDoc.docNo}) perlu direkonsiliasi karena saldo sumber Seleksi I berubah.`, sourceDoc };
+  }
+
   const stage = String(sourceDoc.selectionStage || '').toUpperCase();
   if (stage !== 'SELEKSI_II' && stage !== 'SELEKSI_2') {
     return { canCreate: false, reason: 'Source dokumen bukan merupakan Dokumen Seleksi II.', sourceDoc };
@@ -3865,7 +4191,7 @@ export function canCreateSelection3Document(sourceSelection2IdOrDoc) {
     }
 
     // 5. Kuantitas pemeriksaan seimbang dan valid (afkir nol tetap sah)
-    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    const totalAfkir = executions.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
     if (totalAfkir < 0 || totalAfkir > initialBibit) {
       return {
         canCreate: false,
@@ -3878,7 +4204,7 @@ export function canCreateSelection3Document(sourceSelection2IdOrDoc) {
   // 6. Populasi akhir bibit dan polybag dapat ditentukan secara valid
   let finalBibit = initialBibit;
   if (executions && executions.length > 0) {
-    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    const totalAfkir = executions.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
     finalBibit = initialBibit - totalAfkir;
   } else if (sourceDoc.totalLayak !== undefined) {
     finalBibit = parseInt(sourceDoc.totalLayak, 10);
@@ -3910,15 +4236,14 @@ export function createSelection3DocumentFromSelection2(sourceSelection2IdOrDocNo
   const sourceDoc = gateCheck.sourceDoc;
   const allDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
 
-  // Idempotency: Cek apakah Dokumen Seleksi III untuk source Seleksi II ini sudah ada
-  const existing = allDocs.find(d => 
+  // Cari dokumen turunan yang sudah pernah dibuat. Snapshot draft tanpa
+  // transaksi pemeriksaan akan direkonsiliasi di bawah dari sumber Seleksi II
+  // terbaru; dokumen yang sudah berjalan/final tetap dilindungi.
+  const existingIdx = allDocs.findIndex(d =>
     (d.selectionStage === SELECTION_STAGES.SELEKSI_3 || d.selectionStage === 'SELEKSI_III' || d.selectionStage === 'SELEKSI_3') &&
     (d.sourceSelectionDocumentId === sourceDoc.id || d.sourceSelectionDocNo === sourceDoc.docNo || d.sourceDocNo === sourceDoc.docNo)
   );
-
-  if (existing) {
-    return { ...existing, isNewlyCreated: false };
-  }
+  const existing = existingIdx >= 0 ? allDocs[existingIdx] : null;
 
   // Generate Dokumen Seleksi III No (Format: 2026/SEL-III/001)
   let maxSeq = 0;
@@ -3948,7 +4273,7 @@ export function createSelection3DocumentFromSelection2(sourceSelection2IdOrDocNo
 
   let sourceBibitQty = 0;
   if (executions && executions.length > 0) {
-    const totalAfkir = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+    const totalAfkir = executions.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
     sourceBibitQty = Math.max(0, initialBibit - totalAfkir);
   } else if (sourceDoc.totalLayak !== undefined) {
     sourceBibitQty = parseInt(sourceDoc.totalLayak, 10);
@@ -3991,15 +4316,30 @@ export function createSelection3DocumentFromSelection2(sourceSelection2IdOrDocNo
 
   // Build rows / bedengan breakdown dari Seleksi II secara proporsional dan akurat
   let rows = [];
-  if (Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+  const finalBedScope = getBedenganScopeStatusForSeleksi2(sourceDoc, executions);
+  if (finalBedScope.length > 0) {
+    rows = finalBedScope.map(bed => {
+      const bedBibit = Math.max(0, Number(bed.maintainedBibit || 0));
+      const bedPolybag = Math.max(0, Number(bed.inspectedPolybag || bed.initialPolybag || 0));
+      return {
+        bedenganId: bed.bedenganId || bed.bedenganCode,
+        bedenganCode: formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId),
+        polybag: bedPolybag,
+        disemai: bedBibit,
+        sourceBibitQty: bedBibit
+      };
+    });
+  } else if (Array.isArray(sourceDoc.rows) && sourceDoc.rows.length > 0) {
+    const sourceBedScope = getBedenganScopeStatusForSeleksi2(sourceDoc, executions);
     rows = sourceDoc.rows.map(r => {
       const bCode = formatBedenganDisplayCode(r.bedenganCode || r.bedengan || r.bedenganId);
       const bTxs = executions.filter(tx => formatBedenganDisplayCode(tx.bedenganCode || tx.bedengan).toUpperCase() === bCode.toUpperCase());
-      const bInitialBibit = parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit !== undefined ? r.initialBibit : (sourceDoc.rows.length === 1 ? initialBibit : 0))), 10);
+      const scopedBed = sourceBedScope.find(b => formatBedenganDisplayCode(b.bedenganCode || b.bedenganId).toUpperCase() === bCode.toUpperCase());
+      const bInitialBibit = Number(scopedBed?.initialBibit || resolveSelectionRowBibitQty(r, sourceDoc.rows.length === 1 ? initialBibit : 0));
       const bInitialPoly = parseInt(r.polybag !== undefined ? r.polybag : (r.initialPolybag !== undefined ? r.initialPolybag : (r.polybagCount !== undefined ? r.polybagCount : (sourceDoc.rows.length === 1 ? sourcePolybagQty : 0))), 10);
 
       // Hitung afkir sah pada bedengan ini (BUKAN sum snapshot retained!)
-      const bAfkir = bTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahAfkir || 0), 10), 0);
+      const bAfkir = bTxs.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
       let allocatedBibit = bTxs.length > 0 ? Math.max(0, bInitialBibit - bAfkir) : bInitialBibit;
       if (allocatedBibit === 0 && sourceDoc.rows.length === 1 && sourceBibitQty > 0) {
         allocatedBibit = sourceBibitQty;
@@ -4127,6 +4467,36 @@ export function createSelection3DocumentFromSelection2(sourceSelection2IdOrDocNo
     createdAt: new Date().toISOString()
   };
 
+  if (existing) {
+    const existingExecutions = getSeleksi3ExecutionsByDocument(existing.id || existing.docNo);
+    const existingStatus = String(existing.status || '').toUpperCase();
+    const hasPendingVerification = ['MENUNGGU_VERIFIKASI', 'DIAJUKAN', 'PENDING_ASB', 'READY_TO_CONFIRM'].includes(existingStatus) ||
+      ['MENUNGGU_VERIFIKASI', 'PENDING', 'PENDING_ASB', 'READY_TO_CONFIRM'].includes(String(existing.verificationStatus || '').toUpperCase());
+    const canRefreshDraftSnapshot = existingExecutions.length === 0 &&
+      !existing.isFinal && !existing.verifiedAt && !hasPendingVerification &&
+      ['DRAFT', 'IN_PROGRESS'].includes(existingStatus);
+
+    if (!canRefreshDraftSnapshot) {
+      return { ...existing, isNewlyCreated: false };
+    }
+
+    const refreshedDoc = {
+      ...existing,
+      ...baseDoc,
+      id: existing.id,
+      docNo: existing.docNo,
+      selectionDocNo: existing.selectionDocNo || existing.docNo,
+      createdAt: existing.createdAt || baseDoc.createdAt,
+      status: existing.status || 'DRAFT',
+      updatedAt: new Date().toISOString()
+    };
+    allDocs[existingIdx] = currentUser
+      ? applyTransactionActor(refreshedDoc, AUDIT_EVENT_TYPES.UPDATE, currentUser, `Sinkronisasi saldo dan bedengan Seleksi III dari hasil final Seleksi II ${sourceDoc.docNo}`)
+      : refreshedDoc;
+    storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+    return { ...allDocs[existingIdx], isNewlyCreated: false, sourceRefreshed: true };
+  }
+
   const newDoc = currentUser
     ? applyTransactionActor(baseDoc, AUDIT_EVENT_TYPES.CREATE, currentUser, `Pembuatan Dokumen Seleksi III ${docNo} dari hasil final Seleksi II ${sourceDoc.docNo}`)
     : baseDoc;
@@ -4207,7 +4577,7 @@ export function getSeleksi3Metrics(doc, customExecutions = null) {
   const sourceBibit = parseInt(doc.sourceBibitQty !== undefined ? doc.sourceBibitQty : totalPopulasi, 10);
 
   const totalPolybagDiperiksa = executions.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope !== undefined ? tx.polybagScope : (tx.actualPolybagActiveQty !== undefined ? tx.actualPolybagActiveQty : (tx.initialPolybagCount || 0))), 10), 0);
-  const totalBibitDiseleksi = executions.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 0);
+  const totalBibitDiseleksi = executions.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
   const totalBibitDiperiksa = totalBibitDiseleksi;
   const totalBibitReject = totalBibitDiseleksi;
   const totalBibitLayak = Math.max(0, sourceBibit - totalBibitDiseleksi);
@@ -4270,6 +4640,9 @@ export function validatePreGraftingSelectionCompletion(idOrDocNo) {
   const errors = [];
   if (!doc) {
     return { isValid: false, errors: ['Dokumen Seleksi Pra-Okulasi tidak ditemukan.'], doc: null, childTransactions: [] };
+  }
+  if (doc.sourceChangePending) {
+    return { isValid: false, errors: [`Dokumen ${doc.docNo} belum dapat diselesaikan karena saldo sumber Seleksi I berubah dan perlu direkonsiliasi.`], doc, childTransactions: [] };
   }
 
   const isStage3 = (
@@ -4532,6 +4905,9 @@ export function approvePreGraftingSelectionDocument(idOrDocNo, notes = '', curre
   const target = allDocs[idx];
   if (!canPerformAsistenSelectionAction(target, currentUser)) {
     throw new Error('Anda tidak memiliki otorisasi untuk menyetujui dokumen ini.');
+  }
+  if (target.sourceChangePending) {
+    throw new Error(`Dokumen ${target.docNo} belum dapat disetujui karena saldo sumber Seleksi I berubah dan perlu direkonsiliasi.`);
   }
 
   const isStage3 = (
@@ -4824,6 +5200,161 @@ export function returnPreGraftingSelectionDocument(idOrDocNo, returnReason, curr
 }
 
 /**
+ * Return only one physical Seleksi I/II/III execution for correction.
+ * The rejected row is kept on the parent audit trail and removed from the
+ * active execution set so only its inspected scope becomes available again.
+ */
+export function returnPreGraftingSelectionExecution(parentIdOrDocNo, executionIdOrDocNo, returnReason, currentUser) {
+  if (!currentUser) throw new Error('Pengguna aktif tidak valid.');
+  if (normalizeRole(currentUser.role || currentUser.rawRole) !== ROLES.ASISTEN_BIBITAN) {
+    throw new Error('Hanya Asisten Bibitan yang berhak mengembalikan sesi pemeriksaan.');
+  }
+  if (!returnReason || !returnReason.trim()) throw new Error('Alasan pengembalian wajib diisi.');
+
+  const docs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
+  const docIdx = docs.findIndex(doc => doc && (
+    doc.id === String(parentIdOrDocNo) || doc.docNo === String(parentIdOrDocNo)
+  ));
+  if (docIdx < 0) throw new Error(`Dokumen Seleksi Pra-Okulasi ${parentIdOrDocNo} tidak ditemukan.`);
+
+  const parent = docs[docIdx];
+  if (!canPerformAsistenSelectionAction(parent, currentUser)) {
+    throw new Error('Dokumen ini tidak sedang menunggu tindakan Asisten Bibitan.');
+  }
+
+  const stage = String(parent.selectionStage || parent.stage || '').toUpperCase();
+  const isStage3 = stage === 'SELEKSI_III' || stage === 'SELEKSI_3';
+  const isStage2 = stage === 'SELEKSI_II' || stage === 'SELEKSI_2';
+  const stageLabel = isStage3 ? 'Seleksi III' : (isStage2 ? 'Seleksi II' : 'Seleksi I');
+  const getExecutions = isStage3 ? getSeleksi3ExecutionsByDocument : (isStage2 ? getSeleksi2ExecutionsByDocument : getSeleksi1ExecutionsByDocument);
+  const activeExecutions = getExecutions(parent.id || parent.docNo);
+  const execution = activeExecutions.find(tx => tx.id === String(executionIdOrDocNo) || tx.docNo === String(executionIdOrDocNo));
+  if (!execution) throw new Error(`Sesi pemeriksaan ${executionIdOrDocNo} tidak ditemukan pada dokumen ${parent.docNo}.`);
+  if (execution.isFinal || String(execution.status || '').toUpperCase() === 'DISETUJUI' || String(execution.verificationStatus || '').toUpperCase() === 'TERVERIFIKASI') {
+    throw new Error('Sesi yang sudah disetujui final tidak dapat dikembalikan.');
+  }
+
+  const reason = returnReason.trim();
+  const nowIso = new Date().toISOString();
+  const { photoData, photoEvidence, photos, ...executionAuditFields } = execution;
+  const auditEntry = {
+    ...executionAuditFields,
+    status: SELECTION_STATUS.DIKEMBALIKAN,
+    verificationStatus: 'DIKEMBALIKAN',
+    returnReason: reason,
+    returnedByUserId: currentUser.userId || currentUser.code || currentUser.id,
+    returnedByName: currentUser.name || 'Asisten Bibitan',
+    returnedAt: nowIso,
+    correctionStatus: 'OPEN'
+  };
+
+  const allTxs = storage.get(SELECTION_STORAGE_KEY, []);
+  const txIdx = allTxs.findIndex(tx => tx.id === execution.id);
+  if (txIdx < 0) throw new Error(`Sesi pemeriksaan ${execution.docNo || execution.id} tidak ditemukan.`);
+  allTxs.splice(txIdx, 1);
+  storage.set(SELECTION_STORAGE_KEY, allTxs);
+  cleanupPreGraftingExecutionFromSelectionPool(execution.id, execution.docNo);
+
+  const remainingExecutions = getExecutions(parent.id || parent.docNo);
+  const sourcePolybag = parseInt(parent.sourcePolybagQty || 0, 10);
+  const sourceBibit = parseInt(parent.sourceBibitQty !== undefined ? parent.sourceBibitQty : (parent.batchTotalBibit || parent.initialBibit || sourcePolybag), 10);
+  const totalPolybag = remainingExecutions.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope || tx.initialPolybagCount || 0), 10), 0);
+  const totalAfkir = remainingExecutions.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
+  const correctionLabel = `Sesi ${execution.docNo || execution.id} (${execution.bedenganCode || execution.bedengan || '-'}) dikembalikan: ${reason}`;
+  const updatedParent = applyTransactionActor({
+    ...parent,
+    status: SELECTION_STATUS.DIKEMBALIKAN,
+    isFinal: false,
+    isCompleted: false,
+    verificationStatus: 'DIKEMBALIKAN',
+    returnReason: correctionLabel,
+    correctionExecutionId: execution.id,
+    correctionBedenganCode: execution.bedenganCode || execution.bedengan || null,
+    returnedExecutionHistory: [...(Array.isArray(parent.returnedExecutionHistory) ? parent.returnedExecutionHistory : []), auditEntry],
+    executionTransactionIds: remainingExecutions.map(tx => tx.id),
+    executionCount: remainingExecutions.length,
+    totalDiperiksa: totalPolybag,
+    totalPolybagDiperiksa: totalPolybag,
+    totalBibitDiseleksi: totalAfkir,
+    totalBibitSelectedQty: totalAfkir,
+    totalBibitRetainedQty: Math.max(0, sourceBibit - totalAfkir),
+    totalLayak: Math.max(0, sourceBibit - totalAfkir),
+    totalAfkir,
+    totalReject: totalAfkir,
+    activePolybagQty: totalPolybag,
+    currentBibitQty: Math.max(0, sourceBibit - totalAfkir),
+    currentPolybagQty: totalPolybag,
+    remainingPolybag: Math.max(0, sourcePolybag - totalPolybag),
+    sisaPolybag: Math.max(0, sourcePolybag - totalPolybag),
+    sisaBibit: Math.max(0, sourceBibit - totalAfkir),
+    progress: sourcePolybag > 0 ? Math.min(100, Math.round((totalPolybag / sourcePolybag) * 100)) : 0,
+    returnedByUserId: currentUser.userId || currentUser.code || currentUser.id,
+    returnedByName: currentUser.name || 'Asisten Bibitan',
+    returnedAt: nowIso,
+    updatedAt: nowIso
+  }, AUDIT_EVENT_TYPES.REJECT, currentUser, `Pengembalian sesi ${execution.docNo || execution.id} pada ${stageLabel} ${parent.docNo}: ${reason}`);
+  docs[docIdx] = updatedParent;
+  storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, docs);
+
+  // Keep any existing CULL declaration linked to the returned session visibly
+  // in revision too; the parent verification row drives the Mantri red dot.
+  const cullIds = new Set();
+  allTxs.forEach(tx => {
+    if (tx.sourceTransactionId !== execution.id || !isCullDocNo(tx.docNo || tx.selectionNo || tx.selectionPoolDocNo)) return;
+    tx.status = SELECTION_STATUS.DIKEMBALIKAN;
+    tx.verificationStatus = 'DIKEMBALIKAN';
+    tx.returnReason = correctionLabel;
+    tx.updatedAt = nowIso;
+    cullIds.add(String(tx.id));
+  });
+  if (cullIds.size) storage.set(SELECTION_STORAGE_KEY, allTxs);
+
+  const verifs = storage.get('verification_transactions', []);
+  const parentVerif = verifs.find(v =>
+    String(v.referenceId) === String(parent.id) || String(v.referenceDocNo) === String(parent.docNo)
+  );
+  if (parentVerif) {
+    parentVerif.referenceType = 'SELEKSI_PRA_OKULASI';
+    parentVerif.verificationStatus = 'DIKEMBALIKAN';
+    parentVerif.returnReason = correctionLabel;
+    parentVerif.verifiedByUserId = currentUser.userId || currentUser.code || currentUser.id;
+    parentVerif.verifiedByName = currentUser.name || 'Asisten Bibitan';
+    parentVerif.verifiedAt = nowIso;
+    parentVerif.updatedAt = nowIso;
+  } else {
+    verifs.push({
+      verificationId: `VRF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      verificationNo: `VRF-2026-${Date.now().toString().slice(-4)}`,
+      referenceType: 'SELEKSI_PRA_OKULASI',
+      referenceId: parent.id,
+      referenceDocNo: parent.docNo,
+      estateId: parent.estateId || currentUser.estateId,
+      divisionId: parent.divisionId || currentUser.divisionId,
+      verificationStatus: 'DIKEMBALIKAN',
+      returnReason: correctionLabel,
+      verifiedByUserId: currentUser.userId || currentUser.code || currentUser.id,
+      verifiedByName: currentUser.name || 'Asisten Bibitan',
+      verifiedByRole: ROLES.ASISTEN_BIBITAN,
+      verifiedAt: nowIso,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    });
+  }
+  cullIds.forEach(id => {
+    const cull = allTxs.find(tx => String(tx.id) === id);
+    const row = verifs.find(v => String(v.referenceId) === id || String(v.referenceDocNo) === String(cull?.docNo));
+    if (row) {
+      row.verificationStatus = 'DIKEMBALIKAN';
+      row.returnReason = correctionLabel;
+      row.updatedAt = nowIso;
+    }
+  });
+  storage.set('verification_transactions', verifs);
+
+  return updatedParent;
+}
+
+/**
  * Migrasi Dokumen Seleksi I Legacy Agregat menjadi Batch + Bedengan Scope
  * Memecah dokumen agregat tanpa menghapus history dan me-reassign child transactions
  */
@@ -4960,7 +5491,7 @@ export function migrateLegacyAggregateSelection1Documents() {
       // Recalculate metrics from re-assigned executions
       if (matchingTxs.length > 0) {
         const polyDone = matchingTxs.reduce((sum, tx) => sum + parseInt(tx.actualPolybagInspectedQty !== undefined ? tx.actualPolybagInspectedQty : (tx.polybagScope || 0), 10), 0);
-        const bibitAfkir = matchingTxs.reduce((sum, tx) => sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.jumlahDiperiksa || 0), 10), 0);
+        const bibitAfkir = matchingTxs.reduce((sum, tx) => sum + getRecordedBibitSelectedQty(tx), 0);
         splitDoc.executionTransactionIds = matchingTxs.map(t => t.id);
         splitDoc.executionCount = matchingTxs.length;
         splitDoc.totalDiperiksa = polyDone;
@@ -5117,7 +5648,9 @@ export function syncAllApprovedPreGraftingSelectionDocuments(currentUser = null)
         const res = createSelection2DocumentFromSelection1(doc, currentUser);
         if (res && res.isNewlyCreated) syncedCount++;
       } catch (err) {
-        // Idempotency or already exists
+        // Keep sync non-blocking while recording why an eligible parent could
+        // not produce its downstream document.
+        console.warn(`[syncAllApprovedPreGraftingSelectionDocuments] Seleksi III belum tersinkron dari ${doc.docNo}:`, err.message);
       }
     }
   });
@@ -5220,8 +5753,7 @@ function getRecordedBibitSelectedQty(tx) {
     tx?.actualBibitSelectedQty,
     tx?.selectedBibitScopeQty,
     tx?.bibitReject,
-    tx?.jumlahAfkir,
-    tx?.jumlahDiperiksa
+    tx?.jumlahAfkir
   ];
   for (const value of candidates) {
     if (value === undefined || value === null || String(value).trim() === '') continue;
@@ -5561,7 +6093,7 @@ export function syncPreGraftingExecutionToSelectionPool(execTx, parentDoc = null
 
   const existingIdx = pool.findIndex(s =>
     s.id === poolId ||
-    (s.sourceTransactionId === execTx.id && (s.sourceModule === 'SELEKSI_PRA_OKULASI' || s.originType === 'REJECT_PRE_GRAFTING'))
+    (String(s.sourceTransactionId || '') === String(execTx.id || '') && (s.sourceModule === 'SELEKSI_PRA_OKULASI' || s.originType === 'REJECT_PRE_GRAFTING'))
   );
 
   // Jika afkir 0: jangan buat kandidat kosong, dan bersihkan draft candidate jika ada
@@ -5675,18 +6207,102 @@ export function syncPreGraftingExecutionToSelectionPool(execTx, parentDoc = null
  */
 export function cleanupPreGraftingExecutionFromSelectionPool(txId, docNo = null) {
   if (!txId && !docNo) return;
-  let pool = storage.get('selection_pool', []);
-  const idx = pool.findIndex(s =>
-    (txId && (s.id === `SEL-POOL-PRE-${txId}` || s.sourceTransactionId === txId)) ||
-    (docNo && s.sourceDocNo === docNo)
+  const pool = storage.get('selection_pool', []);
+  const txIdStr = String(txId || '');
+  const docNoStr = String(docNo || '');
+  const nextPool = pool.filter(item => {
+    if (!item) return true;
+    const itemStage = String(item.selectionStage || item.stage || '').toUpperCase();
+    const isPreGraftingCandidate =
+      item.id?.startsWith?.('SEL-POOL-PRE-') ||
+      item.sourceModule === 'SELEKSI_PRA_OKULASI' ||
+      item.originType === 'REJECT_PRE_GRAFTING' ||
+      item.selectionType === SELECTION_TYPES.PRA_OKULASI ||
+      ['PRA_OKULASI', 'SELEKSI_PRA_OKULASI'].includes(String(item.selectionType || '').toUpperCase()) ||
+      ['SELEKSI_1', 'SELEKSI_I', 'SELEKSI_2', 'SELEKSI_II', 'SELEKSI_3', 'SELEKSI_III'].includes(itemStage) ||
+      Boolean(item.parentSelectionDocumentId || item.parentSelectionDocNo);
+    if (!isPreGraftingCandidate) return true;
+    const matchesExecution =
+      (txIdStr && String(item.sourceTransactionId || '') === txIdStr) ||
+      (txIdStr && String(item.id || '') === `SEL-POOL-PRE-${txIdStr}`) ||
+      (docNoStr && String(item.sourceDocNo || item.sourceSelectionDocNo || item.selectionSourceDocNo || '').trim() === docNoStr);
+    if (!matchesExecution) return true;
+    const status = String(item.status || 'PENDING_DECLARATION').toUpperCase();
+    const isPending = ['PENDING_DECLARATION', 'PENDING', 'DRAFT'].includes(status);
+    const hasCullReference = Boolean(item.selectionTransactionId) ||
+      isCullDocNo(item.docNo || item.selectionDocNo || item.selectionPoolDocNo);
+    return !(isPending && !hasCullReference);
+  });
+  if (nextPool.length !== pool.length) storage.set('selection_pool', nextPool);
+}
+
+/** Menarik pengajuan verifikasi dokumen induk bila sesi pemeriksaannya diubah/dihapus. */
+function withdrawPendingPreGraftingVerification(parentDoc, currentUser, reason) {
+  if (!parentDoc) return;
+  const docId = String(parentDoc.id || '').trim();
+  const docNo = String(parentDoc.docNo || parentDoc.selectionDocNo || '').trim();
+  const verifications = storage.get('verification_transactions', []);
+  const now = new Date().toISOString();
+  let changed = false;
+
+  verifications.forEach(record => {
+    if (!record) return;
+    const refType = String(record.referenceType || record.moduleType || '').toUpperCase();
+    if (!['SELEKSI_PRA_OKULASI', 'SELECTION'].includes(refType)) return;
+    const matchesParent =
+      (docId && String(record.referenceId || '') === docId) ||
+      (docNo && String(record.referenceDocNo || '') === docNo);
+    if (!matchesParent) return;
+    const status = String(record.verificationStatus || '').toUpperCase();
+    if (['TERVERIFIKASI', 'DATA_TERKONFIRMASI', 'DISETUJUI', 'VERIFIED', 'APPROVED'].includes(status)) return;
+
+    record.verificationStatus = 'DIBATALKAN';
+    record.withdrawnAt = now;
+    record.withdrawnByUserId = currentUser?.userId || currentUser?.id || null;
+    record.withdrawnByName = currentUser?.name || null;
+    record.withdrawalReason = reason;
+    record.updatedAt = now;
+    changed = true;
+  });
+
+  if (changed) storage.set('verification_transactions', verifications);
+}
+
+/** Mencegah sumber eksekusi dihapus jika kandidatnya sudah masuk proses Cull. */
+function assertPreGraftingExecutionCanBeDeleted(execution, allTxs) {
+  if (!execution) return;
+  const sourceId = String(execution.id || '');
+  const sourceDocNo = String(execution.docNo || execution.selectionNo || '');
+  const pool = storage.get('selection_pool', []);
+  const relatedCandidates = pool.filter(item => {
+    if (!item) return false;
+    const itemStage = String(item.selectionStage || item.stage || '').toUpperCase();
+    const isPreGraftingCandidate =
+      item.id?.startsWith?.('SEL-POOL-PRE-') ||
+      item.sourceModule === 'SELEKSI_PRA_OKULASI' ||
+      item.originType === 'REJECT_PRE_GRAFTING' ||
+      item.selectionType === SELECTION_TYPES.PRA_OKULASI ||
+      ['PRA_OKULASI', 'SELEKSI_PRA_OKULASI'].includes(String(item.selectionType || '').toUpperCase()) ||
+      ['SELEKSI_1', 'SELEKSI_I', 'SELEKSI_2', 'SELEKSI_II', 'SELEKSI_3', 'SELEKSI_III'].includes(itemStage) ||
+      Boolean(item.parentSelectionDocumentId || item.parentSelectionDocNo);
+    if (!isPreGraftingCandidate) return false;
+    return String(item.sourceTransactionId || '') === sourceId ||
+      String(item.id || '') === `SEL-POOL-PRE-${sourceId}` ||
+      (sourceDocNo && String(item.sourceDocNo || item.sourceSelectionDocNo || item.selectionSourceDocNo || '').trim() === sourceDocNo);
+  });
+  const relatedCullTx = allTxs.find(tx => tx && tx !== execution &&
+    isCullDocNo(tx.docNo || tx.selectionNo || tx.selectionPoolDocNo) &&
+    (String(tx.sourceTransactionId || '') === sourceId ||
+      (sourceDocNo && String(tx.sourceTransactionId || '') === sourceDocNo) ||
+      relatedCandidates.some(item => String(item.selectionTransactionId || '') === String(tx.id || tx.selectionId || '')))
   );
-  if (idx !== -1) {
-    const item = pool[idx];
-    // Hanya bersihkan jika masih PENDING_DECLARATION dan belum dibuat transaksi CULL resmi
-    if (item.status === 'PENDING_DECLARATION' && !item.selectionTransactionId && !item.docNo) {
-      pool.splice(idx, 1);
-      storage.set('selection_pool', pool);
-    }
+  const candidateAlreadyDeclared = relatedCandidates.some(item =>
+    Boolean(item.selectionTransactionId) ||
+    isCullDocNo(item.docNo || item.selectionDocNo || item.selectionPoolDocNo) ||
+    !['PENDING_DECLARATION', 'PENDING', 'DRAFT'].includes(String(item.status || 'PENDING_DECLARATION').toUpperCase())
+  );
+  if (relatedCullTx || candidateAlreadyDeclared) {
+    throw new Error(`Transaksi ${sourceDocNo || sourceId} sudah terhubung ke deklarasi Cull. Batalkan atau selesaikan deklarasi Cull terlebih dahulu sebelum menghapus transaksi sumber.`);
   }
 }
 
@@ -5900,7 +6516,7 @@ export function createSeleksi1ExecutionTransaction(payload, currentUser, options
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+      sum + getRecordedBibitSelectedQty(tx),
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -5980,6 +6596,8 @@ export function deleteSeleksi1ExecutionTransaction(txIdOrDocNo, currentUser = nu
     throw new Error(`Transaksi Seleksi I "${targetTx.docNo || txIdOrDocNo}" telah berstatus DISETUJUI/Final dan tidak dapat dihapus.`);
   }
 
+  assertPreGraftingExecutionCanBeDeleted(targetTx, allTxs);
+
   const parentDocId = targetTx.parentSelectionDocumentId || targetTx.selectionDocumentId;
   const parentDocNo = targetTx.parentSelectionDocNo || targetTx.selectionDocNo;
 
@@ -6020,7 +6638,7 @@ export function deleteSeleksi1ExecutionTransaction(txIdOrDocNo, currentUser = nu
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+      sum + getRecordedBibitSelectedQty(tx),
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -6048,7 +6666,9 @@ export function deleteSeleksi1ExecutionTransaction(txIdOrDocNo, currentUser = nu
     if (wasAlreadyApproved) {
       recalculatedStatus = SELECTION_STATUS.DISETUJUI;
     } else if (wasSubmitted) {
-      recalculatedStatus = currentParent.status;
+      recalculatedStatus = isAllPolybagChecked
+        ? 'COMPLETED'
+        : (parentExecutions.length > 0 ? 'IN_PROGRESS' : 'DRAFT');
     } else {
       recalculatedStatus = isAllPolybagChecked 
         ? 'COMPLETED' 
@@ -6076,6 +6696,11 @@ export function deleteSeleksi1ExecutionTransaction(txIdOrDocNo, currentUser = nu
       progress: sourcePoly > 0 ? Math.min(100, Math.max(0, Math.round((updatedTotalPolyDiperiksa / sourcePoly) * 100))) : 0,
       isCompleted: isAllPolybagChecked,
       status: recalculatedStatus,
+      verificationStatus: wasSubmitted && !wasAlreadyApproved ? null : currentParent.verificationStatus,
+      submissionStatus: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submissionStatus,
+      submittedAt: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submittedAt,
+      submittedByUserId: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submittedByUserId,
+      submittedByName: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submittedByName,
       isFinal: wasAlreadyApproved ? true : Boolean(currentParent.isFinal),
       updatedAt: new Date().toISOString()
     };
@@ -6091,6 +6716,13 @@ export function deleteSeleksi1ExecutionTransaction(txIdOrDocNo, currentUser = nu
 
     allDocs[parentIdx] = finalUpdatedParent;
     storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+    if (wasSubmitted && !wasAlreadyApproved) {
+      withdrawPendingPreGraftingVerification(
+        currentParent,
+        currentUser,
+        `Pengajuan ditarik karena sesi ${targetTx.docNo || targetTx.id} dihapus.`
+      );
+    }
   }
 
   return { 
@@ -6127,13 +6759,17 @@ export function getSeleksi2ExecutionsByDocument(idOrDocNo) {
     );
     if (!isStage2) return false;
 
+    const parentRefs = [tx.parentSelectionDocumentId, tx.selectionDocumentId, tx.parentSelectionDocNo, tx.selectionDocNo, tx.sourceDocNo, tx.sourceSelectionDocNo]
+      .filter(Boolean).map(value => String(value).trim());
+
     return (
       tx.parentSelectionDocumentId === searchStr ||
       tx.selectionDocumentId === searchStr ||
       tx.parentSelectionDocNo === searchStr ||
       tx.selectionDocNo === searchStr ||
       tx.sourceDocNo === searchStr ||
-      tx.sourceSelectionDocNo === searchStr
+      tx.sourceSelectionDocNo === searchStr ||
+      parentRefs.includes(searchStr)
     );
   });
 }
@@ -6150,7 +6786,7 @@ export function getBedenganScopeStatusForSeleksi2(parentDoc, txsOverride = null)
   if (Array.isArray(parentDoc.rows) && parentDoc.rows.length > 0) {
     bedenganList = parentDoc.rows.map(r => {
       let initPoly = parseInt(r.polybag !== undefined ? r.polybag : (r.polybagCount !== undefined ? r.polybagCount : (r.initialPolybag !== undefined ? r.initialPolybag : 0)), 10);
-      let initBibit = parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit !== undefined ? r.initialBibit : 0)), 10);
+      let initBibit = resolveSelectionRowBibitQty(r);
       if (parentDoc.rows.length === 1) {
         if (initPoly === 0 && parentDoc.sourcePolybagQty > 0) initPoly = parentDoc.sourcePolybagQty;
         if (initBibit === 0 && parentDoc.sourceBibitQty > 0) initBibit = parentDoc.sourceBibitQty;
@@ -6182,6 +6818,53 @@ export function getBedenganScopeStatusForSeleksi2(parentDoc, txsOverride = null)
       initialBibit: parentDoc.sourceBibitQty || 0
     }];
   }
+
+  // Gunakan populasi final yang tersimpan pada dokumen tahap ini jika tersedia.
+  // Saldo tahap sumber hanya memulihkan snapshot bibit yang kosong; jangan
+  // menimpa populasi downstream yang valid dengan saldo sumber yang salah terbaca 0.
+  const sourceBedScope = getLinkedFinalBedScope(parentDoc, 'SELEKSI_1');
+  bedenganList = bedenganList.map(bed => {
+    const bedCode = formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId).toUpperCase();
+    const sourceBed = sourceBedScope.find(item =>
+      formatBedenganDisplayCode(item.bedenganCode || item.bedenganId).toUpperCase() === bedCode
+    );
+    if (!sourceBed) return bed;
+    const sourceAvailableBibit = Number(sourceBed.maintainedBibit);
+    if ((!Number.isFinite(Number(bed.initialBibit)) || Number(bed.initialBibit) <= 0) &&
+        Number.isFinite(sourceAvailableBibit) && sourceAvailableBibit > 0) {
+      return { ...bed, initialBibit: sourceAvailableBibit };
+    }
+    return bed;
+  });
+
+  const knownBedCodes = new Set(bedenganList.map(bed =>
+    formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId).toUpperCase()
+  ));
+  sourceBedScope.forEach(sourceBed => {
+    const code = formatBedenganDisplayCode(sourceBed.bedenganCode || sourceBed.bedenganId);
+    const key = code.toUpperCase();
+    if (!code || knownBedCodes.has(key)) return;
+    bedenganList.push({
+      bedenganId: sourceBed.bedenganId || code,
+      bedenganCode: code,
+      initialPolybag: Number(sourceBed.inspectedPolybag || sourceBed.initialPolybag || 0),
+      initialBibit: Number(sourceBed.maintainedBibit || sourceBed.initialBibit || 0)
+    });
+    knownBedCodes.add(key);
+  });
+
+  // Selaraskan dengan pemilih bedengan: jika data bibit per-bedengan pada
+  // dokumen Seleksi II lama kosong, satu polybag menjadi fallback satu bibit.
+  // Fallback ini hanya mengisi snapshot kosong dan tidak memakai rasio 1:2.
+  bedenganList = bedenganList.map(bed => {
+    const initialBibit = Number(bed.initialBibit);
+    const initialPolybag = Number(bed.initialPolybag);
+    if ((!Number.isFinite(initialBibit) || initialBibit <= 0) &&
+        Number.isFinite(initialPolybag) && initialPolybag > 0) {
+      return { ...bed, initialBibit: initialPolybag };
+    }
+    return bed;
+  });
 
   return bedenganList.map(bed => {
     const parentBatch = String(parentDoc.batchCode || parentDoc.batchNo || '').trim().toUpperCase();
@@ -6215,6 +6898,54 @@ export function getBedenganScopeStatusForSeleksi2(parentDoc, txsOverride = null)
       isFullyInspected: bed.initialPolybag > 0 && remainingPolybag === 0 && bedTxs.length > 0
     };
   });
+}
+
+/**
+ * Membaca populasi bibit bedengan dengan kompatibilitas untuk data lama yang
+ * memiliki sourceBibitQty = 0 tetapi masih menyimpan jumlah benar pada disemai.
+ */
+function resolveSelectionRowBibitQty(row, fallback = 0) {
+  if (!row) return Math.max(0, parseInt(fallback, 10) || 0);
+  const candidates = [row.disemai, row.sourceBibitQty, row.initialBibit];
+  for (const value of candidates) {
+    if (value === undefined || value === null || String(value).trim() === '') continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  for (const value of candidates) {
+    if (value === undefined || value === null || String(value).trim() === '') continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed === 0) return 0;
+  }
+  return Math.max(0, parseInt(fallback, 10) || 0);
+}
+
+function getLinkedFinalBedScope(parentDoc, expectedStage) {
+  if (!parentDoc) return [];
+  const allDocs = storage.get(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, []);
+  const linkedRefs = [
+    parentDoc.sourceSelectionDocumentId,
+    parentDoc.sourceFinalId,
+    parentDoc.sourceSelectionDocNo,
+    parentDoc.sourceDocNo
+  ].filter(Boolean).map(String);
+  const normalizedExpectedStage = String(expectedStage || '').toUpperCase();
+  const sourceDoc = allDocs.find(doc => {
+    const stage = String(doc.selectionStage || '').toUpperCase();
+    const stageMatches = normalizedExpectedStage === 'SELEKSI_1'
+      ? ['SELEKSI_1', 'SELEKSI_I'].includes(stage)
+      : ['SELEKSI_2', 'SELEKSI_II'].includes(stage);
+    if (!stageMatches) return false;
+    return linkedRefs.includes(String(doc.id)) || linkedRefs.includes(String(doc.docNo));
+  });
+  if (!sourceDoc) return [];
+
+  if (normalizedExpectedStage === 'SELEKSI_1') {
+    const executions = getSeleksi1ExecutionsByDocument(sourceDoc.id || sourceDoc.docNo);
+    return getBedenganScopeStatusForSeleksi1(sourceDoc, executions);
+  }
+  const executions = getSeleksi2ExecutionsByDocument(sourceDoc.id || sourceDoc.docNo);
+  return getBedenganScopeStatusForSeleksi2(sourceDoc, executions);
 }
 
 /**
@@ -6314,8 +7045,14 @@ export function validateSeleksi2Execution(payload, parentDoc, existingTxs = [], 
     errors.push('Alasan wajib dipilih jika ada bibit afkir.');
   }
 
-  const totalBibitDiseleksiAfter = existingBibitSelectedSum + (isNaN(actualBibitSelected) ? 0 : actualBibitSelected);
-  const cumulativeBibitRetained = Math.max(0, sourceBibit - totalBibitDiseleksiAfter);
+  // Saldo transaksi adalah saldo per bedengan, bukan saldo seluruh dokumen.
+  // Pemeriksaan polybag tidak mengurangi bibit; hanya bibit yang diseleksi
+  // pada bedengan tersebut yang mengurangi saldo tersedia.
+  const selectedOnBedAfter = (matchedBed?.rejectedBibit || 0) + (isNaN(actualBibitSelected) ? 0 : actualBibitSelected);
+  const retainedBasis = matchedBed && Number.isFinite(Number(matchedBed.initialBibit))
+    ? Number(matchedBed.initialBibit)
+    : sourceBibit;
+  const cumulativeBibitRetained = Math.max(0, retainedBasis - (matchedBed ? selectedOnBedAfter : existingBibitSelectedSum + (isNaN(actualBibitSelected) ? 0 : actualBibitSelected)));
 
   const polyScope = actualPolyInspected;
   const inactivePolybagQty = 0;
@@ -6566,7 +7303,7 @@ export function createSeleksi2ExecutionTransaction(payload, currentUser, options
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+      sum + getRecordedBibitSelectedQty(tx),
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -6641,6 +7378,8 @@ export function deleteSeleksi2ExecutionTransaction(transactionId, currentUser = 
     throw new Error(`Transaksi Seleksi II "${targetTx.docNo || transactionId}" telah berstatus DISETUJUI/Final dan tidak dapat dihapus.`);
   }
 
+  assertPreGraftingExecutionCanBeDeleted(targetTx, allTxs);
+
   allTxs.splice(targetIdx, 1);
   storage.set(SELECTION_STORAGE_KEY, allTxs);
 
@@ -6684,7 +7423,7 @@ export function deleteSeleksi2ExecutionTransaction(transactionId, currentUser = 
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+      sum + getRecordedBibitSelectedQty(tx),
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -6711,7 +7450,9 @@ export function deleteSeleksi2ExecutionTransaction(transactionId, currentUser = 
     if (wasAlreadyApproved) {
       recalculatedStatus = SELECTION_STATUS.DISETUJUI;
     } else if (wasSubmitted) {
-      recalculatedStatus = currentParent.status;
+      recalculatedStatus = isAllPolybagChecked
+        ? 'COMPLETED'
+        : (parentExecutions.length > 0 ? 'IN_PROGRESS' : 'DRAFT');
     } else {
       recalculatedStatus = isAllPolybagChecked 
         ? 'COMPLETED' 
@@ -6739,6 +7480,11 @@ export function deleteSeleksi2ExecutionTransaction(transactionId, currentUser = 
       progress: sourcePoly > 0 ? Math.min(100, Math.max(0, Math.round((updatedTotalPolyDiperiksa / sourcePoly) * 100))) : 0,
       isCompleted: isAllPolybagChecked,
       status: recalculatedStatus,
+      verificationStatus: wasSubmitted && !wasAlreadyApproved ? null : currentParent.verificationStatus,
+      submissionStatus: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submissionStatus,
+      submittedAt: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submittedAt,
+      submittedByUserId: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submittedByUserId,
+      submittedByName: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submittedByName,
       isFinal: wasAlreadyApproved ? true : Boolean(currentParent.isFinal),
       updatedAt: new Date().toISOString()
     };
@@ -6754,6 +7500,13 @@ export function deleteSeleksi2ExecutionTransaction(transactionId, currentUser = 
 
     allDocs[parentIdx] = finalUpdatedParent;
     storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+    if (wasSubmitted && !wasAlreadyApproved) {
+      withdrawPendingPreGraftingVerification(
+        currentParent,
+        currentUser,
+        `Pengajuan ditarik karena sesi ${targetTx.docNo || targetTx.id} dihapus.`
+      );
+    }
   }
 
   return { 
@@ -6811,7 +7564,7 @@ export function getBedenganScopeStatusForSeleksi3(parentDoc, txsOverride = null)
   if (Array.isArray(parentDoc.rows) && parentDoc.rows.length > 0) {
     bedenganList = parentDoc.rows.map(r => {
       let initPoly = parseInt(r.polybag !== undefined ? r.polybag : (r.polybagCount !== undefined ? r.polybagCount : (r.initialPolybag !== undefined ? r.initialPolybag : 0)), 10);
-      let initBibit = parseInt(r.sourceBibitQty !== undefined ? r.sourceBibitQty : (r.disemai !== undefined ? r.disemai : (r.initialBibit !== undefined ? r.initialBibit : 0)), 10);
+      let initBibit = resolveSelectionRowBibitQty(r);
       if (parentDoc.rows.length === 1) {
         if (initPoly === 0 && parentDoc.sourcePolybagQty > 0) initPoly = parentDoc.sourcePolybagQty;
         if (initBibit === 0 && parentDoc.sourceBibitQty > 0) initBibit = parentDoc.sourceBibitQty;
@@ -6843,6 +7596,35 @@ export function getBedenganScopeStatusForSeleksi3(parentDoc, txsOverride = null)
       initialBibit: parentDoc.sourceBibitQty || 0
     }];
   }
+
+  // Gunakan snapshot populasi final Seleksi III bila tersedia. Saldo Seleksi II
+  // menjadi fallback hanya untuk snapshot bibit Seleksi III yang kosong.
+  const sourceBedScope = getLinkedFinalBedScope(parentDoc, 'SELEKSI_2');
+  bedenganList = bedenganList.map(bed => {
+    const bedCode = formatBedenganDisplayCode(bed.bedenganCode || bed.bedenganId).toUpperCase();
+    const sourceBed = sourceBedScope.find(item =>
+      formatBedenganDisplayCode(item.bedenganCode || item.bedenganId).toUpperCase() === bedCode
+    );
+    if (!sourceBed) return bed;
+    const sourceAvailableBibit = Number(sourceBed.maintainedBibit);
+    if ((!Number.isFinite(Number(bed.initialBibit)) || Number(bed.initialBibit) <= 0) &&
+        Number.isFinite(sourceAvailableBibit) && sourceAvailableBibit > 0) {
+      return { ...bed, initialBibit: sourceAvailableBibit };
+    }
+    return bed;
+  });
+
+  // Seleksi III memakai fallback satu bibit per polybag yang sama dengan
+  // pemilih bedengan saat snapshot populasi bibit per-bedengan kosong.
+  bedenganList = bedenganList.map(bed => {
+    const initialBibit = Number(bed.initialBibit);
+    const initialPolybag = Number(bed.initialPolybag);
+    if ((!Number.isFinite(initialBibit) || initialBibit <= 0) &&
+        Number.isFinite(initialPolybag) && initialPolybag > 0) {
+      return { ...bed, initialBibit: initialPolybag };
+    }
+    return bed;
+  });
 
   return bedenganList.map(bed => {
     const parentBatch = String(parentDoc.batchCode || parentDoc.batchNo || '').trim().toUpperCase();
@@ -7231,7 +8013,7 @@ export function createSeleksi3ExecutionTransaction(payload, currentUser, options
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+      sum + getRecordedBibitSelectedQty(tx),
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -7377,7 +8159,7 @@ export function updateSeleksi3ExecutionTransaction(txIdOrDocNo, payload, current
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+      sum + getRecordedBibitSelectedQty(tx),
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -7455,6 +8237,8 @@ export function deleteSeleksi3ExecutionTransaction(txIdOrDocNo, currentUser = nu
     throw new Error(`Transaksi Seleksi III "${targetTx.docNo || txIdOrDocNo}" telah berstatus DISETUJUI/Final dan tidak dapat dihapus.`);
   }
 
+  assertPreGraftingExecutionCanBeDeleted(targetTx, allTxs);
+
   const parentDocId = targetTx.parentSelectionDocumentId || targetTx.selectionDocumentId;
   const parentDocNo = targetTx.parentSelectionDocNo || targetTx.selectionDocNo;
 
@@ -7495,7 +8279,7 @@ export function deleteSeleksi3ExecutionTransaction(txIdOrDocNo, currentUser = nu
       0
     );
     const updatedTotalBibitDiseleksi = parentExecutions.reduce((sum, tx) => 
-      sum + parseInt(tx.actualBibitSelectedQty !== undefined ? tx.actualBibitSelectedQty : (tx.selectedBibitScopeQty !== undefined ? tx.selectedBibitScopeQty : (tx.jumlahDiperiksa || 0)), 10), 
+      sum + getRecordedBibitSelectedQty(tx),
       0
     );
     const updatedTotalLayak = Math.max(0, sourceBibit - updatedTotalBibitDiseleksi);
@@ -7522,7 +8306,9 @@ export function deleteSeleksi3ExecutionTransaction(txIdOrDocNo, currentUser = nu
     if (wasAlreadyApproved) {
       recalculatedStatus = SELECTION_STATUS.DISETUJUI;
     } else if (wasSubmitted) {
-      recalculatedStatus = currentParent.status;
+      recalculatedStatus = isAllPolybagChecked
+        ? 'COMPLETED'
+        : (parentExecutions.length > 0 ? 'IN_PROGRESS' : 'DRAFT');
     } else {
       recalculatedStatus = isAllPolybagChecked 
         ? 'COMPLETED' 
@@ -7551,6 +8337,11 @@ export function deleteSeleksi3ExecutionTransaction(txIdOrDocNo, currentUser = nu
       progress: sourcePoly > 0 ? Math.min(100, Math.max(0, Math.round((updatedTotalPolyDiperiksa / sourcePoly) * 100))) : 0,
       isCompleted: isAllPolybagChecked,
       status: recalculatedStatus,
+      verificationStatus: wasSubmitted && !wasAlreadyApproved ? null : currentParent.verificationStatus,
+      submissionStatus: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submissionStatus,
+      submittedAt: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submittedAt,
+      submittedByUserId: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submittedByUserId,
+      submittedByName: wasSubmitted && !wasAlreadyApproved ? null : currentParent.submittedByName,
       isFinal: wasAlreadyApproved ? true : Boolean(currentParent.isFinal),
       updatedAt: new Date().toISOString()
     };
@@ -7566,6 +8357,13 @@ export function deleteSeleksi3ExecutionTransaction(txIdOrDocNo, currentUser = nu
 
     allDocs[parentIdx] = finalUpdatedParent;
     storage.set(PRE_GRAFTING_SELECTION_DOC_STORAGE_KEY, allDocs);
+    if (wasSubmitted && !wasAlreadyApproved) {
+      withdrawPendingPreGraftingVerification(
+        currentParent,
+        currentUser,
+        `Pengajuan ditarik karena sesi ${targetTx.docNo || targetTx.id} dihapus.`
+      );
+    }
   }
 
   return { 

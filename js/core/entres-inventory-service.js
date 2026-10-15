@@ -142,6 +142,7 @@ export function getFifoAllocationBreakdown(klonName, options = {}) {
   const allToppings = filterTransactionsByContext(rawToppings, userCtx, options.estateId);
   const allBuddings = filterTransactionsByContext(rawBuddings, userCtx, options.estateId);
   const allDispatches = filterTransactionsByContext(rawDispatches, userCtx, options.estateId);
+  const estateIdFilter = options.estateId || userCtx?.estateId || null;
 
   const excludeBudDoc = options.excludeBuddingDocNo || null;
   const excludeTopDoc = options.excludeToppingDocNo || null;

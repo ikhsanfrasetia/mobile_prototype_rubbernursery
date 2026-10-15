@@ -49,6 +49,7 @@ import {
 } from '../selection/selection-manager.js';
 import {
   groupPreGraftingDocsByProgram,
+  calculateBatchMetrics,
   renderProgramBatchCompactView,
   handleBatchRowClick,
   renderGlobalChildTransactionsSection
@@ -56,8 +57,163 @@ import {
 
 let activeInspectionModuleTab = 'DEDERAN'; // 'DEDERAN' | 'SELEKSI_PRA_OKULASI' | 'OKULASI'
 let activePreGraftingTab = 'SELEKSI_1'; // 'SELEKSI_1' | 'SELEKSI_2' | 'SELEKSI_3'
-let activeFilterProgram = 'ALL';
+const inspectionTabEventRoots = new WeakSet();
+const inspectionListControls = {
+  DEDERAN: { program: 'ALL', search: '', filter: 'ALL', sort: 'PRIORITY', kind: 'ALL' },
+  SELEKSI_PRA_OKULASI: { program: 'ALL', search: '', filter: 'ALL', sort: 'PRIORITY', kind: 'ALL' },
+  OKULASI: { program: 'ALL', search: '', filter: 'ALL', sort: 'PRIORITY', kind: 'ALL' }
+};
 let selectedInspectionDate = todayDDMMYYYY();
+
+function normalizeInspectionProgram(value) {
+  return String(value || '').trim();
+}
+
+function renderInspectionListControls({ module, programs = [], searchPlaceholder = 'Cari batch, bedengan, atau dokumen...' }) {
+  const state = inspectionListControls[module];
+  if (!state) return '';
+  const controlId = module.toLowerCase().replace(/_/g, '-');
+  const uniquePrograms = [...new Set(programs.map(normalizeInspectionProgram).filter(Boolean))];
+  if (state.program !== 'ALL' && !uniquePrograms.includes(state.program)) state.program = 'ALL';
+  const showProgramControl = uniquePrograms.length > 0 || module === 'OKULASI';
+  const programControl = showProgramControl ? `
+    <div style="margin-bottom: 10px;">
+      <label for="inspection-program-filter-${controlId}" style="display:block;font-size:.72rem;font-weight:700;color:#475569;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px;">Program Pembibitan</label>
+      <div style="position:relative;">
+        <select id="inspection-program-filter-${controlId}" data-inspection-control="program" data-module="${module}" ${uniquePrograms.length === 0 ? 'disabled' : ''} style="width:100%;box-sizing:border-box;height:38px;padding:0 32px 0 12px;font-size:.80rem;font-weight:600;color:#1E293B;background:#FFF;border:1px solid #CBD5E1;border-radius:8px;">
+          <option value="ALL" ${state.program === 'ALL' ? 'selected' : ''}>Semua Program</option>
+          ${uniquePrograms.map(p => `<option value="${esc(p)}" ${state.program === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}
+        </select>
+      </div>
+    </div>` : '';
+  return `${programControl}
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0 0 14px;align-items:center;">
+      <div style="grid-column:1 / -1;min-width:0;position:relative;">
+        <input id="inspection-list-search-${controlId}" data-inspection-control="search" data-module="${module}" type="search" value="${esc(state.search)}" placeholder="${esc(searchPlaceholder)}" aria-label="Cari transaksi pemeriksaan" style="width:100%;box-sizing:border-box;height:38px;padding:0 10px;font-size:.78rem;border:1px solid #CBD5E1;border-radius:8px;background:#FFF;color:#0F172A;outline:none;">
+      </div>
+      <select id="inspection-list-filter-${controlId}" data-inspection-control="filter" data-module="${module}" aria-label="Filter status" style="width:100%;min-width:0;height:38px;padding:0 8px;font-size:.76rem;color:#334155;background:#FFF;border:1px solid #CBD5E1;border-radius:8px;">
+        <option value="ALL" ${state.filter === 'ALL' ? 'selected' : ''}>Filter: Semua</option>
+        <option value="PENDING" ${state.filter === 'PENDING' ? 'selected' : ''}>Perlu periksa</option>
+        <option value="IN_PROGRESS" ${state.filter === 'IN_PROGRESS' ? 'selected' : ''}>Berjalan</option>
+        <option value="DONE" ${state.filter === 'DONE' ? 'selected' : ''}>Selesai</option>
+        ${module === 'OKULASI' ? `<option value="GRAFTING" ${state.filter === 'GRAFTING' ? 'selected' : ''}>Okulasi</option><option value="REGRAFTING" ${state.filter === 'REGRAFTING' ? 'selected' : ''}>Okulasi Janda</option>` : ''}
+      </select>
+      <select id="inspection-list-sort-${controlId}" data-inspection-control="sort" data-module="${module}" aria-label="Urutkan daftar" style="width:100%;min-width:0;height:38px;padding:0 8px;font-size:.76rem;color:#334155;background:#FFF;border:1px solid #CBD5E1;border-radius:8px;">
+        <option value="PRIORITY" ${state.sort === 'PRIORITY' ? 'selected' : ''}>Urut: Prioritas</option>
+        <option value="NEWEST" ${state.sort === 'NEWEST' ? 'selected' : ''}>Terbaru</option>
+        <option value="OLDEST" ${state.sort === 'OLDEST' ? 'selected' : ''}>Terlama</option>
+        <option value="BATCH" ${state.sort === 'BATCH' ? 'selected' : ''}>Batch A–Z</option>
+      </select>
+    </div>`;
+}
+
+function applyInspectionListControls(app, module) {
+  const state = inspectionListControls[module];
+  if (!state) return;
+  const query = state.search.trim().toLocaleLowerCase('id-ID');
+  const program = state.program;
+  const cardGroups = [{
+    selector: `[data-inspection-list-card="${module}"]`,
+    container: app.querySelector(module === 'DEDERAN' ? '#deder-inspection-cards' : module === 'OKULASI' ? '#insp-cards-container' : '.program-batch-compact-container')
+  }];
+  if (module === 'OKULASI') {
+    cardGroups.push({
+      selector: '[data-inspection-transaction-card="OKULASI"]',
+      container: app.querySelector('#insp-summary-cards-container')
+    });
+  }
+
+  cardGroups.forEach(({ selector, container }) => {
+    if (!container) return;
+    const cards = [...container.querySelectorAll(selector)];
+    cards.forEach(card => {
+      const haystack = String(card.dataset.search || '').toLocaleLowerCase('id-ID');
+      const matchesProgram = program === 'ALL' || card.dataset.program === program;
+      const cardState = card.dataset.state || 'PENDING';
+      const kindFilter = ['GRAFTING', 'REGRAFTING'].includes(state.filter) ? state.filter : state.kind;
+      const matchesStatus = ['GRAFTING', 'REGRAFTING'].includes(state.filter) || state.filter === 'ALL' || cardState === state.filter;
+      const matchesKind = module !== 'OKULASI' || kindFilter === 'ALL' || card.dataset.kind === kindFilter;
+      card.style.display = matchesProgram && matchesStatus && matchesKind && (!query || haystack.includes(query)) ? '' : 'none';
+    });
+    cards.sort((a, b) => {
+      if (state.sort === 'BATCH') return (a.dataset.batch || '').localeCompare(b.dataset.batch || '', 'id');
+      if (state.sort === 'NEWEST' || state.sort === 'OLDEST') {
+        const delta = (Date.parse(b.dataset.date || '') || 0) - (Date.parse(a.dataset.date || '') || 0);
+        return state.sort === 'NEWEST' ? delta : -delta;
+      }
+      if (module === 'OKULASI' || module === 'DEDERAN') {
+        const aNeed = a.dataset.state !== 'DONE';
+        const bNeed = b.dataset.state !== 'DONE';
+        if (aNeed !== bNeed) return aNeed ? -1 : 1;
+        if ((a.dataset.state === 'PENDING') !== (b.dataset.state === 'PENDING')) return a.dataset.state === 'PENDING' ? -1 : 1;
+      }
+      const pendingOrder = ({ PENDING: 0, IN_PROGRESS: 1, DONE: 2 });
+      return (pendingOrder[a.dataset.state] ?? 3) - (pendingOrder[b.dataset.state] ?? 3) || (a.dataset.batch || '').localeCompare(b.dataset.batch || '', 'id');
+    });
+    cards.forEach(card => container.appendChild(card));
+  });
+}
+
+function attachInspectionListControlEvents(app, module) {
+  const state = inspectionListControls[module];
+  if (!state) return;
+  app.querySelector(`[data-inspection-control="program"][data-module="${module}"]`)?.addEventListener('change', e => {
+    state.program = e.target.value;
+    applyInspectionListControls(app, module);
+  });
+  app.querySelector(`[data-inspection-control="search"][data-module="${module}"]`)?.addEventListener('input', e => {
+    state.search = e.target.value;
+    applyInspectionListControls(app, module);
+  });
+  app.querySelector(`[data-inspection-control="filter"][data-module="${module}"]`)?.addEventListener('change', e => {
+    state.filter = e.target.value;
+    if (module === 'OKULASI') {
+      state.kind = ['GRAFTING', 'REGRAFTING'].includes(state.filter) ? state.filter : 'ALL';
+      app.querySelectorAll('.btn-filter-insp-tab').forEach(tab => {
+        const selected = tab.dataset.filter === state.kind;
+        tab.style.background = selected ? '#116834' : '#FFFFFF';
+        tab.style.color = selected ? '#FFFFFF' : '#374151';
+        tab.style.border = selected ? '1px solid #116834' : '1px solid #D1D5DB';
+      });
+    }
+    applyInspectionListControls(app, module);
+  });
+  app.querySelector(`[data-inspection-control="sort"][data-module="${module}"]`)?.addEventListener('change', e => {
+    state.sort = e.target.value;
+    applyInspectionListControls(app, module);
+  });
+  applyInspectionListControls(app, module);
+}
+
+function countPendingPreGraftingDocuments(docs = []) {
+  return docs.filter(doc => {
+    const statuses = [doc.status, doc.verificationStatus, doc.approvalStatus, doc.submissionStatus]
+      .filter(Boolean)
+      .map(status => String(status).trim().toUpperCase());
+    const isRemoved = doc.isDeleted || doc.deleted || statuses.some(status =>
+      ['DELETED', 'DIBATALKAN', 'CANCELLED', 'CANCELED', 'VOID'].includes(status)
+    );
+    if (isRemoved) return false;
+
+    const isReturned = statuses.some(status =>
+      ['DIKEMBALIKAN', 'REVISION', 'RETURNED'].includes(status)
+    );
+    if (isReturned) return true;
+
+    const isFinal = Boolean(doc.isFinal || doc.verifiedAt) || statuses.some(status =>
+      ['DISETUJUI', 'APPROVED', 'VERIFIED', 'TERVERIFIKASI', 'DATA_TERKONFIRMASI', 'FINAL'].includes(status)
+    );
+    return !isFinal;
+  }).length;
+}
+
+export function setActiveFilterProgram(prog) {
+  inspectionListControls.SELEKSI_PRA_OKULASI.program = prog || 'ALL';
+}
+
+export function getActiveFilterProgram() {
+  return inspectionListControls.SELEKSI_PRA_OKULASI.program;
+}
 
 export function setActiveInspectionModuleTab(tab) {
   activeInspectionModuleTab = tab;
@@ -73,14 +229,6 @@ export function setActivePreGraftingTab(tab) {
 
 export function getActivePreGraftingTab() {
   return activePreGraftingTab;
-}
-
-export function setActiveFilterProgram(prog) {
-  activeFilterProgram = prog;
-}
-
-export function getActiveFilterProgram() {
-  return activeFilterProgram;
 }
 
 export function setSelectedInspectionDate(dateStr) {
@@ -282,12 +430,50 @@ export function renderInspectionLanding() {
   }
 
   const authorizedInspectionTxs = getAuthorizedTransactions(inspectionTxs, userCtx);
+  const rawRegraftingPools = storage.get('regrafting_pool', []);
+  const regraftingPools = Array.isArray(rawRegraftingPools) ? rawRegraftingPools : [];
+  const buddingIndexById = new Map();
+  const buddingIndexByDocNo = new Map();
+  rawBuddingTxs.forEach((tx, index) => {
+    if (tx?.id) buddingIndexById.set(tx.id, index);
+    if (tx?.docNo) buddingIndexByDocNo.set(tx.docNo, index);
+  });
+  const buddingByDocNo = new Map(buddingTxs.filter(tx => tx?.docNo).map(tx => [tx.docNo, tx]));
+  const regraftingPoolByDocNo = new Map(regraftingPools.filter(pool => pool?.docNo).map(pool => [pool.docNo, pool]));
+  const regraftingPoolByInspectionDocNo = new Map(regraftingPools.filter(pool => pool?.inspectionDocNo).map(pool => [pool.inspectionDocNo, pool]));
+  const inspectionsByBuddingDocNo = new Map();
+  const inspectionsByBuddingIndex = new Map();
+  authorizedInspectionTxs.forEach(insp => {
+    if (insp.buddingDocNo) {
+      if (!inspectionsByBuddingDocNo.has(insp.buddingDocNo)) inspectionsByBuddingDocNo.set(insp.buddingDocNo, []);
+      inspectionsByBuddingDocNo.get(insp.buddingDocNo).push(insp);
+    }
+    if (insp.buddingIndex !== undefined && insp.buddingIndex !== null && String(insp.buddingIndex).trim() !== '') {
+      const index = Number(insp.buddingIndex);
+      if (!inspectionsByBuddingIndex.has(index)) inspectionsByBuddingIndex.set(index, []);
+      inspectionsByBuddingIndex.get(index).push(insp);
+    }
+  });
 
   // Group or map budding transactions with cumulative inspection stats (Strict per Dokumen Okulasi)
   const items = buddingTxs.map((btx, idx) => {
+    const rawIndex = (btx.id ? buddingIndexById.get(btx.id) : undefined)
+      ?? (btx.docNo ? buddingIndexByDocNo.get(btx.docNo) : undefined)
+      ?? -1;
     const populasiDiokulasi = parseInt(btx.jumlah || 0);
-    const isRegrafting = btx.type === 'REGRAFTING';
-    const relatedInspections = authorizedInspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo);
+    const isRegrafting = String(btx.type || '').toUpperCase() === 'REGRAFTING';
+    const linkedRegraftingPool = isRegrafting
+      ? ((btx.regraftPoolDocNo && regraftingPoolByDocNo.get(btx.regraftPoolDocNo))
+        || (btx.inspectionDocNo && regraftingPoolByInspectionDocNo.get(btx.inspectionDocNo)))
+      : null;
+    const originalBudding = linkedRegraftingPool?.sourceBuddingDocNo
+      ? buddingByDocNo.get(linkedRegraftingPool.sourceBuddingDocNo)
+      : null;
+    const relatedInspectionSet = new Set([
+      ...(btx.docNo ? inspectionsByBuddingDocNo.get(btx.docNo) || [] : []),
+      ...(inspectionsByBuddingIndex.get(idx) || [])
+    ]);
+    const relatedInspections = [...relatedInspectionSet];
     
     let totalDiperiksa = 0;
     let totalJadi = 0;
@@ -367,7 +553,9 @@ export function renderInspectionLanding() {
 
     return {
       ...btx,
-      originalIndex: idx,
+      programCode: btx.programCode || originalBudding?.programCode || '',
+      programId: btx.programId || originalBudding?.programId || '',
+      originalIndex: rawIndex >= 0 ? rawIndex : idx,
       isRegrafting,
       typeLabel: isRegrafting ? 'Okulasi Janda (Regrafting)' : 'Okulasi (Grafting)',
       typeBadgeBg: isRegrafting ? '#FFFBEB' : '#F0FDF4',
@@ -407,7 +595,6 @@ export function renderInspectionLanding() {
 
   const graftingCount = items.filter(i => !i.isRegrafting).length;
   const regraftingCount = items.filter(i => i.isRegrafting).length;
-
   // Dederan Inspections data
   syncDederanIndukDocuments();
   const dederIndukDocs = getAuthorizedTransactions(getDederanIndukDocuments(), userCtx);
@@ -455,7 +642,7 @@ export function renderInspectionLanding() {
 
   const rawPreGraftingDocs = getPreGraftingSelectionDocuments({}, userCtx);
   const activePreGraftingDocs = filterSelectionByScope(rawPreGraftingDocs, userCtx).filter(d => !d.isSplit && !d.isLegacyAggregateSplit);
-  const preGraftingTotalCount = activePreGraftingDocs.length;
+  const preGraftingTotalCount = countPendingPreGraftingDocuments(activePreGraftingDocs);
 
   app.innerHTML = `
     <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; position: relative;">
@@ -483,8 +670,8 @@ export function renderInspectionLanding() {
           ${pendingDederInspCount > 0 ? `<span style="background: ${activeInspectionModuleTab === 'DEDERAN' ? '#116834' : '#64748B'}; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${pendingDederInspCount}</span>` : ''}
         </button>
         <button id="tab-insp-seleksi-pra-okulasi" type="button" style="padding: 12px 2px; font-size: 0.82rem; font-weight: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '700' : '600'}; color: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; margin-bottom: -1px; transition: color 0.15s ease;">
-          <span>Seleksi Pra-Okulasi</span>
-          ${preGraftingTotalCount > 0 ? `<span style="background: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : '#64748B'}; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${preGraftingTotalCount}</span>` : ''}
+          <span>Pemeriksaan Pra-Okulasi</span>
+          ${preGraftingTotalCount > 0 ? `<span title="${preGraftingTotalCount} dokumen perlu tindakan" style="background: ${activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI' ? '#116834' : '#64748B'}; color: #FFFFFF; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${preGraftingTotalCount}</span>` : ''}
         </button>
         <button id="tab-insp-okulasi" type="button" style="padding: 12px 2px; font-size: 0.82rem; font-weight: ${activeInspectionModuleTab === 'OKULASI' ? '700' : '600'}; color: ${activeInspectionModuleTab === 'OKULASI' ? '#116834' : '#64748B'}; border: none; border-bottom: 2.5px solid ${activeInspectionModuleTab === 'OKULASI' ? '#116834' : 'transparent'}; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; margin-bottom: -1px; transition: color 0.15s ease;">
           <span>Pemeriksaan Okulasi</span>
@@ -555,29 +742,43 @@ export function renderInspectionLanding() {
     navigate('/home');
   });
 
-  // Event Listener: Module Tabs (Dederan vs Seleksi Pra-Okulasi vs Okulasi)
-  app.querySelector('#tab-insp-dederan')?.addEventListener('click', () => {
-    activeInspectionModuleTab = 'DEDERAN';
-    renderInspectionLanding();
-  });
+  // Capture tab clicks at the app root so they still work if nested controls stop bubbling.
+  // Attach once: renderInspectionLanding replaces app.innerHTML, not the root element.
+  if (!inspectionTabEventRoots.has(app)) {
+    app.addEventListener('click', (event) => {
+      const tab = event.target.closest('#tab-insp-dederan, #tab-insp-seleksi-pra-okulasi, #tab-insp-okulasi, #subtab-seleksi-1, #subtab-seleksi-2, #subtab-seleksi-3');
+      if (!tab || !app.contains(tab)) return;
 
-  app.querySelector('#tab-insp-seleksi-pra-okulasi')?.addEventListener('click', () => {
-    activeInspectionModuleTab = 'SELEKSI_PRA_OKULASI';
-    renderInspectionLanding();
-  });
+      const tabStates = {
+        'tab-insp-dederan': ['activeInspectionModuleTab', 'DEDERAN'],
+        'tab-insp-seleksi-pra-okulasi': ['activeInspectionModuleTab', 'SELEKSI_PRA_OKULASI'],
+        'tab-insp-okulasi': ['activeInspectionModuleTab', 'OKULASI'],
+        'subtab-seleksi-1': ['activePreGraftingTab', 'SELEKSI_1'],
+        'subtab-seleksi-2': ['activePreGraftingTab', 'SELEKSI_2'],
+        'subtab-seleksi-3': ['activePreGraftingTab', 'SELEKSI_3']
+      };
+      const [stateName, value] = tabStates[tab.id] || [];
+      if (!stateName || (stateName === 'activeInspectionModuleTab' && activeInspectionModuleTab === value) || (stateName === 'activePreGraftingTab' && activePreGraftingTab === value)) return;
 
-  app.querySelector('#tab-insp-okulasi')?.addEventListener('click', () => {
-    activeInspectionModuleTab = 'OKULASI';
-    renderInspectionLanding();
-  });
+      event.preventDefault();
+      event.stopPropagation();
+      if (stateName === 'activeInspectionModuleTab') activeInspectionModuleTab = value;
+      else activePreGraftingTab = value;
+      renderInspectionLanding();
+    }, true);
+    inspectionTabEventRoots.add(app);
+  }
 
   // Attach tab-specific events
   if (activeInspectionModuleTab === 'DEDERAN') {
     attachDederanInspectionEvents(app);
+    attachInspectionListControlEvents(app, 'DEDERAN');
   } else if (activeInspectionModuleTab === 'SELEKSI_PRA_OKULASI') {
     attachPreGraftingInspectionEvents(app, user, userCtx, activePreGraftingDocs);
+    attachInspectionListControlEvents(app, 'SELEKSI_PRA_OKULASI');
   } else {
     attachOkulasiInspectionEvents(app, items, inspectionTxs);
+    attachInspectionListControlEvents(app, 'OKULASI');
   }
 
   // Modal Events for Date Filter
@@ -701,13 +902,16 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
       </div>
     ` : ''}
 
+    ${renderInspectionListControls({ module: 'DEDERAN', programs: dederTxs.map(tx => tx.programCode || tx.programId || tx.program) })}
+
     <div style="margin-bottom: 12px;">
       <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Daftar Bedengan Dederan Siap Periksa (${dederTxs.length})</h2>
     </div>
 
-    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+    <div id="deder-inspection-cards" data-inspection-list-container="DEDERAN" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
       ${dederTxs.map((dtx) => {
         const summary = getBedenganInspectionSummary(dtx);
+        const inspectionState = summary.isComplete ? 'DONE' : (summary.totalDiperiksa > 0 ? 'IN_PROGRESS' : 'PENDING');
 
         let statusText = 'Siap Diperiksa';
         let statusBg = '#E53935';
@@ -744,7 +948,7 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
         }
 
         return `
-          <div class="card-deder-insp-wrapper" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); box-sizing: border-box;">
+          <div class="card-deder-insp-wrapper" data-inspection-list-card="DEDERAN" data-program="${esc(dtx.programCode || dtx.programId || dtx.program || '')}" data-state="${inspectionState}" data-batch="${esc(dtx.batchCode || dtx.batchNo || '')}" data-date="${esc(normalizeDateStr(dtx.tanggalDeder || dtx.tanggal || dtx.createdAt) || '')}" data-search="${esc([dtx.docNo, dtx.parentDederIndukDocNo, dtx.sourceReceiptDocNo, dtx.bedenganCode, dtx.klon, dtx.batchCode, dtx.batchNo].filter(Boolean).join(' '))}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); box-sizing: border-box;">
             <!-- BARIS 1: BEDENGAN & KLON (KIRI) | STATUS BADGE (KANAN) -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 8px;">
               <div style="font-size: 0.95rem; font-weight: 800; color: #116834; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;">
@@ -897,6 +1101,8 @@ function renderDederanInspectionSection(dederTxs, dederInspections, dederIndukDo
  * Render Section Pemeriksaan Okulasi (Existing)
  */
 function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, inspectionTxs, returnedOkulasiInspections = []) {
+  const okulasiPrograms = [...new Set(items.map(i => i.programCode || i.programId).filter(Boolean))];
+  const itemsByDocNo = new Map(items.filter(item => item.docNo).map(item => [item.docNo, item]));
   return `
     <!-- SECTION: TRANSAKSI PEMERIKSAAN OKULASI PERLU PERBAIKAN -->
     ${returnedOkulasiInspections.length > 0 ? `
@@ -917,7 +1123,7 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
           ${returnedOkulasiInspections.map((insp, idx) => {
             const docNo = insp.docNo ? insp.docNo.replace('/PRK/', '/INS/').replace('/INSP/', '/INS/') : formatStandardDocNo(2026, 'INS', idx + 1);
             const returnNote = insp.returnReason || insp.lastReturnReason || 'Perlu perbaikan data.';
-            const isRegraftInsp = insp.buddingType === 'REGRAFTING';
+            const isRegraftInsp = String(insp.buddingType || '').toUpperCase() === 'REGRAFTING';
             const inspGagal = parseInt(insp.jumlahGagal || 0);
             const regraftTotal = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : inspGagal;
             const selectionTotal = insp.totalToSelection !== undefined ? parseInt(insp.totalToSelection || 0) : Math.max(0, inspGagal - regraftTotal);
@@ -982,7 +1188,7 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
                   </div>
                   <div>
                     <span style="color: ${regraftTotal > 0 ? '#D97706' : (selectionTotal > 0 ? '#DC2626' : '#64748B')}; font-size: 0.68rem;">
-                      ${regraftTotal > 0 ? 'Okulasi Janda' : 'Mati / Gagal'}
+                      Tidak Berhasil
                     </span>
                     <div style="font-weight: 800; color: ${regraftTotal > 0 ? '#D97706' : (selectionTotal > 0 ? '#DC2626' : '#64748B')}; font-size: 0.85rem; margin-top: 1px;">
                       ${(regraftTotal > 0 ? regraftTotal : selectionTotal).toLocaleString('id-ID')} Pkk
@@ -1003,18 +1209,20 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
       </div>
     ` : ''}
 
+    ${renderInspectionListControls({ module: 'OKULASI', programs: okulasiPrograms, searchPlaceholder: 'Cari batch, bedengan, atau dokumen...' })}
+
     <div style="margin-bottom: 12px;">
       <h2 style="font-size: 0.92rem; font-weight: 700; color: #111111; margin: 0 0 10px 0;">Daftar Hasil Okulasi Siap Periksa</h2>
 
       <!-- TAB FILTER KLASIFIKASI SUMBER DOKUMEN -->
       <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;">
-        <button type="button" class="btn-filter-insp-tab" data-filter="ALL" style="padding: 6px 12px; font-size: 0.72rem; font-weight: 700; border-radius: 20px; border: 1px solid #116834; background: #116834; color: #FFFFFF; cursor: pointer; white-space: nowrap; box-sizing: border-box;">
+        <button type="button" class="btn-filter-insp-tab" data-filter="ALL" style="padding: 6px 12px; font-size: 0.72rem; font-weight: 700; border-radius: 20px; border: 1px solid ${inspectionListControls.OKULASI.kind === 'ALL' ? '#116834' : '#D1D5DB'}; background: ${inspectionListControls.OKULASI.kind === 'ALL' ? '#116834' : '#FFFFFF'}; color: ${inspectionListControls.OKULASI.kind === 'ALL' ? '#FFFFFF' : '#374151'}; cursor: pointer; white-space: nowrap; box-sizing: border-box;">
           Semua (${items.length})
         </button>
-        <button type="button" class="btn-filter-insp-tab" data-filter="GRAFTING" style="padding: 6px 12px; font-size: 0.72rem; font-weight: 700; border-radius: 20px; border: 1px solid #D1D5DB; background: #FFFFFF; color: #374151; cursor: pointer; white-space: nowrap; box-sizing: border-box;">
+        <button type="button" class="btn-filter-insp-tab" data-filter="GRAFTING" style="padding: 6px 12px; font-size: 0.72rem; font-weight: 700; border-radius: 20px; border: 1px solid ${inspectionListControls.OKULASI.kind === 'GRAFTING' ? '#116834' : '#D1D5DB'}; background: ${inspectionListControls.OKULASI.kind === 'GRAFTING' ? '#116834' : '#FFFFFF'}; color: ${inspectionListControls.OKULASI.kind === 'GRAFTING' ? '#FFFFFF' : '#374151'}; cursor: pointer; white-space: nowrap; box-sizing: border-box;">
           Okulasi (${graftingCount})
         </button>
-        <button type="button" class="btn-filter-insp-tab" data-filter="REGRAFTING" style="padding: 6px 12px; font-size: 0.72rem; font-weight: 700; border-radius: 20px; border: 1px solid #FDE68A; background: #FFFBEB; color: #B45309; cursor: pointer; white-space: nowrap; box-sizing: border-box;">
+        <button type="button" class="btn-filter-insp-tab" data-filter="REGRAFTING" style="padding: 6px 12px; font-size: 0.72rem; font-weight: 700; border-radius: 20px; border: 1px solid ${inspectionListControls.OKULASI.kind === 'REGRAFTING' ? '#116834' : '#FDE68A'}; background: ${inspectionListControls.OKULASI.kind === 'REGRAFTING' ? '#116834' : '#FFFBEB'}; color: ${inspectionListControls.OKULASI.kind === 'REGRAFTING' ? '#FFFFFF' : '#B45309'}; cursor: pointer; white-space: nowrap; box-sizing: border-box;">
           Okulasi Janda (${regraftingCount})
         </button>
       </div>
@@ -1029,32 +1237,41 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
     })}
 
     ${items.length > 0 ? `
-      <div id="insp-cards-container" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+      <div id="insp-cards-container" data-inspection-list-container="OKULASI" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
         ${items.map((item, idx) => {
           const workers = item.workers || [];
           return `
-            <div class="card-inspection-wrapper" data-type="${item.isRegrafting ? 'REGRAFTING' : 'GRAFTING'}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); box-sizing: border-box;">
+            <div class="card-inspection-wrapper" data-inspection-list-card="OKULASI" data-type="${item.isRegrafting ? 'REGRAFTING' : 'GRAFTING'}" data-kind="${item.isRegrafting ? 'REGRAFTING' : 'GRAFTING'}" data-program="${esc(item.programCode || item.programId || '')}" data-state="${item.sisaBelumDiperiksa <= 0 ? 'DONE' : (item.totalDiperiksa > 0 ? 'IN_PROGRESS' : 'PENDING')}" data-batch="${esc(item.batchNo || '')}" data-date="${esc(normalizeDateStr(item.tanggal || item.createdAt) || '')}" data-search="${esc([item.batchNo, item.docNo, item.sourceDocNo, item.regraftPoolDocNo, item.bedengan, item.klonEntres, item.programCode, ...(Array.isArray(item.workers) ? item.workers.flatMap(worker => [worker.name, worker.code]) : [])].filter(Boolean).join(' '))}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); box-sizing: border-box;">
               
               <!-- HEADER BARIS 1: NOMOR BATCH & STATUS BADGE -->
-              <div style="display: flex; align-items: center; margin-bottom: 4px; gap: 6px;">
-                ${renderStatusDots([{
-                  key: item.totalDiperiksa === 0 ? 'INSP_PERLU' : (item.sisaBelumDiperiksa <= 0 ? 'INSP_DONE_PCT' : 'INSP_SISA'),
-                  label: item.statusText
-                }])}
-                <div style="font-size: 0.95rem; font-weight: 800; color: #116834; white-space: nowrap; letter-spacing: -0.01em;">
-                  ${item.batchNo || 'Batch-01'}
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:6px;">
+                <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+                  ${renderStatusDots([{
+                    key: item.totalDiperiksa === 0 ? 'INSP_PERLU' : (item.sisaBelumDiperiksa <= 0 ? 'INSP_DONE_PCT' : 'INSP_SISA'),
+                    label: item.statusText
+                  }])}
+                  <div style="font-size: 0.95rem; font-weight: 800; color: #116834; white-space: nowrap; letter-spacing: -0.01em;">
+                    ${item.batchNo || 'Batch-01'}
+                  </div>
                 </div>
+                ${item.sisaBelumDiperiksa <= 0 ? `<div class="card-action-periksa" data-index="${item.originalIndex}" data-completed="true" data-batch="${item.batchNo || 'Batch'}" data-total="${item.populasiDiokulasi}" style="display:inline-flex;align-items:center;flex-shrink:0;padding:3px 9px;border-radius:999px;background:#DCFCE7;border:1px solid #BBF7D0;color:#116834;font-size:.64rem;font-weight:700;line-height:1.2;cursor:pointer;">Selesai</div>` : ''}
               </div>
 
               <!-- HEADER BARIS 2: BADGE SUMBER & DOKUMEN -->
-              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; gap: 6px; flex-wrap: wrap;">
-                <span style="background: ${item.typeBadgeBg}; color: ${item.typeBadgeColor}; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: ${item.typeBadgeBorder}; white-space: nowrap;">
-                  ${item.typeLabel}
-                </span>
-                <span style="font-size: 0.78rem; font-weight: 700; color: #111827;">
-                  ${item.docNo || `OKL/2026/0${idx + 1}`}
-                </span>
-              </div>
+              ${item.sisaBelumDiperiksa <= 0 ? `
+                <div style="display:flex;align-items:center;justify-content:flex-start;margin-bottom:2px;">
+                  <span style="font-size:0.78rem;font-weight:700;color:#111827;">${item.docNo || `OKL/2026/0${idx + 1}`}</span>
+                </div>
+              ` : `
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; gap: 6px; flex-wrap: wrap;">
+                  <span style="background: ${item.typeBadgeBg}; color: ${item.typeBadgeColor}; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: ${item.typeBadgeBorder}; white-space: nowrap;">
+                    ${item.typeLabel}
+                  </span>
+                  <span style="font-size: 0.78rem; font-weight: 700; color: #111827;">
+                    ${item.docNo || `OKL/2026/0${idx + 1}`}
+                  </span>
+                </div>
+              `}
 
               <!-- HEADER BARIS 3: TANGGAL & DOKUMEN ASAL -->
               <div style="font-size: 0.72rem; color: #888888; margin-bottom: 10px;">
@@ -1162,24 +1379,14 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
               </div>
 
               <!-- FOOTER ACTION ROW -->
-              ${item.sisaBelumDiperiksa <= 0 ? `
-                <div class="card-action-periksa" data-index="${item.originalIndex}" data-completed="true" data-batch="${item.batchNo || 'Batch'}" data-total="${item.populasiDiokulasi}" style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed #E5E7EB; cursor: pointer;">
-                  <span style="font-size: 0.74rem; color: #116834; font-weight: 700;">✓ Pemeriksaan Selesai (100% Diperiksa)</span>
-                  <div style="display: flex; align-items: center; gap: 4px; color: #116834; font-weight: 700; font-size: 0.74rem;">
-                    <span>Selesai</span>
-                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none">
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                  </div>
-                </div>
-              ` : `
+              ${item.sisaBelumDiperiksa > 0 ? `
                 <div class="card-action-periksa" data-index="${item.originalIndex}" data-completed="false" data-batch="${item.batchNo || 'Batch'}" data-total="${item.populasiDiokulasi}" style="display: flex; justify-content: space-between; align-items: center; background: #116834; color: #FFFFFF; border-radius: 6px; padding: 10px 14px; margin-top: 10px; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.22); transition: opacity 0.15s ease;">
                   <span style="font-size: 0.78rem; color: #FFFFFF; font-weight: 700; letter-spacing: -0.01em;">Ketuk untuk Rekam Pemeriksaan</span>
                   <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="9 18 15 12 9 6"></polyline>
                   </svg>
                 </div>
-              `}
+              ` : ''}
 
             </div>
           `;
@@ -1200,12 +1407,17 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
             const inspGagal = parseInt(insp.jumlahGagal || 0);
             const regraftTotal = insp.totalToRegrafting !== undefined ? parseInt(insp.totalToRegrafting || 0) : inspGagal;
             const selectionTotal = insp.totalToSelection !== undefined ? parseInt(insp.totalToSelection || 0) : Math.max(0, inspGagal - regraftTotal);
-            const isRegraftInsp = insp.buddingType === 'REGRAFTING';
+            const isRegraftInsp = String(insp.buddingType || '').toUpperCase() === 'REGRAFTING';
+            const sourceItem = itemsByDocNo.get(insp.buddingDocNo);
+            const transactionProgram = insp.programCode || insp.programId || sourceItem?.programCode || sourceItem?.programId || '';
+            const transactionState = sourceItem
+              ? (sourceItem.sisaBelumDiperiksa <= 0 ? 'DONE' : (sourceItem.totalDiperiksa > 0 ? 'IN_PROGRESS' : 'PENDING'))
+              : 'DONE';
 
             const isOkulasiInspLocked = isTransactionLockedForMantri(insp);
 
             return `
-              <div class="card-insp-summary-wrapper" data-type="${isRegraftInsp ? 'REGRAFTING' : 'GRAFTING'}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); box-sizing: border-box; position: relative;">
+              <div class="card-insp-summary-wrapper" data-inspection-transaction-card="OKULASI" data-kind="${isRegraftInsp ? 'REGRAFTING' : 'GRAFTING'}" data-program="${esc(transactionProgram)}" data-state="${transactionState}" data-batch="${esc(insp.batchNo || sourceItem?.batchNo || '')}" data-date="${esc(normalizeDateStr(insp.tanggal || insp.date || insp.createdAt) || '')}" data-search="${esc([insp.batchNo, insp.docNo, insp.buddingDocNo, sourceItem?.docNo, insp.sourceDocNo, insp.bedengan, insp.klonEntres, transactionProgram, ...(Array.isArray(insp.workers) ? insp.workers.flatMap(worker => [worker.name, worker.code]) : [])].filter(Boolean).join(' '))}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px 14px; font-size: 0.78rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03); box-sizing: border-box; position: relative;">
                 
                 <!-- BARIS 1: JUDUL BATCH & TOMBOL AKSI 3-DOTS -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
@@ -1266,9 +1478,22 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
                       ${regraftTotal > 0 ? 'Okulasi Janda' : 'Mati / Gagal'}
                     </div>
                     <div style="font-size: 0.82rem; font-weight: 800; color: ${regraftTotal > 0 ? '#D97706' : (selectionTotal > 0 ? '#DC2626' : '#6B7280')}; margin-top: 1px;">
-                      ${regraftTotal > 0 ? regraftTotal : selectionTotal} Pkk
+                      ${inspGagal} Pkk
                     </div>
                   </div>
+                </div>
+                <div class="insp-transaction-detail" style="display:none;margin-top:8px;padding:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:7px;font-size:.72rem;line-height:1.45;">
+                  <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;"><span style="color:#64748B;">Dokumen Pemeriksaan</span><strong style="color:#0F172A;text-align:right;overflow-wrap:anywhere;">${esc(insp.docNo || '-')}</strong></div>
+                  <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;"><span style="color:#64748B;">Dokumen Okulasi</span><strong style="color:#0F172A;text-align:right;overflow-wrap:anywhere;">${esc(insp.buddingDocNo || '-')}</strong></div>
+                  <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;"><span style="color:#64748B;">Total diperiksa</span><strong style="color:#0F172A;">${Number(insp.totalDiperiksa ?? (Number(insp.jumlahJadi || 0) + inspGagal)).toLocaleString('id-ID')} Pkk</strong></div>
+                  <div style="font-weight:700;color:#334155;margin-bottom:5px;">Rincian pekerja</div>
+                  ${(Array.isArray(insp.workers) && insp.workers.length ? insp.workers : []).map(worker => {
+                    const workerGagal = Number(worker.jlhTidakBerhasil || 0);
+                    const workerRegraft = worker.perluRegrafting ? workerGagal : 0;
+                    const workerSelection = workerGagal - workerRegraft;
+                    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #E2E8F0;"><span style="min-width:0;overflow-wrap:anywhere;color:#334155;">${esc(worker.name || 'Pekerja')}</span><span style="flex-shrink:0;text-align:right;color:#475569;">Periksa ${Number(worker.jlhDiperiksa || 0).toLocaleString('id-ID')} · Jadi ${Number(worker.jlhBerhasil || 0).toLocaleString('id-ID')} · Gagal ${workerGagal.toLocaleString('id-ID')}<br><span style="color:#B45309;">Janda ${workerRegraft.toLocaleString('id-ID')}</span> · <span style="color:#DC2626;">Seleksi ${workerSelection.toLocaleString('id-ID')}</span></span></div>`;
+                  }).join('') || '<div style="color:#64748B;">Rincian pekerja tidak tersedia pada transaksi ini.</div>'}
+                  ${insp.catatan ? `<div style="margin-top:8px;padding-top:7px;border-top:1px solid #E2E8F0;"><span style="color:#64748B;">Catatan:</span> ${esc(insp.catatan)}</div>` : ''}
                 </div>
 
               </div>
@@ -1437,7 +1662,8 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
       } else {
         const index = e.currentTarget.dataset.index;
         storage.remove('editing_inspection_index');
-        storage.set('active_inspection_budding_index', index);
+        storage.set('selected_inspection_budding_index', index);
+        storage.remove('active_inspection_budding_index');
         navigate('/inspection/form');
       }
     });
@@ -1454,6 +1680,10 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
   app.querySelectorAll('.btn-filter-insp-tab').forEach(tab => {
     tab.addEventListener('click', (e) => {
       const filter = e.currentTarget.dataset.filter;
+      inspectionListControls.OKULASI.kind = filter;
+      inspectionListControls.OKULASI.filter = 'ALL';
+      const statusFilter = app.querySelector('[data-inspection-control="filter"][data-module="OKULASI"]');
+      if (statusFilter) statusFilter.value = 'ALL';
       app.querySelectorAll('.btn-filter-insp-tab').forEach(t => {
         const isSelected = t === e.currentTarget;
         t.style.background = isSelected ? '#116834' : '#FFFFFF';
@@ -1461,14 +1691,7 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
         t.style.border = isSelected ? '1px solid #116834' : '1px solid #D1D5DB';
       });
 
-      app.querySelectorAll('.card-inspection-wrapper').forEach(card => {
-        const type = card.dataset.type;
-        if (filter === 'ALL' || type === filter) {
-          card.style.display = 'block';
-        } else {
-          card.style.display = 'none';
-        }
-      });
+      applyInspectionListControls(app, 'OKULASI');
     });
   });
 
@@ -1484,6 +1707,20 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
       if (menu) {
         menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
       }
+    });
+  });
+
+  app.querySelectorAll('.menu-action-rincian').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const card = e.currentTarget.closest('.card-insp-summary-wrapper');
+      const detail = card?.querySelector('.insp-transaction-detail');
+      if (!detail) return;
+      const willOpen = detail.style.display === 'none';
+      detail.style.display = willOpen ? 'block' : 'none';
+      const menu = e.currentTarget.closest('.tx-action-menu');
+      if (menu) menu.style.display = 'none';
     });
   });
 
@@ -1599,17 +1836,12 @@ function attachOkulasiInspectionEvents(app, items, inspectionTxs) {
  * Menghitung jumlah batch okulasi yang membutuhkan tindakan pemeriksaan
  */
 export function getActionableInspectionCount(currentUser) {
-  const buddingTxs = storage.get('budding_transactions', []).filter(b => b.type !== 'REGRAFTING');
-  const inspectionTxs = storage.get('inspection_transactions', []);
-  
-  const userEstateId = currentUser?.estateId;
-  const userDivisionId = currentUser?.divisionId;
+  const userCtx = currentUser || getCurrentUserContext();
+  const buddingTxs = getAuthorizedTransactions(storage.get('budding_transactions', []), userCtx);
+  const inspectionTxs = getAuthorizedTransactions(storage.get('inspection_transactions', []), userCtx);
 
   let count = 0;
   buddingTxs.forEach((btx, i) => {
-    if (userEstateId && btx.estateId && btx.estateId !== userEstateId) return;
-    if (userDivisionId && btx.divisionId && btx.divisionId !== userDivisionId) return;
-
     const populasiDiokulasi = parseInt(btx.jumlah || 0);
     let totalDiperiksa = 0;
     inspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo || insp.buddingIndex === i).forEach(insp => {
@@ -1669,9 +1901,11 @@ export function renderPreGraftingInspectionSection(user, userCtx, preGraftingDoc
     return s === 'SELEKSI_III' || s === 'SELEKSI_3';
   });
 
-  const seleksi1ProgGroups = groupPreGraftingDocsByProgram(seleksi1Docs);
-  const seleksi2ProgGroups = groupPreGraftingDocsByProgram(seleksi2Docs);
-  const seleksi3ProgGroups = groupPreGraftingDocsByProgram(seleksi3Docs);
+  // A completed physical inspection stays counted while awaiting Mantri
+  // confirmation or Asisten approval. Final/verified documents are excluded.
+  const pendingSeleksi1Count = countPendingPreGraftingDocuments(seleksi1Docs);
+  const pendingSeleksi2Count = countPendingPreGraftingDocuments(seleksi2Docs);
+  const pendingSeleksi3Count = countPendingPreGraftingDocuments(seleksi3Docs);
 
   // Available programs
   const availableProgramsSet = new Set();
@@ -1682,19 +1916,49 @@ export function renderPreGraftingInspectionSection(user, userCtx, preGraftingDoc
   if (availableProgramsSet.size === 0) {
     availableProgramsSet.add('2026/TB/RNUR/001');
   }
-  const allAvailablePrograms = Array.from(availableProgramsSet);
-  if (!activeFilterProgram || (activeFilterProgram !== 'ALL' && !allAvailablePrograms.includes(activeFilterProgram))) {
-    activeFilterProgram = allAvailablePrograms[0];
-  }
+  const preControls = inspectionListControls.SELEKSI_PRA_OKULASI;
+  const preAvailablePrograms = Array.from(availableProgramsSet);
+  if (preControls.program !== 'ALL' && !preAvailablePrograms.includes(preControls.program)) preControls.program = 'ALL';
 
-  const filterGroupsByProgram = (groups) => {
-    if (!activeFilterProgram || activeFilterProgram === 'ALL') return groups;
-    return groups.filter(g => g.programCode === activeFilterProgram);
+  const selectedPreSearch = preControls.search.trim().toLocaleLowerCase('id-ID');
+  const normalizeSelectionStage = value => String(value || '').toUpperCase().replace('SELEKSI_I', 'SELEKSI_1').replace('SELEKSI_II', 'SELEKSI_2').replace('SELEKSI_III', 'SELEKSI_3');
+  const filterPreDocs = docs => {
+    let result = docs.filter(d => preControls.program === 'ALL' || (d.programCode || d.programId || d.programName) === preControls.program);
+    if (selectedPreSearch) result = result.filter(d => [d.batchCode, d.batchNo, d.programCode, d.programId, d.programName, d.docNo, d.sourceDocNo, d.bedenganCode]
+      .filter(Boolean).join(' ').toLocaleLowerCase('id-ID').includes(selectedPreSearch));
+    result = result.filter(d => {
+      const stage = normalizeSelectionStage(d.selectionStage || 'SELEKSI_I');
+      const metricStage = stage === 'SELEKSI_2' ? 'SELEKSI_2' : stage === 'SELEKSI_3' ? 'SELEKSI_3' : 'SELEKSI_1';
+      const metrics = calculateBatchMetrics({ batchCode: d.batchCode || d.batchNo, docs: [d] }, metricStage);
+      const isDone = (metrics.inspectedPercent >= 100 && metrics.totalInspectedPolybag > 0) ||
+        ((d.isCompleted || String(d.status || '').toUpperCase() === 'COMPLETED') && (d.totalLayak !== undefined || (d.inspectedPolybag !== undefined && d.inspectedPolybag > 0)));
+      const isSubmitted = ['MENUNGGU_VERIFIKASI', 'DIAJUKAN', 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN'].includes(String(d.status || '').toUpperCase()) ||
+        d.submissionStatus === 'SUBMITTED_TO_ASB' || d.isSubmitted;
+      const isInspected = metrics.totalInspectedPolybag > 0;
+      const status = isDone || isSubmitted ? 'DONE' : (isInspected ? 'IN_PROGRESS' : 'PENDING');
+      return preControls.filter === 'ALL' || preControls.filter === status;
+    });
+    return result;
   };
-
-  const displaySeleksi1ProgGroups = filterGroupsByProgram(seleksi1ProgGroups);
-  const displaySeleksi2ProgGroups = filterGroupsByProgram(seleksi2ProgGroups);
-  const displaySeleksi3ProgGroups = filterGroupsByProgram(seleksi3ProgGroups);
+  const sortPreDocs = docs => [...docs].sort((a, b) => {
+    if (preControls.sort === 'NEWEST' || preControls.sort === 'OLDEST') {
+      const delta = (Date.parse(normalizeDateStr(b.tanggal || b.date || b.createdAt) || '') || 0) - (Date.parse(normalizeDateStr(a.tanggal || a.date || a.createdAt) || '') || 0);
+      return preControls.sort === 'NEWEST' ? delta : -delta;
+    }
+    if (preControls.sort === 'PRIORITY') {
+      const getPriority = doc => {
+        const stage = normalizeSelectionStage(doc.selectionStage || 'SELEKSI_I');
+        const metricStage = stage === 'SELEKSI_2' ? 'SELEKSI_2' : stage === 'SELEKSI_3' ? 'SELEKSI_3' : 'SELEKSI_1';
+        const metrics = calculateBatchMetrics({ batchCode: doc.batchCode || doc.batchNo, docs: [doc] }, metricStage);
+        return metrics.totalInspectedPolybag <= 0 ? 0 : (metrics.inspectedPercent >= 100 ? 2 : 1);
+      };
+      return getPriority(a) - getPriority(b) || String(a.batchCode || a.batchNo || '').localeCompare(String(b.batchCode || b.batchNo || ''), 'id');
+    }
+    return String(a.batchCode || a.batchNo || '').localeCompare(String(b.batchCode || b.batchNo || ''), 'id');
+  });
+  const displaySeleksi1ProgGroups = groupPreGraftingDocsByProgram(sortPreDocs(filterPreDocs(seleksi1Docs)));
+  const displaySeleksi2ProgGroups = groupPreGraftingDocsByProgram(sortPreDocs(filterPreDocs(seleksi2Docs)));
+  const displaySeleksi3ProgGroups = groupPreGraftingDocsByProgram(sortPreDocs(filterPreDocs(seleksi3Docs)));
 
   // Child Transactions per Stage
   const rawAllTxs = storage.get(SELECTION_STORAGE_KEY, []);
@@ -1728,64 +1992,21 @@ export function renderPreGraftingInspectionSection(user, userCtx, preGraftingDoc
   });
 
   return `
+    ${renderInspectionListControls({ module: 'SELEKSI_PRA_OKULASI', programs: preAvailablePrograms, searchPlaceholder: 'Cari batch, bedengan, atau dokumen...' })}
+
     <!-- SUB-TAB SELEKSI PRA-OKULASI: SELEKSI I vs SELEKSI II vs SELEKSI III -->
-    <div style="display: flex; background: #F1F5F9; border-radius: 8px; padding: 4px; margin-bottom: 14px; gap: 4px;">
+    <div style="display: flex; background: #E8EDF3; border: 1px solid #D5DEE8; border-radius: 10px; padding: 5px; margin: 2px 0 14px; gap: 4px; box-shadow: inset 0 1px 2px rgba(15,23,42,0.04);">
       <button id="subtab-seleksi-1" type="button" style="flex: 1; height: 38px; padding: 0 8px; font-size: 0.80rem; font-weight: ${activePreGraftingTab === 'SELEKSI_1' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_1' ? '#FFFFFF' : 'transparent'}; border: ${activePreGraftingTab === 'SELEKSI_1' ? '1px solid rgba(0,0,0,0.04)' : '1px solid transparent'}; border-radius: 6px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_1' ? '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' : 'none'}; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease;">
         <span>Seleksi I</span>
-        ${seleksi1Docs.length > 0 ? `<span style="background: ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : '#64748B'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${seleksi1Docs.length}</span>` : ''}
+        ${pendingSeleksi1Count > 0 ? `<span title="${pendingSeleksi1Count} dokumen perlu tindakan" style="background: ${activePreGraftingTab === 'SELEKSI_1' ? '#116834' : '#64748B'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${pendingSeleksi1Count}</span>` : ''}
       </button>
       <button id="subtab-seleksi-2" type="button" style="flex: 1; height: 38px; padding: 0 8px; font-size: 0.80rem; font-weight: ${activePreGraftingTab === 'SELEKSI_2' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_2' ? '#FFFFFF' : 'transparent'}; border: ${activePreGraftingTab === 'SELEKSI_2' ? '1px solid rgba(0,0,0,0.04)' : '1px solid transparent'}; border-radius: 6px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_2' ? '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' : 'none'}; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease;">
         <span>Seleksi II</span>
-        ${seleksi2Docs.length > 0 ? `<span style="background: ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : '#64748B'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${seleksi2Docs.length}</span>` : ''}
+        ${pendingSeleksi2Count > 0 ? `<span title="${pendingSeleksi2Count} dokumen perlu tindakan" style="background: ${activePreGraftingTab === 'SELEKSI_2' ? '#116834' : '#64748B'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${pendingSeleksi2Count}</span>` : ''}
       </button>
       <button id="subtab-seleksi-3" type="button" style="flex: 1; height: 38px; padding: 0 8px; font-size: 0.80rem; font-weight: ${activePreGraftingTab === 'SELEKSI_3' ? '700' : '600'}; color: ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : '#64748B'}; background: ${activePreGraftingTab === 'SELEKSI_3' ? '#FFFFFF' : 'transparent'}; border: ${activePreGraftingTab === 'SELEKSI_3' ? '1px solid rgba(0,0,0,0.04)' : '1px solid transparent'}; border-radius: 6px; cursor: pointer; box-shadow: ${activePreGraftingTab === 'SELEKSI_3' ? '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)' : 'none'}; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease;">
         <span>Seleksi III</span>
-        ${seleksi3Docs.length > 0 ? `<span style="background: ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : '#64748B'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${seleksi3Docs.length}</span>` : ''}
-      </button>
-    </div>
-
-    <!-- CONTROLS: PROGRAM PEMBIBITAN SELECTOR & SEARCH/FILTER BAR -->
-    <div style="margin-bottom: 12px;">
-      <label style="display: block; font-size: 0.72rem; font-weight: 700; color: #475569; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.3px;">
-        Program Pembibitan
-      </label>
-      <div style="position: relative;">
-        <select id="select-filter-program" style="width: 100%; box-sizing: border-box; height: 38px; padding: 0 32px 0 12px; font-size: 0.80rem; font-weight: 600; color: #1E293B; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; cursor: pointer; outline: none; appearance: none; -webkit-appearance: none; transition: border-color 0.15s ease;" onfocus="this.style.borderColor='#116834'" onblur="this.style.borderColor='#CBD5E1'">
-          ${allAvailablePrograms.map(p => `
-            <option value="${esc(p)}" ${activeFilterProgram === p ? 'selected' : ''}>${esc(p)}</option>
-          `).join('')}
-          ${allAvailablePrograms.length > 1 ? `<option value="ALL" ${activeFilterProgram === 'ALL' ? 'selected' : ''}>Semua Program</option>` : ''}
-        </select>
-        <div style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748B;">
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </div>
-      </div>
-    </div>
-
-    <!-- SEARCH & QUICK FILTER ACTIONS -->
-    <div style="display: flex; gap: 8px; margin-bottom: 14px; align-items: center;">
-      <div style="flex: 1; min-width: 0; position: relative;">
-        <div style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #94A3B8; display: flex; align-items: center;">
-          <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-        </div>
-        <input id="input-search-selection" type="text" placeholder="Cari batch atau bedengan..." style="width: 100%; box-sizing: border-box; height: 38px; padding: 0 10px 0 32px; font-size: 0.78rem; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; color: #0F172A; outline: none; transition: border-color 0.15s ease;" onfocus="this.style.borderColor='#116834'" onblur="this.style.borderColor='#CBD5E1'">
-      </div>
-      <button id="btn-filter-selection" type="button" style="height: 38px; padding: 0 11px; font-size: 0.76rem; font-weight: 600; color: #334155; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; transition: all 0.15s ease;" onmouseover="this.style.borderColor='#94A3B8'" onmouseout="this.style.borderColor='#CBD5E1'">
-        <span>Filter</span>
-        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </button>
-      <button id="btn-sort-selection" type="button" style="height: 38px; padding: 0 11px; font-size: 0.76rem; font-weight: 600; color: #334155; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; transition: all 0.15s ease;" onmouseover="this.style.borderColor='#94A3B8'" onmouseout="this.style.borderColor='#CBD5E1'">
-        <span>Urutkan</span>
-        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
+        ${pendingSeleksi3Count > 0 ? `<span title="${pendingSeleksi3Count} dokumen perlu tindakan" style="background: ${activePreGraftingTab === 'SELEKSI_3' ? '#116834' : '#64748B'}; color: #FFF; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.2; min-width: 16px; text-align: center;">${pendingSeleksi3Count}</span>` : ''}
       </button>
     </div>
 
@@ -1831,45 +2052,12 @@ export function renderPreGraftingInspectionSection(user, userCtx, preGraftingDoc
  * Event Listeners for Seleksi Pra-Okulasi Section in Modul Pemeriksaan
  */
 export function attachPreGraftingInspectionEvents(app, user, userCtx, preGraftingDocs = []) {
-  // Sub-Tab switching
-  app.querySelector('#subtab-seleksi-1')?.addEventListener('click', () => {
-    activePreGraftingTab = 'SELEKSI_1';
-    renderInspectionLanding();
-  });
-
-  app.querySelector('#subtab-seleksi-2')?.addEventListener('click', () => {
-    activePreGraftingTab = 'SELEKSI_2';
-    renderInspectionLanding();
-  });
-
-  app.querySelector('#subtab-seleksi-3')?.addEventListener('click', () => {
-    activePreGraftingTab = 'SELEKSI_3';
-    renderInspectionLanding();
-  });
-
   // Program dropdown filter change
-  app.querySelector('#select-filter-program')?.addEventListener('change', (e) => {
-    activeFilterProgram = e.target.value;
-    renderInspectionLanding();
-  });
-
-  // Client-side quick search filtering
-  const searchInput = app.querySelector('#input-search-selection');
-  if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase().trim();
-      app.querySelectorAll('.card-batch-document').forEach(card => {
-        const batchCode = (card.dataset.batchCode || '').toLowerCase();
-        const progCode = (card.dataset.programCode || '').toLowerCase();
-        const text = card.textContent.toLowerCase();
-        if (!q || batchCode.includes(q) || progCode.includes(q) || text.includes(q)) {
-          card.style.display = '';
-        } else {
-          card.style.display = 'none';
-        }
-      });
-    });
-  }
+  const preControls = inspectionListControls.SELEKSI_PRA_OKULASI;
+  app.querySelector('[data-inspection-control="program"][data-module="SELEKSI_PRA_OKULASI"]')?.addEventListener('change', e => { preControls.program = e.target.value; attachInspectionListControlEvents(app, 'SELEKSI_PRA_OKULASI'); });
+  app.querySelector('[data-inspection-control="search"][data-module="SELEKSI_PRA_OKULASI"]')?.addEventListener('input', e => { preControls.search = e.target.value; attachInspectionListControlEvents(app, 'SELEKSI_PRA_OKULASI'); });
+  app.querySelector('[data-inspection-control="filter"][data-module="SELEKSI_PRA_OKULASI"]')?.addEventListener('change', e => { preControls.filter = e.target.value; attachInspectionListControlEvents(app, 'SELEKSI_PRA_OKULASI'); });
+  app.querySelector('[data-inspection-control="sort"][data-module="SELEKSI_PRA_OKULASI"]')?.addEventListener('change', e => { preControls.sort = e.target.value; attachInspectionListControlEvents(app, 'SELEKSI_PRA_OKULASI'); });
 
   // Batch row click for Seleksi I, II, III
   app.querySelectorAll('.row-batch-clickable').forEach(row => {

@@ -20,7 +20,18 @@ export function renderInspectionForm() {
 
   // Selected budding transaction (supports both Grafting and Regrafting)
   const buddingTxs = storage.get('budding_transactions', []);
-  const buddingIdx = storage.get('selected_inspection_budding_index', 0);
+  const storedBuddingIdx = parseInt(storage.get('selected_inspection_budding_index', 0), 10);
+  const linkedBuddingIdx = isEditing && targetInsp?.buddingDocNo
+    ? buddingTxs.findIndex(tx => tx.docNo === targetInsp.buddingDocNo)
+    : -1;
+  const legacyBuddingIdx = isEditing && Number.isInteger(Number(targetInsp?.buddingIndex))
+    ? Number(targetInsp.buddingIndex)
+    : -1;
+  const buddingIdx = linkedBuddingIdx >= 0
+    ? linkedBuddingIdx
+    : (Number.isInteger(storedBuddingIdx) && buddingTxs[storedBuddingIdx]
+      ? storedBuddingIdx
+      : (legacyBuddingIdx >= 0 && buddingTxs[legacyBuddingIdx] ? legacyBuddingIdx : 0));
   const selectedBudding = buddingTxs[buddingIdx] || {
     batchNo: 'Batch-01',
     docNo: formatStandardDocNo(2026, 'OKL', 1),
@@ -35,6 +46,11 @@ export function renderInspectionForm() {
       { id: 'W001', name: 'Ahmad Rifai', code: '104521', qty: 2000 }
     ]
   };
+  if (isEditing && targetInsp?.buddingDocNo && selectedBudding.docNo !== targetInsp.buddingDocNo) {
+    toast(`Transaksi okulasi sumber ${targetInsp.buddingDocNo} tidak ditemukan. Form edit dibatalkan agar data tidak tertaut ke batch lain.`, 'error');
+    navigate('/inspection');
+    return;
+  }
 
   const isRegrafting = selectedBudding.type === 'REGRAFTING';
   const batchNo = selectedBudding.batchNo || 'Batch-01';
@@ -42,7 +58,20 @@ export function renderInspectionForm() {
   const populasiDiokulasi = parseInt(selectedBudding.jumlah || 0);
 
   // Workers who performed grafting
-  let workerList = selectedBudding.workers || [];
+  let workerList = isEditing && Array.isArray(targetInsp?.workers) && targetInsp.workers.length > 0
+    ? targetInsp.workers.map(savedWorker => {
+        const sourceWorkers = selectedBudding.workers || [];
+        const sourceWorker = (savedWorker.id ? sourceWorkers.find(w => w.id === savedWorker.id) : null)
+          || (savedWorker.code ? sourceWorkers.find(w => w.code === savedWorker.code) : null);
+        return {
+          ...savedWorker,
+          id: savedWorker.id || sourceWorker?.id || savedWorker.code,
+          name: savedWorker.name || sourceWorker?.name || 'Pekerja',
+          code: savedWorker.code || sourceWorker?.code || '-',
+          qty: savedWorker.totalDiokulasi ?? savedWorker.qty ?? sourceWorker?.qty ?? savedWorker.jlhDiperiksa ?? 0
+        };
+      })
+    : (selectedBudding.workers || []);
   if (workerList.length === 0) {
     workerList = [
       { id: 'W001', name: 'Ahmad Rifai', code: '104521', qty: populasiDiokulasi }
@@ -195,50 +224,45 @@ export function renderInspectionForm() {
 
         <!-- INFORMASI BATCH OKULASI ASAL -->
         <section style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB; background: #F9FAFB;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <div style="display: flex; align-items: center; gap: 6px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:12px;">
+            <div style="display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0;">
               <h2 style="font-size: 0.88rem; font-weight: 700; color: #111111; margin: 0;">Informasi Batch Okulasi</h2>
-              <span style="background: ${isRegrafting ? '#FFF8E1' : '#E8F5E9'}; color: ${isRegrafting ? '#B45309' : '#116834'}; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: ${isRegrafting ? '1px solid #FFE082' : '1px solid #C8E6C9'}; white-space: nowrap;">
+              <span style="background: ${isRegrafting ? '#FFF8E1' : '#E8F5E9'}; color: ${isRegrafting ? '#B45309' : '#116834'}; font-size: 0.65rem; font-weight: 700; padding: 3px 7px; border-radius: 999px; border: ${isRegrafting ? '1px solid #FFE082' : '1px solid #C8E6C9'}; white-space: nowrap;">
                 ${isRegrafting ? 'Okulasi Janda (Regrafting)' : 'Okulasi (Grafting)'}
               </span>
             </div>
-            ${isEditing ? `
-              <span style="background: #E0F2FE; color: #0284C7; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #BAE6FD;">
-                Mode Edit (${targetInsp?.docNo || '2026/INS/001'})
-              </span>
-            ` : ''}
           </div>
           
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 0.76rem;">
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 12px;font-size:.74rem;">
             <div>
-              <span style="color: #6B7280;">Nomor Batch:</span>
-              <div style="font-weight: 700; color: #116834; font-size: 0.84rem; margin-top: 1px;">${batchNo}</div>
+              <span style="display:block;color:#64748B;font-size:.68rem;margin-bottom:3px;">Nomor Batch</span>
+              <div style="font-weight:800;color:#116834;font-size:.84rem;line-height:1.25;overflow-wrap:anywhere;">${batchNo}</div>
             </div>
             <div>
-              <span style="color: #6B7280;">Dokumen Okulasi:</span>
-              <div style="font-weight: 700; color: #111; font-size: 0.80rem; margin-top: 1px; word-break: break-all;">${docNo}</div>
+              <span style="display:block;color:#64748B;font-size:.68rem;margin-bottom:3px;">Dokumen Okulasi</span>
+              <div style="font-weight:700;color:#111827;font-size:.78rem;line-height:1.3;overflow-wrap:anywhere;">${docNo}</div>
             </div>
             <div>
-              <span style="color: #6B7280;">Lokasi Bedengan:</span>
-              <div style="font-weight: 700; color: #111; font-size: 0.80rem; margin-top: 1px;">${selectedBudding.bedengan || 'Bedengan 01'}</div>
+              <span style="display:block;color:#64748B;font-size:.68rem;margin-bottom:3px;">Lokasi Bedengan</span>
+              <div style="font-weight:700;color:#111827;font-size:.8rem;line-height:1.25;overflow-wrap:anywhere;">${selectedBudding.bedengan || 'Bedengan 01'}</div>
             </div>
             <div>
-              <span style="color: #6B7280;">Klon Entres:</span>
-              <div style="font-weight: 700; color: #116834; font-size: 0.80rem; margin-top: 1px;">${selectedBudding.klonEntres || 'PB 260'}</div>
+              <span style="display:block;color:#64748B;font-size:.68rem;margin-bottom:3px;">Klon Entres</span>
+              <div style="font-weight:800;color:#116834;font-size:.8rem;line-height:1.25;overflow-wrap:anywhere;">${selectedBudding.klonEntres || 'PB 260'}</div>
             </div>
             <div>
-              <span style="color: #6B7280;">Klon Batang Bawah:</span>
-              <div style="font-weight: 700; color: #111; font-size: 0.80rem; margin-top: 1px;">${selectedBudding.klonRootstock || 'GT-01'}</div>
+              <span style="display:block;color:#64748B;font-size:.68rem;margin-bottom:3px;">Klon Batang Bawah</span>
+              <div style="font-weight:700;color:#111827;font-size:.8rem;line-height:1.25;overflow-wrap:anywhere;">${selectedBudding.klonRootstock || 'GT-01'}</div>
             </div>
             <div>
-              <span style="color: #6B7280;">${isRegrafting ? 'Populasi Regrafting:' : 'Populasi Diokulasi:'}</span>
-              <span style="font-weight: 700; color: #116834; font-size: 0.82rem; margin-left: 2px;">${populasiDiokulasi} Pkk</span>
+              <span style="display:block;color:#64748B;font-size:.68rem;margin-bottom:3px;">${isRegrafting ? 'Populasi Regrafting' : 'Populasi Diokulasi'}</span>
+              <div style="font-weight:800;color:#116834;font-size:.82rem;line-height:1.25;">${populasiDiokulasi.toLocaleString('id-ID')} Pkk</div>
             </div>
           </div>
 
-          <div style="margin-top: 10px; padding: 8px 12px; background: #E8F5E9; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #C8E6C9;">
-            <span style="font-size: 0.74rem; font-weight: 700; color: #116834;">Sisa Bibit Belum Diperiksa:</span>
-            <span style="font-size: 0.88rem; font-weight: 800; color: #116834;">${sisaBelumDiperiksa} Pkk</span>
+          <div style="margin-top:12px;padding:9px 10px;background:#E8F5E9;border-radius:7px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #C8E6C9;">
+            <span style="font-size:.7rem;font-weight:700;color:#116834;line-height:1.3;">Sisa Bibit Belum Diperiksa</span>
+            <span style="font-size:.84rem;font-weight:800;color:#116834;white-space:nowrap;">${sisaBelumDiperiksa.toLocaleString('id-ID')} Pkk</span>
           </div>
         </section>
 
@@ -257,7 +281,11 @@ export function renderInspectionForm() {
           <div id="workers-inspection-container" style="display: flex; flex-direction: column; gap: 12px;">
             ${workerList.map((w) => {
               const wKey = w.id || w.code;
-              const prevWorker = targetInsp && targetInsp.workers ? targetInsp.workers.find(pw => (pw.id && pw.id === w.id) || (pw.code && pw.code === w.code)) : null;
+              const prevWorkers = targetInsp?.workers || [];
+              const prevWorker = targetInsp
+                ? ((w.id ? prevWorkers.find(pw => pw.id && pw.id === w.id) : null)
+                  || (w.code ? prevWorkers.find(pw => pw.code && pw.code === w.code) : null))
+                : null;
               const alreadyInspectedWorker = workerAlreadyInspectedMap[wKey] || 0;
               const wInitialMax = parseInt(w.qty || 0);
               const wRemaining = Math.max(0, wInitialMax - alreadyInspectedWorker);
@@ -265,7 +293,11 @@ export function renderInspectionForm() {
               const initDiperiksa = prevWorker ? prevWorker.jlhDiperiksa : (workerList.length === 1 ? Math.min(sisaBelumDiperiksa, wRemaining) : '');
               const initBerhasil = prevWorker ? prevWorker.jlhBerhasil : '';
               const initGagal = prevWorker ? prevWorker.jlhTidakBerhasil : '';
-              const initRegraft = prevWorker ? prevWorker.perluRegrafting !== false : true;
+              // Rekaman Regrafting lama yang belum menyimpan pilihan tetap dianggap afkir.
+              // Untuk input baru, default-nya mengikuti pola Grafting: gagal bisa dilanjutkan ke Regrafting.
+              const initRegraft = prevWorker
+                ? (typeof prevWorker.perluRegrafting === 'boolean' ? prevWorker.perluRegrafting : !isRegrafting)
+                : true;
 
               return `
                 <div class="worker-inspection-card" data-id="${w.id}" data-max="${wInitialMax}" data-remaining="${wRemaining}" data-inspected-prev="${alreadyInspectedWorker}" style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); box-sizing: border-box;">
@@ -304,16 +336,14 @@ export function renderInspectionForm() {
                     <span class="lbl-worker-persen" data-id="${w.id}" style="font-size: 0.78rem; font-weight: 800; color: #116834; background: #E8F5E9; padding: 2px 8px; border-radius: 4px; border: 1px solid #C8E6C9;">0%</span>
                   </div>
 
-                  <!-- CHECKBOX RE-GRAFTING JIKA ADA GAGAL -->
+                  <!-- PILIH TINDAK LANJUT JIKA ADA HASIL TIDAK BERHASIL -->
                   <div class="regrafting-toggle-container" data-id="${w.id}" style="display: none; margin-top: 8px; padding: 6px 10px; background: #FFFDE7; border: 1px solid #FFE082; border-radius: 6px; box-sizing: border-box;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                       <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.72rem; font-weight: 700; color: #374151; user-select: none;">
                         <input type="checkbox" class="chk-regrafting" data-id="${w.id}" ${initRegraft ? 'checked' : ''} style="width: 15px; height: 15px; accent-color: #116834; cursor: pointer;">
-                        <span>Perlu Okulasi Janda</span>
+                        <span>${isRegrafting ? 'Lanjut Okulasi Janda Kembali' : 'Perlu Okulasi Janda'}</span>
                       </label>
-                      <span class="lbl-allocation-badge" data-id="${w.id}" style="font-size: 0.68rem; font-weight: 700; color: #116834; background: #E8F5E9; padding: 2px 6px; border-radius: 4px; border: 1px solid #C8E6C9; white-space: nowrap;">
-                        ➔ Okulasi Janda
-                      </span>
+                      <span class="lbl-allocation-badge" data-id="${w.id}" style="font-size: 0.68rem; font-weight: 700; color: #116834; background: #E8F5E9; padding: 2px 6px; border-radius: 4px; border: 1px solid #C8E6C9; white-space: nowrap;">➔ ${isRegrafting ? 'Okulasi Janda Kembali' : 'Okulasi Janda'}</span>
                     </div>
                   </div>
 
@@ -555,11 +585,11 @@ export function renderInspectionForm() {
       // Checkbox visibility & allocation badge
       if (gagal > 0) {
         if (regraftToggleContainer) regraftToggleContainer.style.display = 'block';
-        const isRegraft = chkRegrafting ? chkRegrafting.checked : true;
+        const isRegraft = chkRegrafting ? chkRegrafting.checked : !isRegrafting;
         if (isRegraft) {
           totalToRegrafting += gagal;
           if (destBadge) {
-            destBadge.textContent = '➔ Okulasi Janda';
+            destBadge.textContent = isRegrafting ? '➔ Okulasi Janda kembali' : '➔ Okulasi Janda';
             destBadge.style.color = '#116834';
             destBadge.style.background = '#E8F5E9';
             destBadge.style.borderColor = '#C8E6C9';
@@ -639,7 +669,7 @@ export function renderInspectionForm() {
       if (grandGagal > 0) {
         lblRegraftNote.style.display = 'block';
         const parts = [];
-        if (totalToRegrafting > 0) parts.push(`<strong>${totalToRegrafting} Pkk</strong> dialokasikan ke antrean <em>Okulasi Janda</em>`);
+        if (totalToRegrafting > 0) parts.push(`<strong>${totalToRegrafting} Pkk</strong> dialokasikan ke antrean <em>${isRegrafting ? 'Okulasi Janda kembali' : 'Okulasi Janda'}</em>`);
         if (totalToSelection > 0) parts.push(`<strong>${totalToSelection} Pkk</strong> dialokasikan ke antrean <em>Penyeleksian (Afkir)</em>`);
         lblRegraftNote.innerHTML = `⚠️ Terdapat bibit tidak berhasil: ${parts.join(' dan ')}.`;
       } else {
@@ -1046,7 +1076,7 @@ export function renderInspectionForm() {
         }
       }
 
-      const isRegraft = chkRegrafting ? chkRegrafting.checked : true;
+      const isRegraft = chkRegrafting ? chkRegrafting.checked : !isRegrafting;
 
       inspectedWorkersData.push({
         id: wid,
@@ -1129,7 +1159,7 @@ export function renderInspectionForm() {
     }
     storage.set('inspection_transactions', txs);
 
-    // Save/Update to Regrafting Pool if checked
+    // Save/Update to Regrafting Pool when failures are allocated for another Regrafting.
     let regraftPool = storage.get('regrafting_pool', []);
     if (isEditing) {
       regraftPool = regraftPool.filter(r => r.inspectionDocNo !== docNoInsp);
@@ -1152,7 +1182,7 @@ export function renderInspectionForm() {
     }
     storage.set('regrafting_pool', regraftPool);
 
-    // Save/Update to Selection Pool if unchecked
+    // Save/Update failed seedlings allocated to Pasca-Okulasi selection/afkir.
     let selectionPool = storage.get('selection_pool', []);
     const existingCandidate = selectionPool.find(s => s.inspectionDocNo === docNoInsp);
     if (isEditing) {
@@ -1164,7 +1194,7 @@ export function renderInspectionForm() {
         docNo: existingCandidate?.docNo || null,
         originType: 'REJECT_PEMERIKSAAN',
         sourceModule: 'INSPECTION',
-        sourceTransactionType: 'INSPECTION',
+        sourceTransactionType: isRegrafting ? 'REGRAFTING' : 'GRAFTING',
         inspectionDocNo: docNoInsp,
         batchNo,
         sourceBuddingDocNo: docNo,

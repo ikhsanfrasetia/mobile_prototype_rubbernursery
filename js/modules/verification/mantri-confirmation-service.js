@@ -18,7 +18,8 @@ import {
   getSeleksi1ExecutionsByDocument,
   getSeleksi2ExecutionsByDocument,
   getSeleksi3ExecutionsByDocument,
-  getSelectionStageLabel
+  getSelectionStageLabel,
+  reconcileSelectionPoolWithTransactions
 } from '../selection/selection-manager.js';
 import { syncAllDederanRejectionsToSelectionPool } from '../seeding/dederan-manager.js';
 import { getWorkersForUserContext } from '../../data/worker-master.js';
@@ -67,7 +68,7 @@ export const MODULE_LABELS = Object.freeze({
   [MODULE_TYPES.OKULASI]: 'Okulasi',
   [MODULE_TYPES.PEMERIKSAAN]: 'Pemeriksaan Okulasi',
   [MODULE_TYPES.PEMERIKSAAN_DEDERAN]: 'Pemeriksaan Dederan',
-  [MODULE_TYPES.SELEKSI_PRA_OKULASI]: 'Seleksi Pra-Okulasi',
+  [MODULE_TYPES.SELEKSI_PRA_OKULASI]: 'Pemeriksaan Pra-Okulasi',
   [MODULE_TYPES.PENYELEKSIAN]: 'Penyeleksian Bibit',
   [MODULE_TYPES.PEMELIHARAAN]: 'Rekam Pemeliharaan',
   [MODULE_TYPES.PENGELUARAN]: 'Pengeluaran Bibit',
@@ -431,6 +432,11 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
 
   try {
     syncAllDederanRejectionsToSelectionPool();
+  } catch (_) {}
+  // Bersihkan deklarasi CULL Pra-Okulasi yang sumber pemeriksaannya sudah
+  // dihapus sebelum antrean Central Hub Mantri dibentuk.
+  try {
+    reconcileSelectionPoolWithTransactions();
   } catch (_) {}
 
   // Ambil data verifikasi untuk mapping status verifikasi terbaru
@@ -1011,7 +1017,8 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
           ? getSeleksi2ExecutionsByDocument(item.id || item.docNo)
           : getSeleksi1ExecutionsByDocument(item.id || item.docNo));
 
-    const hasValidExecutions = Array.isArray(childTxs) && childTxs.length >= 1;
+    const hasValidExecutions = (Array.isArray(childTxs) && childTxs.length >= 1) ||
+      (stat.status === MANTRI_TRANSACTION_STATUS.REVISION && Boolean(item.correctionExecutionId));
     if (!hasValidExecutions) {
       return;
     }
@@ -1054,7 +1061,7 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       rawRecord: item,
       storageKey: 'pre_grafting_selection_documents',
       display: {
-        title: `Seleksi Pra-Okulasi (${stage})`,
+        title: `Pemeriksaan Pra-Okulasi (${stage})`,
         info: `Batch ${batch} · Bedengan ${bedengan}`,
         mainQty: `${formattedLayak} Layak`,
         unit: 'Pkk',
@@ -1074,6 +1081,7 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
   const selections = storage.get('selection_transactions', []);
   const seenSelectionIds = new Set();
   selections.forEach(item => {
+    if (['DIBATALKAN', 'DITARIK', 'WITHDRAWN'].includes(String(item?.status || item?.verificationStatus || '').toUpperCase())) return;
     const id = item.id || item.docNo || item.selectionNo;
     if (!id || seenSelectionIds.has(id)) return;
     seenSelectionIds.add(id);

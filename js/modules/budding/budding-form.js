@@ -97,7 +97,7 @@ export async function renderBuddingForm() {
     klonRootstock = poolItem.klonRootstock ? normalizeKlonName(poolItem.klonRootstock) : 'GT 1';
   } else {
     const allSelectionDocs = storage.get('pre_grafting_selection_documents', []);
-    const seleksi3FinalDocs = allSelectionDocs.filter(d => 
+    const seleksi3FinalDocs = allSelectionDocs.filter(d =>
       (d.selectionStage === 'SELEKSI_III' || d.selectionStage === 'SELEKSI_3') &&
       (d.selectionType === 'PRA_OKULASI' || !d.selectionType) &&
       d.status === 'DISETUJUI' &&
@@ -114,20 +114,16 @@ export async function renderBuddingForm() {
     if (!selectedBatchDoc && targetDocId) {
       selectedBatchDoc = seleksi3FinalDocs.find(d => d.id === targetDocId);
     }
-    if (!selectedBatchDoc && seleksi3FinalDocs.length > 0) {
+    if (!selectedBatchDoc && !targetDocNo && !targetDocId && seleksi3FinalDocs.length > 0) {
       selectedBatchDoc = seleksi3FinalDocs[parseInt(batchIdx)] || seleksi3FinalDocs[0];
     }
 
     if (!selectedBatchDoc) {
-      selectedBatchDoc = {
-        batchNo: `Batch-0${parseInt(batchIdx) + 1}`,
-        batchCode: `Batch-0${parseInt(batchIdx) + 1}`,
-        docNo: formatStandardDocNo(2026, 'SEL-III', 1),
-        programCode: 'PRG/NUR/01/2026',
-        klon: 'GT 1',
-        totalLayak: 2000,
-        rows: [{ bedengan: 'Bedengan 01', bedenganCode: 'BED-001', disemai: 2000 }]
-      };
+      toast('Sumber okulasi tidak tersedia. Pilih dokumen Seleksi III yang sudah disetujui dan final.', 'error');
+      storage.remove('selected_grafting_batch_doc_no');
+      storage.remove('selected_grafting_batch_id');
+      navigate('/budding/grafting');
+      return;
     }
 
     selectedGraftingSourceDoc = selectedBatchDoc;
@@ -151,17 +147,17 @@ export async function renderBuddingForm() {
     if (isEditing && i === parseInt(editingIdx)) return; // Exclude current transaction from quota calculation!
     if (b.type !== (isRegrafting ? 'REGRAFTING' : 'GRAFTING')) return;
     const isCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(b.status || '').toUpperCase()) ||
-                        ['BATAL', 'CANCELLED', 'VOID'].includes(String(b.verificationStatus || '').toUpperCase());
+      ['BATAL', 'CANCELLED', 'VOID'].includes(String(b.verificationStatus || '').toUpperCase());
     if (isCancelled) return;
-    
-    const isMatch = isRegrafting 
-      ? ((b.regraftPoolDocNo && b.regraftPoolDocNo === poolDocNo) || (b.inspectionDocNo && inspectionDocNo && b.inspectionDocNo === inspectionDocNo)) 
+
+    const isMatch = isRegrafting
+      ? ((b.regraftPoolDocNo && b.regraftPoolDocNo === poolDocNo) || (b.inspectionDocNo && inspectionDocNo && b.inspectionDocNo === inspectionDocNo))
       : ((b.sourceSelection3DocNo && b.sourceSelection3DocNo === docNo) ||
-         (b.sourceSelection3DocumentId && selectedGraftingSourceDoc?.id && b.sourceSelection3DocumentId === selectedGraftingSourceDoc.id) ||
-         (b.sourceDocNo && b.sourceDocNo === docNo) ||
-         (b.seedingIndex === parseInt(batchIdx) && !b.sourceSelection3DocNo && !b.sourceDocNo) ||
-         (b.batchNo === batchNo && !b.sourceSelection3DocNo && !b.sourceDocNo));
-      
+        (b.sourceSelection3DocumentId && selectedGraftingSourceDoc?.id && b.sourceSelection3DocumentId === selectedGraftingSourceDoc.id) ||
+        (b.sourceDocNo && b.sourceDocNo === docNo) ||
+        (b.seedingIndex === parseInt(batchIdx) && !b.sourceSelection3DocNo && !b.sourceDocNo) ||
+        (b.batchNo === batchNo && !b.sourceSelection3DocNo && !b.sourceDocNo));
+
     if (isMatch) {
       totalDiokulasiSDHI += (parseInt(b.jumlah || 0) + parseInt(b.jumlahDitolak || 0));
     }
@@ -178,12 +174,17 @@ export async function renderBuddingForm() {
   let selectedWorkers = editingTx && editingTx.workers && editingTx.workers.length > 0
     ? editingTx.workers.map(w => ({ id: w.id, name: w.name, code: w.code, qty: parseInt(w.qty || 0) }))
     : (availableScopedWorkers.length > 0
-        ? [{ id: availableScopedWorkers[0].id, name: availableScopedWorkers[0].name, code: availableScopedWorkers[0].code, qty: 0 }]
-        : []);
+      ? [{ id: availableScopedWorkers[0].id, name: availableScopedWorkers[0].name, code: availableScopedWorkers[0].code, qty: 0 }]
+      : []);
 
   const returnReasonNote = isEditing && editingTx ? (editingTx.returnReason || editingTx.lastReturnReason || '') : '';
+  let kayuManualOverride = false;
+  let hasRenderedInitialKayu = false;
 
   function renderPage() {
+    const selectedKlonStock = selectedKlon
+      ? (getKlonMataEntresBalance(selectedKlon, { excludeBuddingDocNo: editingTx?.docNo })?.saldoMataEntres || 0)
+      : null;
     app.innerHTML = `
       <div class="page" style="display: flex; flex-direction: column; height: 100%; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow-x: hidden; box-sizing: border-box; position: relative;">
         
@@ -281,11 +282,6 @@ export async function renderBuddingForm() {
             <div style="margin-bottom: 14px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <label style="font-size: 0.74rem; font-weight: 700; color: #374151;">Pilih Klon Entres Okulasi <span style="color:#D32F2F;">*</span></label>
-                ${selectedKlon ? `
-                  <span style="font-size: 0.68rem; font-weight: 700; color: #116834; background: #E8F5E9; padding: 2px 7px; border-radius: 4px; border: 1px solid #C8E6C9;">
-                    Saldo: ${getKlonMataEntresBalance(selectedKlon, { excludeBuddingDocNo: editingTx?.docNo }).toLocaleString('id-ID')} Perisai
-                  </span>
-                ` : ''}
               </div>
               <div id="btn-open-klon-modal" style="width: 100%; height: 40px; border: 1px solid #D1D5DB; border-radius: 6px; padding: 0 12px; background: #FFFFFF; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-sizing: border-box; transition: border-color 0.15s ease;">
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -299,6 +295,12 @@ export async function renderBuddingForm() {
                   </svg>
                 </div>
               </div>
+              ${selectedKlon ? `
+                <div role="status" aria-live="polite" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;padding:7px 10px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:6px;box-sizing:border-box;">
+                  <span style="font-size:.70rem;color:#166534;">Stok Klon Entres Tersedia</span>
+                  <strong style="font-size:.76rem;color:#166534;white-space:nowrap;">${selectedKlonStock.toLocaleString('id-ID')} Perisai</strong>
+                </div>
+              ` : ''}
             </div>
 
             <!-- PILIH PEKERJA OKULASI -->
@@ -331,7 +333,7 @@ export async function renderBuddingForm() {
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
                       <div style="display: flex; align-items: center; gap: 4px;">
-                        <input type="number" class="inp-worker-qty" data-id="${w.id}" value="${w.qty > 0 ? w.qty : ''}" placeholder="0" style="width: 65px; height: 32px; border: 1px solid #116834; border-radius: 4px; padding: 0 6px; font-size: 0.82rem; font-weight: 700; text-align: right; outline: none; box-sizing: border-box;">
+                        <input type="number" class="inp-worker-qty" data-id="${w.id}" value="${w.qty > 0 ? w.qty : ''}" placeholder="0" min="0" max="${Math.max(0, sisaBelumDiokulasi)}" step="1" style="width: 65px; height: 32px; border: 1px solid #116834; border-radius: 4px; padding: 0 6px; font-size: 0.82rem; font-weight: 700; text-align: right; outline: none; box-sizing: border-box;">
                         <span style="font-size: 0.70rem; color: #6B7280; font-weight: 600;">Pkk</span>
                       </div>
                       <button type="button" class="btn-remove-worker" data-id="${w.id}" aria-label="Hapus pekerja" title="Hapus pekerja ini" style="background: #FEE2E2; border: 1px solid #FCA5A5; border-radius: 4px; padding: 6px; cursor: pointer; color: #DC2626; display: flex; align-items: center; justify-content: center;">
@@ -364,8 +366,9 @@ export async function renderBuddingForm() {
 
             <!-- JUMLAH KAYU OKULASI -->
             <div style="margin-bottom: 14px;">
-              <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #374151; margin-bottom: 6px;">Jumlah Kayu Okulasi (Batang) <span style="color:#D32F2F;">*</span></label>
+              <label style="display: block; font-size: 0.74rem; font-weight: 700; color: #374151; margin-bottom: 6px;">Jumlah Kayu Okulasi (Cabang) <span style="color:#D32F2F;">*</span></label>
               <input type="number" id="inp-kayu" placeholder="0" min="1" value="${editingTx ? (editingTx.jumlahKayu || '') : ''}" style="width: 100%; height: 38px; border: 1px solid #D1D5DB; border-radius: 6px; padding: 0 10px; font-size: 0.8rem; outline: none; box-sizing: border-box;">
+              <div id="hint-kayu-recommendation" style="margin-top:4px;font-size:.66rem;color:#64748B;line-height:1.35;">Rekomendasi: Total Diokulasi ÷ 8, dibulatkan ke atas. Nilai dapat dikoreksi.</div>
             </div>
 
             <!-- JLH MATA ENTRES -->
@@ -418,12 +421,12 @@ export async function renderBuddingForm() {
               </div>
 
               <!-- STATUS BOX SISA BIBIT AKHIR -->
-              <div id="recon-status-box" style="margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: #E8F5E9; border: 1px solid #C8E6C9; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <div id="recon-status-title" style="font-size: 0.72rem; font-weight: 700; color: #116834;">Sisa Bibit Belum Diokulasi:</div>
-                  <div id="recon-status-desc" style="font-size: 0.68rem; color: #2E7D32; margin-top: 1px;">Realisasi Balance (Selesai 100% / Nilai Final)</div>
+              <div id="recon-status-box" style="margin-top:8px;padding:9px 10px;border-radius:6px;background:#E8F5E9;border:1px solid #C8E6C9;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;row-gap:3px;align-items:center;">
+                <div style="min-width:0;">
+                  <div id="recon-status-title" style="font-size:0.70rem;font-weight:700;color:#116834;line-height:1.3;overflow-wrap:anywhere;">Sisa Bibit Belum Diokulasi:</div>
+                  <div id="recon-status-desc" style="font-size:0.65rem;color:#2E7D32;margin-top:2px;line-height:1.35;overflow-wrap:anywhere;">Realisasi Balance (Selesai 100% / Nilai Final)</div>
                 </div>
-                <div id="recon-sisa-val" style="font-size: 0.95rem; font-weight: 800; color: #116834;">0 Pkk</div>
+                <div id="recon-sisa-val" style="font-size:0.82rem;font-weight:800;color:#116834;white-space:nowrap;text-align:right;">0 Pkk</div>
               </div>
             </div>
 
@@ -442,7 +445,7 @@ export async function renderBuddingForm() {
         <div id="modal-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100;"></div>
 
         <!-- SEARCHABLE BOTTOM SHEET MODAL UNTUK KLON ENTRES -->
-        <div id="sheet-klon" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 14px 14px 0 0; z-index: 101; flex-direction: column; max-height: 75vh; box-shadow: 0 -4px 16px rgba(0,0,0,0.15);">
+        <div id="sheet-klon" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 14px 14px 0 0; z-index: 101; flex-direction: column; min-height: 210px; max-height: 75%; box-shadow: 0 -4px 16px rgba(0,0,0,0.15);">
           <div style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB; display: flex; justify-content: space-between; align-items: center; background: #F9FAFB; border-radius: 14px 14px 0 0;">
             <h3 style="font-size: 0.95rem; font-weight: 700; color: #111111; margin: 0;">Pilih Klon Entres Okulasi</h3>
             <button id="btn-close-klon-sheet" type="button" style="background: none; border: none; font-size: 1.4rem; line-height: 1; color: #6B7280; cursor: pointer; padding: 4px;">&times;</button>
@@ -458,7 +461,7 @@ export async function renderBuddingForm() {
             </div>
           </div>
 
-          <div id="list-klon-items" style="flex: 1; overflow-y: auto; padding: 4px 16px 20px; display: flex; flex-direction: column; gap: 4px;">
+          <div id="list-klon-items" style="flex: 1 1 auto; min-height: 110px; overflow-y: auto; padding: 4px 16px 20px; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;">
           </div>
         </div>
 
@@ -555,16 +558,27 @@ export async function renderBuddingForm() {
 
     function renderKlonList(query) {
       const container = app.querySelector('#list-klon-items');
-      const availableKlons = getAvailableKlonsForOkulasi({
-        isRegrafting,
-        includeKlon: selectedKlon,
-        editingDocNo: editingTx?.docNo
-      });
+      let availableKlons;
+      try {
+        availableKlons = getAvailableKlonsForOkulasi({
+          isRegrafting,
+          includeKlon: selectedKlon,
+          editingDocNo: editingTx?.docNo
+        });
+      } catch (error) {
+        console.error('[Okulasi] Gagal memuat pilihan klon entres:', error);
+        container.innerHTML = `
+          <div style="padding:20px 16px;text-align:center;color:#64748B;font-size:.78rem;line-height:1.45;">
+            <div style="font-weight:700;color:#B91C1C;margin-bottom:4px;">Daftar klon belum dapat dimuat</div>
+            <div>Terjadi kendala saat membaca data stok klon entres. Silakan tutup lalu buka kembali pilihan klon.</div>
+          </div>`;
+        return;
+      }
       const q = (query || '').trim().toLowerCase();
-      const filtered = availableKlons.filter(k => 
-        k.klonName.toLowerCase().includes(q)
+      const filtered = availableKlons.filter(k =>
+        String(k.klonName || k.namaKlon || '').toLowerCase().includes(q)
       );
-      
+
       if (filtered.length === 0) {
         container.innerHTML = `
           <div style="padding: 20px 16px; text-align: center; color: #64748B; font-size: 0.78rem;">
@@ -576,15 +590,17 @@ export async function renderBuddingForm() {
       }
 
       container.innerHTML = filtered.map(k => {
-        const isSel = k.klonName === selectedKlon;
+        const klonName = String(k.klonName || k.namaKlon || '');
+        const stock = Number(k.saldoMataEntres) || 0;
+        const isSel = klonName === selectedKlon;
         return `
-          <button type="button" class="btn-select-klon-item" data-klon="${k.klonName}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${isSel ? '#E8F5E9' : '#FFFFFF'}; border: 1px solid ${isSel ? '#116834' : '#E5E7EB'}; border-radius: 6px; cursor: pointer; text-align: left;">
+          <button type="button" class="btn-select-klon-item" data-klon="${esc(klonName)}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${isSel ? '#E8F5E9' : '#FFFFFF'}; border: 1px solid ${isSel ? '#116834' : '#E5E7EB'}; border-radius: 6px; cursor: pointer; text-align: left;">
             <div>
-              <span style="font-size: 0.82rem; font-weight: ${isSel ? '700' : '500'}; color: ${isSel ? '#116834' : '#111827'};">${k.klonName}</span>
+              <span style="font-size: 0.82rem; font-weight: ${isSel ? '700' : '500'}; color: ${isSel ? '#116834' : '#111827'};">${esc(klonName)}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
               <span style="font-size: 0.68rem; font-weight: 700; color: #116834; background: #DCFCE7; padding: 2px 7px; border-radius: 4px; border: 1px solid #BBF7D0;">
-                Saldo: ${k.saldoMataEntres.toLocaleString('id-ID')} Perisai
+                Stok Klon Entres: ${stock.toLocaleString('id-ID')} Perisai
               </span>
               ${isSel ? '<span style="color: #116834; font-weight: 700;">✓</span>' : ''}
             </div>
@@ -626,8 +642,8 @@ export async function renderBuddingForm() {
     function renderWorkerList(query) {
       const container = app.querySelector('#list-worker-items');
       const currentAvailable = getWorkersForUserContext(getCurrentUserContext());
-      const filtered = currentAvailable.filter(w => 
-        w.name.toLowerCase().includes(query.toLowerCase()) || 
+      const filtered = currentAvailable.filter(w =>
+        w.name.toLowerCase().includes(query.toLowerCase()) ||
         w.code.toLowerCase().includes(query.toLowerCase())
       );
 
@@ -682,6 +698,7 @@ export async function renderBuddingForm() {
     });
 
     // Helper: Hitung total diokulasi dan sinkronisasi status balance
+    let workerInputLimitWarning = '';
     function updateTotal() {
       let totalDiokulasi = 0;
       app.querySelectorAll('.inp-worker-qty').forEach((inp) => {
@@ -718,6 +735,16 @@ export async function renderBuddingForm() {
         inpMataEntres.value = totalDiokulasi;
       }
 
+      const recommendedKayu = Math.ceil(totalDiokulasi / 8);
+      const inpKayu = app.querySelector('#inp-kayu');
+      const hintKayu = app.querySelector('#hint-kayu-recommendation');
+      if (inpKayu && !kayuManualOverride && (!isEditing || hasRenderedInitialKayu)) {
+        inpKayu.value = totalDiokulasi > 0 ? String(recommendedKayu) : '';
+      }
+      if (hintKayu) {
+        hintKayu.textContent = `Rekomendasi otomatis: ${recommendedKayu.toLocaleString('id-ID')} cabang (Total Diokulasi ÷ 8, dibulatkan ke atas). Nilai dapat dikoreksi.`;
+      }
+
       const lblTotalDiokulasi = app.querySelector('#lbl-total-diokulasi');
       if (lblTotalDiokulasi) {
         lblTotalDiokulasi.textContent = `${totalDiokulasi} Pkk`;
@@ -741,15 +768,18 @@ export async function renderBuddingForm() {
       const bannerWorkerWarning = app.querySelector('#banner-worker-quota-warning');
       const bannerWorkerText = app.querySelector('#banner-worker-quota-text');
 
-      if (sisaAkhir >= 0) {
-        if (bannerWorkerWarning) bannerWorkerWarning.style.display = 'none';
-      } else {
+      if (workerInputLimitWarning || sisaAkhir < 0) {
         if (bannerWorkerWarning) {
           bannerWorkerWarning.style.display = 'block';
           if (bannerWorkerText) {
-            bannerWorkerText.textContent = `⚠️ Total input (${totalRealisasi} Pkk) melebihi sisa bibit batch (${sisaBelumDiokulasi} Pkk). Kelebihan: +${Math.abs(sisaAkhir)} Pkk.`;
+            const aggregateWarning = sisaAkhir < 0
+              ? ` Total input (${totalRealisasi.toLocaleString('id-ID')} Pkk) melebihi sisa bibit belum diokulasi (${sisaBelumDiokulasi.toLocaleString('id-ID')} Pkk) sebesar ${Math.abs(sisaAkhir).toLocaleString('id-ID')} Pkk.`
+              : '';
+            bannerWorkerText.textContent = `${workerInputLimitWarning}${aggregateWarning}`.trim();
           }
         }
+      } else {
+        if (bannerWorkerWarning) bannerWorkerWarning.style.display = 'none';
       }
 
       if (sisaAkhir === 0) {
@@ -817,22 +847,24 @@ export async function renderBuddingForm() {
       return totalDiokulasi;
     }
 
-    // Input listeners for workers with digit length validation based on sisaBelumDiokulasi
-    const maxAllowedDigits = Math.max(1, sisaBelumDiokulasi.toString().length);
+    app.querySelector('#inp-kayu')?.addEventListener('input', (e) => {
+      kayuManualOverride = e.target.value.trim() !== '';
+      updateTotal();
+    });
 
+    // Batasi nilai numerik per pekerja ke sisa batch, bukan jumlah digitnya.
     app.querySelectorAll('.inp-worker-qty').forEach((inp) => {
       inp.addEventListener('input', (e) => {
         const wid = e.target.dataset.id;
         let rawStr = e.target.value.replace(/[^0-9]/g, '');
-        
-        // Batasi jumlah digit agar tidak melebihi panjang digit dari sisa kuota batch
-        if (rawStr.length > maxAllowedDigits) {
-          rawStr = rawStr.slice(0, maxAllowedDigits);
-          e.target.value = rawStr;
-        }
-
-        const val = parseInt(rawStr || 0);
+        let val = parseInt(rawStr || '0', 10);
         const wItem = selectedWorkers.find(w => w.id === wid);
+        workerInputLimitWarning = '';
+        if (val > sisaBelumDiokulasi) {
+          val = sisaBelumDiokulasi;
+          e.target.value = String(val);
+          workerInputLimitWarning = `Jumlah Pkk untuk ${wItem?.name || 'pekerja'} melebihi sisa bibit belum diokulasi. Batas input per pekerja: ${sisaBelumDiokulasi.toLocaleString('id-ID')} Pkk.`;
+        }
         if (wItem) wItem.qty = val;
         updateTotal();
       });
@@ -841,14 +873,17 @@ export async function renderBuddingForm() {
     // Input listener for bibit ditolak
     app.querySelector('#inp-ditolak')?.addEventListener('input', (e) => {
       let rawStr = e.target.value.replace(/[^0-9]/g, '');
-      if (rawStr.length > maxAllowedDigits) {
-        rawStr = rawStr.slice(0, maxAllowedDigits);
-        e.target.value = rawStr;
+      const rejectedQty = parseInt(rawStr || '0', 10);
+      workerInputLimitWarning = '';
+      if (rejectedQty > sisaBelumDiokulasi) {
+        e.target.value = String(sisaBelumDiokulasi);
+        workerInputLimitWarning = `Jumlah Pkk bibit ditolak melebihi sisa bibit belum diokulasi. Batas input: ${sisaBelumDiokulasi.toLocaleString('id-ID')} Pkk.`;
       }
       updateTotal();
     });
 
     updateTotal();
+    hasRenderedInitialKayu = true;
 
     // Remove worker button
     app.querySelectorAll('.btn-remove-worker').forEach(btn => {
@@ -882,6 +917,45 @@ export async function renderBuddingForm() {
       const isDitolakDisabled = ditolakElem?.disabled;
 
       const validationErrors = [];
+
+      if (!isRegrafting) {
+        const currentSelectionDocs = storage.get('pre_grafting_selection_documents', []);
+        const approvedSource = currentSelectionDocs.find(d =>
+          selectedGraftingSourceDoc &&
+          String(d.id) === String(selectedGraftingSourceDoc.id) &&
+          (d.selectionStage === 'SELEKSI_III' || d.selectionStage === 'SELEKSI_3') &&
+          (d.selectionType === 'PRA_OKULASI' || !d.selectionType) &&
+          d.status === 'DISETUJUI' &&
+          d.isFinal === true
+        );
+        if (!approvedSource) {
+          validationErrors.push('Dokumen sumber Seleksi III tidak lagi berstatus disetujui final. Okulasi tidak dapat disimpan.');
+        } else {
+          const sourceQty = parseInt(
+            approvedSource.totalLayak !== undefined
+              ? approvedSource.totalLayak
+              : (approvedSource.finalBibitQty !== undefined ? approvedSource.finalBibitQty : (approvedSource.currentBibitQty || 0)),
+            10
+          );
+          const currentTxs = storage.get('budding_transactions', []);
+          const isCancelledTx = tx => ['BATAL', 'CANCELLED', 'VOID'].includes(String(tx.status || '').toUpperCase()) ||
+            ['BATAL', 'CANCELLED', 'VOID'].includes(String(tx.verificationStatus || '').toUpperCase());
+          const realizedQty = currentTxs.reduce((sum, tx, index) => {
+            if (isEditing && index === parseInt(editingIdx)) return sum;
+            if ((tx.type || 'GRAFTING') !== 'GRAFTING' || isCancelledTx(tx)) return sum;
+            const sameSource =
+              (tx.sourceSelection3DocumentId && String(tx.sourceSelection3DocumentId) === String(approvedSource.id)) ||
+              (tx.sourceSelection3DocNo && tx.sourceSelection3DocNo === approvedSource.docNo) ||
+              (!tx.sourceSelection3DocumentId && !tx.sourceSelection3DocNo && tx.sourceDocNo === approvedSource.docNo);
+            return sameSource ? sum + parseInt(tx.jumlah || 0, 10) + parseInt(tx.jumlahDitolak || 0, 10) : sum;
+          }, 0);
+          const remainingQty = Math.max(0, sourceQty - realizedQty);
+          const rejectedQty = isDitolakDisabled ? 0 : parseInt(ditolakVal || '0', 10);
+          if (totalDiokulasi + rejectedQty > remainingQty) {
+            validationErrors.push(`Total okulasi dan ditolak melebihi sisa bibit Seleksi III (${remainingQty.toLocaleString('id-ID')} Pkk).`);
+          }
+        }
+      }
 
       // Validasi Klon
       if (!selectedKlon) {
