@@ -870,7 +870,8 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
           { label: 'Bedengan', value: bedengan },
           { label: 'Klon Entres', value: klon },
           { label: 'Klon Batang Bawah', value: item.klonRootstock || '-' },
-          { label: 'Total Okulasi', value: `${formattedQty} Pkk`, highlight: true }
+          { label: 'Total Okulasi', value: `${formattedQty} Pkk`, highlight: true },
+          { label: 'Mata Entres Digunakan', value: `${formatSafeNumber(item.jumlahMataEntres ?? item.jumlah)} Perisai`, highlight: true }
         ]
       }
     });
@@ -1144,11 +1145,11 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
 
   // 12. Rekam Pemeliharaan: nursery_activity_transactions & nursery_activity_records
   const activities = [
-    ...storage.get('nursery_activity_transactions', []),
-    ...storage.get('nursery_activity_records', [])
+    ...storage.get('nursery_activity_transactions', []).map(item => ({ item, storageKey: 'nursery_activity_transactions' })),
+    ...storage.get('nursery_activity_records', []).map(item => ({ item, storageKey: 'nursery_activity_records' }))
   ];
   const seenActivityIds = new Set();
-  activities.forEach(item => {
+  activities.forEach(({ item, storageKey }) => {
     const id = item.id || item.docNo;
     if (!id || seenActivityIds.has(id)) return;
     seenActivityIds.add(id);
@@ -1163,10 +1164,16 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const docNo = item.docNo || item.id || `ACT-${id}`;
     const actor = item.mantri || item.actorName || item.mandor || user?.name || 'Mantri Bibitan';
     const actName = item.aktivitas?.nama || item.activityType || 'Pemeliharaan';
-    const vol = item.volumePkk !== undefined ? item.volumePkk : (item.aktivitas?.volume !== undefined ? item.aktivitas?.volume : (item.volume || item.qty || 0));
+    const workerResults = Array.isArray(item.pekerja) ? item.pekerja : [];
+    const hasWorkerResults = workerResults.some(worker => worker.inputHasil !== undefined || worker.result !== undefined || worker.quantity !== undefined);
+    const vol = hasWorkerResults
+      ? workerResults.reduce((total, worker) => total + (Number(worker.inputHasil ?? worker.result ?? worker.quantity) || 0), 0)
+      : item.volumePkk !== undefined ? item.volumePkk : (item.aktivitas?.volume !== undefined ? item.aktivitas?.volume : (item.volume || item.qty || 0));
     const formattedVol = formatSafeNumber(vol);
     const loc = item.bedengan || item.location || item.lokasiBlok || item.blok || '-';
-    const summary = `${actName} - Bedengan: ${loc} (${formattedVol} Pkk)`;
+    const uom = item.uomCode || item.uom || item.aktivitas?.uom || 'Pkk';
+    const roleCode = item.workGroupRoleCode || item.workGroup?.workGroupRoleCode || '';
+    const summary = `${actName}${roleCode ? ` - ${roleCode}` : ''} - Bedengan: ${loc} (${formattedVol} ${uom})`;
 
     normalizedList.push({
       id: String(id),
@@ -1179,16 +1186,17 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       status: stat.status,
       verificationStatus: stat.verificationStatus,
       rawRecord: item,
-      storageKey: 'nursery_activity_transactions',
+      storageKey,
       display: {
         title: 'Rekam Pemeliharaan',
         info: `${actName} · Bedengan ${loc}`,
-        mainQty: `${formattedVol} Pkk`,
-        unit: 'Pkk',
+        mainQty: `${formattedVol} ${uom}`,
+        unit: uom,
         fields: [
-          { label: 'Jenis Pemeliharaan', value: actName },
+          ...(roleCode ? [{ label: 'Work Group Role Code', value: roleCode }] : []),
+          { label: 'Jenis Pemeliharaan', value: item.allocationName || actName },
           { label: 'Lokasi / Bedengan', value: loc },
-          { label: 'Volume Realisasi', value: `${formattedVol} Pkk`, highlight: true }
+          { label: 'Volume Realisasi', value: `${formattedVol} ${uom}`, highlight: true }
         ]
       }
     });
@@ -1524,6 +1532,16 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
           records[rIdx].returnReason = null;
           records[rIdx].isCorrected = true;
           records[rIdx].submittedAt = nowIso;
+          if (tx.moduleType === MODULE_TYPES.PEMELIHARAAN && Array.isArray(records[rIdx].pekerja)) {
+            records[rIdx].pekerja = records[rIdx].pekerja.map((worker) => ({
+              ...worker,
+              asistenVerificationStatus: null,
+              asistenReturnReason: '',
+              asistenVerifiedByUserId: null,
+              asistenVerifiedByName: null,
+              asistenVerifiedAt: null
+            }));
+          }
         }
         records[rIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
         records[rIdx].submittedByName = user?.name || 'Mantri Bibitan';
@@ -1547,6 +1565,9 @@ export function submitMantriTransactions(transactionIds = [], userContext = null
       allVerifs[existingIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
       allVerifs[existingIdx].submittedByName = user?.name || 'Mantri Bibitan';
       allVerifs[existingIdx].updatedAt = nowIso;
+      if (tx.moduleType === MODULE_TYPES.PEMELIHARAAN) {
+        allVerifs[existingIdx].workerDecisions = {};
+      }
     } else {
       const vNo = `VRF-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
       allVerifs.push({
@@ -1712,6 +1733,16 @@ export function submitOverdueTransactionsByDate(targetDate, userContext = null, 
           records[rIdx].submissionStatus = 'SUBMITTED_TO_ASB';
           records[rIdx].submittedAt = nowIso;
           records[rIdx].isOverdueSubmission = true;
+          if (tx.moduleType === MODULE_TYPES.PEMELIHARAAN && Array.isArray(records[rIdx].pekerja)) {
+            records[rIdx].pekerja = records[rIdx].pekerja.map(worker => ({
+              ...worker,
+              asistenVerificationStatus: null,
+              asistenReturnReason: '',
+              asistenVerifiedByUserId: null,
+              asistenVerifiedByName: null,
+              asistenVerifiedAt: null
+            }));
+          }
         }
         records[rIdx].submittedByUserId = user?.id || user?.userId || 'MANTRI';
         records[rIdx].submittedByName = user?.name || 'Mantri Bibitan';
@@ -1733,6 +1764,7 @@ export function submitOverdueTransactionsByDate(targetDate, userContext = null, 
       allVerifs[existingIdx].submittedByName = user?.name || 'Mantri Bibitan';
       allVerifs[existingIdx].updatedAt = nowIso;
       allVerifs[existingIdx].isOverdueSubmission = true;
+      if (tx.moduleType === MODULE_TYPES.PEMELIHARAAN) allVerifs[existingIdx].workerDecisions = {};
     } else {
       const vNo = `VRF-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
       allVerifs.push({

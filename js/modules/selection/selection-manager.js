@@ -29,6 +29,7 @@ import {
 import { getBatchContext } from '../../core/master-context-service.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 import { assertBedenganNotLocked, assertBatchNotLocked } from '../../core/dependency-guard.js';
+import { isBuddingWorkflowInspectionApproved } from '../../core/budding-workflow-service.js';
 
 export const SELECTION_STATUS = Object.freeze({
   READY_TO_CONFIRM: 'READY_TO_CONFIRM',
@@ -1044,6 +1045,16 @@ export function syncInspectionRejectionsToSelectionPool() {
   let changed = false;
   inspections.forEach(insp => {
     if (!insp || ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.status || '').toUpperCase())) return;
+    const inspectionDocNo = String(insp.docNo || '').replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
+    if (!isBuddingWorkflowInspectionApproved(insp)) {
+      const pendingIndex = pool.findIndex(item => item.originType === 'REJECT_PEMERIKSAAN' &&
+        String(item.inspectionDocNo || '').replace('/PRK/', '/INS/').replace('/INSP/', '/INS/') === inspectionDocNo);
+      if (pendingIndex >= 0 && ['PENDING_DECLARATION', 'PENDING', 'DRAFT', 'DIKEMBALIKAN', 'REVISION'].includes(String(pool[pendingIndex].status || '').toUpperCase())) {
+        pool.splice(pendingIndex, 1);
+        changed = true;
+      }
+      return;
+    }
     const isRegrafting = String(insp.buddingType || '').toUpperCase() === 'REGRAFTING';
     const workerFailures = (Array.isArray(insp.workers) ? insp.workers : []).reduce((sum, worker) => {
       const gagal = Number(worker.jlhTidakBerhasil || 0);
@@ -1054,7 +1065,6 @@ export function syncInspectionRejectionsToSelectionPool() {
       : (isRegrafting
         ? Number(insp.jumlahGagal || 0)
         : workerFailures);
-    const inspectionDocNo = String(insp.docNo || '').replace('/PRK/', '/INS/').replace('/INSP/', '/INS/');
     const existingIndex = pool.findIndex(item =>
       item.originType === 'REJECT_PEMERIKSAAN' &&
       String(item.inspectionDocNo || '').replace('/PRK/', '/INS/').replace('/INSP/', '/INS/') === inspectionDocNo
@@ -2417,10 +2427,14 @@ export function declareSelectionItem(targetPoolItem, photoResult, user, customOp
       selectionPoolDocNo: poolDocNo,
       parentSelectionDocumentId: targetPoolItem.parentSelectionDocumentId || null,
       parentSelectionDocNo: targetPoolItem.parentSelectionDocNo || null,
-      sourceModule: targetPoolItem.sourceModule || (targetPoolItem.originType === 'REJECT_PENYEMAIAN' ? 'PENYEMAIAN' : (targetPoolItem.originType === 'REJECT_OKULASI' ? 'BUDDING' : 'DEDERAN')),
-      sourceTransactionType: targetPoolItem.sourceTransactionType || (targetPoolItem.originType === 'REJECT_PENYEMAIAN' ? 'SEEDING' : (targetPoolItem.originType === 'REJECT_DEDERAN' ? 'DEDER_INSPECTION' : 'GRAFTING')),
+      sourceModule: targetPoolItem.sourceModule || (targetPoolItem.originType === 'REJECT_PENYEMAIAN' ? 'PENYEMAIAN' : (['REJECT_OKULASI', 'REJECT_REGRAFTING'].includes(targetPoolItem.originType) ? 'BUDDING' : 'DEDERAN')),
+      sourceTransactionType: targetPoolItem.sourceTransactionType || (targetPoolItem.originType === 'REJECT_PENYEMAIAN' ? 'SEEDING' : (targetPoolItem.originType === 'REJECT_DEDERAN' ? 'DEDER_INSPECTION' : (targetPoolItem.originType === 'REJECT_REGRAFTING' ? 'REGRAFTING' : 'GRAFTING'))),
       sourceTransactionId: targetPoolItem.sourceTransactionId || targetPoolItem.sourceDocNo || targetPoolItem.docNo,
       sourceDocNo: targetPoolItem.sourceDocNo || targetPoolItem.seedingDocNo || targetPoolItem.buddingDocNo || targetPoolItem.inspectionDocNo || targetPoolItem.dederanDocNo || '-',
+      buddingDocNo: targetPoolItem.buddingDocNo || targetPoolItem.sourceBuddingDocNo || null,
+      sourceBuddingDocNo: targetPoolItem.sourceBuddingDocNo || targetPoolItem.buddingDocNo || null,
+      inspectionDocNo: targetPoolItem.inspectionDocNo || null,
+      sourceInspectionDocNo: targetPoolItem.sourceInspectionDocNo || targetPoolItem.inspectionDocNo || null,
       category: selectedCat,
       alasanDitolakCategory: selectedCat,
       originType: targetPoolItem.originType || (targetPoolItem.sourceModule === 'DEDERAN' ? 'REJECT_DEDERAN' : 'REJECT_PENYEMAIAN'),

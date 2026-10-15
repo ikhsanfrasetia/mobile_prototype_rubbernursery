@@ -6,6 +6,7 @@ import { formatDate, formatStandardDocNo, generateUniqueDocNo } from '../../core
 import { toast } from '../../components/toast.js';
 import { assertAttendanceGateOrThrow } from '../../core/attendance-gate-service.js';
 import { applyTransactionActor } from '../../core/transaction-actor.js';
+import { getBuddingInspectionGate } from '../../core/budding-workflow-service.js';
 
 export function renderInspectionForm() {
   const app = document.getElementById('app');
@@ -32,7 +33,8 @@ export function renderInspectionForm() {
     : (Number.isInteger(storedBuddingIdx) && buddingTxs[storedBuddingIdx]
       ? storedBuddingIdx
       : (legacyBuddingIdx >= 0 && buddingTxs[legacyBuddingIdx] ? legacyBuddingIdx : 0));
-  const selectedBudding = buddingTxs[buddingIdx] || {
+  const selectedBuddingRecord = buddingTxs[buddingIdx];
+  const selectedBudding = selectedBuddingRecord || {
     batchNo: 'Batch-01',
     docNo: formatStandardDocNo(2026, 'OKL', 1),
     sourceDocNo: formatStandardDocNo(2026, 'APR', 1),
@@ -46,6 +48,18 @@ export function renderInspectionForm() {
       { id: 'W001', name: 'Ahmad Rifai', code: '104521', qty: 2000 }
     ]
   };
+  if (!selectedBuddingRecord) {
+    toast('Transaksi Okulasi sumber tidak ditemukan. Pemeriksaan tidak dapat direkam.', 'error');
+    navigate('/inspection');
+    return;
+  }
+  const inspectionGate = getBuddingInspectionGate(selectedBuddingRecord);
+  if (!inspectionGate.allowed) {
+    toast(inspectionGate.reason, 'warning');
+    storage.remove('editing_inspection_index');
+    navigate('/inspection');
+    return;
+  }
   if (isEditing && targetInsp?.buddingDocNo && selectedBudding.docNo !== targetInsp.buddingDocNo) {
     toast(`Transaksi okulasi sumber ${targetInsp.buddingDocNo} tidak ditemukan. Form edit dibatalkan agar data tidak tertaut ke batch lain.`, 'error');
     navigate('/inspection');
@@ -1158,57 +1172,6 @@ export function renderInspectionForm() {
       txs.push(finalizedInspection);
     }
     storage.set('inspection_transactions', txs);
-
-    // Save/Update to Regrafting Pool when failures are allocated for another Regrafting.
-    let regraftPool = storage.get('regrafting_pool', []);
-    if (isEditing) {
-      regraftPool = regraftPool.filter(r => r.inspectionDocNo !== docNoInsp);
-    }
-    if (totalToRegrafting > 0) {
-      regraftPool.push({
-        docNo: generateUniqueDocNo('regrafting', regraftPool, 2026),
-        inspectionDocNo: docNoInsp,
-        batchNo,
-        sourceBuddingDocNo: docNo,
-        sourceDocNo: selectedBudding.sourceDocNo,
-        tanggal: isEditing && targetInsp?.tanggal ? targetInsp.tanggal : today,
-        bedengan: selectedBudding.bedengan,
-        klonRootstock: selectedBudding.klonRootstock || 'GT-01',
-        klonAwal: selectedBudding.klonEntres || 'PB 260',
-        jumlah: totalToRegrafting,
-        sisaRegrafting: totalToRegrafting,
-        status: 'READY_TO_REGRAFT'
-      });
-    }
-    storage.set('regrafting_pool', regraftPool);
-
-    // Save/Update failed seedlings allocated to Pasca-Okulasi selection/afkir.
-    let selectionPool = storage.get('selection_pool', []);
-    const existingCandidate = selectionPool.find(s => s.inspectionDocNo === docNoInsp);
-    if (isEditing) {
-      selectionPool = selectionPool.filter(s => s.inspectionDocNo !== docNoInsp);
-    }
-    if (totalToSelection > 0) {
-      selectionPool.push({
-        id: existingCandidate?.id || `SEL-POOL-INS-${docNoInsp}`,
-        docNo: existingCandidate?.docNo || null,
-        originType: 'REJECT_PEMERIKSAAN',
-        sourceModule: 'INSPECTION',
-        sourceTransactionType: isRegrafting ? 'REGRAFTING' : 'GRAFTING',
-        inspectionDocNo: docNoInsp,
-        batchNo,
-        sourceBuddingDocNo: docNo,
-        sourceDocNo: selectedBudding.sourceDocNo || docNo,
-        tanggal: isEditing && targetInsp?.tanggal ? targetInsp.tanggal : today,
-        bedengan: selectedBudding.bedengan,
-        klon: selectedBudding.klonEntres || 'PB 260',
-        klonRootstock: selectedBudding.klonRootstock || 'GT-01',
-        jumlahAfkir: totalToSelection,
-        alasan: 'Gagal / Tidak Berhasil Okulasi (Ditolak Regrafting)',
-        status: existingCandidate?.status || 'PENDING_DECLARATION'
-      });
-    }
-    storage.set('selection_pool', selectionPool);
 
     stopCamera();
     closeFullscreenViewer();

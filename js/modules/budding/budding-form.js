@@ -17,6 +17,7 @@ import { applyTransactionActor, canUserAccessTransaction } from '../../core/tran
 import { isTransactionLockedForMantri } from '../verification/mantri-confirmation-service.js';
 import { toast } from '../../components/toast.js';
 import { validateSourceEditability } from '../../core/dependency-guard.js';
+import { canUseApprovedRegraftingPool } from '../../core/budding-workflow-service.js';
 
 const MASTER_WORKERS = [
   { id: 'W001', name: 'Ahmad Rifai', code: '104521' },
@@ -80,14 +81,15 @@ export async function renderBuddingForm() {
   if (isRegrafting) {
     const regraftPool = storage.get('regrafting_pool', []);
     const regraftIdx = storage.get('selected_regraft_index', 0);
-    const poolItem = regraftPool[regraftIdx] || {
-      batchNo: 'Batch-01',
-      docNo: formatStandardDocNo(2026, 'RGRF', 1),
-      inspectionDocNo: formatStandardDocNo(2026, 'INS', 1),
-      jumlah: 50,
-      bedengan: 'Bedengan 01',
-      klonRootstock: 'GT 1'
-    };
+    const poolItem = (isEditing && editingTx
+      ? regraftPool.find(p => p.docNo === editingTx.regraftPoolDocNo || p.inspectionDocNo === editingTx.inspectionDocNo)
+      : null) || regraftPool[regraftIdx];
+    if (!poolItem || !canUseApprovedRegraftingPool(poolItem)) {
+      toast('Kuota Okulasi Janda hanya tersedia setelah hasil Pemeriksaan disetujui Asisten Bibitan.', 'warning');
+      storage.remove('editing_budding_index');
+      navigate('/budding/regrafting');
+      return;
+    }
     batchNo = poolItem.batchNo || 'Batch-01';
     docNo = poolItem.docNo || formatStandardDocNo(2026, 'RGRF', 1);
     poolDocNo = poolItem.docNo;
@@ -1140,23 +1142,26 @@ export async function renderBuddingForm() {
 
       // SINKRONISASI KE PENYELEKSIAN (SELECTION_POOL) UNTUK BIBIT DITOLAK SAAT OKULASI
       let selPool = storage.get('selection_pool', []);
-      const existingCandidate = selPool.find(s => s.buddingDocNo === docNoBudding && s.originType === 'REJECT_OKULASI');
-      selPool = selPool.filter(s => !(s.buddingDocNo === docNoBudding && s.originType === 'REJECT_OKULASI'));
+      const buddingRejectOrigin = isRegrafting ? 'REJECT_REGRAFTING' : 'REJECT_OKULASI';
+      const existingCandidate = selPool.find(s => s.buddingDocNo === docNoBudding && s.originType === buddingRejectOrigin);
+      selPool = selPool.filter(s => !(s.buddingDocNo === docNoBudding && s.originType === buddingRejectOrigin));
       if (ditolak > 0) {
         selPool.push({
           id: existingCandidate?.id || `SEL-POOL-BUD-${docNoBudding}`,
           docNo: existingCandidate?.docNo || null,
-          originType: 'REJECT_OKULASI',
+          originType: buddingRejectOrigin,
           sourceModule: 'BUDDING',
           sourceTransactionType: isRegrafting ? 'REGRAFTING' : 'GRAFTING',
           sourceDocNo: docNoBudding,
+          sourceTransactionId: docNoBudding,
+          sourceBuddingDocNo: docNoBudding,
           batchNo: batchNo,
           buddingDocNo: docNoBudding,
           inspectionDocNo: '-',
           klon: klonRootstock || 'GT-01',
           bedengan: bedenganDisplay,
           jumlahAfkir: ditolak,
-          alasan: 'Bibit Ditolak saat Proses Okulasi (Grafting)',
+          alasan: isRegrafting ? 'Bibit Ditolak saat Proses Okulasi Janda (Regrafting)' : 'Bibit Ditolak saat Proses Okulasi (Grafting)',
           status: existingCandidate?.status || 'PENDING_DECLARATION'
         });
       }

@@ -24,6 +24,8 @@ import {
   matchActor
 } from './mantri-confirmation-service.js';
 import { getSelectionStageLabel } from '../selection/selection-manager.js';
+import { getStandardWorkHoursForDate } from '../../data/standard-work-hour-master.js';
+import { getWorkAllocationByCode } from '../../data/work-allocation-master.js';
 
 let activeTabFilter = null; // Menyimpan modul aktif (e.g. 'TIDAK_HADIR', 'PENERIMAAN', etc.)
 const moduleCheckedStates = new Map(); // Menyimpan state centang per modul
@@ -220,7 +222,9 @@ export function renderMantriConfirmationLanding() {
       ? renderKebunEntresGroupedList(visibleTxs)
       : `
               <div style="display: flex; flex-direction: column; gap: 10px;">
-                ${visibleTxs.map(tx => renderUniversalCard(tx)).join('')}
+                ${visibleTxs.map(tx => currentModuleType === MODULE_TYPES.PEMELIHARAAN
+      ? renderMaintenanceVerificationCard(tx)
+      : renderUniversalCard(tx)).join('')}
               </div>
             `
     }
@@ -278,6 +282,66 @@ export function renderMantriConfirmationLanding() {
   `;
 
   attachEvents(allTodayTxs, currentUser, currentSectionTitle);
+}
+
+function renderMaintenanceVerificationCard(tx) {
+  const raw = tx.rawRecord || {};
+  const workers = Array.isArray(raw.pekerja) ? raw.pekerja : [];
+  const allocationName = raw.allocationName || raw.aktivitas?.nama || raw.activityType || 'Pemeliharaan';
+  const allocationCode = raw.allocationCode || '';
+  const uom = raw.uomCode || raw.uom || raw.aktivitas?.uom || '';
+  const dateText = normalizeDateStr(tx.date);
+  const date = new Date(raw.activityDate || raw.tanggal || raw.date || raw.createdAt || tx.date || '');
+  const standardHours = Number.isFinite(date.getTime())
+    ? (getStandardWorkHoursForDate(date)?.workHours ?? null)
+    : null;
+  const isMandoran = raw.activityEntryMode === 'MANDORAN';
+
+  const rows = workers.map((worker) => {
+    const name = worker.name || worker.workerName || '-';
+    const code = worker.code || worker.workerCode || worker.id || worker.workerId || '-';
+    const result = Number(worker.inputHasil ?? worker.result ?? worker.quantity ?? 0);
+    const taskQuantity = Number(raw.taskQuantity) || Number(getWorkAllocationByCode(raw.allocationCode)?.taskQuantity) || 0;
+    const effectiveTaskQuantity = standardHours === 5 && taskQuantity > 0
+      ? Math.round(taskQuantity * 5 / 7)
+      : taskQuantity;
+    const potongJam = isMandoran && effectiveTaskQuantity > 0 && result < effectiveTaskQuantity && worker.potongJamDecision !== 'TIDAK_SETUJU';
+    const hours = potongJam
+      ? worker.durationHours || null
+      : standardHours;
+    return { name, code, result, potongJam, hours };
+  });
+
+  const heading = allocationCode ? `${allocationCode} - ${allocationName}` : allocationName;
+
+  return `
+    <article class="card-compact-item card-universal-item" data-tx-id="${esc(tx.id)}" style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:8px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04);">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:11px 12px; border-bottom:1px solid #D8D8D8;">
+        <span style="font-size:.82rem; font-weight:800; color:#116834;">${esc(heading)}</span>
+        <button type="button" class="btn-maintenance-info" data-tx-id="${esc(tx.id)}" aria-label="Informasi aktivitas" style="width:22px; height:22px; border:0; border-radius:50%; background:#116834; color:#FFFFFF; font-size:.78rem; font-weight:800; cursor:pointer; flex-shrink:0;">i</button>
+      </div>
+      <div style="display:flex; justify-content:space-between; gap:10px; padding:8px 12px; border-bottom:1px solid #222; font-size:.72rem; font-weight:800; color:#111;">
+        <span>Nama Pekerja</span><span>Hasil${uom ? ` (${esc(uom)})` : ''}</span>
+      </div>
+      ${rows.length ? rows.map((row, index) => `
+        <div style="display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px; padding:8px 12px; ${index < rows.length - 1 ? 'border-bottom:1px solid #E5E5E5;' : ''}">
+          <div style="min-width:0;">
+            <div style="font-size:.76rem; font-weight:700; color:#111; overflow-wrap:anywhere;">${esc(row.name)}</div>
+            <div style="margin-top:2px; font-size:.67rem; color:#64748B;">${esc(row.code)}</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap;">
+            <div style="font-size:.78rem; font-weight:800; color:#111;">${formatSafeNumber(row.result)}</div>
+            ${row.hours !== null ? `<div style="margin-top:2px; font-size:.70rem; font-weight:700; color:${row.potongJam ? '#DC2626' : '#16A34A'};">${formatSafeNumber(row.hours)} Jam</div>` : ''}
+          </div>
+        </div>
+      `).join('') : `
+        <div style="padding:12px; font-size:.74rem; color:#64748B;">Data pekerja belum tersedia.</div>
+      `}
+      <div style="display:flex; justify-content:space-between; gap:8px; padding:9px 12px; background:#F8FAFC; border-top:1px solid #E2E8F0; font-size:.72rem; color:#64748B;">
+        <span>${esc(tx.docNo || tx.id || '-')}</span><span>${esc(dateText)}</span>
+      </div>
+    </article>
+  `;
 }
 
 /**
@@ -959,7 +1023,18 @@ export function renderDetailModal(tx, user) {
     `;
   }
 
-  const fields = disp.fields || [];
+  const isMaintenanceTransaction = tx.moduleType === MODULE_TYPES.PEMELIHARAAN;
+  const maintenanceWorkers = Array.isArray(raw.pekerja) ? raw.pekerja : [];
+  const maintenanceRealizedVolume = maintenanceWorkers.reduce((total, worker) =>
+    total + (Number(worker.inputHasil ?? worker.result ?? worker.quantity) || 0), 0);
+  const workGroupRoleCode = raw.workGroupRoleCode || raw.workGroup?.roleCode || raw.workGroup?.workGroupRoleCode || '-';
+  const fields = isMaintenanceTransaction
+    ? [
+        { label: 'Jenis Pemeliharaan', value: esc(raw.allocationName || raw.aktivitas?.nama || raw.activityType || 'Pemeliharaan') },
+        { label: 'Lokasi / Bedengan', value: esc(raw.bedengan || raw.location || raw.lokasiBlok || raw.blok || '-') },
+        { label: 'Volume Realisasi', value: `${formatSafeNumber(maintenanceRealizedVolume)} ${esc(raw.uomCode || raw.uom || '')}`, highlight: true }
+      ]
+    : disp.fields || [];
 
   return `
     <div id="modal-tx-detail-backdrop" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(2px); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
@@ -986,9 +1061,9 @@ export function renderDetailModal(tx, user) {
             </div>
 
             <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
-              <span style="color: #64748B; font-weight: 600;">No. Dokumen</span>
+              <span style="color: #64748B; font-weight: 600;">${isMaintenanceTransaction ? 'Work Group Role Code' : 'No. Dokumen'}</span>
               <span style="color: #64748B;">:</span>
-              <span style="font-weight: 800; color: #0284C7; overflow-wrap: anywhere; word-break: normal;">${esc(tx.docNo)}</span>
+              <span style="font-weight: 800; color: #0284C7; overflow-wrap: anywhere; word-break: normal;">${esc(isMaintenanceTransaction ? workGroupRoleCode : tx.docNo)}</span>
             </div>
 
             <div style="display: grid; grid-template-columns: 130px 10px 1fr; align-items: baseline; gap: 2px;">
@@ -1252,6 +1327,17 @@ function attachEvents(allTxs, user, currentSectionTitle) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       toast('Lewat Waktu, Silahkan hubungi KTU untuk dapat di proses selanjutnya', 'warning');
+    });
+  });
+
+  document.querySelectorAll('.btn-maintenance-info').forEach(button => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const txId = button.getAttribute('data-tx-id');
+      const foundTx = allTxs.find(tx => String(tx.id) === String(txId) || String(tx.docNo) === String(txId));
+      if (!foundTx) return;
+      selectedTxForModal = foundTx;
+      renderMantriConfirmationLanding();
     });
   });
 

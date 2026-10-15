@@ -10,3 +10,6 @@ data/*.backup*
 data/backups/
 portal_patch/backup*
 scratch/
+
+# Office temporary lock files
+~$*

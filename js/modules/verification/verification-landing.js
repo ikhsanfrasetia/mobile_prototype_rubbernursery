@@ -21,6 +21,8 @@ import { todayISO, todayDDMMYYYY, esc } from '../../core/utils.js';
 import { getCurrentUserContext, resolveUserContext, ROLES } from '../../core/user-context.js';
 import { renderAsbBottomNav, attachAsbBottomNavEvents } from '../../components/bottom-nav-asb.js';
 import { renderVerifikasiSummaryCardHtml } from './asb-summary-cards.js';
+import { getStandardWorkHoursForDate } from '../../data/standard-work-hour-master.js';
+import { getWorkAllocationByCode } from '../../data/work-allocation-master.js';
 import {
   VERIFICATION_10_MODULES,
   VERIFICATION_STATUS,
@@ -33,7 +35,9 @@ import {
   canSubmitFinalVerificationToServer,
   submitFinalVerificationToServer,
   approveVerification,
+  approveMaintenanceWorker,
   returnVerification,
+  returnMaintenanceWorker,
   findSourceRecord,
   getVerificationDetailData,
   getAllVerifications
@@ -44,6 +48,7 @@ let currentVerifView = 'MODULE_GRID'; // 'MODULE_GRID' | 'TRANSACTION_LIST' | 'T
 let previousVerifView = 'MODULE_GRID'; // 'MODULE_GRID' | 'TINJAU_SUMMARY'
 let activeModuleId = null; // e.g. 'TIDAK_HADIR', 'OKULASI', etc.
 let selectedTxItem = null; // Transaksi yang dibuka di detail (berisi normalizedData)
+let selectedMaintenanceWorkerId = null;
 let lastSyncResult = null; // Menyimpan hasil sinkronisasi terakhir untuk SYNC_SUCCESS
 let syncHistoryDate = todayISO(); // Filter tanggal untuk halaman riwayat pengiriman
 let syncHistoryStatusFilter = 'ALL'; // 'ALL' | 'BERHASIL' | 'GAGAL'
@@ -294,6 +299,8 @@ export function renderVerificationLanding() {
     renderTransactionListView(app, userCtx);
   } else if (currentVerifView === 'TRANSACTION_DETAIL') {
     renderTransactionDetailView(app, userCtx);
+  } else if (currentVerifView === 'MAINTENANCE_WORKER_DETAIL') {
+    renderMaintenanceWorkerDetailView(app, userCtx);
   } else if (currentVerifView === 'TINJAU_FILTER') {
     renderTinjauSummaryView(app, userCtx);
   } else if (currentVerifView === 'TINJAU_SUMMARY') {
@@ -583,6 +590,117 @@ function renderTransactionListView(app, userCtx) {
   attachAsbBottomNavEvents(app);
 }
 
+function isMaintenanceVerificationItem(item) {
+  return ['PEMELIHARAAN', 'REKAM_PEMELIHARAAN', 'NURSERY_ACTIVITY'].includes(String(item?.referenceType || '').toUpperCase()) ||
+    item?.moduleCategory === 'REKAM_PEMELIHARAAN';
+}
+
+function isMaintenanceWorkerApprovalItem(item) {
+  const raw = item?.rawRecord || {};
+  return isMaintenanceVerificationItem(item) && (
+    raw.activityEntryMode === 'MANDORAN' || Boolean(raw.workGroupRoleCode || raw.workGroup?.workGroupRoleCode)
+  ) && Array.isArray(raw.pekerja) && raw.pekerja.length > 0;
+}
+
+function getMaintenanceVerificationWorkers(raw) {
+  const workers = Array.isArray(raw?.pekerja) ? raw.pekerja : [];
+  const rawDate = raw.activityDate || raw.tanggal || raw.date || raw.createdAt;
+  const workDate = new Date(rawDate || '');
+  const standard = Number.isNaN(workDate.getTime()) ? null : getStandardWorkHoursForDate(workDate);
+  const standardHours = standard?.workHours ?? null;
+  const taskQuantity = Number(raw.taskQuantity) || Number(getWorkAllocationByCode(raw.allocationCode)?.taskQuantity) || 0;
+  const standardOutput = standard?.dayName === 'Jumat' && taskQuantity > 0
+    ? Math.round(taskQuantity * 5 / 7)
+    : taskQuantity;
+
+  return workers.map((worker) => {
+    const result = Number(worker.inputHasil ?? worker.result ?? worker.quantity ?? 0) || 0;
+    const isBelowTask = standardOutput > 0 && result < standardOutput;
+    const effectiveCutDecision = worker.asistenPotongJamDecision || worker.potongJamDecision || '';
+    const noCutApproved = effectiveCutDecision === 'TIDAK_SETUJU';
+    const isPotongJam = isBelowTask && !noCutApproved;
+    const proportionalHours = standardOutput > 0 && standardHours !== null
+      ? Math.round((result / standardOutput) * standardHours)
+      : null;
+    const assistantOverrodeMantriToCut = worker.asistenPotongJamDecision === 'SETUJU' && worker.potongJamDecision === 'TIDAK_SETUJU';
+    const hours = noCutApproved || !isBelowTask
+      ? standardHours
+      : (assistantOverrodeMantriToCut ? proportionalHours : Number(worker.durationHours) > 0 ? Number(worker.durationHours) : proportionalHours);
+
+    return {
+      workerId: String(worker.id || worker.workerId || `${worker.code || worker.workerCode || ''}-${worker.name || worker.workerName || ''}`),
+      name: worker.name || worker.workerName || 'Pekerja',
+      code: worker.code || worker.workerCode || worker.id || worker.workerId || '-',
+      result,
+      hours,
+      isBelowTask,
+      isPotongJam,
+      mantriPotongJamDecision: worker.potongJamDecision || '',
+      mantriPotongJamReason: worker.potongJamReason || '',
+      asistenPotongJamDecision: worker.asistenPotongJamDecision || '',
+      taskQuantity: standardOutput,
+      standardHours,
+      uom: raw.uomCode || raw.uom || raw.aktivitas?.uom || '',
+      allocationCode: raw.allocationCode || '',
+      allocationName: raw.allocationName || raw.workGroupRoleName || raw.aktivitas?.nama || raw.activityType || 'Pemeliharaan',
+      roleCode: raw.workGroupRoleCode || raw.workGroup?.roleCode || raw.workGroup?.workGroupRoleCode || '-',
+      decisionStatus: worker.asistenVerificationStatus || '',
+      returnReason: worker.asistenReturnReason || ''
+    };
+  });
+}
+
+function renderMaintenanceVerificationDetails(item, interactive = false) {
+  const raw = item.rawRecord || {};
+  const workers = getMaintenanceVerificationWorkers(raw);
+  const allocationCode = raw.allocationCode || '';
+  const allocationName = raw.allocationName || raw.workGroupRoleName || raw.aktivitas?.nama || raw.activityType || 'Pemeliharaan';
+  const roleCode = raw.workGroupRoleCode || raw.workGroup?.roleCode || raw.workGroup?.workGroupRoleCode || '-';
+  const location = raw.bedengan || raw.location || raw.lokasiBlok || raw.blok || '-';
+  const uom = raw.uomCode || raw.uom || raw.aktivitas?.uom || '';
+  const total = workers.reduce((sum, worker) => sum + worker.result, 0);
+  const reviewedCount = workers.filter((worker) => ['DISETUJUI', 'DIKEMBALIKAN'].includes(worker.decisionStatus)).length;
+  const title = allocationCode ? `${allocationCode} - ${allocationName}` : allocationName;
+
+  return `
+    <section style="overflow:hidden; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,.04);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:12px; border-bottom:1px solid #D8D8D8;">
+        <div style="min-width:0;">
+          <div style="font-size:.86rem; line-height:1.35; font-weight:800; color:#116834; overflow-wrap:anywhere;">${esc(title)}</div>
+          <div style="margin-top:4px; font-size:.72rem; color:#64748B;">${esc(roleCode)} · Lokasi: ${esc(location)}</div>
+        </div>
+        <span style="flex-shrink:0; font-size:.76rem; font-weight:800; color:#111827;">${esc(uom)}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; gap:8px; padding:8px 12px; border-bottom:1px solid #222; font-size:.72rem; font-weight:800; color:#111827;">
+        <span>Nama Pekerja</span><span>Hasil${uom ? ` (${esc(uom)})` : ''}</span>
+      </div>
+      ${workers.length ? workers.map((worker, index) => `
+        <button type="button" class="asb-maintenance-worker-row" data-maint-worker-id="${esc(worker.workerId)}" ${interactive ? '' : 'disabled'} style="width:100%; display:grid; grid-template-columns:minmax(0,1fr) auto auto ${interactive ? 'auto' : ''}; text-align:left; background:#FFFFFF; align-items:center; gap:10px; padding:9px 12px; border:0; ${index < workers.length - 1 ? 'border-bottom:1px solid #E5E7EB;' : ''} ${interactive ? 'cursor:pointer;' : 'cursor:default;'}">
+          <div style="min-width:0; display:flex; align-items:center; gap:8px;">
+            <span aria-label="${worker.isPotongJam ? 'Di bawah Task Quantity' : 'Normal'}" style="width:13px; height:13px; flex:0 0 13px; border-radius:50%; background:${worker.isPotongJam ? '#F41424' : '#43B649'};"></span>
+            <span style="min-width:0; display:flex; flex-direction:column; gap:3px;">
+              <span style="font-size:.78rem; line-height:1.3; font-weight:750; color:#111827; overflow-wrap:anywhere;">${esc(worker.name)}</span>
+              <span style="font-size:.68rem; color:#64748B;">${esc(worker.code)}</span>
+            </span>
+          </div>
+          ${worker.decisionStatus ? `<span style="padding:4px 6px; border-radius:5px; background:${worker.decisionStatus === 'DISETUJUI' ? '#DEF7EC' : '#FEF2F2'}; color:${worker.decisionStatus === 'DISETUJUI' ? '#057A55' : '#DC2626'}; font-size:.6rem; line-height:1.2; font-weight:800; white-space:nowrap;">${worker.decisionStatus === 'DISETUJUI' ? 'DISETUJUI' : 'DIKEMBALIKAN'}</span>` : ''}
+          <div style="text-align:right; white-space:nowrap;">
+            <div style="font-size:.8rem; font-weight:800; color:#111827;">${worker.result.toLocaleString('id-ID')}</div>
+            ${worker.hours !== null ? `<div style="margin-top:3px; font-size:.71rem; font-weight:700; color:${worker.isPotongJam ? '#DC2626' : '#16A34A'};">${Math.round(worker.hours).toLocaleString('id-ID')} Jam</div>` : ''}
+          </div>
+          ${interactive ? '<span aria-hidden="true" style="font-size:1.2rem; line-height:1; color:#087A3C;">›</span>' : ''}
+        </button>
+      `).join('') : `
+        <div style="padding:12px; font-size:.76rem; color:#64748B;">Rincian hasil pekerja tidak tersedia pada dokumen ini.</div>
+      `}
+      <div style="display:flex; justify-content:space-between; gap:8px; padding:10px 12px; background:#F0FDF4; border-top:1px solid #D1FAE5; font-size:.78rem; font-weight:800; color:#116834;">
+        <span>Volume Realisasi</span><span>${total.toLocaleString('id-ID')} ${esc(uom)}</span>
+      </div>
+      ${interactive ? `<div style="padding:8px 12px; border-top:1px solid #E5E7EB; font-size:.7rem; color:#64748B;">Persetujuan pekerja: ${reviewedCount}/${workers.length} selesai</div>` : ''}
+    </section>
+  `;
+}
+
 /**
  * SCREEN 6: Verifikasi - Detail Transaksi
  */
@@ -617,6 +735,9 @@ function renderTransactionDetailView(app, userCtx) {
   const returnReasonText = selectedTxItem.returnReason || selectedTxItem.rawRecord?.returnReason || selectedTxItem.latestVerification?.returnReason || norm.returnReason;
   const dateStr = selectedTxItem.date ? String(selectedTxItem.date).substring(0, 10) : activeFilterDate;
   const workerName = selectedTxItem.submittedByName || selectedTxItem.rawRecord?.mantri || selectedTxItem.rawRecord?.actorName || userCtx?.name || 'Mantri';
+  const isWorkerLevelMaintenance = isMaintenanceWorkerApprovalItem(selectedTxItem);
+  const rawMaintenance = selectedTxItem.rawRecord || {};
+  const maintenanceRoleCode = rawMaintenance.workGroupRoleCode || rawMaintenance.workGroup?.roleCode || rawMaintenance.workGroup?.workGroupRoleCode || '-';
 
   // Render Rincian Data dinamis dari normalized fields (Zero hardcoding)
   const detailRows = (norm.fields || []).map(f => `
@@ -686,20 +807,27 @@ function renderTransactionDetailView(app, userCtx) {
             </div>
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Kebun</span>
-              <span style="color: #0F172A; font-weight: 600;">${esc(selectedTxItem.estateId || userCtx?.estateName || 'Tanah Besih')}</span>
+              <span style="color: #0F172A; font-weight: 600;">Tanah Besih</span>
             </div>
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Divisi</span>
-              <span style="color: #0F172A; font-weight: 600;">${esc(selectedTxItem.divisionId || userCtx?.divisionName || 'Divisi I')}</span>
+              <span style="color: #0F172A; font-weight: 600;">Divisi I</span>
             </div>
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Mantri</span>
               <span style="color: #0F172A; font-weight: 600;">${esc(workerName)}</span>
             </div>
-            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-              <span style="color: #64748B;">Nomor Dokumen</span>
-              <span style="color: #116834; font-weight: 700;">${esc(docNo)}</span>
-            </div>
+            ${isWorkerLevelMaintenance ? `
+              <div style="display: flex; justify-content: space-between; gap:8px; padding: 4px 0;">
+                <span style="color: #64748B;">Kode Mandoran</span>
+                <span style="color: #116834; font-weight: 700; text-align:right;">${esc(maintenanceRoleCode)}</span>
+              </div>
+            ` : `
+              <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                <span style="color: #64748B;">Nomor Dokumen</span>
+                <span style="color: #116834; font-weight: 700;">${esc(docNo)}</span>
+              </div>
+            `}
           </div>
         </div>
 
@@ -709,7 +837,7 @@ function renderTransactionDetailView(app, userCtx) {
             Rincian Data
           </div>
           <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem;">
-            ${detailRows}
+            ${isWorkerLevelMaintenance ? renderMaintenanceVerificationDetails(selectedTxItem, true) : detailRows}
           </div>
         </div>
 
@@ -722,6 +850,10 @@ function renderTransactionDetailView(app, userCtx) {
           <div style="background: #DEF7EC; border: 1px solid #A7F3D0; border-radius: 8px; padding: 12px; text-align: center; color: #03543F; font-size: 0.78rem; font-weight: 700; margin-top: 8px;">
             ✓ Dokumen ini telah selesai diverifikasi
           </div>
+        ` : (isWorkerLevelMaintenance ? `
+          <div style="margin-top:10px; padding:12px; background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; color:#166534; font-size:.76rem; line-height:1.45; font-weight:700;">
+            Buka rincian setiap pekerja untuk memberikan keputusan. Dokumen selesai setelah semua pekerja disetujui atau dikembalikan.
+          </div>
         ` : `
           <div style="display: flex; gap: 10px; margin-top: 10px; padding-bottom: 10px;">
             ${selectedTxItem.referenceType !== 'TIDAK_HADIR' ? `
@@ -733,7 +865,7 @@ function renderTransactionDetailView(app, userCtx) {
               Setujui
             </button>
           </div>
-        `)}
+        `))}
 
       </main>
 
@@ -745,8 +877,17 @@ function renderTransactionDetailView(app, userCtx) {
 
   // Back button
   app.querySelector('#btn-back-to-list')?.addEventListener('click', () => {
+    selectedMaintenanceWorkerId = null;
     currentVerifView = 'TRANSACTION_LIST';
     renderVerificationLanding();
+  });
+
+  app.querySelectorAll('.asb-maintenance-worker-row').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectedMaintenanceWorkerId = button.dataset.maintWorkerId || null;
+      currentVerifView = 'MAINTENANCE_WORKER_DETAIL';
+      renderVerificationLanding();
+    });
   });
 
   // Approve
@@ -818,6 +959,178 @@ function renderTransactionDetailView(app, userCtx) {
     });
   });
 
+  attachAsbBottomNavEvents(app);
+}
+
+function renderMaintenanceWorkerDetailView(app, userCtx) {
+  if (!selectedTxItem || !isMaintenanceVerificationItem(selectedTxItem)) {
+    currentVerifView = 'TRANSACTION_LIST';
+    renderVerificationLanding();
+    return;
+  }
+
+  const raw = selectedTxItem.rawRecord || {};
+  const worker = getMaintenanceVerificationWorkers(raw).find((item) => item.workerId === String(selectedMaintenanceWorkerId));
+  if (!worker) {
+    currentVerifView = 'TRANSACTION_DETAIL';
+    renderVerificationLanding();
+    return;
+  }
+  const variance = worker.result - worker.taskQuantity;
+  const isDecided = ['DISETUJUI', 'DIKEMBALIKAN'].includes(worker.decisionStatus);
+  const isReturned = worker.decisionStatus === 'DIKEMBALIKAN';
+  const statusColor = worker.isPotongJam ? '#DC2626' : '#16A34A';
+  const finalCutDecision = worker.asistenPotongJamDecision || worker.mantriPotongJamDecision || '';
+  const transactionDateYMD = extractDateYMD(selectedTxItem.date);
+  const transactionDate = transactionDateYMD
+    ? (() => {
+        const [year, month, day] = transactionDateYMD.split('-').map(Number);
+        return new Date(year, month - 1, day).toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        });
+      })()
+    : (selectedTxItem.date || '-');
+  app.innerHTML = `
+    <div class="page verif-page" style="position:relative; display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; background:#EEEEEE; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+      <header style="height:52px; flex-shrink:0; display:flex; align-items:center; gap:10px; padding:0 14px; background:#FFFFFF; border-bottom:1px solid #D9DDE2;">
+        <button id="btn-back-maint-worker" type="button" aria-label="Kembali" style="padding:6px; margin-left:-6px; border:0; background:transparent; color:#116834; cursor:pointer; display:flex;">
+          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        </button>
+        <h1 style="font-size:1.05rem; font-weight:800; color:#111827; margin:0 0 0 4px;">Data Pekerja Bibitan</h1>
+      </header>
+      <div style="flex-shrink:0; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; padding:11px 17px; background:#FFFFFF; border-bottom:1px solid #E1E1E1;">
+        <div style="min-width:0;">
+          <div style="font-size:.95rem; font-weight:800; color:#111827;">${esc(worker.name)}</div>
+          <div style="margin-top:4px; font-size:.75rem; color:#7B8188;">${esc(worker.code)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:.86rem; line-height:1.2; color:${statusColor}; font-weight:800;">${worker.result.toLocaleString('id-ID')} ${esc(worker.uom)}</div>
+          <div style="margin-top:3px; font-size:.72rem; font-weight:700; color:${statusColor};">${worker.hours === null ? 'Jam belum tersedia' : `${Math.round(worker.hours).toLocaleString('id-ID')} Jam`}</div>
+        </div>
+      </div>
+      <main style="flex:1; min-height:0; overflow-y:auto; padding:13px 15px 18px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 0 10px;">
+          <h2 style="margin:0; font-size:.94rem; font-weight:800; color:#111827;">Data Pemeliharaan</h2>
+          ${isDecided ? `<span style="padding:5px 7px; border-radius:5px; background:${isReturned ? '#FEF2F2' : '#DEF7EC'}; color:${isReturned ? '#DC2626' : '#057A55'}; font-size:.62rem; font-weight:900;">${isReturned ? 'DIKEMBALIKAN' : 'DISETUJUI'}</span>` : worker.isPotongJam ? '<span style="padding:5px 7px; border-radius:4px; background:#F41424; color:#FFFFFF; font-size:.57rem; font-weight:900;">POTONG JAM</span>' : '<span style="padding:5px 7px; border-radius:4px; background:#E8F5E9; color:#116834; font-size:.62rem; font-weight:900;">NORMAL</span>'}
+        </div>
+        <section style="overflow:hidden; margin-bottom:18px; background:#FFFFFF; border:1px solid #DDDDDD; border-radius:9px; box-shadow:0 2px 4px rgba(0,0,0,.1);">
+          <div style="display:flex; justify-content:space-between; gap:10px; padding:11px 13px; border-bottom:1px solid #E1E1E1; font-size:.83rem; font-weight:750; color:#111827;"><span>Kode Mandoran</span><span style="text-align:right;">${esc(worker.roleCode)}</span></div>
+          <div style="display:flex; justify-content:space-between; gap:10px; padding:11px 13px; border-bottom:1px solid #E1E1E1; font-size:.83rem; font-weight:750; color:#111827;"><span style="min-width:0; overflow-wrap:anywhere;">${esc(worker.allocationCode ? `${worker.allocationCode} - ${worker.allocationName}` : worker.allocationName)}</span><span style="flex-shrink:0; text-align:right;">${esc(worker.uom)}</span></div>
+          <div style="display:flex; justify-content:space-between; gap:10px; padding:11px 22px; border-bottom:1px solid #E1E1E1; font-size:.83rem; color:#111827;"><span style="font-weight:750;">${esc(worker.name)} <small style="font-weight:500; color:#555;">(${esc(worker.code)})</small></span><span style="font-weight:800; color:${statusColor}; text-align:right;">${worker.result.toLocaleString('id-ID')}</span></div>
+          <div style="display:flex; justify-content:space-between; gap:10px; padding:10px 22px; border-bottom:1px solid #E1E1E1; font-size:.81rem; color:#111827;"><span>Norma / Basis Borong</span><span style="font-weight:750; text-align:right;">${worker.taskQuantity.toLocaleString('id-ID')}</span></div>
+          <div style="display:flex; justify-content:space-between; gap:10px; padding:10px 22px; border-bottom:1px solid #E1E1E1; font-size:.81rem; color:#111827;"><span>Lebih (Kurang) Basis</span><span style="font-weight:800; color:${variance < 0 ? '#DC2626' : '#111827'}; text-align:right;">${variance.toLocaleString('id-ID')} ${esc(worker.uom)}</span></div>
+          ${worker.isBelowTask ? `
+            <div style="display:flex; justify-content:space-between; gap:10px; padding:10px 22px; border-bottom:1px solid #E1E1E1; font-size:.81rem; color:#111827;"><span>Keputusan Potong Jam Mantri</span><span style="font-weight:750; text-align:right; color:${worker.mantriPotongJamDecision === 'SETUJU' ? '#DC2626' : worker.mantriPotongJamDecision === 'TIDAK_SETUJU' ? '#116834' : '#64748B'};">${worker.mantriPotongJamDecision === 'SETUJU' ? 'Ya, Potong Jam' : worker.mantriPotongJamDecision === 'TIDAK_SETUJU' ? 'Tidak Potong Jam' : 'Belum ditetapkan'}</span></div>
+            ${worker.mantriPotongJamReason ? `<div style="display:flex; justify-content:space-between; gap:10px; padding:8px 22px; border-bottom:1px solid #E1E1E1; font-size:.77rem; color:#64748B;"><span>Alasan Mantri</span><span style="font-weight:600; text-align:right; color:#334155;">${esc(worker.mantriPotongJamReason)}</span></div>` : ''}
+          ` : ''}
+          ${isDecided && worker.asistenPotongJamDecision ? `<div style="display:flex; justify-content:space-between; gap:10px; padding:10px 22px; border-bottom:1px solid #E1E1E1; font-size:.81rem; color:#111827;"><span>Keputusan Final Asisten</span><span style="font-weight:750; text-align:right; color:${worker.asistenPotongJamDecision === 'SETUJU' ? '#DC2626' : '#116834'};">${worker.asistenPotongJamDecision === 'SETUJU' ? 'Ya, Potong Jam' : 'Tidak Potong Jam'}</span></div>` : ''}
+          <div style="display:flex; justify-content:space-between; gap:10px; padding:10px 22px; font-size:.81rem; color:#111827;"><span>Tanggal Transaksi</span><span style="font-weight:750; text-align:right;">${esc(transactionDate)}</span></div>
+        </section>
+        ${worker.isBelowTask && !isDecided ? `
+          <section style="margin:0 0 14px; padding:12px; background:#FFFFFF; border:1px solid #D9DDE2; border-radius:9px;">
+            <h2 style="margin:0 0 9px; font-size:.86rem; font-weight:800; color:#111827;">Keputusan Final Asisten: Potong Jam</h2>
+            <div style="display:flex; gap:24px; align-items:center;">
+              <label style="display:flex; align-items:center; gap:7px; font-size:.84rem; color:#222; cursor:pointer;"><input type="radio" name="asisten-potong-jam-decision" value="TIDAK_SETUJU" ${finalCutDecision === 'TIDAK_SETUJU' ? 'checked' : ''} style="width:19px; height:19px; accent-color:#43A047;">Tidak</label>
+              <label style="display:flex; align-items:center; gap:7px; font-size:.84rem; color:#222; cursor:pointer;"><input type="radio" name="asisten-potong-jam-decision" value="SETUJU" ${finalCutDecision === 'SETUJU' ? 'checked' : ''} style="width:19px; height:19px; accent-color:#43A047;">Ya</label>
+            </div>
+            <div style="margin-top:7px; font-size:.71rem; line-height:1.4; color:#64748B;">Pilihan ini menjadi keputusan akhir Asisten atas keputusan Mantri.</div>
+          </section>
+        ` : ''}
+        ${isReturned ? `<div style="padding:11px; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; color:#991B1B; font-size:.77rem; line-height:1.45;"><strong>Alasan pengembalian:</strong> ${esc(worker.returnReason || selectedTxItem.latestVerification?.workerDecisions?.[worker.workerId]?.returnReason || '-')}</div>` : ''}
+      </main>
+      <footer style="flex-shrink:0; padding:12px 16px 14px; background:#FFFFFF; border-top:1px solid #D9DDE2;">
+        ${isDecided ? `<button id="btn-return-maint-worker-detail" type="button" style="width:100%; height:44px; border:1px solid #116834; border-radius:7px; background:#FFFFFF; color:#116834; font-size:.9rem; font-weight:700; cursor:pointer;">Kembali ke Rincian Dokumen</button>` : `
+          <div style="display:flex; gap:9px;">
+            <button id="btn-return-maint-worker" type="button" style="flex:1; height:44px; border:1.5px solid #EF4444; border-radius:7px; background:#FFFFFF; color:#DC2626; font-size:.86rem; font-weight:700; cursor:pointer;">Kembalikan</button>
+            <button id="btn-approve-maint-worker" type="button" style="flex:1; height:44px; border:0; border-radius:7px; background:#116834; color:#FFFFFF; font-size:.86rem; font-weight:700; cursor:pointer;">Setujui Pekerja</button>
+          </div>
+        `}
+      </footer>
+      ${renderAsbBottomNav('verifikasi')}
+    </div>
+  `;
+
+  const backToDocument = () => {
+    selectedMaintenanceWorkerId = null;
+    currentVerifView = 'TRANSACTION_DETAIL';
+    renderVerificationLanding();
+  };
+  app.querySelector('#btn-back-maint-worker')?.addEventListener('click', backToDocument);
+  app.querySelector('#btn-return-maint-worker-detail')?.addEventListener('click', backToDocument);
+  const refreshDocument = () => {
+    const refreshed = getActionableRecordsForAsb(userCtx).find((item) =>
+      item.referenceType === selectedTxItem.referenceType && String(item.referenceId) === String(selectedTxItem.referenceId)
+    );
+    selectedMaintenanceWorkerId = null;
+    if (refreshed) {
+      selectedTxItem = refreshed;
+      currentVerifView = 'TRANSACTION_DETAIL';
+    } else {
+      selectedTxItem = null;
+      currentVerifView = 'TRANSACTION_LIST';
+    }
+    renderVerificationLanding();
+  };
+
+  app.querySelector('#btn-approve-maint-worker')?.addEventListener('click', (event) => {
+    const button = event.currentTarget;
+    const asistenPotongJamDecision = worker.isBelowTask
+      ? app.querySelector('input[name="asisten-potong-jam-decision"]:checked')?.value || ''
+      : '';
+    if (worker.isBelowTask && !asistenPotongJamDecision) {
+      toast('Pilih keputusan final Potong Jam terlebih dahulu.', 'warning');
+      return;
+    }
+    button.disabled = true;
+    try {
+      const result = approveMaintenanceWorker({ referenceId: selectedTxItem.referenceId, workerId: worker.workerId, asistenPotongJamDecision, currentUser: userCtx });
+      toast(result.allWorkersApproved ? 'Semua pekerja telah disetujui. Dokumen terverifikasi.' : `Hasil ${worker.name} disetujui.`, 'success');
+      refreshDocument();
+    } catch (error) {
+      button.disabled = false;
+      toast(error.message || 'Gagal menyetujui pekerja.', 'error');
+    }
+  });
+
+  app.querySelector('#btn-return-maint-worker')?.addEventListener('click', () => {
+    openModal({
+      title: 'Kembalikan Hasil Pekerja',
+      body: `
+        <div style="font-size:.84rem; color:#334155; line-height:1.5;">
+          <p style="margin:0 0 12px;">Kembalikan hasil <strong>${esc(worker.name)}</strong> pada ${esc(worker.roleCode)} ke Mantri untuk diperbaiki.</p>
+          <label for="modal-maint-worker-return-reason" style="display:block; font-size:.78rem; font-weight:700; color:#0F172A; margin-bottom:4px;">Alasan Pengembalian (Wajib) *</label>
+          <textarea id="modal-maint-worker-return-reason" rows="3" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #CBD5E1; border-radius:6px; font-size:.82rem;" placeholder="Jelaskan alasan pengembalian..."></textarea>
+          <div style="display:flex; gap:8px; margin-top:12px;">
+            <button id="btn-cancel-maint-worker-return" type="button" style="flex:1; height:38px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; font-weight:600; cursor:pointer;">Batal</button>
+            <button id="btn-confirm-maint-worker-return" type="button" style="flex:1; height:38px; background:#DC2626; color:#FFFFFF; border:0; border-radius:6px; font-weight:700; cursor:pointer;">Kembalikan</button>
+          </div>
+        </div>
+      `
+    });
+    document.getElementById('btn-cancel-maint-worker-return')?.addEventListener('click', closeModal);
+    document.getElementById('btn-confirm-maint-worker-return')?.addEventListener('click', (event) => {
+      const button = event.currentTarget;
+      const reason = document.getElementById('modal-maint-worker-return-reason')?.value?.trim() || '';
+      if (!reason) {
+        toast('Alasan pengembalian wajib diisi.', 'error');
+        return;
+      }
+      button.disabled = true;
+      try {
+        const result = returnMaintenanceWorker({ referenceId: selectedTxItem.referenceId, workerId: worker.workerId, returnReason: reason, currentUser: userCtx });
+        closeModal();
+        toast(result.verificationStatus === VERIFICATION_STATUS.DIKEMBALIKAN
+          ? `Keputusan pekerja tersimpan. Dokumen dikembalikan ke Mantri untuk revisi.`
+          : `Hasil ${worker.name} dikembalikan ke Mantri.`, 'info');
+        refreshDocument();
+      } catch (error) {
+        button.disabled = false;
+        toast(error.message || 'Gagal mengembalikan pekerja.', 'error');
+      }
+    });
+  });
   attachAsbBottomNavEvents(app);
 }
 
@@ -1717,6 +2030,9 @@ function renderTinjauDetailView(app, userCtx) {
   const workerName = selectedTxItem.submittedByName || selectedTxItem.rawRecord?.mantri || selectedTxItem.rawRecord?.actorName || userCtx?.name || 'Mantri';
   const estateName = selectedTxItem.estateName || selectedTxItem.estateId || userCtx?.estateName || userCtx?.estateId || tinjauFilter.estateId || '-';
   const divisionName = selectedTxItem.divisionName || selectedTxItem.divisionId || userCtx?.divisionName || userCtx?.divisionId || tinjauFilter.divisionId || '-';
+  const isWorkerLevelMaintenance = isMaintenanceWorkerApprovalItem(selectedTxItem);
+  const rawMaintenance = selectedTxItem.rawRecord || {};
+  const maintenanceRoleCode = rawMaintenance.workGroupRoleCode || rawMaintenance.workGroup?.roleCode || rawMaintenance.workGroup?.workGroupRoleCode || '-';
 
   // Render Rincian Data dinamis dari normalized fields (Zero hardcoding)
   const detailRows = (norm.fields || []).map(f => `
@@ -1769,11 +2085,11 @@ function renderTinjauDetailView(app, userCtx) {
             </div>
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Kebun</span>
-              <span style="color: #0F172A; font-weight: 600;">${esc(estateName)}</span>
+              <span style="color: #0F172A; font-weight: 600;">Tanah Besih</span>
             </div>
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Divisi</span>
-              <span style="color: #0F172A; font-weight: 600;">${esc(divisionName)}</span>
+              <span style="color: #0F172A; font-weight: 600;">Divisi I</span>
             </div>
             <div style="display: flex; justify-content: space-between; padding: 4px 0;">
               <span style="color: #64748B;">Mantri</span>
@@ -1783,10 +2099,17 @@ function renderTinjauDetailView(app, userCtx) {
               <span style="color: #64748B;">Tanggal Transaksi</span>
               <span style="color: #0F172A; font-weight: 600;">${esc(dateStr)}</span>
             </div>
-            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-              <span style="color: #64748B;">Nomor Dokumen</span>
-              <span style="color: #116834; font-weight: 700;">${esc(docNo)}</span>
-            </div>
+            ${isWorkerLevelMaintenance ? `
+              <div style="display: flex; justify-content: space-between; gap:8px; padding: 4px 0;">
+                <span style="color: #64748B;">Kode Mandoran</span>
+                <span style="color: #116834; font-weight: 700; text-align:right;">${esc(maintenanceRoleCode)}</span>
+              </div>
+            ` : `
+              <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                <span style="color: #64748B;">Nomor Dokumen</span>
+                <span style="color: #116834; font-weight: 700;">${esc(docNo)}</span>
+              </div>
+            `}
           </div>
         </div>
 
@@ -1796,7 +2119,7 @@ function renderTinjauDetailView(app, userCtx) {
             Rincian Data
           </div>
           <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem;">
-            ${detailRows}
+            ${isMaintenanceWorkerApprovalItem(selectedTxItem) ? renderMaintenanceVerificationDetails(selectedTxItem, false) : detailRows}
           </div>
         </div>
 

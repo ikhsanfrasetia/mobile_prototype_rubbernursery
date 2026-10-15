@@ -2,7 +2,7 @@
  * modules/maintenance/nursery-activity.js — Modul Rekam Pemeliharaan Pembibitan.
  * 
  * 1. Landing Page (#/nursery-activity):
- *    - Menampilkan 1 menu kartu: "Rekam Aktivitas Bibitan" (96px x 115px, konsisten dengan Okulasi / Kebun Entres)
+ *    - Menampilkan menu kartu Rekam Aktivitas Harian dan Rekam Aktivitas Mandoran.
  *    - Ringkasan Data Transaksi konsisten dengan modul lainnya (Penyemaian, Okulasi, Entres)
  * 
  * 2. Form Page (#/nursery-activity/form):
@@ -16,7 +16,7 @@
  *      * TOMBOL: Simpan (hijau)
  */
 
-import { navigate } from '../../core/router.js';
+import { navigate, getParams } from '../../core/router.js';
 import { storage } from '../../core/storage.js';
 import { toast } from '../../components/toast.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
@@ -62,6 +62,7 @@ import {
   resolveBlock
 } from '../../data/block-master.js';
 import { getOpenPrograms, getProgramById } from '../../data/program-master.js';
+import { getWorkAllocationByCode, WORK_ALLOCATION_MASTER } from '../../data/work-allocation-master.js';
 
 export function getMaintenanceActivities() {
   return getActiveCfnaMaster().map(c => ({
@@ -414,7 +415,7 @@ export function deleteMaintenanceRecord(idOrDocNo, userContext = null) {
     return false;
   }
 
-  if (isTransactionLockedForMantri(targetRecord)) {
+  if (isTransactionLockedForMantri(targetRecord) || targetRecord.mandoranConsolidationId) {
     return false;
   }
 
@@ -482,7 +483,7 @@ export function renderNurseryActivityLanding() {
       <!-- CONTENT -->
       <main style="flex: 1; padding: 16px; overflow-y: auto;">
         
-        <!-- MENU KARTU REKAM AKTIVITAS BIBITAN (96px x 115px) -->
+        <!-- MENU KARTU REKAM AKTIVITAS -->
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
           
           <button id="card-rekam-aktivitas" type="button" class="beranda-menu-card" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; width: 96px; height: 115px; padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); cursor: pointer; text-align: center; box-sizing: border-box; transition: transform 0.15s ease, box-shadow 0.15s ease; position: relative;">
@@ -496,7 +497,22 @@ export function renderNurseryActivityLanding() {
               </svg>
             </div>
             <span style="font-size: 0.72rem; font-weight: 700; color: #116834; line-height: 1.2; text-align: center;">
-              Rekam Aktivitas<br>Bibitan
+              Rekam Aktivitas<br>Harian
+            </span>
+          </button>
+
+          <button id="card-rekam-aktivitas-mandoran" type="button" class="beranda-menu-card" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; width: 96px; height: 115px; padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); cursor: pointer; text-align: center; box-sizing: border-box; transition: transform 0.15s ease, box-shadow 0.15s ease; position: relative;">
+            <div style="width: 44px; height: 44px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 48 48" width="40" height="40" fill="none" stroke="#116834" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="8" y="6" width="32" height="36" rx="4" fill="#E8F5E9"></rect>
+                <line x1="16" y1="16" x2="32" y2="16"></line>
+                <line x1="16" y1="24" x2="32" y2="24"></line>
+                <line x1="16" y1="32" x2="26" y2="32"></line>
+                <polyline points="28 32 31 35 37 29" stroke="#116834" stroke-width="2.5"></polyline>
+              </svg>
+            </div>
+            <span style="font-size: 0.72rem; font-weight: 700; color: #116834; line-height: 1.2; text-align: center;">
+              Rekam Aktivitas<br>Mandoran
             </span>
           </button>
 
@@ -515,6 +531,9 @@ export function renderNurseryActivityLanding() {
 
           ${filteredRecords.length > 0 ? filteredRecords.map((rec, idx) => {
             const actor = resolveTransactionActor(rec);
+            const displayDocNo = rec.activityEntryMode === 'MANDORAN'
+              ? (rec.workGroupRoleCode || rec.docNo || `ACT/NUR/2026/0${idx + 1}`)
+              : (rec.docNo || `ACT/NUR/2026/0${idx + 1}`);
             return `
             <div style="border: 1px solid #D9D9D9; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: #FFFFFF; position: relative;">
               
@@ -522,18 +541,20 @@ export function renderNurseryActivityLanding() {
               <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                 <div style="flex: 1; min-width: 0;">
                   <div style="font-weight: 700; font-size: 0.95rem; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    ${rec.docNo || `ACT/NUR/2026/0${idx + 1}`}
+                    ${esc(displayDocNo)}
                   </div>
                   <div style="font-size: 0.8rem; color: #999999; margin-top: 4px;">
                     ${formatDateDDMMYYYY(rec.createdAt || new Date().toISOString())}
                   </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0; position: relative;">
-                  <span style="background: #E8F5E9; color: #116834; font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; white-space: nowrap; border: 1px solid #116834; max-width: 140px; overflow: hidden; text-overflow: ellipsis;">
-                    ${rec.aktivitas?.nama || 'Pemeliharaan'}
-                  </span>
+                  ${rec.activityEntryMode === 'MANDORAN' ? '' : `
+                    <span style="background: #E8F5E9; color: #116834; font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; white-space: nowrap; border: 1px solid #116834; max-width: 140px; overflow: hidden; text-overflow: ellipsis;">
+                      ${rec.aktivitas?.nama || 'Pemeliharaan'}
+                    </span>
+                  `}
                   ${(() => {
-                    const isLocked = isTransactionLockedForMantri(rec);
+                    const isLocked = isTransactionLockedForMantri(rec) || !!rec.mandoranConsolidationId;
                     if (!isLocked) {
                       return `
                         <button class="btn-card-menu-activity" data-index="${idx}" style="background: none; border: none; padding: 4px; margin-right: -4px; cursor: pointer; color: #111;">
@@ -544,7 +565,7 @@ export function renderNurseryActivityLanding() {
                           </svg>
                         </button>
                         <div class="card-popover-activity" id="popover-activity-${idx}" style="display: none; position: absolute; top: 28px; right: 0; background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); width: 120px; z-index: 20; flex-direction: column; overflow: hidden;">
-                          <button class="btn-popover-activity-hapus" data-index="${idx}" data-id="${rec.id || ''}" data-doc="${rec.docNo || `ACT/NUR/2026/0${idx + 1}`}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 600; color: #DC2626; cursor: pointer;">
+                          <button class="btn-popover-activity-hapus" data-index="${idx}" data-id="${esc(rec.id || '')}" data-doc="${esc(displayDocNo)}" style="padding: 12px 16px; text-align: left; background: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 600; color: #DC2626; cursor: pointer;">
                             Hapus
                           </button>
                         </div>
@@ -564,9 +585,12 @@ export function renderNurseryActivityLanding() {
               <hr style="border: none; border-top: 1px solid #EFEFEF; margin: 12px 0;" />
 
               <!-- IDENTITAS PROGRAM -->
-              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px;">
-                <span style="font-weight: 700; font-size: 0.95rem; color: #111111; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                  ${rec.program || 'Nursery Program 2023'}
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 10px;">
+                <span style="font-size: 0.80rem; color: #64748B; flex-shrink: 0;">
+                  Program Pembibitan
+                </span>
+                <span style="font-weight: 700; font-size: 0.88rem; color: #111111; min-width: 0; text-align: right; overflow-wrap: anywhere;">
+                  ${esc(rec.program || 'Nursery Program 2023')}
                 </span>
               </div>
 
@@ -577,9 +601,9 @@ export function renderNurseryActivityLanding() {
                   <span style="font-size: 0.9rem; font-weight: 700; color: #116834; text-align: right;">${rec.aktivitas?.kode || '-'}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 12px;">
-                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">Alokasi CFNA</span>
+                  <span style="font-size: 0.85rem; color: #666666; flex-shrink: 0;">${rec.activityEntryMode === 'MANDORAN' ? 'Alokasi Kerja Mandoran' : 'Alokasi CFNA'}</span>
                   <span style="font-size: 0.9rem; font-weight: 700; color: #111111; text-align: right;">
-                    ${rec.allocationCode ? `${rec.allocationCode} - ${rec.allocationName || '-'}` : 'Tidak ada alokasi CFNA'}
+                    ${rec.allocationCode ? `${esc(rec.allocationCode)} - ${esc(rec.allocationName || '-')}` : 'Tidak ada alokasi'}
                   </span>
                 </div>
                 ${rec.lokasiBlok && rec.lokasiBlok.blok ? `
@@ -600,14 +624,28 @@ export function renderNurseryActivityLanding() {
                 ` : ''}
                 ${(rec.pekerja && rec.pekerja.length > 0) ? `
                   <div style="margin-top: 4px; padding-top: 8px; border-top: 1px dashed #E2E8F0;">
-                    <div style="font-size: 0.78rem; font-weight: 700; color: #64748B; margin-bottom: 4px;">Pekerja:</div>
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                      ${rec.pekerja.map(w => `
-                        <div style="font-size: 0.84rem; font-weight: 600; color: #1E293B;">
-                          ${w.code || w.workerCode || ''}-${w.name || w.workerName || ''}
-                        </div>
-                      `).join('')}
-                    </div>
+                    ${rec.activityEntryMode === 'MANDORAN' ? `
+                      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; padding: 0 0 5px; border-bottom: 1px solid #E2E8F0; font-size: 0.76rem; font-weight: 800; color: #475569;">
+                        <span>Pekerja</span><span style="text-align: right;">Hasil</span>
+                      </div>
+                      <div style="display: flex; flex-direction: column;">
+                        ${rec.pekerja.map((w, workerIdx) => `
+                          <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 12px; padding: 6px 0; ${workerIdx < rec.pekerja.length - 1 ? 'border-bottom: 1px solid #F1F5F9;' : ''}">
+                            <span style="min-width: 0; overflow-wrap: anywhere; font-size: 0.80rem; line-height: 1.35; font-weight: 600; color: #1E293B;">${esc(w.code || w.workerCode || '')}-${esc(w.name || w.workerName || '')}</span>
+                            <span style="white-space: nowrap; text-align: right; font-size: 0.80rem; line-height: 1.35; font-weight: 700; color: #116834;">${Number(w.inputHasil || 0).toLocaleString('id-ID')} ${esc(rec.uomCode || rec.uom || '')}</span>
+                          </div>
+                        `).join('')}
+                      </div>
+                    ` : `
+                      <div style="font-size: 0.78rem; font-weight: 700; color: #64748B; margin-bottom: 4px;">Pekerja:</div>
+                      <div style="display: flex; flex-direction: column; gap: 4px;">
+                        ${rec.pekerja.map(w => `
+                          <div style="font-size: 0.82rem; line-height: 1.35; font-weight: 600; color: #1E293B; overflow-wrap: anywhere;">
+                            ${esc(w.code || w.workerCode || '')}-${esc(w.name || w.workerName || '')}
+                          </div>
+                        `).join('')}
+                      </div>
+                    `}
                   </div>
                 ` : ''}
               </div>
@@ -632,7 +670,7 @@ export function renderNurseryActivityLanding() {
             </div>
           `;}).join('') : renderEmptyStateCard({
             title: `Belum ada Dokumen Pemeliharaan pada ${isFiltered ? selectedActivityDate : 'hari ini'}`,
-            description: 'Pilih menu Rekam Aktivitas Bibitan untuk memulai pencatatan'
+            description: 'Pilih menu Rekam Aktivitas Harian atau Mandoran untuk memulai pencatatan'
           })}
 
         </div>
@@ -702,8 +740,8 @@ export function renderNurseryActivityLanding() {
   });
 
   // Card Navigation
-  const cardMenu = app.querySelector('#card-rekam-aktivitas');
-  if (cardMenu) {
+  const cardMenus = app.querySelectorAll('#card-rekam-aktivitas, #card-rekam-aktivitas-mandoran');
+  cardMenus.forEach((cardMenu) => {
     cardMenu.addEventListener('mouseenter', () => {
       cardMenu.style.transform = 'translateY(-2px)';
       cardMenu.style.boxShadow = '0 4px 8px rgba(0,0,0,0.08)';
@@ -713,9 +751,13 @@ export function renderNurseryActivityLanding() {
       cardMenu.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)';
     });
     cardMenu.addEventListener('click', () => {
-      navigate('/nursery-activity/form');
+      if (cardMenu.id === 'card-rekam-aktivitas-mandoran') {
+        navigate('/nursery-activity/mandoran');
+      } else {
+        navigate('/nursery-activity/form');
+      }
     });
-  }
+  });
 
   // Modal Dialog Hapus
   const deleteOverlay = app.querySelector('#modal-delete-activity-overlay');
@@ -821,11 +863,86 @@ export function renderNurseryActivityLanding() {
 }
 
 // ==========================================
-// 2. FORM PAGE (#/nursery-activity/form)
+// 1B. DAFTAR ALOKASI MANDORAN
 // ==========================================
-export async function renderNurseryActivityForm() {
+export function renderNurseryActivityMandoranList() {
   const app = document.getElementById('app');
   if (!app) return;
+
+  const mandoranItems = WORK_ALLOCATION_MASTER.filter(item =>
+    item.allocationCode && item.allocationName && item.workGroupRoleCode && item.workGroupRoleName
+  );
+
+  app.innerHTML = `
+    <div class="page nursery-activity-landing-page" style="position: relative; display: flex; flex-direction: column; height: 100%; background: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden;">
+      <header style="display: flex; align-items: center; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;">
+        <button id="btn-back-mandoran-list" type="button" aria-label="Kembali" style="padding: 8px; margin-left: -8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #116834;">
+          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        </button>
+        <h1 style="font-size: 1.08rem; font-weight: 700; color: #111111; margin: 0 0 0 8px;">Rekam Aktivitas Mandoran</h1>
+      </header>
+      <main style="flex: 1; overflow-y: auto; padding: 18px 16px 24px;">
+        <h2 style="font-size: 0.98rem; font-weight: 700; color: #111827; margin: 0 0 12px;">Pilih Daftar Mandoran:</h2>
+        <div style="position: relative; margin-bottom: 12px;">
+          <input id="search-mandoran-allocation" type="search" placeholder="Cari kode atau nama alokasi mandoran..." aria-label="Cari daftar mandoran" style="width: 100%; height: 42px; box-sizing: border-box; padding: 0 40px 0 12px; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; color: #1F2937; font-size: 0.84rem; outline: none;">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="#64748B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
+            <circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16" y2="16"></line>
+          </svg>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          ${mandoranItems.length ? mandoranItems.map(item => `
+            <button type="button" class="mandoran-allocation-item" data-allocation-code="${esc(item.allocationCode)}" data-search="${esc(`${item.allocationCode} ${item.allocationName} ${item.workGroupRoleCode} ${item.workGroupRoleName}`.toLowerCase())}" style="width: 100%; text-align: left; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D9E2EC; border-radius: 9px; cursor: pointer; box-shadow: 0 1px 2px rgba(15,23,42,0.04);">
+              <span style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.88rem; font-weight: 700; color: #116834;">
+                <span>${esc(item.allocationCode)} - ${esc(item.allocationName)}</span>
+                <span aria-hidden="true" style="font-size: 1.15rem; flex-shrink: 0;">›</span>
+              </span>
+              <span style="display: block; margin-top: 5px; font-size: 0.77rem; color: #64748B;">${esc(item.workGroupRoleCode)}</span>
+            </button>
+          `).join('') : renderEmptyStateCard({
+            title: 'Daftar Mandoran belum tersedia',
+            description: 'Master alokasi kerja belum memiliki Allocation Code dan Work Group Role yang lengkap.'
+          })}
+          ${mandoranItems.length ? `<div id="empty-search-mandoran" style="display: none; padding: 18px 14px; text-align: center; color: #64748B; background: #FFFFFF; border: 1px dashed #CBD5E1; border-radius: 9px; font-size: 0.82rem;">Tidak ada alokasi mandoran yang cocok dengan pencarian.</div>` : ''}
+        </div>
+      </main>
+    </div>
+  `;
+
+  app.querySelector('#btn-back-mandoran-list')?.addEventListener('click', () => navigate('/nursery-activity'));
+  const searchInput = app.querySelector('#search-mandoran-allocation');
+  searchInput?.addEventListener('input', () => {
+    const query = searchInput.value.trim().toLowerCase();
+    let visibleCount = 0;
+    app.querySelectorAll('.mandoran-allocation-item').forEach(button => {
+      const isMatch = !query || button.dataset.search.includes(query);
+      button.style.display = isMatch ? 'block' : 'none';
+      if (isMatch) visibleCount += 1;
+    });
+    const emptySearch = app.querySelector('#empty-search-mandoran');
+    if (emptySearch) emptySearch.style.display = visibleCount === 0 ? 'block' : 'none';
+  });
+  app.querySelectorAll('.mandoran-allocation-item').forEach(button => {
+    button.addEventListener('click', () => {
+      const code = button.dataset.allocationCode;
+      navigate(`/nursery-activity/form?mode=mandoran&allocationCode=${encodeURIComponent(code)}`);
+    });
+  });
+}
+
+// ==========================================
+// 2. FORM PAGE (#/nursery-activity/form)
+// ==========================================
+export async function renderNurseryActivityForm({ params = getParams() } = {}) {
+  const app = document.getElementById('app');
+  if (!app) return;
+
+  const isMandoranMode = params.mode === 'mandoran';
+  const selectedWorkAllocation = isMandoranMode ? getWorkAllocationByCode(params.allocationCode) : null;
+  if (isMandoranMode && (!selectedWorkAllocation?.workGroupRoleCode || !selectedWorkAllocation?.workGroupRoleName)) {
+    toast('Alokasi mandoran tidak ditemukan atau data Work Group Role belum lengkap.', 'error');
+    navigate('/nursery-activity/mandoran', { replace: true });
+    return;
+  }
 
   const userCtx = getCurrentUserContext();
   const activeWorkers = await attendanceRepository.getWorkersWithDatangAttendance(userCtx, todayISO());
@@ -838,8 +955,11 @@ export async function renderNurseryActivityForm() {
   let selectedProgramId = initialProgram ? initialProgram.id : null;
   let selectedProgramCode = initialProgram ? initialProgram.code : null;
   const workerSelectionState = {};
+  const workerResultState = {};
+  const removedWorkerIds = new Set();
   activeWorkers.forEach((w) => {
     workerSelectionState[w.id] = false;
+    workerResultState[w.id] = '';
   });
 
   app.innerHTML = `
@@ -855,7 +975,7 @@ export async function renderNurseryActivityForm() {
             </svg>
           </button>
           <h1 style="font-size: 1.05rem; font-weight: 700; color: #111111; margin: 0 0 0 6px; letter-spacing: -0.01em;">
-            Pencatatan Hasil
+            ${isMandoranMode ? 'Pencatatan Hasil Mandoran' : 'Pencatatan Hasil'}
           </h1>
         </div>
       </header>
@@ -863,23 +983,23 @@ export async function renderNurseryActivityForm() {
       <!-- CONTENT BODY (SCROLLABLE) -->
       <main style="flex: 1; overflow-y: auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px;">
         
-        <!-- CARD 1: AKTIVITAS PEMBIBITAN (CFNA) -->
+        <!-- CARD 1: AKTIVITAS HARIAN / ALOKASI MANDORAN -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-          <label for="select-aktivitas" style="display: block; font-size: 0.78rem; font-weight: 700; color: ${hasPresentWorkers ? '#374151' : '#94A3B8'}; margin-bottom: 5px;">
-            Aktivitas Pembibitan
-          </label>
-          <div style="position: relative;">
-            <select id="select-aktivitas" ${hasPresentWorkers ? '' : 'disabled aria-disabled="true"'} style="width: 100%; height: 42px; padding: 0 32px 0 12px; background: ${hasPresentWorkers ? '#FFFFFF' : '#F1F5F9'}; border: 1px solid ${hasPresentWorkers ? '#CBD5E1' : '#E2E8F0'}; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: ${hasPresentWorkers ? '#1F2937' : '#94A3B8'}; appearance: none; outline: none; cursor: ${hasPresentWorkers ? 'pointer' : 'not-allowed'}; opacity: ${hasPresentWorkers ? '1' : '0.75'};">
-              ${availableAktivitas.map((c) => `
-                <option value="${c.code}" ${c.code === selectedAktivitasCode ? 'selected' : ''}>
-                  ${c.code} - ${c.name}
-                </option>
-              `).join('')}
-            </select>
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="${hasPresentWorkers ? '#64748B' : '#94A3B8'}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </div>
+          ${isMandoranMode ? `
+            <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 7px;">Alokasi Kerja Mandoran</label>
+            <div style="padding: 11px 12px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px;">
+              <div style="font-size: 0.88rem; font-weight: 700; color: #116834;">${esc(selectedWorkAllocation.allocationCode)} - ${esc(selectedWorkAllocation.allocationName)}</div>
+              <div style="font-size: 0.76rem; color: #64748B; margin-top: 4px;">${esc(selectedWorkAllocation.workGroupRoleCode)} · ${esc(selectedWorkAllocation.workGroupRoleName)}</div>
+            </div>
+          ` : `
+            <label for="select-aktivitas" style="display: block; font-size: 0.78rem; font-weight: 700; color: ${hasPresentWorkers ? '#374151' : '#94A3B8'}; margin-bottom: 5px;">Aktivitas Pembibitan</label>
+            <div style="position: relative;">
+              <select id="select-aktivitas" ${hasPresentWorkers ? '' : 'disabled aria-disabled="true"'} style="width: 100%; height: 42px; padding: 0 32px 0 12px; background: ${hasPresentWorkers ? '#FFFFFF' : '#F1F5F9'}; border: 1px solid ${hasPresentWorkers ? '#CBD5E1' : '#E2E8F0'}; border-radius: 6px; font-size: 0.85rem; font-weight: 600; color: ${hasPresentWorkers ? '#1F2937' : '#94A3B8'}; appearance: none; outline: none; cursor: ${hasPresentWorkers ? 'pointer' : 'not-allowed'}; opacity: ${hasPresentWorkers ? '1' : '0.75'};">
+                ${availableAktivitas.map((c) => `<option value="${c.code}" ${c.code === selectedAktivitasCode ? 'selected' : ''}>${c.code} - ${c.name}</option>`).join('')}
+              </select>
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="${hasPresentWorkers ? '#64748B' : '#94A3B8'}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          `}
         </div>
 
         <!-- CARD 2: NAMA PROGRAM PEMBIBITAN -->
@@ -897,11 +1017,11 @@ export async function renderNurseryActivityForm() {
 
         <!-- CARD 3: PEKERJA HADIR PRESENSI -->
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
-          <div style="font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 10px;">
+          <div id="worker-list-heading" style="font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 10px;">
             Pekerja Hadir Presensi (${activeWorkers.length})
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div id="worker-list" style="display: flex; flex-direction: column; gap: 8px;">
             ${activeWorkers.length === 0 ? `
               <div style="text-align: center; padding: 18px 14px; background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 8px;">
                 <div style="width: 42px; height: 42px; border-radius: 50%; background: #FEF3C7; color: #D97706; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;">
@@ -930,8 +1050,8 @@ export async function renderNurseryActivityForm() {
             ` : activeWorkers.map((worker) => {
               const isChecked = !!workerSelectionState[worker.id];
               return `
-                <div class="worker-item-card" data-id="${worker.id}" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; gap: 8px;">
-                  <div style="flex: 1; min-width: 0;">
+                <div class="worker-item-card" data-id="${worker.id}" data-worker-name="${esc(worker.name)}" style="display: grid; grid-template-columns: minmax(0, 1fr) 112px; align-items: center; padding: 10px 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; gap: 7px 8px; touch-action: pan-y; user-select: none;">
+                  <div style="grid-column: 1; grid-row: 1; min-width: 0;">
                     <div style="font-size: 0.85rem; font-weight: 700; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                       ${worker.name}
                     </div>
@@ -939,9 +1059,15 @@ export async function renderNurseryActivityForm() {
                       ${worker.code} • ${worker.position || 'Pekerja Bibitan'}
                     </div>
                   </div>
-                  <button class="worker-btn-toggle" type="button" data-worker-id="${worker.id}" aria-pressed="${isChecked}" style="position: relative; width: 44px; height: 24px; background: ${isChecked ? '#116834' : '#CBD5E1'}; border-radius: 14px; border: none; padding: 2px; cursor: pointer; transition: background 0.2s ease; display: inline-flex; align-items: center; flex-shrink: 0;">
-                    <span style="display: block; width: 20px; height: 20px; background: #FFFFFF; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); transform: ${isChecked ? 'translateX(20px)' : 'translateX(0)'};"></span>
-                  </button>
+                  <div style="grid-column: 2; grid-row: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 7px; min-width: 0;">
+                    <button class="worker-btn-toggle" type="button" data-worker-id="${worker.id}" aria-pressed="${isChecked}" style="position: relative; width: 44px; height: 24px; background: ${isChecked ? '#116834' : '#CBD5E1'}; border-radius: 14px; border: none; padding: 2px; cursor: pointer; transition: background 0.2s ease; display: inline-flex; align-items: center; flex-shrink: 0;">
+                      <span style="display: block; width: 20px; height: 20px; background: #FFFFFF; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); transform: ${isChecked ? 'translateX(20px)' : 'translateX(0)'};"></span>
+                    </button>
+                  </div>
+                  ${isMandoranMode ? `
+                    <label for="worker-result-${esc(worker.id)}" class="worker-result-label" style="display: ${isChecked ? 'block' : 'none'}; grid-column: 1; grid-row: 2; align-self: center; font-size: 0.78rem; font-weight: 700; color: #374151;">Input Hasil</label>
+                    <input id="worker-result-${esc(worker.id)}" class="worker-result-input" data-worker-id="${esc(worker.id)}" type="number" inputmode="decimal" min="0" step="any" value="${esc(workerResultState[worker.id])}" aria-label="Input hasil ${esc(worker.name)}" placeholder="0" style="display: ${isChecked ? 'block' : 'none'}; grid-column: 2; grid-row: 2; width: 100%; height: 36px; box-sizing: border-box; padding: 0 8px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; color: #0F172A; font-size: 0.86rem; font-weight: 700; text-align: right; outline: none;">
+                  ` : ''}
                 </div>
               `;
             }).join('')}
@@ -956,6 +1082,23 @@ export async function renderNurseryActivityForm() {
         </div>
 
       </main>
+
+      <!-- KONFIRMASI HAPUS PEKERJA DARI FORM -->
+      <div id="worker-delete-overlay" style="display: none; position: absolute; inset: 0; background: rgba(15,23,42,0.48); z-index: 110; backdrop-filter: blur(1px);"></div>
+      <div id="worker-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="worker-delete-title" style="display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(100% - 40px); max-width: 340px; box-sizing: border-box; padding: 18px 16px 16px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 12px 30px rgba(15,23,42,0.22); z-index: 111;">
+        <h3 id="worker-delete-title" style="font-size: 1rem; font-weight: 800; color: #111827; margin: 0 0 7px;">Hapus pekerja?</h3>
+        <p id="worker-delete-message" style="font-size: 0.84rem; line-height: 1.45; color: #475569; margin: 0 0 18px;"></p>
+        <div style="display: flex; gap: 9px;">
+          <button id="btn-cancel-worker-delete" type="button" style="flex: 1; height: 42px; background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; border-radius: 7px; font-size: 0.86rem; font-weight: 700; cursor: pointer;">Kembali</button>
+          <button id="btn-confirm-worker-delete" type="button" style="flex: 1; height: 42px; background: #DC2626; color: #FFFFFF; border: 1px solid #DC2626; border-radius: 7px; font-size: 0.86rem; font-weight: 700; cursor: pointer;">Hapus</button>
+        </div>
+      </div>
+      <div id="inactive-workers-overlay" style="display: none; position: absolute; inset: 0; background: rgba(15,23,42,0.48); z-index: 112; backdrop-filter: blur(1px);"></div>
+      <div id="inactive-workers-dialog" role="alertdialog" aria-modal="true" aria-labelledby="inactive-workers-title" style="display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(100% - 40px); max-width: 340px; box-sizing: border-box; padding: 18px 16px 16px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 12px 30px rgba(15,23,42,0.22); z-index: 113;">
+        <h3 id="inactive-workers-title" style="font-size: 1rem; font-weight: 800; color: #111827; margin: 0 0 7px;">Daftar pekerja belum sesuai</h3>
+        <p id="inactive-workers-message" style="font-size: 0.84rem; line-height: 1.45; color: #475569; margin: 0 0 18px;"></p>
+        <button id="btn-close-inactive-workers-dialog" type="button" style="width: 100%; height: 42px; background: #116834; color: #FFFFFF; border: 1px solid #116834; border-radius: 7px; font-size: 0.86rem; font-weight: 700; cursor: pointer;">Mengerti</button>
+      </div>
 
       <!-- OVERLAY MODAL PROGRAM -->
       <div id="modal-program-overlay" style="display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; backdrop-filter: blur(1px);"></div>
@@ -992,7 +1135,7 @@ export async function renderNurseryActivityForm() {
 
   // Event Listener: Back Button -> navigasi kembali ke Landing Page Pemeliharaan
   app.querySelector('#btn-back')?.addEventListener('click', () => {
-    navigate('/nursery-activity');
+    navigate(isMandoranMode ? '/nursery-activity/mandoran' : '/nursery-activity');
   });
 
   // Event Listener: Buka Modul Presensi (saat empty state)
@@ -1008,16 +1151,134 @@ export async function renderNurseryActivityForm() {
         const workerId = btn.dataset.workerId;
         const currentVal = !workerSelectionState[workerId];
         workerSelectionState[workerId] = currentVal;
-
         btn.setAttribute('aria-pressed', currentVal ? 'true' : 'false');
         btn.style.background = currentVal ? '#116834' : '#CBD5E1';
         const slider = btn.querySelector('span');
-        if (slider) {
-          slider.style.transform = currentVal ? 'translateX(20px)' : 'translateX(0)';
-        }
+        if (slider) slider.style.transform = currentVal ? 'translateX(20px)' : 'translateX(0)';
+        const card = btn.closest('.worker-item-card');
+        const label = card?.querySelector('.worker-result-label');
+        const input = card?.querySelector('.worker-result-input');
+        if (label) label.style.display = currentVal ? 'block' : 'none';
+        if (input) input.style.display = currentVal ? 'block' : 'none';
       });
     });
+
+    app.querySelectorAll('.worker-result-input').forEach(input => {
+      input.addEventListener('input', () => {
+        workerResultState[input.dataset.workerId] = input.value;
+      });
+    });
+
+    let pendingWorkerRemoval = null;
+    const workerDeleteOverlay = app.querySelector('#worker-delete-overlay');
+    const workerDeleteDialog = app.querySelector('#worker-delete-dialog');
+    const workerDeleteMessage = app.querySelector('#worker-delete-message');
+    const openWorkerDeleteDialog = (workerId, workerName) => {
+      pendingWorkerRemoval = { workerId, workerName };
+      if (workerDeleteMessage) workerDeleteMessage.textContent = `Hapus ${workerName} dari daftar pekerja aktivitas ini?`;
+      if (workerDeleteOverlay) workerDeleteOverlay.style.display = 'block';
+      if (workerDeleteDialog) workerDeleteDialog.style.display = 'block';
+    };
+    const closeWorkerDeleteDialog = () => {
+      if (pendingWorkerRemoval) {
+        const swipedCard = [...app.querySelectorAll('.worker-item-card')].find(card => String(card.dataset.id) === String(pendingWorkerRemoval.workerId));
+        if (swipedCard) {
+          swipedCard.style.transition = 'transform 0.18s ease';
+          swipedCard.style.transform = 'translateX(0)';
+        }
+      }
+      pendingWorkerRemoval = null;
+      if (workerDeleteOverlay) workerDeleteOverlay.style.display = 'none';
+      if (workerDeleteDialog) workerDeleteDialog.style.display = 'none';
+    };
+
+    app.querySelectorAll('.worker-item-card').forEach(card => {
+      let startX = 0;
+      let startY = 0;
+      let currentX = 0;
+      let horizontalSwipe = false;
+
+      card.addEventListener('pointerdown', event => {
+        if (event.target.closest('button, input, select, textarea')) return;
+        startX = event.clientX;
+        startY = event.clientY;
+        currentX = 0;
+        horizontalSwipe = false;
+        card.style.transition = 'none';
+        card.setPointerCapture?.(event.pointerId);
+      });
+
+      card.addEventListener('pointermove', event => {
+        if (!card.hasPointerCapture?.(event.pointerId)) return;
+        const deltaX = event.clientX - startX;
+        const deltaY = event.clientY - startY;
+        if (!horizontalSwipe && Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
+          horizontalSwipe = true;
+        }
+        if (!horizontalSwipe) return;
+        currentX = Math.max(-96, Math.min(0, deltaX));
+        card.style.transform = `translateX(${currentX}px)`;
+      });
+
+      const finishSwipe = () => {
+        card.style.transition = 'transform 0.18s ease';
+        if (currentX <= -72) {
+          card.style.transform = 'translateX(-72px)';
+          openWorkerDeleteDialog(card.dataset.id, card.dataset.workerName || 'pekerja ini');
+        } else {
+          card.style.transform = 'translateX(0)';
+        }
+        currentX = 0;
+        horizontalSwipe = false;
+      };
+
+      card.addEventListener('pointerup', finishSwipe);
+      card.addEventListener('pointercancel', () => {
+        card.style.transition = 'transform 0.18s ease';
+        card.style.transform = 'translateX(0)';
+        currentX = 0;
+        horizontalSwipe = false;
+      });
+    });
+
+    workerDeleteOverlay?.addEventListener('click', closeWorkerDeleteDialog);
+    app.querySelector('#btn-cancel-worker-delete')?.addEventListener('click', closeWorkerDeleteDialog);
+    app.querySelector('#btn-confirm-worker-delete')?.addEventListener('click', () => {
+      if (!pendingWorkerRemoval) return;
+      const { workerId } = pendingWorkerRemoval;
+      const workerCard = [...app.querySelectorAll('.worker-item-card')].find(card => String(card.dataset.id) === String(workerId));
+      if (workerCard) workerCard.remove();
+      workerSelectionState[workerId] = false;
+      removedWorkerIds.add(String(workerId));
+
+      const remainingCount = Math.max(0, activeWorkers.length - removedWorkerIds.size);
+      const heading = app.querySelector('#worker-list-heading');
+      if (heading) heading.textContent = `Pekerja Hadir Presensi (${remainingCount})`;
+      if (remainingCount === 0) {
+        const workerList = app.querySelector('#worker-list');
+        if (workerList) workerList.innerHTML = '<div style="padding: 14px; text-align: center; color: #64748B; background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 7px; font-size: 0.82rem;">Belum ada pekerja untuk aktivitas ini.</div>';
+        const saveButton = app.querySelector('#btn-simpan-hasil');
+        if (saveButton) {
+          saveButton.disabled = true;
+          saveButton.setAttribute('aria-disabled', 'true');
+          saveButton.style.background = '#94A3B8';
+          saveButton.style.cursor = 'not-allowed';
+          saveButton.style.opacity = '0.75';
+          saveButton.style.boxShadow = 'none';
+        }
+      }
+      closeWorkerDeleteDialog();
+    });
   }
+
+  const inactiveWorkersOverlay = app.querySelector('#inactive-workers-overlay');
+  const inactiveWorkersDialog = app.querySelector('#inactive-workers-dialog');
+  const closeInactiveWorkersDialog = () => {
+    if (inactiveWorkersOverlay) inactiveWorkersOverlay.style.display = 'none';
+    if (inactiveWorkersDialog) inactiveWorkersDialog.style.display = 'none';
+  };
+  inactiveWorkersOverlay?.addEventListener('click', closeInactiveWorkersDialog);
+  app.querySelector('#btn-close-inactive-workers-dialog')?.addEventListener('click', closeInactiveWorkersDialog);
 
   // Bottom Sheet Program Pembibitan
   const btnOpenProgram = app.querySelector('#btn-open-program-sheet');
@@ -1079,33 +1340,70 @@ export async function renderNurseryActivityForm() {
       return;
     }
 
-    const selectAktivitasEl = app.querySelector('#select-aktivitas');
-    const chosenCode = selectAktivitasEl?.value?.trim() || availableAktivitas[0]?.code;
-    const cfnaRecord = getCfnaByCode(chosenCode);
-
-    if (!cfnaRecord || cfnaRecord.status !== CFNA_STATUS.ACTIVE) {
-      toast('Aktivitas pembibitan yang dipilih tidak valid dalam master data.', 'error');
-      return;
+    if (isMandoranMode) {
+      const unselectedWorkers = activeWorkers.filter(worker =>
+        !removedWorkerIds.has(String(worker.id)) && !workerSelectionState[worker.id]
+      );
+      if (unselectedWorkers.length > 0) {
+        const names = unselectedWorkers.map(worker => worker.name).join(', ');
+        const message = app.querySelector('#inactive-workers-message');
+        if (message) {
+          message.textContent = `Pekerja berikut belum diaktifkan untuk mandoran ini: ${names}. Swipe kartu ke kiri dan hapus pekerja yang tidak bekerja, lalu pilih semua pekerja yang tersisa.`;
+        }
+        if (inactiveWorkersOverlay) inactiveWorkersOverlay.style.display = 'block';
+        if (inactiveWorkersDialog) inactiveWorkersDialog.style.display = 'block';
+        return;
+      }
     }
 
-    const selectedAkt = {
-      kode: cfnaRecord.code,
-      nama: cfnaRecord.name,
-      id: cfnaRecord.id
-    };
-    const allocationCode = cfnaRecord.code;
-    const allocationName = cfnaRecord.name;
+    let selectedAkt;
+    let allocationCode;
+    let allocationName;
+    if (isMandoranMode) {
+      selectedAkt = {
+        kode: selectedWorkAllocation.allocationCode,
+        nama: selectedWorkAllocation.allocationName,
+        id: `WORK-ALLOCATION-${selectedWorkAllocation.allocationCode}`
+      };
+      allocationCode = selectedWorkAllocation.allocationCode;
+      allocationName = selectedWorkAllocation.allocationName;
+    } else {
+      const selectAktivitasEl = app.querySelector('#select-aktivitas');
+      const chosenCode = selectAktivitasEl?.value?.trim() || availableAktivitas[0]?.code;
+      const cfnaRecord = getCfnaByCode(chosenCode);
+
+      if (!cfnaRecord || cfnaRecord.status !== CFNA_STATUS.ACTIVE) {
+        toast('Aktivitas pembibitan yang dipilih tidak valid dalam master data.', 'error');
+        return;
+      }
+
+      selectedAkt = { kode: cfnaRecord.code, nama: cfnaRecord.name, id: cfnaRecord.id };
+      allocationCode = cfnaRecord.code;
+      allocationName = cfnaRecord.name;
+    }
     
     const chosenProg = (selectedProgramId ? getProgramById(selectedProgramId) : null) || openPrograms.find(p => p.code === selectedProgramCode) || null;
     const finalProgId = chosenProg ? chosenProg.id : selectedProgramId;
     const finalProgCode = chosenProg ? chosenProg.code : selectedProgramCode;
 
-    const selectedWorkersList = activeWorkers.filter(w => workerSelectionState[w.id]);
+    const selectedWorkersList = activeWorkers.filter(w => workerSelectionState[w.id] && !removedWorkerIds.has(String(w.id)));
 
     // Validasi Submit: Minimal 1 pekerja harus dipilih
     if (selectedWorkersList.length === 0) {
       toast('Pilih minimal 1 pekerja pelaksana aktivitas.', 'error');
       return;
+    }
+
+    if (isMandoranMode) {
+      for (const worker of selectedWorkersList) {
+        const rawResult = String(workerResultState[worker.id] ?? '').trim();
+        const resultValue = Number(rawResult);
+        if (!rawResult || !Number.isFinite(resultValue) || resultValue <= 0) {
+          toast(`Input Hasil untuk ${worker.name} wajib diisi dan harus lebih dari 0.`, 'error');
+          app.querySelector(`#worker-result-${CSS.escape(String(worker.id))}`)?.focus();
+          return;
+        }
+      }
     }
 
     // Validasi & Ambil Canonical Worker Data
@@ -1132,7 +1430,8 @@ export async function renderNurseryActivityForm() {
         code: canonical.code,
         workerCode: canonical.code,
         position: canonical.position || 'Pekerja Bibitan',
-        role: canonical.position || 'Pekerja Bibitan'
+        role: canonical.position || 'Pekerja Bibitan',
+        ...(isMandoranMode ? { inputHasil: Number(workerResultState[w.id]) } : {})
       });
     }
 
@@ -1152,6 +1451,18 @@ export async function renderNurseryActivityForm() {
       pekerja: canonicalWorkers,
       allocationCode,
       allocationName,
+      activityEntryMode: isMandoranMode ? 'MANDORAN' : 'HARIAN',
+      ...(isMandoranMode ? {
+        workGroupRoleCode: selectedWorkAllocation.workGroupRoleCode,
+        workGroupRoleName: selectedWorkAllocation.workGroupRoleName,
+        taskRate: selectedWorkAllocation.taskRate,
+        taskQuantity: selectedWorkAllocation.taskQuantity,
+        overTaskRate: selectedWorkAllocation.overTaskRate,
+        taskItemName: selectedWorkAllocation.taskItemName,
+        uom: selectedWorkAllocation.uom,
+        uomCode: selectedWorkAllocation.uomCode,
+        isMaterial: selectedWorkAllocation.isMaterial
+      } : {}),
       createdAt: new Date().toISOString()
     };
 

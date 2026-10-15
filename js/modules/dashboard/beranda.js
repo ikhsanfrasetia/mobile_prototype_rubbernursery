@@ -98,7 +98,7 @@ import { filterReceiptKspRequests, getActionableReceiptCount } from '../receipt/
 import { getActionableDestructionCount } from '../destruction/destruction-manager.js';
 import { getActionableDispatchCount } from '../dispatch/dispatch-landing.js';
 import { getPendingVerificationCount } from '../verification/verification-manager.js';
-import { getActionableConsolidationCount } from '../consolidation/consolidation-manager.js';
+import { getPendingMandoranConsolidationCount, getSavedMandoranConsolidationCount } from '../maintenance/mandoran-consolidation.js';
 import { hasActionableInspection, hasReturnedInspection, hasActionablePreGraftingInspection } from '../inspection/inspection-landing.js';
 import { ASISTEN_BIBITAN_MAIN_MENUS } from '../../core/menu-registry.js';
 
@@ -730,7 +730,9 @@ export function renderBeranda() {
   const hasPendingPermintaan = hasActionablePermintaan(allRequests, userCtx);
 
   // Hitung pending konsolidasi untuk Mantri
-  const hasPendingKonsolidasi = getActionableConsolidationCount(userCtx) > 0;
+  const pendingMandoranWorkerCount = getPendingMandoranConsolidationCount(userCtx);
+  const savedMandoranConsolidationCount = getSavedMandoranConsolidationCount(userCtx);
+  const canOpenKonsolidasi = pendingMandoranWorkerCount > 0 || savedMandoranConsolidationCount > 0;
 
   // Hitung transaksi Mantri hari ini untuk tombol Konfirmasi untuk Verifikasi
   const mantriTodayTxs = getMantriTodayTransactions(userCtx);
@@ -795,10 +797,12 @@ export function renderBeranda() {
       </main>
 
       <footer class="beranda-footer">
-        <button class="beranda-action-btn" id="btn-konsolidasi" type="button" style="position: relative;">
-          <span class="action-text">Konfirmasi untuk Konsolidasi</span>
-          ${hasPendingKonsolidasi ? `<span class="notif-dot" style="display: inline-block; width: 8px; height: 8px; background-color: #D32F2F; border-radius: 50%; margin-left: 6px;"></span>` : ''}
-          <span class="action-arrow">›</span>
+        <button class="beranda-action-btn ${canOpenKonsolidasi ? 'beranda-btn-active-green' : ''}" id="btn-konsolidasi" type="button" style="position: relative; ${canOpenKonsolidasi ? 'background: #116834; border-color: #0D5229; cursor: pointer;' : 'opacity: 0.65; cursor: not-allowed;'}">
+          <div style="display:flex; align-items:center;">
+            <span class="action-text" style="${canOpenKonsolidasi ? 'color:#FFFFFF; font-weight:700;' : ''}">Konfirmasi untuk Konsolidasi</span>
+            ${pendingMandoranWorkerCount > 0 ? `<span class="badge-count" style="display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; background:#FFFFFF; color:#116834; font-size:.72rem; font-weight:800; border-radius:999px; margin-left:8px;">${pendingMandoranWorkerCount}</span>` : ''}
+          </div>
+          <span class="action-arrow" style="${canOpenKonsolidasi ? 'color:#FFFFFF;' : ''}">›</span>
         </button>
         <button class="beranda-action-btn ${hasAnyMantriTxs ? 'beranda-btn-active-green' : ''}" id="btn-verifikasi" type="button" style="position: relative; ${hasAnyMantriTxs ? 'background: #116834; border-color: #0D5229; cursor: pointer;' : 'opacity: 0.65; cursor: not-allowed;'}">
           <div style="display: flex; align-items: center;">
@@ -829,7 +833,11 @@ export function renderBeranda() {
 
   // Action buttons
   app.querySelector('#btn-konsolidasi').addEventListener('click', () => {
-    toast('Belum ada transaksi untuk dikonsolidasi', 'info');
+    if (canOpenKonsolidasi) {
+      navigate('/nursery-activity/consolidation');
+    } else {
+      toast('Belum ada transaksi Mandoran untuk dikonsolidasikan', 'info');
+    }
   });
 
   app.querySelector('#btn-verifikasi').addEventListener('click', () => {

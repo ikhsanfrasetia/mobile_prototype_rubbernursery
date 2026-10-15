@@ -22,6 +22,7 @@ import { guardDependency } from '../../core/dependency-guard.js';
 import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
+import { getBuddingInspectionGate } from '../../core/budding-workflow-service.js';
 import {
   normalizeDateStr,
   renderCalendarHeaderButton,
@@ -474,6 +475,7 @@ export function renderInspectionLanding() {
       ...(inspectionsByBuddingIndex.get(idx) || [])
     ]);
     const relatedInspections = [...relatedInspectionSet];
+    const inspectionGate = getBuddingInspectionGate(btx);
     
     let totalDiperiksa = 0;
     let totalJadi = 0;
@@ -557,6 +559,8 @@ export function renderInspectionLanding() {
       programId: btx.programId || originalBudding?.programId || '',
       originalIndex: rawIndex >= 0 ? rawIndex : idx,
       isRegrafting,
+      canInspect: inspectionGate.allowed,
+      inspectionGateReason: inspectionGate.reason,
       typeLabel: isRegrafting ? 'Okulasi Janda (Regrafting)' : 'Okulasi (Grafting)',
       typeBadgeBg: isRegrafting ? '#FFFBEB' : '#F0FDF4',
       typeBadgeColor: isRegrafting ? '#B45309' : '#116834',
@@ -1379,14 +1383,18 @@ function renderOkulasiInspectionSection(items, graftingCount, regraftingCount, i
               </div>
 
               <!-- FOOTER ACTION ROW -->
-              ${item.sisaBelumDiperiksa > 0 ? `
+              ${item.sisaBelumDiperiksa > 0 && item.canInspect ? `
                 <div class="card-action-periksa" data-index="${item.originalIndex}" data-completed="false" data-batch="${item.batchNo || 'Batch'}" data-total="${item.populasiDiokulasi}" style="display: flex; justify-content: space-between; align-items: center; background: #116834; color: #FFFFFF; border-radius: 6px; padding: 10px 14px; margin-top: 10px; cursor: pointer; box-shadow: 0 2px 4px rgba(17,104,52,0.22); transition: opacity 0.15s ease;">
                   <span style="font-size: 0.78rem; color: #FFFFFF; font-weight: 700; letter-spacing: -0.01em;">Ketuk untuk Rekam Pemeriksaan</span>
                   <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="9 18 15 12 9 6"></polyline>
                   </svg>
                 </div>
-              ` : ''}
+              ` : (item.sisaBelumDiperiksa > 0 ? `
+                <div style="margin-top:10px;padding:9px 11px;border:1px solid #FDE68A;border-radius:6px;background:#FFFBEB;color:#92400E;font-size:.72rem;font-weight:600;line-height:1.4;">
+                  ${esc(item.inspectionGateReason || 'Menunggu persetujuan Asisten Bibitan.')}
+                </div>
+              ` : '')}
 
             </div>
           `;
@@ -1842,6 +1850,7 @@ export function getActionableInspectionCount(currentUser) {
 
   let count = 0;
   buddingTxs.forEach((btx, i) => {
+    if (!getBuddingInspectionGate(btx).allowed) return;
     const populasiDiokulasi = parseInt(btx.jumlah || 0);
     let totalDiperiksa = 0;
     inspectionTxs.filter(insp => insp.buddingDocNo === btx.docNo || insp.buddingIndex === i).forEach(insp => {

@@ -20,6 +20,8 @@ import { getAllBedengan } from '../../data/bedengan-master.js';
 import { getProgramById } from '../../data/program-master.js';
 import { getEstateById } from '../../data/estate-master.js';
 import { getWorkersForUserContext } from '../../data/worker-master.js';
+import { getWorkAllocationByCode } from '../../data/work-allocation-master.js';
+import { getStandardWorkHoursForDate } from '../../data/standard-work-hour-master.js';
 import {
   getSelectionStageLabel,
   createSelection2DocumentFromSelection1,
@@ -42,6 +44,7 @@ import {
   INVENTORY_TX_TYPE
 } from '../../core/batch-inventory-service.js';
 import { assertBatchNotLocked, assertBedenganNotLocked } from '../../core/dependency-guard.js';
+import { syncApprovedInspectionOutputs } from '../../core/budding-workflow-service.js';
 
 export const VERIFICATION_STORAGE_KEY = 'verification_transactions';
 
@@ -606,6 +609,7 @@ function _computeVerificationDetailData(raw, userCtx = null, refType = 'PENERIMA
           { label: 'Klon Entres', value: klon },
           { label: 'Klon Batang Bawah', value: raw.klonRootstock || '-' },
           { label: 'Total Okulasi', value: qty !== '-' ? `${formattedQty} Pkk` : '-', highlight: true },
+          { label: 'Mata Entres Digunakan', value: `${formatSafeNumber(raw.jumlahMataEntres ?? raw.jumlah)} Perisai`, highlight: true },
           { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
         ]
       };
@@ -925,23 +929,34 @@ function _computeVerificationDetailData(raw, userCtx = null, refType = 'PENERIMA
     case 'REKAM_PEMELIHARAAN':
     case 'NURSERY_ACTIVITY': {
       const actName = raw.aktivitas?.nama || raw.activityType || 'Pemeliharaan';
-      const vol = raw.volumePkk !== undefined
-        ? raw.volumePkk
-        : (raw.aktivitas?.volume !== undefined ? raw.aktivitas?.volume : (raw.volume !== undefined ? raw.volume : (raw.qty !== undefined ? raw.qty : '-')));
+      const workers = Array.isArray(raw.pekerja) ? raw.pekerja : [];
+      const workerResultTotal = workers.reduce((total, worker) =>
+        total + (Number(worker.inputHasil ?? worker.result ?? worker.quantity) || 0), 0);
+      const hasWorkerResults = workers.some((worker) =>
+        worker.inputHasil !== undefined || worker.result !== undefined || worker.quantity !== undefined);
+      const vol = hasWorkerResults
+        ? workerResultTotal
+        : (raw.volumePkk !== undefined
+          ? raw.volumePkk
+          : (raw.aktivitas?.volume !== undefined ? raw.aktivitas?.volume : (raw.volume !== undefined ? raw.volume : (raw.qty !== undefined ? raw.qty : '-'))));
       const formattedVol = formatSafeNumber(vol);
       const loc = raw.bedengan || raw.location || raw.lokasiBlok || raw.blok || '-';
-      const summary = `${actName} - Bedengan: ${loc} (${formattedVol} Pkk)`;
+      const uom = raw.uomCode || raw.uom || raw.aktivitas?.uom || 'Pkk';
+      const roleCode = raw.workGroupRoleCode || raw.workGroup?.roleCode || raw.workGroup?.workGroupRoleCode || '-';
+      const allocation = raw.allocationName || raw.workGroupRoleName || raw.aktivitas?.nama || actName;
+      const summary = `${allocation} - ${roleCode} (${formattedVol} ${uom})`;
 
       return {
         title: 'Rekam Pemeliharaan',
-        info: `${actName} · Bedengan ${loc}`,
-        mainQty: vol !== '-' ? `${formattedVol} Pkk` : '-',
-        unit: 'Pkk',
+        info: `${allocation} · ${roleCode}`,
+        mainQty: vol !== '-' ? `${formattedVol} ${uom}` : '-',
+        unit: uom,
         summary,
         fields: [
-          { label: 'Jenis Pemeliharaan', value: actName },
+          { label: 'Work Group Role Code', value: roleCode },
+          { label: 'Alokasi Kerja', value: allocation },
           { label: 'Lokasi / Bedengan', value: loc },
-          { label: 'Volume Realisasi', value: vol !== '-' ? `${formattedVol} Pkk` : '-', highlight: true },
+          { label: 'Volume Realisasi', value: vol !== '-' ? `${formattedVol} ${uom}` : '-', highlight: true },
           { label: 'Keterangan', value: raw.keterangan || raw.notes || '-' }
         ]
       };
@@ -1671,6 +1686,152 @@ function generateVerificationNo() {
  * APPROVAL VERIFIKASI (approveVerification)
  * Single Entry Point persetujuan final ASB
  */
+function getMaintenanceWorkerIdentity(worker) {
+  return String(worker?.id || worker?.workerId || `${worker?.code || worker?.workerCode || ''}-${worker?.name || worker?.workerName || ''}`);
+}
+
+function recordMaintenanceWorkerDecision({ referenceId, workerId, decision, returnReason = '', asistenPotongJamDecision = '', currentUser }) {
+  if (!referenceId || !workerId) throw new Error('Dokumen dan pekerja wajib dipilih.');
+  if (!currentUser) throw new Error('Otorisasi gagal: User aktif tidak ditemukan.');
+  const role = normalizeRole(currentUser.role || currentUser.rawRole);
+  if (![ROLES.ASISTEN_BIBITAN, ROLES.ASISTEN].includes(role)) {
+    throw new Error('Hanya Asisten Bibitan yang dapat memutuskan hasil pekerja.');
+  }
+  if (decision === 'DIKEMBALIKAN' && !String(returnReason).trim()) {
+    throw new Error('Alasan pengembalian pekerja wajib diisi.');
+  }
+
+  const source = findSourceRecord('PEMELIHARAAN', referenceId, currentUser);
+  if (!source || !Array.isArray(source.pekerja) || !source.pekerja.length) {
+    throw new Error('Rincian pekerja pada dokumen pemeliharaan tidak ditemukan.');
+  }
+  if (source.activityEntryMode !== 'MANDORAN' && !source.workGroupRoleCode) {
+    throw new Error('Persetujuan per pekerja hanya berlaku untuk transaksi dengan Work Group Role Code.');
+  }
+  const estateId = source.targetEstateId || source.estateId || source.sourceEstateId;
+  const divisionId = source.targetDivisionId || source.divisionId || source.sourceDivisionId;
+  if (currentUser.estateId && estateId && currentUser.estateId !== estateId) throw new Error('Akses ditolak: dokumen berada di luar lingkup kebun Asisten.');
+  if (currentUser.divisionId && divisionId && currentUser.divisionId !== divisionId) throw new Error('Akses ditolak: dokumen berada di luar lingkup divisi Asisten.');
+
+  const records = storage.get(source._storeKey, []);
+  const sourceIndex = records.findIndex((item) => String(item.id || item.docNo || '') === String(referenceId) || String(item.docNo || '') === String(source.docNo || ''));
+  if (sourceIndex < 0) throw new Error('Dokumen sumber tidak dapat diperbarui.');
+  const sourceRecord = records[sourceIndex];
+  const targetWorkerIndex = sourceRecord.pekerja.findIndex((worker) => getMaintenanceWorkerIdentity(worker) === String(workerId));
+  if (targetWorkerIndex < 0) throw new Error('Pekerja tidak ditemukan pada dokumen ini.');
+
+  const verifications = storage.get(VERIFICATION_STORAGE_KEY, []);
+  const verificationIndex = verifications
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.referenceType === 'PEMELIHARAAN' && String(item.referenceId) === String(referenceId))
+    .sort((a, b) => new Date(b.item.createdAt || 0) - new Date(a.item.createdAt || 0))[0]?.index;
+  if (verificationIndex === undefined) throw new Error('Catatan pengiriman ke Central Hub tidak ditemukan.');
+
+  const verification = verifications[verificationIndex];
+  if (verification.verificationStatus !== VERIFICATION_STATUS.MENUNGGU_VERIFIKASI) {
+    throw new Error('Dokumen ini tidak lagi menunggu keputusan Asisten.');
+  }
+  const worker = sourceRecord.pekerja[targetWorkerIndex];
+  const rawWorkDate = sourceRecord.activityDate || sourceRecord.tanggal || sourceRecord.date || sourceRecord.createdAt;
+  const workDate = new Date(rawWorkDate || '');
+  const workDay = Number.isNaN(workDate.getTime()) ? null : getStandardWorkHoursForDate(workDate);
+  const baseTaskQuantity = Number(sourceRecord.taskQuantity) ||
+    Number(getWorkAllocationByCode(sourceRecord.allocationCode)?.taskQuantity) ||
+    Number(worker.taskQuantity) || 0;
+  const workerTaskQuantity = workDay?.dayName === 'Jumat' && baseTaskQuantity > 0
+    ? Math.round(baseTaskQuantity * 5 / 7)
+    : baseTaskQuantity;
+  const workerResult = Number(worker.inputHasil ?? worker.result ?? worker.quantity ?? 0);
+  const requiresCutDecision = workerTaskQuantity > 0 && workerResult < workerTaskQuantity;
+  if (decision === 'DISETUJUI' && asistenPotongJamDecision && !['SETUJU', 'TIDAK_SETUJU'].includes(asistenPotongJamDecision)) {
+    throw new Error('Keputusan Potong Jam Asisten tidak valid.');
+  }
+  if (decision === 'DISETUJUI' && requiresCutDecision && !['SETUJU', 'TIDAK_SETUJU'].includes(asistenPotongJamDecision)) {
+    throw new Error('Keputusan final Potong Jam wajib ditentukan sebelum pekerja disetujui.');
+  }
+  const workerKey = getMaintenanceWorkerIdentity(worker);
+  const currentWorkerDecisions = { ...(verification.workerDecisions || {}) };
+  const existingDecision = currentWorkerDecisions[workerKey];
+  if (['DISETUJUI', 'DIKEMBALIKAN'].includes(existingDecision?.status || worker.asistenVerificationStatus)) {
+    throw new Error('Pekerja ini sudah memiliki keputusan Asisten.');
+  }
+
+  const now = new Date().toISOString();
+  const decisionRecord = {
+    workerId: workerKey,
+    workerCode: worker.code || worker.workerCode || '',
+    workerName: worker.name || worker.workerName || 'Pekerja',
+    status: decision,
+    mantriPotongJamDecision: worker.potongJamDecision || '',
+    mantriPotongJamReason: worker.potongJamReason || '',
+    asistenPotongJamDecision: decision === 'DISETUJUI' ? (asistenPotongJamDecision || worker.asistenPotongJamDecision || '') : '',
+    returnReason: decision === 'DIKEMBALIKAN' ? String(returnReason).trim() : '',
+    decidedByUserId: currentUser.userId || currentUser.id || 'ASISTEN',
+    decidedByName: currentUser.name || currentUser.fullName || 'Asisten Bibitan',
+    decidedAt: now
+  };
+  currentWorkerDecisions[workerKey] = decisionRecord;
+
+  const updatedWorkers = sourceRecord.pekerja.map((item) => {
+    const key = getMaintenanceWorkerIdentity(item);
+    const itemDecision = currentWorkerDecisions[key];
+    if (!itemDecision) return item;
+    return {
+      ...item,
+      asistenVerificationStatus: itemDecision.status,
+      asistenReturnReason: itemDecision.returnReason || '',
+      asistenPotongJamDecision: itemDecision.asistenPotongJamDecision || item.asistenPotongJamDecision || '',
+      asistenVerifiedByUserId: itemDecision.decidedByUserId,
+      asistenVerifiedByName: itemDecision.decidedByName,
+      asistenVerifiedAt: itemDecision.decidedAt
+    };
+  });
+  const allWorkersDecided = updatedWorkers.every((item) => ['DISETUJUI', 'DIKEMBALIKAN'].includes(item.asistenVerificationStatus));
+  const allWorkersApproved = allWorkersDecided && updatedWorkers.every((item) => item.asistenVerificationStatus === 'DISETUJUI');
+  const aggregateStatus = allWorkersApproved
+    ? VERIFICATION_STATUS.TERVERIFIKASI
+    : allWorkersDecided
+      ? VERIFICATION_STATUS.DIKEMBALIKAN
+      : VERIFICATION_STATUS.MENUNGGU_VERIFIKASI;
+
+  sourceRecord.pekerja = updatedWorkers;
+  sourceRecord.status = allWorkersApproved ? 'DISETUJUI' : allWorkersDecided ? 'DIKEMBALIKAN' : 'MENUNGGU_VERIFIKASI';
+  sourceRecord.verificationStatus = aggregateStatus;
+  sourceRecord.isFinal = allWorkersApproved;
+  sourceRecord.asistenWorkerReviewUpdatedAt = now;
+  sourceRecord.updatedAt = now;
+  records[sourceIndex] = sourceRecord;
+  storage.set(source._storeKey, records);
+
+  const history = [...(verification.workerReviewHistory || []), decisionRecord];
+  verifications[verificationIndex] = {
+    ...verification,
+    workerDecisions: currentWorkerDecisions,
+    workerReviewHistory: history,
+    verificationStatus: aggregateStatus,
+    verifiedAt: allWorkersApproved ? now : null,
+    returnedAt: allWorkersDecided && !allWorkersApproved ? now : verification.returnedAt || null,
+    verifiedByUserId: allWorkersApproved ? currentUser.userId || currentUser.id || 'ASISTEN' : null,
+    verifiedByName: allWorkersApproved ? currentUser.name || currentUser.fullName || 'Asisten Bibitan' : null,
+    verifiedByRole: currentUser.role || ROLES.ASISTEN_BIBITAN,
+    returnReason: aggregateStatus === VERIFICATION_STATUS.DIKEMBALIKAN
+      ? updatedWorkers.filter((item) => item.asistenVerificationStatus === 'DIKEMBALIKAN').map((item) => `${item.name || item.workerName}: ${item.asistenReturnReason}`).join('\n')
+      : null,
+    updatedAt: now
+  };
+  storage.set(VERIFICATION_STORAGE_KEY, verifications);
+
+  return { decision: decisionRecord, verificationStatus: aggregateStatus, allWorkersDecided, allWorkersApproved };
+}
+
+export function approveMaintenanceWorker({ referenceId, workerId, asistenPotongJamDecision = '', currentUser }) {
+  return recordMaintenanceWorkerDecision({ referenceId, workerId, decision: 'DISETUJUI', asistenPotongJamDecision, currentUser });
+}
+
+export function returnMaintenanceWorker({ referenceId, workerId, returnReason, currentUser }) {
+  return recordMaintenanceWorkerDecision({ referenceId, workerId, decision: 'DIKEMBALIKAN', returnReason, currentUser });
+}
+
 export function approveVerification({ referenceType, referenceId, notes = '', currentUser }) {
   if (!referenceType || !referenceId) {
     throw new Error('referenceType dan referenceId wajib disertakan.');
@@ -1702,6 +1863,9 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
   const sourceRecord = findSourceRecord(referenceType, referenceId, currentUser);
   if (!sourceRecord) {
     throw new Error(`Data transaksi sumber tidak ditemukan (${referenceType}:${referenceId}).`);
+  }
+  if (['PEMELIHARAAN', 'REKAM_PEMELIHARAAN', 'NURSERY_ACTIVITY'].includes(String(referenceType).toUpperCase()) && (sourceRecord.activityEntryMode === 'MANDORAN' || sourceRecord.workGroupRoleCode) && Array.isArray(sourceRecord.pekerja) && sourceRecord.pekerja.length) {
+    throw new Error('Rekam Pemeliharaan harus disetujui per pekerja melalui rincian pekerja.');
   }
 
   // 2. Scope validation
@@ -2118,6 +2282,13 @@ export function approveVerification({ referenceType, referenceId, notes = '', cu
         records[idx] = targetRecord;
         storage.set(sourceRecord._storeKey, records);
         persistVerificationRecord();
+        if (sourceRecord._storeKey === 'inspection_transactions') {
+          try {
+            syncApprovedInspectionOutputs(targetRecord, currentUser);
+          } catch (syncErr) {
+            console.warn('[approveVerification] Budding inspection output sync notice:', syncErr.message);
+          }
+        }
       }
 
       // Auto-reconcile Dokumen Seleksi Pra-Okulasi jika Pindah Semai (SEEDING) atau CULL baru disetujui ASB
@@ -2164,6 +2335,9 @@ export function returnVerification({ referenceType, referenceId, returnReason, n
   const sourceRecord = findSourceRecord(referenceType, referenceId, currentUser);
   if (!sourceRecord) {
     throw new Error(`Data transaksi sumber tidak ditemukan (${referenceType}:${referenceId}).`);
+  }
+  if (['PEMELIHARAAN', 'REKAM_PEMELIHARAAN', 'NURSERY_ACTIVITY'].includes(String(referenceType).toUpperCase()) && (sourceRecord.activityEntryMode === 'MANDORAN' || sourceRecord.workGroupRoleCode) && Array.isArray(sourceRecord.pekerja) && sourceRecord.pekerja.length) {
+    throw new Error('Rekam Pemeliharaan harus dikembalikan per pekerja melalui rincian pekerja.');
   }
 
   // 3. Return Guard: Dokumen final atau stok yang sudah termutasi TIDAK DAPAT dikembalikan

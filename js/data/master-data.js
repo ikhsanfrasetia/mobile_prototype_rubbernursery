@@ -50,6 +50,13 @@ export const REASONS = [
 export const BEDS = [];
 
 export {
+  STANDARD_WORK_HOUR_MASTER,
+  getAllStandardWorkHours,
+  getStandardWorkHoursByDay,
+  getStandardWorkHoursForDate
+} from './standard-work-hour-master.js';
+
+export {
   PROGRAM_MASTER,
   PROGRAM_MASTER as MASTER_PROGRAM_PEMBIBITAN,
   PROGRAM_STATUS,

@@ -125,6 +125,7 @@ export function updateWorkspaceActivePageLabel() {
     '/transactions': 'Katalog Transaksi',
     '/material': 'Material & Logistik',
     '/nursery-activity': 'Pemeliharaan Bibitan',
+    '/nursery-activity/mandoran': 'Daftar Aktivitas Mandoran',
     '/nursery-activity/form': 'Form Pemeliharaan',
     '/request': 'Pengeluaran Bibit',
     '/request/kebun-sepupu': 'Pengeluaran Kebun Sepupu',
@@ -145,13 +146,16 @@ export function updateWorkspaceActivePageLabel() {
     '/destruction': 'Pemusnahan Bibit (Culling)',
     '/selection/culling': 'Pemusnahan Bibit',
     '/consolidation': 'Konsolidasi Bibitan',
+    '/nursery-activity/consolidation': 'Konsolidasi Aktivitas Mandoran',
     '/verification': 'Verifikasi Lapangan',
     '/reports': 'Laporan',
     '/reports/stock': 'Laporan Stok Bibit',
     '/profile': 'Profil Pengguna'
   };
 
-  labelEl.textContent = PAGE_MAP[route] || 'Operasional Nursery';
+  labelEl.textContent = route.startsWith('/nursery-activity/consolidation/worker/')
+    ? 'Data Pekerja Bibitan'
+    : (PAGE_MAP[route] || 'Operasional Nursery');
 }
 
 /** Inisialisasi Mode Switcher & Global Header */

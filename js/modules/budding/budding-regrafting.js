@@ -10,6 +10,7 @@ import { renderStatusDots } from '../../core/status-dot-renderer.js';
 import { getCurrentUserContext } from '../../core/user-context.js';
 import { getAuthorizedTransactions, canUserAccessTransaction } from '../../core/transaction-actor.js';
 import { normalizeKlonName } from '../../data/klon-master.js';
+import { canUseApprovedRegraftingPool, isBuddingWorkflowInspectionApproved } from '../../core/budding-workflow-service.js';
 import {
   normalizeDateStr,
   renderCalendarHeaderButton,
@@ -96,6 +97,7 @@ export function renderBuddingRegrafting() {
 
   // AUTO-SYNC: Ensure all inspections with Regrafting allocation are present in regraftPool
   inspectionTxs.forEach((insp, i) => {
+    if (!isBuddingWorkflowInspectionApproved(insp)) return;
     const isInspCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.status || '').toUpperCase()) ||
       ['BATAL', 'CANCELLED', 'VOID'].includes(String(insp.verificationStatus || '').toUpperCase());
     if (isInspCancelled) return;
@@ -126,6 +128,8 @@ export function renderBuddingRegrafting() {
     const isRtxCancelled = ['BATAL', 'CANCELLED', 'VOID'].includes(String(rtx.status || '').toUpperCase()) ||
       ['BATAL', 'CANCELLED', 'VOID'].includes(String(rtx.verificationStatus || '').toUpperCase());
     if (isRtxCancelled) return;
+    const linkedInspection = inspectionTxs.find(insp => insp.docNo === rtx.inspectionDocNo);
+    if (!isBuddingWorkflowInspectionApproved(linkedInspection)) return;
     const exists = regraftPool.some(p => (rtx.regraftPoolDocNo && p.docNo === rtx.regraftPoolDocNo) || (rtx.inspectionDocNo && p.inspectionDocNo === rtx.inspectionDocNo));
     if (!exists) {
       const totalPop = parseInt(rtx.jumlah || 0) + parseInt(rtx.jumlahDitolak || 0);
@@ -145,7 +149,10 @@ export function renderBuddingRegrafting() {
     }
   });
 
-  const processedRegraftPool = regraftPool.map((poolItem, idx) => {
+  const actionableRegraftPool = regraftPool
+    .map((poolItem, originalIndex) => ({ poolItem, originalIndex }))
+    .filter(({ poolItem }) => canUseApprovedRegraftingPool(poolItem));
+  const processedRegraftPool = actionableRegraftPool.map(({ poolItem, originalIndex }, idx) => {
     const batchNo = poolItem.batchNo || `Batch-0${idx + 1}`;
     const docNo = poolItem.docNo || `REG-POOL/2026/0${idx + 1}`;
     const populasiGagal = parseInt(poolItem.jumlah || 0);
@@ -194,7 +201,7 @@ export function renderBuddingRegrafting() {
 
     return {
       poolItem,
-      originalIndex: idx,
+      originalIndex,
       batchNo,
       docNo,
       populasiGagal,

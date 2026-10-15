@@ -38,6 +38,7 @@ export const DATA_STORAGE_REGISTRY = {
     'receipt_ksp_transactions',
     'receipt_transactions',
     'nursery_activity_records',
+    'nursery_mandoran_consolidations',
     'entres_transactions',
     'entres_menunas_transactions',
     'entres_topping_transactions',
