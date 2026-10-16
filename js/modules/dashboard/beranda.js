@@ -8,9 +8,10 @@
 import { session } from '../../core/session.js';
 import { storage } from '../../core/storage.js';
 import { openDrawer } from '../../components/drawer.js';
+import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { navigate } from '../../core/router.js';
-import { formatStandardDocNo } from '../../core/utils.js';
+import { formatStandardDocNo, esc } from '../../core/utils.js';
 import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
 import { 
   syncAllSeedingsToSelectionPool, 
@@ -140,6 +141,121 @@ const ASISTEN_MENU_ITEMS = [
   { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' }
 ];
 
+function getPengurusRequestNotifications(requests, receipts, userCtx) {
+  const estateId = String(userCtx?.estateId || '').trim().toUpperCase();
+  const userIds = [userCtx?.userId, userCtx?.id, userCtx?.code, userCtx?.loginCode]
+    .filter(Boolean).map(value => String(value).trim().toUpperCase());
+  const requestRoutes = {
+    KEBUN_SEPUPU: { label: 'Permintaan Bibit Kebun Sepupu', route: '/request/kebun-sepupu' },
+    KEBUN_SENDIRI: { label: 'Permintaan Bibit Kebun Sendiri', route: '/request/kebun-sendiri' },
+    MATA_ENTRES: { label: 'Permintaan Mata Entres', route: '/request/mata-entres' }
+  };
+  const statusLabels = {
+    DIAJUKAN: 'Diajukan',
+    MENUNGGU_VERIFIKASI_ASISTEN_KEPALA: 'Menunggu Verifikasi Asisten Kepala',
+    MENUNGGU_VERIFIKASI_PENGURUS: 'Menunggu Tinjauan Pengurus',
+    MENUNGGU_REVIEW_PENGURUS: 'Menunggu Tinjauan Pengurus',
+    PERLU_REVISI_PENGURUS: 'Perlu Revisi Pengurus',
+    MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN: 'Menunggu Verifikasi Asisten Bibitan',
+    MENUNGGU_VERIFIKASI_ASISTEN: 'Menunggu Verifikasi Asisten Bibitan',
+    TERVERIFIKASI: 'Terverifikasi',
+    MENUNGGU_PENGELUARAN_BIBIT: 'Menunggu Pengeluaran Bibit',
+    PENGELUARAN_BERJALAN: 'Pengeluaran Berjalan',
+    MENUNGGU_PENERIMAAN_PENGURUS: 'Menunggu Penerimaan Pengurus',
+    MENUNGGU_PENERIMAAN: 'Menunggu Penerimaan',
+    SELESAI: 'Selesai',
+    DITOLAK: 'Ditolak',
+    PERLU_REVISI_ASISTEN_KEPALA: 'Perlu Revisi Asisten Kepala',
+    MENUNGGU_PENGELUARAN: 'Menunggu Pengeluaran',
+    MENUNGGU_PENERIMAAN_MANTRI_BIBITAN: 'Menunggu Penerimaan Mantri Bibitan',
+    DIKEMBALIKAN_KE_PENGURUS: 'Dikembalikan ke Pengurus'
+  };
+  const isRelatedToPengurus = (record) => {
+    if (!record || !estateId) return false;
+    const relatedEstates = [
+      record.estateId, record.sourceEstateId, record.requesterEstateId, record.requesterEstate,
+      record.targetEstateId, record.targetEstate, record.targetNextEstateId,
+      record.senderEstateId, record.pengeluaran?.capturedByEstateId
+    ].filter(Boolean).map(value => String(value).trim().toUpperCase());
+    const actorIds = [record.userId, record.createdByUserId, record.requesterUserId, record.submittedByUserId, record.createdByLoginCode]
+      .filter(Boolean).map(value => String(value).trim().toUpperCase());
+    return relatedEstates.includes(estateId) || actorIds.some(id => userIds.includes(id));
+  };
+  const formatNotificationDate = (value) => {
+    if (!value) return '';
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const requestItems = (Array.isArray(requests) ? requests : []).flatMap(record => {
+    const type = String(record.type || record.transactionType || '').toUpperCase();
+    const routeInfo = requestRoutes[type] || (String(record.docNo || '').includes('/NIR/') ? requestRoutes.KEBUN_SEPUPU : null);
+    if (!routeInfo || !isRelatedToPengurus(record)) return [];
+    const status = String(record.status || 'DIAJUKAN').toUpperCase();
+    const auditEntries = Array.isArray(record.auditTrail) ? record.auditTrail : Array.isArray(record.auditLog) ? record.auditLog : [];
+    const latestAudit = auditEntries[auditEntries.length - 1];
+    return [{
+      id: `request:${record.id || record.docNo || Math.random()}`,
+      category: routeInfo.label,
+      docNo: record.docNo || record.nomorDokumen || 'Dokumen permintaan',
+      status: statusLabels[status] || status.replaceAll('_', ' ').toLocaleLowerCase('id-ID').replace(/(^|\s)\S/g, char => char.toLocaleUpperCase('id-ID')),
+      detail: latestAudit?.details || latestAudit?.note || latestAudit?.description || record.statusNote || record.returnReason || record.revisionReason || '',
+      date: formatNotificationDate(record.updatedAt || record.submittedAt || record.createdAt || record.date),
+      route: routeInfo.route,
+      sortDate: new Date(record.updatedAt || record.submittedAt || record.createdAt || record.date || 0).getTime() || 0
+    }];
+  });
+  const receiptItems = (Array.isArray(receipts) ? receipts : []).flatMap(record => {
+    if (!isRelatedToPengurus(record)) return [];
+    const status = String(record.status || '').toUpperCase();
+    const label = statusLabels[status] || status.replaceAll('_', ' ').toLocaleLowerCase('id-ID').replace(/(^|\s)\S/g, char => char.toLocaleUpperCase('id-ID')) || 'Dalam Proses';
+    return [{
+      id: `receipt:${record.id || record.receiptDocNo || record.docNo || Math.random()}`,
+      category: 'Penerimaan Bibit',
+      docNo: record.receiptDocNo || record.docNo || 'Dokumen penerimaan',
+      status: label,
+      detail: record.returnReason || record.notes || '',
+      date: formatNotificationDate(record.updatedAt || record.submittedAt || record.createdAt || record.date),
+      route: '/reception/kebun-sepupu',
+      sortDate: new Date(record.updatedAt || record.submittedAt || record.createdAt || record.date || 0).getTime() || 0
+    }];
+  });
+  return [...requestItems, ...receiptItems].sort((a, b) => b.sortDate - a.sortDate).slice(0, 20);
+}
+
+function showPengurusRequestNotifications(items) {
+  const body = items.length ? `
+    <div style="display:flex; flex-direction:column; gap:9px; max-height:58vh; overflow-y:auto;">
+      ${items.map(item => `
+        <button type="button" class="pengurus-request-notification" data-route="${item.route}" style="width:100%; text-align:left; padding:11px 12px; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:9px; cursor:pointer;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+            <span style="font-size:.72rem; font-weight:750; color:#116834;">${esc(item.category)}</span>
+            <span style="font-size:.66rem; font-weight:700; color:#64748B; text-align:right;">${esc(item.date)}</span>
+          </div>
+          <div style="margin-top:4px; font-size:.82rem; font-weight:800; color:#111827; overflow-wrap:anywhere;">${esc(item.docNo)}</div>
+          <div style="margin-top:5px; font-size:.74rem; font-weight:700; color:#334155;">${esc(item.status)}</div>
+          ${item.detail ? `<div style="margin-top:4px; font-size:.7rem; line-height:1.4; color:#64748B;">${esc(item.detail)}</div>` : ''}
+        </button>
+      `).join('')}
+    </div>
+  ` : '<div style="padding:18px 10px; text-align:center; color:#64748B; font-size:.82rem;">Belum ada proses permintaan atau pengajuan yang tercatat.</div>';
+
+  openModal({
+    title: 'Notifikasi Proses',
+    body: `<div style="font-size:.76rem; color:#64748B; margin-bottom:10px;">Status terbaru permintaan dan pengajuan yang terkait dengan kebun Anda.</div>${body}`,
+    footer: `<button id="btn-close-pengurus-notifications" type="button" style="width:100%; min-height:42px; border:1px solid #116834; border-radius:8px; background:#FFFFFF; color:#116834; font-weight:700; cursor:pointer;">Tutup</button>`
+  });
+
+  document.getElementById('modal-root')?.querySelectorAll('.pengurus-request-notification').forEach(button => {
+    button.addEventListener('click', () => {
+      const route = button.dataset.route;
+      closeModal();
+      if (route) navigate(route);
+    });
+  });
+  document.getElementById('modal-root')?.querySelector('#btn-close-pengurus-notifications')?.addEventListener('click', closeModal);
+}
+
 function renderBerandaAskep() {
   const app = document.getElementById('app');
   if (!app) return;
@@ -153,6 +269,7 @@ function renderBerandaAskep() {
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
+  const hasRequestProcessNotification = hasActionableRequest || hasActionableReceipt || hasActionableDispatch;
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -196,7 +313,7 @@ function renderBerandaAskep() {
 
   app.innerHTML = `
     <div class="page beranda-page">
-      <header class="beranda-header">
+      <header class="beranda-header" style="display:flex; align-items:center;">
         <button class="beranda-menu-btn" id="beranda-drawer-btn" type="button" aria-label="Menu">
           <svg viewBox="0 0 24 24" width="26" height="26" stroke="#116834" stroke-width="2.2" fill="none" stroke-linecap="round">
             <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -204,7 +321,11 @@ function renderBerandaAskep() {
             <line x1="3" y1="18" x2="21" y2="18"></line>
           </svg>
         </button>
-        <h1 class="beranda-header-title">Beranda</h1>
+        <h1 class="beranda-header-title" style="flex:1; margin:0;">Beranda</h1>
+        <button id="beranda-notif-btn" type="button" aria-label="Notifikasi proses permintaan" title="Notifikasi proses permintaan" style="position:relative; width:38px; height:38px; flex:0 0 38px; display:flex; align-items:center; justify-content:center; border:0; border-radius:50%; background:transparent; color:#116834; cursor:pointer;">
+          <svg viewBox="0 0 24 24" width="23" height="23" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg>
+          ${hasRequestProcessNotification ? '<span aria-hidden="true" style="position:absolute; top:5px; right:5px; width:9px; height:9px; border:2px solid #FFFFFF; border-radius:50%; background:#D71920;"></span>' : ''}
+        </button>
       </header>
 
       <main class="beranda-body">
@@ -217,6 +338,25 @@ function renderBerandaAskep() {
 
   // Drawer Toggle
   app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
+
+  app.querySelector('#beranda-notif-btn')?.addEventListener('click', async () => {
+    let latestRequests = Array.isArray(allRequests) ? [...allRequests] : [];
+    try {
+      const databaseRequests = await requestRepository.list();
+      if (Array.isArray(databaseRequests)) {
+        const requestMap = new Map();
+        [...latestRequests, ...databaseRequests].forEach((request) => {
+          const key = String(request.id || request.docNo || `${request.type || request.transactionType || ''}-${request.createdAt || ''}`);
+          requestMap.set(key, { ...(requestMap.get(key) || {}), ...request });
+        });
+        latestRequests = [...requestMap.values()];
+      }
+    } catch (_) {
+      // Gunakan cache lokal jika IndexedDB tidak tersedia.
+    }
+    const latestReceipts = storage.get('receipt_ksp_transactions', []);
+    showPengurusRequestNotifications(getPengurusRequestNotifications(latestRequests, latestReceipts, userCtx));
+  });
 
   // Menu clicks
   app.querySelectorAll('.beranda-menu-card').forEach((card) => {

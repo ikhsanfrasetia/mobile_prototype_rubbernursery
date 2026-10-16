@@ -1202,11 +1202,7 @@ export async function renderRequestKebunSepupuLanding() {
       <!-- FOOTER ACTION: Create button hanya untuk PENGURUS -->
       ${normalizedUserRole === 'PENGURUS' ? `
       <div style="flex-shrink: 0; background: #FFFFFF; border-top: 1px solid #E2E8F0; padding: 12px 16px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -2px 10px rgba(0,0,0,0.05);">
-        <button id="btn-create-request" type="button" style="width: 100%; min-height: 46px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 6px rgba(17,104,52,0.2); transition: background 0.15s ease;">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
+        <button id="btn-create-request" type="button" style="width: 100%; min-height: 46px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(17,104,52,0.2); transition: background 0.15s ease;">
           Buat Permintaan
         </button>
       </div>
@@ -1286,7 +1282,7 @@ function renderTimelineStepper(item) {
   return `
     <!-- TIMELINE & AUDIT TRAIL -->
     <div style="margin-top: 12px; margin-bottom: 6px; padding-top: 10px; border-top: 1px dashed #E2E8F0;">
-      <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Timeline & Audit Trail:</div>
+      <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Status Progress Permintaan</div>
       ${auditItems.length === 0 ? `
         <div style="font-size: 0.74rem; color: #94A3B8; font-style: italic; padding: 4px 0;">
           Belum ada riwayat audit trail tersimpan.
@@ -1417,14 +1413,14 @@ function renderSingleCard(item, index, currentUser) {
   let cardActionButtons = '';
   if (isPengurusAuthorized && (status === 'DIAJUKAN' || status === 'PERLU_REVISI_PENGURUS')) {
     cardActionButtons = `
-      <div style="display: flex; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #E2E8F0;">
+      <div style="display: flex; width:100%; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #E2E8F0;">
         <button 
           class="btn-action-review" 
           data-index="${index}" 
           type="button" 
-          style="flex: 1; background: #116834; color: #FFFFFF; border: 1px solid #116834; font-size: 0.75rem; font-weight: 700; padding: 7px 8px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;"
+          style="width:100%; min-height:46px; background: #116834; color: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 700; padding: 8px 12px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(17,104,52,0.2);"
         >
-          Review Permintaan
+          Tinjau Permintaan
         </button>
       </div>
     `;
@@ -1548,9 +1544,6 @@ function renderSingleCard(item, index, currentUser) {
       ${cardActionButtons}
 
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 6px; border-top: 1px solid #F1F5F9;">
-        <button class="btn-view-detail" data-index="${index}" type="button" style="background: transparent; border: none; color: #116834; font-size: 0.72rem; font-weight: 700; cursor: pointer; padding: 4px 0;">
-          Lihat Detail Lengkap ↗
-        </button>
         <button class="btn-collapse-card" data-index="${index}" type="button" style="background: transparent; border: none; color: #64748B; font-size: 0.72rem; font-weight: 600; cursor: pointer; padding: 4px 8px;">
           Tutup Detail ▲
         </button>
@@ -1568,9 +1561,9 @@ function renderSingleCard(item, index, currentUser) {
           class="btn-action-review" 
           data-index="${index}" 
           type="button" 
-          style="padding: 5px 10px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.72rem; font-weight: 700; color: #FFFFFF; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: background 0.15s ease; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box;"
+          style="width:100%; min-height:46px; padding:8px 12px; background:#116834; border:none; border-radius:10px; font-size:0.88rem; font-weight:700; color:#FFFFFF; cursor:pointer; box-shadow:0 2px 6px rgba(17,104,52,0.2); display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box;"
         >
-          Review Permintaan
+          Tinjau Permintaan
         </button>
       `;
     } else if (isAskepAuthorized && (status === 'MENUNGGU_VERIFIKASI_ASISTEN_KEPALA' || status === 'PERLU_REVISI_ASISTEN_KEPALA')) {
@@ -1614,21 +1607,11 @@ function renderSingleCard(item, index, currentUser) {
     }
 
     unexpandedFooter = `
-      <div class="action-footer" style="display: flex; gap: 6px; align-items: center; justify-content: space-between; border-top: 1px dashed #F1F5F9; padding-top: 8px; margin-top: 6px;">
-        <div class="action-group" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+      ${actionGroupHtml ? `<div class="action-footer" style="display: flex; gap: 6px; align-items: center; justify-content: space-between; border-top: 1px dashed #F1F5F9; padding-top: 8px; margin-top: 6px;">
+        <div class="action-group" style="display: flex; flex:1; gap: 6px; align-items: center; flex-wrap: wrap;">
           ${actionGroupHtml}
         </div>
-        <div class="detail-action" style="margin-left: auto;">
-          <button 
-            class="btn-view-detail" 
-            data-index="${index}"
-            type="button" 
-            style="background: transparent; border: 1px solid #CBD5E1; color: #334155; font-size: 0.72rem; font-weight: 600; padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
-          >
-            Detail ▼
-          </button>
-        </div>
-      </div>
+      </div>` : ''}
     `;
   }
 
@@ -1957,17 +1940,6 @@ function attachLandingEvents(items, currentUser) {
       e.stopPropagation();
       expandedCardIndex = -1;
       renderRequestKebunSepupuLanding();
-    });
-  });
-
-  // Detail Modal Buttons (opens modal directly)
-  app.querySelectorAll('.btn-view-detail').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const idx = parseInt(btn.getAttribute('data-index'), 10);
-      if (items[idx]) {
-        showDetailModal(items[idx], currentUser);
-      }
     });
   });
 

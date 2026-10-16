@@ -521,7 +521,7 @@ export async function renderRequestKebunSendiriLanding() {
 
             <!-- TIMELINE & AUDIT TRAIL -->
             <div style="margin-bottom: 4px;">
-              <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Timeline & Audit Trail:</div>
+              <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Status Progress Permintaan</div>
               ${auditItems.length === 0 ? `
                 <div style="font-size: 0.74rem; color: #94A3B8; font-style: italic; padding: 4px 0;">
                   Belum ada riwayat audit trail tersimpan.
