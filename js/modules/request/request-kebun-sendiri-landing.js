@@ -21,9 +21,72 @@ import { toast } from '../../components/toast.js';
 import { requestRepository, batchRepository } from '../../db/repositories.js';
 import { resolveEstate } from '../../data/estate-master.js';
 import { getActiveKlons, resolveKlon } from '../../data/klon-master.js';
+import { getCfnaByCode } from '../../data/cfna-master.js';
 import { formatDate, formatFullDateIndonesian, nowISO, todayISO, esc } from '../../core/utils.js';
 import { deductMultiBatchStock, getNurseryBatches } from '../dispatch/dispatch-landing.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+
+export function formatAllocationDisplay(code) {
+  if (!code || code === '-') return '-';
+  const clean = String(code).trim();
+  if (!clean || clean === '-') return '-';
+  const cfna = getCfnaByCode(clean);
+  if (cfna && cfna.name) {
+    return `${clean} - ${cfna.name}`;
+  }
+  return `${clean} - -`;
+}
+
+/**
+ * Standardize UI role display names across all screens and timeline entries
+ */
+export function formatRoleDisplay(rawRoleOrPosition) {
+  if (!rawRoleOrPosition) return '';
+  const str = String(rawRoleOrPosition).trim();
+  const normalized = str.toUpperCase().replace(/[\s-]+/g, '_');
+
+  if (
+    normalized === 'ASISTEN_BIBITAN' ||
+    normalized === 'ASISTEN_PEMBIBITAN' ||
+    normalized === 'ASISTEN_PEMIBIBITAN' ||
+    normalized === 'ASB'
+  ) {
+    return 'Asisten Pembibitan';
+  }
+  if (normalized === 'ASKEP' || normalized === 'ASISTEN_KEPALA') {
+    return 'Asisten Kepala';
+  }
+  if (
+    normalized === 'PENGURUS' ||
+    normalized === 'PENGURUS_KEBUN' ||
+    normalized === 'PENGURUS_KEBUN_SEPUPU'
+  ) {
+    return 'Pengurus Kebun';
+  }
+  if (
+    normalized === 'ASISTEN' ||
+    normalized === 'ASISTEN_LAPANGAN' ||
+    normalized === 'ASISTEN_DIVISI' ||
+    normalized === 'ASISTEN_PEMOHON'
+  ) {
+    return 'Asisten Lapangan';
+  }
+  if (
+    normalized === 'MANTRI' ||
+    normalized === 'MANTRI_BIBITAN' ||
+    normalized === 'MANTRI_TANAMAN'
+  ) {
+    return 'Mantri Bibitan';
+  }
+  if (normalized === 'KTU' || normalized === 'KEPALA_TATA_USAHA') {
+    return 'Kepala Tata Usaha';
+  }
+  if (normalized === 'TEKNIKER_I' || normalized === 'TEKNIKER') {
+    return 'Tekniker I';
+  }
+
+  return str;
+}
 
 let activeTab = null; // 'MY_REQUESTS' | 'INCOMING_REQUESTS'
 let lastUserRoleId = null; // Track current user role to set default tab on initial role change
@@ -140,8 +203,8 @@ export function canPerformRequesterReceiptAction(tx, currentUser) {
   const status = (tx.status || '').toUpperCase();
   if (status !== 'MENUNGGU_PENERIMAAN') return false;
 
-  const currentUserId = currentUser.userId || currentUser.id || currentUser.code;
-  const requesterId = tx.requesterUserId || tx.userId || tx.createdByUserId;
+  const currentUserId = String(currentUser.userId || currentUser.id || currentUser.code || '').trim().toUpperCase();
+  const requesterId = String(tx.requesterUserId || tx.userId || tx.createdByUserId || tx.createdByLoginCode || '').trim().toUpperCase();
 
   if (!currentUserId || !requesterId) return false;
   return currentUserId === requesterId;
@@ -152,13 +215,13 @@ export function canPerformRequesterReceiptAction(tx, currentUser) {
  */
 export function filterMyRequests(requests, currentUser) {
   if (!Array.isArray(requests) || !currentUser) return [];
-  const currentUserId = currentUser.userId || currentUser.id || currentUser.code;
+  const currentUserId = String(currentUser.userId || currentUser.id || currentUser.code || '').trim().toUpperCase();
 
   return requests.filter(tx => {
     const isKebunSendiri = tx.type === 'KEBUN_SENDIRI' || tx.transactionType === 'KEBUN_SENDIRI';
     if (!isKebunSendiri) return false;
 
-    const requesterId = tx.requesterUserId || tx.userId || tx.createdByUserId;
+    const requesterId = String(tx.requesterUserId || tx.userId || tx.createdByUserId || tx.createdByLoginCode || '').trim().toUpperCase();
     return requesterId === currentUserId;
   });
 }
@@ -218,6 +281,28 @@ export function getActionableIncomingCount(incomingRequests, currentUser) {
   }
 
   return 0;
+}
+
+/**
+ * Hitung jumlah permohonan milik sendiri (Requester) yang membutuhkan tindakan aktif (Penerimaan Bibit Fisik)
+ */
+export function getActionableMyRequestCount(myRequests, currentUser) {
+  if (!Array.isArray(myRequests) || !currentUser) return 0;
+  return myRequests.filter(tx => canPerformRequesterReceiptAction(tx, currentUser)).length;
+}
+
+/**
+ * Hitung total item actionable untuk Kebun Sendiri (baik incoming verifikasi maupun requester penerimaan)
+ */
+export function getActionableSendiriCount(requests, currentUser) {
+  if (!Array.isArray(requests) || !currentUser) return 0;
+  const incomingReqs = filterIncomingRequests(requests, currentUser);
+  const incomingCount = getActionableIncomingCount(incomingReqs, currentUser);
+
+  const myReqs = filterMyRequests(requests, currentUser);
+  const myCount = getActionableMyRequestCount(myReqs, currentUser);
+
+  return incomingCount + myCount;
 }
 
 /**
@@ -324,7 +409,7 @@ export async function renderRequestKebunSendiriLanding() {
   const showCreateButton = canUserCreateKebunSendiri(userCtx);
 
   const incomingActionableCount = getActionableIncomingCount(incomingReqs, userCtx);
-  const myActionableCount = myReqs.filter(tx => canPerformRequesterReceiptAction(tx, userCtx)).length;
+  const myActionableCount = getActionableMyRequestCount(myReqs, userCtx);
 
   // Tabs HTML
   const tabsHtml = isRequesterRole ? `
@@ -396,125 +481,200 @@ export async function renderRequestKebunSendiriLanding() {
     let actionBtnHtml = '';
     if (canAskep) {
       actionBtnHtml = `
-        <button class="btn-action-askep" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
+        <button class="btn-action-askep" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 46px; background: #116834; color: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 700; padding: 8px 12px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(17,104,52,0.2);">
           Review Permintaan (Asisten Kepala)
         </button>
       `;
     } else if (canPengurus) {
       actionBtnHtml = `
-        <button class="btn-action-pengurus" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
+        <button class="btn-action-pengurus" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 46px; background: #116834; color: #FFFFFF; border: none; font-size: 0.88rem; font-weight: 700; padding: 8px 12px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(17,104,52,0.2);">
           Review Permintaan (Pengurus Kebun)
         </button>
       `;
     } else if (canAsbVerify) {
       actionBtnHtml = `
-        <button class="btn-action-asb-verify" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,104,52,0.15);">
-          Verifikasi Ketersediaan Nursery (ASB)
+        <button class="btn-action-asb-verify" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 46px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(17,104,52,0.2);">
+          Verifikasi Ketersediaan Nursery (Asisten Pembibitan)
         </button>
       `;
     } else if (canAsbDispatchVerif) {
       actionBtnHtml = `
-        <button class="btn-action-asb-dispatch-verif" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #D97706; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(217,119,6,0.15);">
-          Verifikasi Aktual Pengeluaran (ASB)
+        <button class="btn-action-asb-dispatch-verif" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 46px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(17,104,52,0.2);">
+          Verifikasi Aktual Pengeluaran (Asisten Pembibitan)
         </button>
       `;
     } else if (canRequesterReceipt) {
       actionBtnHtml = `
-        <button class="btn-action-requester-receipt" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(22,163,74,0.15);">
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-            <circle cx="12" cy="13" r="4"></circle>
-          </svg>
+        <button class="btn-action-requester-receipt" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 46px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.88rem; border: none; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(17,104,52,0.2);">
           Proses Penerimaan Bibit
         </button>
       `;
     }
 
-    // Safely extract audit trail
-    const auditItems = Array.isArray(tx.auditTrail) ? tx.auditTrail : [];
+    // Resolving Estate & Divisi
+    const estateObj = resolveEstate(tx.requesterEstateId || tx.estateId);
+    const estateName = estateObj ? estateObj.estate_name : (tx.requesterEstateId || tx.estateId || 'Kebun Sendiri');
+    const divName = tx.divisionName || (tx.divisionId ? `Divisi ${tx.divisionId}` : '');
+    const nurseryDivName = tx.fulfillmentDivisionName || (tx.fulfillmentDivisionId ? `Divisi ${tx.fulfillmentDivisionId}` : 'Pembibitan');
+
+    // Deduplicate and harmonize audit trail items
+    const rawAuditItems = Array.isArray(tx.auditTrail) ? [...tx.auditTrail] : (Array.isArray(tx.auditLog) ? [...tx.auditLog] : []);
+    
+    // Check which actors have a substantive event at each minute
+    const substantiveEventKeys = new Set();
+    rawAuditItems.forEach(ev => {
+      const desc = String(ev?.details || ev?.note || ev?.description || ev?.event || ev?.eventType || '').trim();
+      const isGeneric = desc === 'UPDATE' || desc === 'Pembaruan Dokumen' || desc === 'Pembaruan permintaan';
+      if (!isGeneric) {
+        const actor = String(ev?.userId || ev?.actorId || ev?.name || ev?.actorName || '').trim().toLowerCase();
+        const timeKey = String(ev?.timestamp || ev?.createdAt || ev?.date || '').slice(0, 16);
+        substantiveEventKeys.add(`${actor}|${timeKey}`);
+      }
+    });
+
+    const seenAuditEvents = new Set();
+    const auditItems = rawAuditItems.filter(event => {
+      const details = String(event?.details || event?.note || event?.description || event?.event || event?.eventType || '').trim();
+      const actor = String(event?.userId || event?.actorId || event?.name || event?.actorName || '').trim().toLowerCase();
+      const timeKey = String(event?.timestamp || event?.createdAt || event?.date || '').slice(0, 16);
+
+      const isGeneric = details === 'UPDATE' || details === 'Pembaruan Dokumen' || details === 'Pembaruan permintaan';
+      if (isGeneric && substantiveEventKeys.has(`${actor}|${timeKey}`)) {
+        return false;
+      }
+
+      const key = `${actor}|${timeKey}|${details.toLowerCase()}`;
+      if (seenAuditEvents.has(key)) return false;
+      seenAuditEvents.add(key);
+      return true;
+    });
 
     return `
-      <div class="card-request-item" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); transition: border-color 0.15s ease;">
+      <div class="card-request-item" data-card-index="${idx}" style="background: #FFFFFF; border: 1px solid ${isExpanded ? '#116834' : '#E2E8F0'}; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: border-color 0.15s ease;">
         
-        <!-- Header Dokumen & Badge Status -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #F1F5F9; flex-wrap: wrap;">
-          <div style="min-width: 0; flex: 1 1 auto;">
-            <div style="font-size: 0.68rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.2;">Dokumen NIR</div>
-            <div style="font-size: 0.95rem; font-weight: 800; color: #116834; line-height: 1.3; margin-top: 2px; word-break: break-all;">${esc(tx.docNo || tx.nir || tx.id)}</div>
-          </div>
-          <div style="flex-shrink: 0; text-align: right; max-width: 100%;">
-            <span style="display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 0.70rem; font-weight: 700; color: ${badge.color}; background: ${badge.bg}; border: 1px solid ${badge.border}; line-height: 1.25; text-align: right;">
+        <!-- ROW 1: NO DOKUMEN & BADGE STATUS -->
+        <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid #F1F5F9; min-width:0;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; min-width:0;">
+            <div style="font-size:.68rem; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.05em; line-height:1.2;">Dokumen Permintaan</div>
+            <span style="font-size: 0.65rem; font-weight: 700; background: ${badge.bg}; color: ${badge.color}; border: 1px solid ${badge.border}; padding: 3px 8px; border-radius: 6px; text-transform: none; flex: 0 1 auto; min-width:0; max-width:58%; text-align:center; white-space:normal; overflow-wrap:anywhere; line-height: 1.25;">
               ${esc(badge.label)}
             </span>
           </div>
+          <div style="font-size:.95rem; font-weight:800; color:#116834; line-height:1.35; overflow-wrap:anywhere; word-break:break-word;">${esc(tx.docNo || tx.nir || tx.id)}</div>
         </div>
 
-        <!-- 2x2 Grid Informasi Rapi & Proporsional -->
-        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; font-size: 0.78rem; margin-bottom: 12px;">
+        <!-- ROW 2: KEBUN ASAL → NURSERY -->
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 0.78rem; background: #F8FAFC; padding: 6px 10px; border-radius: 6px; border: 1px solid #F1F5F9;">
+          <span style="font-weight: 700; color: #1E293B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;">${esc(estateName)}${divName ? ` (${esc(divName)})` : ''}</span>
+          <span style="color: #94A3B8; font-weight: 800; flex-shrink: 0;">→</span>
+          <span style="font-weight: 700; color: #116834; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;">Nursery${nurseryDivName ? ` (${esc(nurseryDivName)})` : ''}</span>
+        </div>
+
+        <!-- ROW 3: 2x2 Grid Informasi Permintaan -->
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; font-size: 0.78rem; margin-bottom: 8px;">
           <div style="min-width: 0;">
-            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Pemohon:</div>
+            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 1px;">Pemohon:</div>
             <div style="font-weight: 700; color: #1E293B; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(tx.requestedBy || tx.requesterUserId || 'Asisten')}</div>
           </div>
           <div style="min-width: 0;">
-            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Klon Diminta:</div>
+            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 1px;">Klon Diminta:</div>
             <div style="font-weight: 700; color: #1E293B; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(tx.klon || tx.cloneId || '-')}</div>
           </div>
           <div style="min-width: 0;">
-            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Jumlah Diminta:</div>
+            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 1px;">Banyaknya Diminta:</div>
             <div style="font-weight: 800; color: #116834; white-space: nowrap;">${requestedQty} Pkk</div>
           </div>
           <div style="min-width: 0;">
-            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 2px;">Tanggal Dibutuhkan:</div>
+            <div style="font-size: 0.68rem; color: #64748B; font-weight: 600; margin-bottom: 1px;">Tanggal Dibutuhkan:</div>
             <div style="font-weight: 600; color: #475569; white-space: nowrap;">${esc(formatDate(tx.requiredDate))}</div>
           </div>
         </div>
 
         <!-- Detail Expandable Area Toggle Button -->
-        <button class="btn-toggle-expand" data-index="${idx}" type="button" style="width: 100%; min-height: 38px; background: transparent; border: none; border-top: 1px dashed #E2E8F0; padding: 8px 0 2px 0; font-size: 0.76rem; color: #116834; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: color 0.15s ease;">
+        <button class="btn-toggle-expand btn-expand-card" data-index="${idx}" type="button" style="width: 100%; min-height: 36px; background: transparent; border: none; border-top: 1px dashed #E2E8F0; padding: 6px 0 2px 0; font-size: 0.74rem; color: #116834; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: color 0.15s ease;">
           <span>${isExpanded ? 'Sembunyikan Rincian' : 'Tampilkan Rincian'}</span>
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}; transition: transform 0.2s ease;">
+          <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.2" fill="none" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}; transition: transform 0.2s ease;">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </button>
 
         ${isExpanded ? `
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-top: 10px; font-size: 0.78rem;">
+          <!-- EXPANDED DETAIL -->
+          <div class="card-expanded-detail" style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #E2E8F0;">
+            <div style="display: grid; grid-template-columns: 40% 60%; gap: 4px; font-size: 0.75rem; padding: 0 2px;">
+              <span style="color: #64748B;">Pemohon</span>
+              <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(tx.requestedBy || tx.requesterUserId || 'Asisten')}</span>
+
+              <span style="color: #64748B;">Tujuan Permintaan</span>
+              <span style="font-weight: 700; color: #1E293B; text-align: right; overflow-wrap: anywhere;">${esc(tx.purpose || 'Penanaman Kebun Sendiri')}</span>
+
+              <span style="color: #64748B;">Kode Alokasi</span>
+              <span style="font-weight: 700; color: #1E293B; text-align: right; overflow-wrap: anywhere;">${esc(formatAllocationDisplay(tx.allocationCode))}</span>
+
+              <span style="color: #64748B;">Tahapan Pertumbuhan</span>
+              <span style="font-weight: 700; color: #1E293B; text-align: right; overflow-wrap: anywhere;">${esc(tx.growthStage || 'Siap Tanam')}</span>
+
+              <span style="color: #64748B;">Tanggal Pengajuan</span>
+              <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(formatDate(tx.createdAt || tx.date))}</span>
+
+              ${tx.approvedQty !== undefined && tx.approvedQty !== null ? `
+                <span style="color: #116834; font-weight: 700;">Banyaknya Disetujui</span>
+                <span style="font-weight: 800; color: #116834; text-align: right;">${parseInt(tx.approvedQty, 10).toLocaleString('id-ID')} Pkk</span>
+              ` : ''}
+
+              ${tx.approvedClone ? `
+                <span style="color: #116834; font-weight: 700;">Klon Disetujui</span>
+                <span style="font-weight: 700; color: #116834; text-align: right;">${esc(tx.approvedClone)}</span>
+              ` : ''}
+
+              ${tx.dispatchData ? `
+                <span style="color: #64748B;">Pengeluaran Mantri</span>
+                <span style="font-weight: 700; color: #116834; text-align: right;">${(tx.dispatchData.issuedQty || 0).toLocaleString('id-ID')} Pkk</span>
+              ` : ''}
+
+              ${tx.dispatchVerification ? `
+                <span style="color: #64748B;">Verifikasi Asisten Pembibitan</span>
+                <span style="font-weight: 700; color: #116834; text-align: right;">${(tx.dispatchVerification.verifiedQty || 0).toLocaleString('id-ID')} Pkk</span>
+              ` : ''}
+
+              ${tx.receiptData ? `
+                <span style="color: #64748B;">Penerimaan Fisik</span>
+                <span style="font-weight: 700; color: #1E293B; text-align: right;">
+                  Layak: ${(tx.receiptData.layakQty || 0).toLocaleString('id-ID')} Pkk${tx.receiptData.rusakQty ? ` | Rusak: ${(tx.receiptData.rusakQty).toLocaleString('id-ID')} Pkk` : ''}
+                  ${tx.receiptData.photoUrl ? ` (<button type="button" class="btn-view-card-photo" data-photo="${esc(tx.receiptData.photoUrl)}" style="background: none; border: none; color: #116834; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; font-size: 0.74rem;">Lihat Foto</button>)` : ''}
+                </span>
+              ` : ''}
+            </div>
+
             ${tx.distributionItems && tx.distributionItems.length > 0 ? `
-              <div style="margin-bottom: 14px;">
-                <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                  <span>Rincian Distribusi Blok:</span>
-                </div>
-                <div style="border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-                  <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 0.76rem;">
-                      <thead>
-                        <tr style="background: #F1F5F9; color: #475569; border-bottom: 1px solid #E2E8F0;">
-                          <th style="padding: 7px 10px; text-align: left; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em;">Klon</th>
-                          <th style="padding: 7px 10px; text-align: left; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em;">Blok</th>
-                          <th style="padding: 7px 10px; text-align: right; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em;">Banyaknya</th>
+              <div style="margin-top: 10px; margin-bottom: 6px;">
+                <div style="font-weight: 700; font-size: 0.76rem; color: #0F172A; margin-bottom: 6px;">Alokasi Blok Tanam</div>
+                <div style="border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; background: #FFFFFF;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 0.74rem;">
+                    <thead>
+                      <tr style="background: #F8FAFC; color: #475569; border-bottom: 1px solid #E2E8F0;">
+                        <th style="padding: 6px 10px; text-align: left; font-weight: 700;">Klon</th>
+                        <th style="padding: 6px 10px; text-align: left; font-weight: 700;">Blok</th>
+                        <th style="padding: 6px 10px; text-align: right; font-weight: 700;">Banyaknya</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${tx.distributionItems.map((d, dIdx) => `
+                        <tr style="${dIdx === tx.distributionItems.length - 1 ? '' : 'border-bottom: 1px solid #F1F5F9;'}">
+                          <td style="padding: 6px 10px; font-weight: 700; color: #0F172A;">${esc(d.cloneId || d.klon || '-')}</td>
+                          <td style="padding: 6px 10px; font-weight: 600; color: #475569;">${esc(d.blockCode || d.blockName || d.blockId || '-')}</td>
+                          <td style="padding: 6px 10px; text-align: right; font-weight: 800; color: #116834;">${(d.qty || 0).toLocaleString('id-ID')} Pkk</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        ${tx.distributionItems.map((d, dIdx) => {
-      const isLast = dIdx === tx.distributionItems.length - 1;
-      return `
-                            <tr style="${isLast ? '' : 'border-bottom: 1px solid #F1F5F9;'}">
-                              <td style="padding: 8px 10px; font-weight: 700; color: #0F172A; text-align: left;">${esc(d.cloneId || d.klon || '-')}</td>
-                              <td style="padding: 8px 10px; font-weight: 600; color: #334155; text-align: left;">${esc(d.blockCode || d.blockName || d.blockId || '-')}</td>
-                              <td style="padding: 8px 10px; text-align: right; font-weight: 800; color: #116834; white-space: nowrap;">${(d.qty || 0).toLocaleString('id-ID')} Pkk</td>
-                            </tr>
-                          `;
-    }).join('')}
-                      </tbody>
-                    </table>
-                  </div>
+                      `).join('')}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             ` : ''}
 
             <!-- TIMELINE & AUDIT TRAIL -->
-            <div style="margin-bottom: 4px;">
-              <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Timeline & Audit Trail:</div>
+            <div style="margin-top: 12px; margin-bottom: 6px; padding-top: 10px; border-top: 1px dashed #E2E8F0;">
+              <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Status Progress Permintaan</div>
               ${auditItems.length === 0 ? `
                 <div style="font-size: 0.74rem; color: #94A3B8; font-style: italic; padding: 4px 0;">
                   Belum ada riwayat audit trail tersimpan.
@@ -522,17 +682,20 @@ export async function renderRequestKebunSendiriLanding() {
               ` : `
                 <div style="display: flex; flex-direction: column; gap: 0; padding-left: 2px;">
                   ${auditItems.map((a, aIdx) => {
-      const isLast = aIdx === auditItems.length - 1;
-      const actorName = a.actorName || a.name || a.userName || a.createdByName || a.actorId || a.userId || tx.requestedBy || 'User';
-      const actorRole = a.position || a.actorRole || a.role || a.rawRole || '';
-      const eventTime = a.timestamp || a.createdAt || a.date || tx.createdAt || tx.date;
-      let eventDesc = a.note || a.details || a.description || a.event || a.eventType || 'Permintaan Bibit Diajukan';
-      if (eventDesc === 'CREATE') eventDesc = 'Permintaan Bibit Kebun Sendiri diajukan';
-      if (eventDesc === 'UPDATE') eventDesc = 'Pembaruan Dokumen';
-      if (eventDesc === 'UPDATE_STATUS') eventDesc = 'Pembaruan Status Permintaan';
-      if (eventDesc === 'SUBMIT') eventDesc = 'Dokumen Berhasil Diajukan';
+                    const isLast = aIdx === auditItems.length - 1;
+                    const actorName = a.actorName || a.name || a.userName || a.createdByName || a.actorId || a.userId || tx.requestedBy || 'User';
+                    const actorRole = formatRoleDisplay(a.position || a.actorRole || a.role || a.rawRole || '');
+                    const eventTime = a.timestamp || a.createdAt || a.date || tx.createdAt || tx.date;
+                    let eventDesc = a.note || a.details || a.description || a.event || a.eventType || 'Permintaan Bibit Diajukan';
+                    eventDesc = String(eventDesc).trim();
+                    if (eventDesc === 'CREATE') eventDesc = 'Permintaan Bibit Kebun Sendiri diajukan';
+                    if (eventDesc === 'UPDATE') eventDesc = 'Pembaruan Dokumen';
+                    if (eventDesc === 'VERIFY') eventDesc = 'Verifikasi Dokumen';
+                    if (eventDesc === 'APPROVE') eventDesc = 'Persetujuan Dokumen';
+                    if (eventDesc === 'SUBMIT') eventDesc = 'Dokumen Berhasil Diajukan';
+                    eventDesc = eventDesc.replace(/Asisten Bibitan/gi, 'Asisten Pembibitan');
 
-      return `
+                    return `
                       <div style="display: flex; gap: 10px; position: relative;">
                         <!-- Left indicator & line -->
                         <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex-shrink: 0;">
@@ -549,37 +712,37 @@ export async function renderRequestKebunSendiriLanding() {
                             <span style="font-weight: 600; color: #475569;">${esc(formatDate(eventTime))}</span>
                             <span style="margin: 0 4px; color: #94A3B8;">—</span>
                             <span style="color: #334155;">${esc(eventDesc)}</span>
+                            ${(a.photoUrl || (a.eventType === 'REQUESTER_RECEIPT' && tx.receiptData?.photoUrl)) ? `
+                              <button type="button" class="btn-view-card-photo" data-photo="${esc(a.photoUrl || tx.receiptData?.photoUrl)}" style="background: none; border: none; color: #116834; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; font-size: 0.72rem; margin-left: 4px;">[Lihat Foto]</button>
+                            ` : ''}
                           </div>
                         </div>
                       </div>
                     `;
-    }).join('')}
+                  }).join('')}
                 </div>
               `}
             </div>
 
-            ${tx.dispatchData ? `
-              <div style="margin-top: 8px; padding: 8px 10px; background: #FFF7ED; border: 1px solid #FFEDD5; border-radius: 8px; font-size: 0.74rem; color: #9A3412;">
-                <span style="font-weight: 700;">Pengeluaran Mantri:</span> ${tx.dispatchData.issuedQty} Pkk (Doc: ${esc(tx.dispatchData.dispatchDocNo || '-')})
+            ${actionBtnHtml ? `
+              <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #E2E8F0;">
+                ${actionBtnHtml}
               </div>
             ` : ''}
 
-            ${tx.dispatchVerification ? `
-              <div style="margin-top: 6px; padding: 8px 10px; background: #F0FDF4; border: 1px solid #DCFCE7; border-radius: 8px; font-size: 0.74rem; color: #166534;">
-                <span style="font-weight: 700;">Verifikasi Aktual ASB:</span> ${tx.dispatchVerification.verifiedQty} Pkk (Oleh: ${esc(tx.dispatchVerification.verifiedByName || tx.dispatchVerification.verifiedBy)})
-              </div>
-            ` : ''}
-
-            ${tx.receiptData ? `
-              <div style="margin-top: 6px; background: #DCFCE7; border: 1px solid #BBF7D0; padding: 8px 10px; border-radius: 8px; color: #166534; font-size: 0.74rem;">
-                <div><strong>Hasil Penerimaan:</strong> Layak: ${tx.receiptData.layakQty} Pkk | Rusak: ${tx.receiptData.rusakQty} Pkk (Total: ${tx.receiptData.totalQty} Pkk)</div>
-                <div style="font-size: 0.72rem; margin-top: 3px; color: #15803D;">Foto: <strong>${esc(tx.receiptData.captureSource || 'CAMERA')}</strong> pada ${esc(formatDate(tx.receiptData.capturedAt))}</div>
-              </div>
-            ` : ''}
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 6px; border-top: 1px solid #F1F5F9;">
+              <button class="btn-collapse-card" data-index="${idx}" type="button" style="background: transparent; border: none; color: #64748B; font-size: 0.72rem; font-weight: 600; cursor: pointer; padding: 4px 8px;">
+                Tutup Detail ▲
+              </button>
+            </div>
           </div>
         ` : ''}
 
-        ${actionBtnHtml}
+        ${!isExpanded && actionBtnHtml ? `
+          <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #F1F5F9;">
+            ${actionBtnHtml}
+          </div>
+        ` : ''}
       </div>
     `;
   }).join('');
@@ -671,6 +834,30 @@ export async function renderRequestKebunSendiriLanding() {
       const idx = parseInt(btn.dataset.index, 10);
       expandedCardIndex = expandedCardIndex === idx ? -1 : idx;
       renderRequestKebunSendiriLanding();
+    });
+  });
+
+  app.querySelectorAll('.btn-collapse-card').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      expandedCardIndex = -1;
+      renderRequestKebunSendiriLanding();
+    });
+  });
+
+  app.querySelectorAll('.btn-view-card-photo').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const photoUrl = btn.dataset.photo;
+      if (!photoUrl) return;
+      openModal({
+        title: 'Foto Bukti Penerimaan Bibit',
+        body: `
+          <div style="text-align: center; padding: 4px 0;">
+            <img src="${esc(photoUrl)}" alt="Bukti Foto" style="max-width: 100%; max-height: 70vh; border-radius: 8px; object-fit: contain; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+          </div>
+        `
+      });
     });
   });
 
@@ -862,7 +1049,7 @@ function openPengurusReviewModal(tx, currentUser) {
     footer: `
       <div style="display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; width: 100%;">
         <button id="btn-pengurus-reject" class="btn btn-ghost" style="border: 1px solid #EF4444; color: #DC2626; font-weight: 700; padding: 8px;">Tolak</button>
-        <button id="btn-pengurus-approve" class="btn btn-primary" style="background: #116834; color: #FFFFFF; font-weight: 700; padding: 8px;">Setujui & Teruskan ke ASB</button>
+        <button id="btn-pengurus-approve" class="btn btn-primary" style="background: #116834; color: #FFFFFF; font-weight: 700; padding: 8px;">Setujui & Teruskan ke Asisten Pembibitan</button>
       </div>
     `
   });
@@ -916,7 +1103,7 @@ function openAsbVerifyModal(tx, currentUser) {
   const totalStock = availableBatches.reduce((sum, b) => sum + (parseInt(b.availableQty || 0, 10)), 0);
 
   openModal({
-    title: 'Verifikasi Ketersediaan Nursery (ASB)',
+    title: 'Verifikasi Ketersediaan Nursery (Asisten Pembibitan)',
     body: `
       <div style="padding: 4px 0; font-size: 0.82rem;">
         <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px; margin-bottom: 12px;">
@@ -935,7 +1122,7 @@ function openAsbVerifyModal(tx, currentUser) {
         </div>
 
         <div style="margin-bottom: 12px;">
-          <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 4px;">Catatan Verifikasi Asisten Bibitan</label>
+          <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 4px;">Catatan Verifikasi Asisten Pembibitan</label>
           <textarea id="input-asb-note" rows="2" placeholder="Kondisi bibit siap dipenuhi atau catatan pengembalian..." style="width: 100%; padding: 8px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem;"></textarea>
         </div>
       </div>
@@ -958,7 +1145,7 @@ function openAsbVerifyModal(tx, currentUser) {
     closeModal();
     await updateWorkflowStatus(tx, 'PERLU_REVISI_PENGURUS', {
       event: 'ASB_RETURN',
-      note: `Dikembalikan oleh ASB: ${note}`,
+      note: `Dikembalikan oleh Asisten Pembibitan: ${note}`,
       actor: currentUser
     });
   });
@@ -987,7 +1174,7 @@ function openAsbDispatchVerificationModal(tx, currentUser) {
   const issuedQty = dispatchData.issuedQty || approvedQty;
 
   openModal({
-    title: 'Verifikasi Aktual Pengeluaran (ASB)',
+    title: 'Verifikasi Aktual Pengeluaran (Asisten Pembibitan)',
     body: `
       <div style="padding: 4px 0; font-size: 0.82rem;">
         <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px; margin-bottom: 12px;">
@@ -1034,7 +1221,7 @@ function openAsbDispatchVerificationModal(tx, currentUser) {
   const root = document.getElementById('modal-root');
   root?.querySelector('#btn-confirm-asb-dispatch-verif')?.addEventListener('click', async () => {
     const actualQty = parseInt(root.querySelector('#input-asb-actual-qty')?.value?.trim(), 10);
-    const note = root.querySelector('#input-asb-verif-note')?.value?.trim() || 'Pengeluaran aktual diverifikasi Asisten Bibitan';
+    const note = root.querySelector('#input-asb-verif-note')?.value?.trim() || 'Pengeluaran aktual diverifikasi Asisten Pembibitan';
 
     if (isNaN(actualQty) || actualQty <= 0) {
       toast('Kuantitas aktual harus berupa angka lebih besar dari 0.', 'warning');
@@ -1058,8 +1245,8 @@ function openAsbDispatchVerificationModal(tx, currentUser) {
 }
 
 /**
- * 5. REQUESTER RECEIPT MODAL (CAMERA ONLY + LAYAK/RUSAK)
- * Aksi: Catat Layak & Rusak + Foto Kamera Wajib (`captureSource = 'CAMERA'`)
+ * 5. REQUESTER RECEIPT MODAL (REAL CAMERA ONLY + LAYAK/RUSAK)
+ * Aksi: Catat Layak & Rusak + Foto Kamera Asli Langsung (`captureSource = 'CAMERA'`)
  */
 function openRequesterReceiptModal(tx, currentUser) {
   // STRICT AUTHORIZATION CHECK
@@ -1070,9 +1257,34 @@ function openRequesterReceiptModal(tx, currentUser) {
 
   const verifiedQty = tx.dispatchVerification?.verifiedQty || tx.approvedQty || tx.qty || 0;
   let capturedPhoto = null;
+  let cameraStream = null;
+  let isCameraActive = false;
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      cameraStream = null;
+    }
+    const r = document.getElementById('modal-root');
+    const cameraOverlay = r?.querySelector('#receipt-camera-overlay');
+    const cameraVideo = r?.querySelector('#receipt-camera-video');
+    if (cameraVideo) cameraVideo.srcObject = null;
+    if (cameraOverlay) cameraOverlay.style.display = 'none';
+    isCameraActive = false;
+  };
+
+  const getPhotoPosition = () => new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  });
 
   openModal({
     title: 'Penerimaan Bibit Kebun Sendiri',
+    onClose: stopCamera,
     body: `
       <div style="padding: 4px 0; font-size: 0.82rem;">
         <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px; margin-bottom: 12px;">
@@ -1090,11 +1302,11 @@ function openRequesterReceiptModal(tx, currentUser) {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
             <div>
               <label style="display: block; font-weight: 700; color: #166534; margin-bottom: 4px;">Diterima Layak (Pkk) <span style="color: #EF4444;">*</span></label>
-              <input id="input-receipt-layak" type="number" min="0" value="${verifiedQty}" style="width: 100%; min-height: 40px; padding: 8px; border: 1px solid #86EFAC; border-radius: 6px; font-size: 0.9rem; font-weight: 700; color: #166534;" />
+              <input id="input-receipt-layak" type="number" min="0" value="${verifiedQty}" style="width: 100%; box-sizing: border-box; min-height: 40px; padding: 8px; border: 1px solid #86EFAC; border-radius: 6px; font-size: 0.9rem; font-weight: 700; color: #166534;" />
             </div>
             <div>
               <label style="display: block; font-weight: 700; color: #991B1B; margin-bottom: 4px;">Diterima Rusak (Pkk) <span style="color: #EF4444;">*</span></label>
-              <input id="input-receipt-rusak" type="number" min="0" value="0" style="width: 100%; min-height: 40px; padding: 8px; border: 1px solid #FCA5A5; border-radius: 6px; font-size: 0.9rem; font-weight: 700; color: #991B1B;" />
+              <input id="input-receipt-rusak" type="number" min="0" value="0" style="width: 100%; box-sizing: border-box; min-height: 40px; padding: 8px; border: 1px solid #FCA5A5; border-radius: 6px; font-size: 0.9rem; font-weight: 700; color: #991B1B;" />
             </div>
           </div>
 
@@ -1103,27 +1315,87 @@ function openRequesterReceiptModal(tx, currentUser) {
             <span id="label-total-received" style="font-weight: 800; color: #0F172A;">${verifiedQty.toLocaleString('id-ID')} Pkk</span>
           </div>
 
-          <!-- BUKTI FOTO (CAMERA ONLY) -->
-          <div style="margin-bottom: 12px;">
-            <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 4px;">Bukti Foto Fisik (Wajib Kamera) <span style="color: #EF4444;">*</span></label>
-            <div id="photo-preview-container" style="display: none; margin-bottom: 8px;">
-              <img id="photo-preview-img" src="" alt="Bukti Foto" style="width: 100%; height: 140px; object-fit: cover; border-radius: 8px; border: 1px solid #CBD5E1;" />
-              <div style="font-size: 0.72rem; color: #16A34A; margin-top: 4px; font-weight: 700;">✓ Foto Kamera Tersimpan (Source: CAMERA)</div>
+          <!-- BUKTI FOTO (CAMERA REAL ONLY) -->
+          <div style="margin-bottom: 12px; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px; background: #FFFFFF;">
+            <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 4px; font-size: 0.8rem;">
+              Bukti Foto Fisik (Wajib Kamera) <span style="color: #EF4444;">*</span>
+            </label>
+            <p style="font-size: 0.72rem; color: #64748B; margin: 0 0 8px 0; line-height: 1.35;">
+              Ambil foto dokumentasi fisik bibit saat penerimaan menggunakan kamera perangkat langsung.
+            </p>
+
+            <div id="photo-preview-container" style="display: none; align-items: center; gap: 10px; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+              <div style="position: relative; width: 60px; height: 60px; border-radius: 6px; overflow: hidden; border: 1px solid #CBD5E1; flex-shrink: 0; cursor: pointer;">
+                <img id="photo-preview-img" src="" alt="Bukti Foto" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" title="Klik untuk memperbesar" />
+              </div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 0.74rem; font-weight: 700; color: #166534; display: flex; align-items: center; gap: 4px;">
+                  <svg viewBox="0 0 20 20" width="14" height="14" fill="#166534"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                  Foto Kamera Tersimpan
+                </div>
+                <div style="font-size: 0.68rem; color: #475569; margin-top: 2px;">
+                  Sumber: <strong>CAMERA</strong>
+                </div>
+                <div id="photo-preview-meta" style="font-size: 0.66rem; color: #64748B; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+              </div>
+              <button type="button" id="btn-retake-photo" style="background: #FFFFFF; border: 1px solid #CBD5E1; color: #DC2626; padding: 5px 9px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                Ulangi
+              </button>
             </div>
-            <button id="btn-trigger-camera" type="button" class="btn btn-outline" style="width: 100%; min-height: 42px; border: 1px dashed #116834; background: #F0FDF4; color: #116834; font-weight: 700; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                <circle cx="12" cy="13" r="4"></circle>
-              </svg>
-              Ambil Foto Fisik (Kamera)
-            </button>
+
+            <div id="camera-trigger-container">
+              <button id="btn-trigger-camera" type="button" class="btn btn-outline" style="width: 100%; min-height: 42px; border: 1px dashed #116834; background: #F0FDF4; color: #116834; font-weight: 700; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                  <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+                Buka Kamera & Ambil Foto
+              </button>
+            </div>
           </div>
 
           <div style="margin-bottom: 12px;">
             <label style="display: block; font-weight: 700; color: #334155; margin-bottom: 4px;">Catatan Penerimaan</label>
-            <textarea id="input-receipt-note" rows="2" placeholder="Catatan kondisi penerimaan di lapangan..." style="width: 100%; padding: 8px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem;"></textarea>
+            <textarea id="input-receipt-note" rows="2" placeholder="Catatan kondisi penerimaan di lapangan..." style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.85rem;"></textarea>
           </div>
         </form>
+
+        <!-- LIGHTBOX PHOTO VIEWER -->
+        <div id="receipt-photo-viewer-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10025; backdrop-filter: blur(4px);"></div>
+        <div id="receipt-photo-viewer-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 92vw; max-height: 85vh; z-index: 10026; flex-direction: column; align-items: center; justify-content: center;">
+          <button id="btn-close-receipt-photo-viewer" type="button" aria-label="Tutup" style="position: absolute; top: -44px; right: 0; background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.5); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; cursor: pointer;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+          <img id="receipt-photo-viewer-img" src="" alt="Bukti Penerimaan" style="max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);" />
+        </div>
+
+        <!-- FULLSCREEN LIVE CAMERA OVERLAY -->
+        <div id="receipt-camera-overlay" style="display: none; position: fixed; inset: 0; background: #000; z-index: 10020; flex-direction: column;">
+          <header style="display: flex; justify-content: space-between; align-items: center; padding: 16px; position: absolute; top: 0; left: 0; right: 0; z-index: 10021;">
+            <div style="color: #FFFFFF; font-weight: 700; font-size: 0.85rem; text-shadow: 0 1px 3px rgba(0,0,0,0.8);">
+              Kamera Penerimaan Bibit
+            </div>
+            <button id="btn-close-receipt-camera" type="button" aria-label="Tutup kamera" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; width: 40px; height: 40px; display: flex; justify-content: center; align-items: center; cursor: pointer; color: #FFF; font-size: 20px;">
+              ✕
+            </button>
+          </header>
+          <main style="flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; position: relative;">
+            <video id="receipt-camera-video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+            <canvas id="receipt-camera-canvas" style="display: none;"></canvas>
+            <div id="receipt-camera-error" style="display: none; color: #FFF; text-align: center; padding: 24px;">
+              <svg viewBox="0 0 24 24" width="48" height="48" stroke="#EF4444" stroke-width="2" fill="none" style="margin: 0 auto 12px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              <p style="font-weight: 700; margin-bottom: 6px; font-size: 0.95rem;">Kamera tidak tersedia atau akses ditolak.</p>
+              <p style="font-size: 0.8rem; color: #AAA;">Pastikan Anda telah memberikan izin akses kamera pada browser perangkat Anda.</p>
+            </div>
+            <div style="position: absolute; width: 78%; height: 55%; border: 2px dashed rgba(255,255,255,0.45); border-radius: 12px; pointer-events: none;"></div>
+          </main>
+          <footer style="padding: 24px; display: flex; justify-content: center; align-items: center; position: absolute; bottom: 0; left: 0; right: 0; z-index: 10021; background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);">
+            <button id="btn-receipt-shutter" type="button" aria-label="Ambil foto" style="width: 72px; height: 72px; border-radius: 50%; background: transparent; border: 4px solid #FFF; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+              <div style="width: 56px; height: 56px; background: #FFF; border-radius: 50%;"></div>
+            </button>
+          </footer>
+        </div>
       </div>
     `,
     footer: `
@@ -1136,9 +1408,11 @@ function openRequesterReceiptModal(tx, currentUser) {
   });
 
   const root = document.getElementById('modal-root');
-  const inputLayak = root?.querySelector('#input-receipt-layak');
-  const inputRusak = root?.querySelector('#input-receipt-rusak');
-  const labelTotal = root?.querySelector('#label-total-received');
+  if (!root) return;
+
+  const inputLayak = root.querySelector('#input-receipt-layak');
+  const inputRusak = root.querySelector('#input-receipt-rusak');
+  const labelTotal = root.querySelector('#label-total-received');
 
   const updateTotal = () => {
     const l = parseInt(inputLayak?.value || '0', 10) || 0;
@@ -1149,40 +1423,156 @@ function openRequesterReceiptModal(tx, currentUser) {
   inputLayak?.addEventListener('input', updateTotal);
   inputRusak?.addEventListener('input', updateTotal);
 
-  // Camera Trigger Logic (Simulated canvas snapshot / Camera device)
-  root?.querySelector('#btn-trigger-camera')?.addEventListener('click', () => {
-    // Generate camera snapshot with metadata
-    const canvas = document.createElement('canvas');
-    canvas.width = 400;
-    canvas.height = 300;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#166534';
-    ctx.fillRect(0, 0, 400, 300);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('BUKTI PENERIMAAN BIBIT', 200, 130);
-    ctx.font = '12px sans-serif';
-    ctx.fillText(`Doc: ${tx.docNo || tx.nir || tx.id} | Source: CAMERA`, 200, 160);
-    ctx.fillText(nowISO(), 200, 185);
+  // Camera Elements
+  const cameraOverlay = root.querySelector('#receipt-camera-overlay');
+  const cameraVideo = root.querySelector('#receipt-camera-video');
+  const cameraCanvas = root.querySelector('#receipt-camera-canvas');
+  const cameraError = root.querySelector('#receipt-camera-error');
+  const btnCloseCamera = root.querySelector('#btn-close-receipt-camera');
+  const btnShutter = root.querySelector('#btn-receipt-shutter');
+  const btnTriggerCamera = root.querySelector('#btn-trigger-camera');
+  const triggerContainer = root.querySelector('#camera-trigger-container');
+  const previewContainer = root.querySelector('#photo-preview-container');
+  const previewImg = root.querySelector('#photo-preview-img');
+  const previewMeta = root.querySelector('#photo-preview-meta');
+  const btnRetake = root.querySelector('#btn-retake-photo');
 
-    capturedPhoto = {
-      dataUrl: canvas.toDataURL('image/jpeg', 0.85),
-      captureSource: 'CAMERA',
-      capturedAt: nowISO(),
-      capturedBy: currentUser.userId || currentUser.id || currentUser.code
-    };
+  // Photo Viewer Lightbox Elements
+  const photoViewerOverlay = root.querySelector('#receipt-photo-viewer-overlay');
+  const photoViewerModal = root.querySelector('#receipt-photo-viewer-modal');
+  const photoViewerImg = root.querySelector('#receipt-photo-viewer-img');
+  const btnClosePhotoViewer = root.querySelector('#btn-close-receipt-photo-viewer');
 
-    const previewContainer = root.querySelector('#photo-preview-container');
-    const previewImg = root.querySelector('#photo-preview-img');
-    if (previewContainer && previewImg) {
-      previewImg.src = capturedPhoto.dataUrl;
-      previewContainer.style.display = 'block';
+  function openPhotoViewer(src) {
+    if (!photoViewerOverlay || !photoViewerModal || !photoViewerImg) return;
+    photoViewerImg.src = src;
+    photoViewerOverlay.style.display = 'block';
+    photoViewerModal.style.display = 'flex';
+  }
+
+  function closePhotoViewer() {
+    if (!photoViewerOverlay || !photoViewerModal) return;
+    photoViewerOverlay.style.display = 'none';
+    photoViewerModal.style.display = 'none';
+  }
+
+  previewImg?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (capturedPhoto?.dataUrl) {
+      openPhotoViewer(capturedPhoto.dataUrl);
     }
-    toast('Foto kamera berhasil diambil.', 'success');
   });
 
-  root?.querySelector('#btn-confirm-receipt')?.addEventListener('click', async () => {
+  photoViewerOverlay?.addEventListener('click', closePhotoViewer);
+  btnClosePhotoViewer?.addEventListener('click', closePhotoViewer);
+
+  async function openCamera() {
+    if (!cameraOverlay) return;
+    cameraOverlay.style.display = 'flex';
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Kamera tidak didukung pada browser ini.');
+      }
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+      } catch (errRear) {
+        console.warn('Gagal membuka kamera belakang, mencoba kamera default:', errRear);
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+      }
+      if (cameraVideo) {
+        cameraVideo.srcObject = cameraStream;
+        cameraVideo.style.display = 'block';
+        await cameraVideo.play();
+      }
+      if (cameraError) cameraError.style.display = 'none';
+      isCameraActive = true;
+    } catch (err) {
+      console.error('Error membuka kamera:', err);
+      isCameraActive = false;
+      if (cameraVideo) cameraVideo.style.display = 'none';
+      if (cameraError) cameraError.style.display = 'block';
+      toast(err.message || 'Gagal mengakses kamera. Pastikan izin kamera telah diberikan.', 'error');
+    }
+  }
+
+  btnTriggerCamera?.addEventListener('click', openCamera);
+  btnRetake?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openCamera();
+  });
+  btnCloseCamera?.addEventListener('click', stopCamera);
+
+  btnShutter?.addEventListener('click', async () => {
+    if (!isCameraActive || !cameraVideo?.videoWidth || !cameraCanvas) {
+      toast('Kamera belum siap. Mohon tunggu sebentar...', 'warning');
+      return;
+    }
+
+    const captureDate = new Date();
+    const ts = nowISO();
+    const displayTs = captureDate.toLocaleString('id-ID');
+    const position = await getPhotoPosition();
+
+    cameraCanvas.width = cameraVideo.videoWidth;
+    cameraCanvas.height = cameraVideo.videoHeight;
+    const ctx = cameraCanvas.getContext('2d');
+    ctx.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+
+    const scale = cameraCanvas.width / 640;
+    const fontSize = Math.max(16, Math.round(18 * scale));
+    const padding = Math.round(fontSize * 0.65);
+    const lineHeight = Math.round(fontSize * 1.45);
+
+    const userCode = currentUser.code || currentUser.loginCode || currentUser.userId || currentUser.id || '-';
+    const userName = currentUser.name || 'Asisten Lapangan';
+    const docNo = tx.docNo || tx.nir || tx.id || '-';
+
+    const lines = [
+      `${userCode} - ${userName} (Penerimaan Bibit)`,
+      `No. Dokumen: ${docNo} | ${displayTs}`,
+      position ? `GPS: ${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}` : 'GPS: Lokasi tidak tersedia'
+    ];
+
+    const stampHeight = padding * 2 + lineHeight * lines.length;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+    ctx.fillRect(0, cameraCanvas.height - stampHeight, cameraCanvas.width, stampHeight);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `600 ${fontSize}px sans-serif`;
+    ctx.textBaseline = 'top';
+    lines.forEach((line, idx) => {
+      ctx.fillText(line, padding, cameraCanvas.height - stampHeight + padding + idx * lineHeight, cameraCanvas.width - padding * 2);
+    });
+
+    const dataUrl = cameraCanvas.toDataURL('image/jpeg', 0.88);
+
+    capturedPhoto = {
+      dataUrl,
+      captureSource: 'CAMERA',
+      capturedAt: ts,
+      capturedBy: currentUser.userId || currentUser.id || currentUser.code,
+      capturedByName: userName,
+      latitude: position?.latitude ?? null,
+      longitude: position?.longitude ?? null
+    };
+
+    stopCamera();
+
+    if (previewImg) previewImg.src = dataUrl;
+    if (previewContainer) previewContainer.style.display = 'flex';
+    if (triggerContainer) triggerContainer.style.display = 'none';
+    if (previewMeta) {
+      previewMeta.textContent = `${displayTs} • ${position ? `${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}` : 'Tanpa GPS'}`;
+    }
+    toast('Foto fisik berhasil diambil melalui kamera.', 'success');
+  });
+
+  root.querySelector('#btn-confirm-receipt')?.addEventListener('click', async () => {
     const layak = parseInt(inputLayak?.value?.trim(), 10) || 0;
     const rusak = parseInt(inputRusak?.value?.trim(), 10) || 0;
     const total = layak + rusak;
@@ -1198,6 +1588,8 @@ function openRequesterReceiptModal(tx, currentUser) {
       return;
     }
 
+    stopCamera();
+    closePhotoViewer();
     closeModal();
     await updateWorkflowStatus(tx, 'SELESAI', {
       event: 'REQUESTER_RECEIPT',
@@ -1210,7 +1602,9 @@ function openRequesterReceiptModal(tx, currentUser) {
         photoUrl: capturedPhoto.dataUrl,
         captureSource: capturedPhoto.captureSource,
         capturedAt: capturedPhoto.capturedAt,
-        capturedBy: capturedPhoto.capturedBy
+        capturedBy: capturedPhoto.capturedBy,
+        latitude: capturedPhoto.latitude,
+        longitude: capturedPhoto.longitude
       },
       actor: currentUser
     });

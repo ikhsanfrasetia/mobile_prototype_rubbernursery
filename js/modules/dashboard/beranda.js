@@ -93,7 +93,8 @@ import {
 } from '../request/request-kebun-sepupu-landing.js';
 import {
   filterIncomingRequests as filterIncomingSendiriRequests,
-  getActionableIncomingCount as getActionableIncomingSendiriCount
+  getActionableIncomingCount as getActionableIncomingSendiriCount,
+  getActionableSendiriCount
 } from '../request/request-kebun-sendiri-landing.js';
 import { getActionableMataEntresCount, getActionableMataEntresReceiptCount } from '../request/request-mata-entres-landing.js';
 import { filterReceiptKspRequests, getActionableReceiptCount } from '../receipt/receipt-kebun-sepupu-landing.js';
@@ -109,8 +110,7 @@ export function hasActionablePermintaan(requests, userCtx) {
   const kspIncoming = filterIncomingKspRequests(requests, userCtx);
   const kspCount = getActionableIncomingKspCount(kspIncoming, userCtx);
 
-  const sendiriIncoming = filterIncomingSendiriRequests(requests, userCtx);
-  const sendiriCount = getActionableIncomingSendiriCount(sendiriIncoming, userCtx);
+  const sendiriCount = getActionableSendiriCount(requests, userCtx);
 
   const mataEntresCount = getActionableMataEntresCount(requests, userCtx);
 

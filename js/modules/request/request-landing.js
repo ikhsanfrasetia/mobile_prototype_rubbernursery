@@ -16,7 +16,8 @@ import {
 } from './request-kebun-sepupu-landing.js';
 import {
   filterIncomingRequests as filterIncomingSendiriRequests,
-  getActionableIncomingCount as getActionableIncomingSendiriCount
+  getActionableIncomingCount as getActionableIncomingSendiriCount,
+  getActionableSendiriCount
 } from './request-kebun-sendiri-landing.js';
 import {
   getActionableMataEntresCount
@@ -182,8 +183,7 @@ export async function renderRequestLanding() {
   const incomingKsp = filterIncomingKspRequests(allRequests, userCtx);
   const hasActionableRequest = getActionableIncomingKspCount(incomingKsp, userCtx) > 0;
 
-  const incomingSendiri = filterIncomingSendiriRequests(allRequests, userCtx);
-  const hasActionableSendiri = getActionableIncomingSendiriCount(incomingSendiri, userCtx) > 0;
+  const hasActionableSendiri = getActionableSendiriCount(allRequests, userCtx) > 0;
 
   const hasActionableMataEntres = getActionableMataEntresCount(allRequests, userCtx) > 0;
 
