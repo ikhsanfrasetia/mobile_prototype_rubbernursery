@@ -324,7 +324,8 @@ export function matchActor(item, userCtx = null) {
     item.submittedByUserId,
     item.inspectorId,
     item.inspectorUserId,
-    item.requestedByUserId
+    item.requestedByUserId,
+    item.issuedByUserId
   ].filter(Boolean).map(String);
 
   if (itemIds.length > 0 && validIds.length > 0) {
@@ -367,7 +368,8 @@ export function matchActor(item, userCtx = null) {
     item.inspekturName,
     item.inspector,
     item.requestedByName,
-    item.requestedBy
+    item.requestedBy,
+    item.issuedByName
   ].filter(Boolean).map(s => String(s).toLowerCase().trim());
 
   if (itemNames.length > 0 && validNames.length > 0) {

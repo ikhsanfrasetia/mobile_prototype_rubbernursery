@@ -35,6 +35,7 @@ import { getActiveKlons } from '../../data/klon-master.js';
 import { getCfnaByCode } from '../../data/cfna-master.js';
 import { formatDate, esc } from '../../core/utils.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { getWorkflowStatusPresentation } from '../../core/workflow-status-presentation.js';
 
 export function formatAllocationDisplay(code) {
   if (!code || code === '-') return '-';
@@ -184,8 +185,20 @@ export function getActionableIncomingCount(incomingRequests, currentUser) {
  */
 export function filterMyRequests(requests, currentUser) {
   if (!Array.isArray(requests) || !currentUser) return [];
+  const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
+  if (userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') return [];
   const currentUserId = currentUser.userId || currentUser.id || currentUser.code;
   const currentLoginCode = currentUser.loginCode || currentUser.code;
+  const currentUserIds = new Set([currentUser.userId, currentUser.id, currentUser.code].filter(Boolean).map(String));
+  const verifiedBibitRequestIds = userRole === 'ASISTEN_BIBITAN'
+    ? new Set(storage.get('receipt_ksp_transactions', []).filter(receipt => {
+        const transactionType = String(receipt?.transactionType || '').trim().toUpperCase();
+        const receiptType = String(receipt?.type || '').trim().toUpperCase();
+        const isBibitReceipt = transactionType === 'PENERIMAAN_BIBIT' ||
+          (transactionType !== 'PENERIMAAN_MATA_ENTRES' && receiptType === 'KEBUN_SEPUPU');
+        return isBibitReceipt && receipt?.parentRequestId && currentUserIds.has(String(receipt.asbVerifiedByUserId || ''));
+      }).map(receipt => String(receipt.parentRequestId)))
+    : new Set();
 
   return requests.filter(tx => {
     // Isolasi tipe transaksi: Hanya KEBUN_SEPUPU yang ditampilkan pada Hub Permintaan Bibit Kebun Sepupu
@@ -199,7 +212,8 @@ export function filterMyRequests(requests, currentUser) {
       (currentLoginCode && tx.createdByLoginCode && tx.createdByLoginCode === currentLoginCode) ||
       (actor && actor.userId === currentUserId)
     );
-    return isOwner;
+    const verifiedByCurrentAssistant = userRole === 'ASISTEN_BIBITAN' && verifiedBibitRequestIds.has(String(tx.id));
+    return isOwner || verifiedByCurrentAssistant;
   });
 }
 
@@ -260,10 +274,93 @@ export function filterByStatus(requests, status) {
   if (status === 'SELESAI') {
     return requests.filter(tx => {
       const s = (tx.status || '').toUpperCase();
-      return s === 'SELESAI' || s === 'TERVERIFIKASI' || s === 'APPROVED';
+      return s === 'SELESAI' || s === 'TERVERIFIKASI' || s === 'APPROVED' || s === 'DITERIMA' || s === 'DITERIMA_DENGAN_SELISIH';
     });
   }
   return requests.filter(tx => (tx.status || 'DIAJUKAN').toUpperCase() === status.toUpperCase());
+}
+
+/**
+ * Reconcile the requester-facing Bibit status with completed physical receipts.
+ * Receipt completion is authoritative because older flows could persist the
+ * receipt while leaving the linked request at MENUNGGU_PENERIMAAN.
+ */
+async function syncCompletedBibitReceipts(requests) {
+  if (!Array.isArray(requests) || requests.length === 0) return requests || [];
+  const receipts = storage.get('receipt_ksp_transactions', []);
+  if (!Array.isArray(receipts) || receipts.length === 0) return requests;
+
+  let reconciled = [...requests];
+  let localRequests = storage.get('requests_transactions', []);
+  if (!Array.isArray(localRequests)) localRequests = [];
+
+  for (const receipt of receipts) {
+    const transactionType = String(receipt?.transactionType || '').trim().toUpperCase();
+    const receiptType = String(receipt?.type || '').trim().toUpperCase();
+    const isBibitReceipt = transactionType === 'PENERIMAAN_BIBIT' ||
+      (transactionType !== 'PENERIMAAN_MATA_ENTRES' && (receiptType === 'KEBUN_SEPUPU' || (!transactionType && !receiptType)));
+    const finalStatus = String(receipt?.status || '').trim().toUpperCase();
+    if (!isBibitReceipt || !['DITERIMA', 'DITERIMA_DENGAN_SELISIH'].includes(finalStatus)) continue;
+
+    let requestIndex = reconciled.findIndex(request => request.id === receipt.parentRequestId);
+    if (requestIndex < 0 && receipt.parentRequestDocNo) {
+      requestIndex = reconciled.findIndex(request => request.docNo === receipt.parentRequestDocNo);
+    }
+    if (requestIndex < 0) continue;
+
+    const request = reconciled[requestIndex];
+    const receiptDocNo = receipt.receiptDocNo || receipt.docNo || '-';
+    const auditMarker = `receipt-completion:${receipt.id || receiptDocNo}`;
+    const hasCompletionAudit = Array.isArray(request.auditTrail) && request.auditTrail.some(event =>
+      event?.sourceId === auditMarker || String(event?.details || '').includes(auditMarker)
+    );
+    const patch = {
+      status: finalStatus,
+      statusLabel: receipt.statusLabel || (finalStatus === 'DITERIMA_DENGAN_SELISIH' ? 'Diterima (Selisih)' : 'Diterima'),
+      workflowStage: 'SELESAI',
+      receiptDocNo,
+      receivedAt: receipt.finalizedAt || receipt.receivedAt || request.receivedAt,
+      receivedByName: receipt.finalizedByName || receipt.receivedByName || request.receivedByName,
+      totalAcceptedQty: receipt.totalAcceptedQty ?? request.totalAcceptedQty,
+      totalRejectedQty: receipt.totalRejectedQty ?? request.totalRejectedQty,
+      discrepancyQty: receipt.discrepancyQty ?? request.discrepancyQty,
+      discrepancyReason: receipt.discrepancyReason ?? request.discrepancyReason,
+      targetNextRole: null
+    };
+    const needsStatusUpdate = request.status !== patch.status || request.statusLabel !== patch.statusLabel || request.workflowStage !== 'SELESAI';
+    if (!needsStatusUpdate && hasCompletionAudit) continue;
+
+    const receiptAudit = Array.isArray(receipt.auditTrail) ? receipt.auditTrail[receipt.auditTrail.length - 1] : null;
+    const details = `${receiptAudit?.details || `Penerimaan Bibit ${receiptDocNo} telah selesai diproses Mantri Bibitan`} [${auditMarker}]`;
+    const actor = {
+      id: receipt.finalizedByUserId || receipt.receivedByUserId || 'MANTRI_BIBITAN',
+      userId: receipt.finalizedByUserId || receipt.receivedByUserId || 'MANTRI_BIBITAN',
+      name: receipt.finalizedByName || receipt.receivedByName || 'Mantri Bibitan',
+      role: receipt.finalizedByRole || 'MANTRI_TANAMAN',
+      rawRole: receipt.finalizedByRole || 'MANTRI_TANAMAN',
+      position: 'Mantri Bibitan',
+      estateId: receipt.targetEstateId || receipt.requesterEstateId,
+      divisionId: receipt.targetNextDivisionId || receipt.targetDivisionId
+    };
+
+    let updated = { ...request, ...patch };
+    if (!hasCompletionAudit) {
+      try {
+        updated = await requestRepository.update(request.id, patch, actor, AUDIT_EVENT_TYPES.APPROVE, details);
+      } catch (error) {
+        updated = applyTransactionActor(updated, AUDIT_EVENT_TYPES.APPROVE, actor, details);
+        console.warn('[request] unable to persist completed receipt reconciliation:', error);
+      }
+    }
+
+    reconciled[requestIndex] = updated;
+    const localIndex = localRequests.findIndex(item => item.id === request.id || item.docNo === request.docNo);
+    if (localIndex >= 0) localRequests[localIndex] = updated;
+    else localRequests.push(updated);
+  }
+
+  storage.set('requests_transactions', localRequests);
+  return reconciled;
 }
 
 /**
@@ -1055,6 +1152,11 @@ export async function renderRequestKebunSepupuLanding() {
     estateId: 'EST-TBS',
     estateName: 'Tanah Besih'
   };
+  const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
+  if (userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') {
+    navigate('/dispatch');
+    return;
+  }
 
   // Muat transaksi dari IndexedDB / LocalStorage fallback
   let allRequests = [];
@@ -1066,6 +1168,7 @@ export async function renderRequestKebunSepupuLanding() {
   if (!allRequests || allRequests.length === 0) {
     allRequests = storage.get('requests_transactions', []);
   }
+  allRequests = await syncCompletedBibitReceipts(allRequests);
 
   // Filter Data Berdasarkan Perspektif
   const myRequests = filterMyRequests(allRequests, currentUser);
@@ -1279,6 +1382,64 @@ function renderTimelineStepper(item) {
     }
   }
 
+  // Penerimaan Kebun Sepupu mencatat tahap di kebun pemohon pada audit
+  // dokumen penerimaan. Gabungkan tahap itu agar timeline permintaan setara
+  // dengan Mata Entres, yang menampilkan alur sumber dan pemohon berurutan.
+  const receiptTransactions = storage.get('receipt_ksp_transactions', []);
+  const completedBibitReceipt = Array.isArray(receiptTransactions)
+    ? receiptTransactions.find(receipt => {
+        const transactionType = String(receipt?.transactionType || '').trim().toUpperCase();
+        const receiptType = String(receipt?.type || '').trim().toUpperCase();
+        const isBibitReceipt = transactionType === 'PENERIMAAN_BIBIT' ||
+          (transactionType !== 'PENERIMAAN_MATA_ENTRES' && receiptType === 'KEBUN_SEPUPU');
+        return isBibitReceipt &&
+          (receipt.parentRequestId === item.id || receipt.parentRequestDocNo === item.docNo) &&
+          ['DITERIMA', 'DITERIMA_DENGAN_SELISIH'].includes(String(receipt.status || '').toUpperCase());
+      })
+    : null;
+
+  if (completedBibitReceipt) {
+    const receiptAudit = Array.isArray(completedBibitReceipt.auditTrail) ? completedBibitReceipt.auditTrail : [];
+    const receiptCompletionDetails = receiptAudit[receiptAudit.length - 1]?.details || '';
+    // Buang event final hasil sinkronisasi lama karena event asli Mantri
+    // Bibitan ada di audit penerimaan dan memiliki waktu/aktor yang tepat.
+    auditItems = auditItems.filter(event => {
+      const details = String(event?.details || '');
+      return !details.includes(`receipt-completion:${completedBibitReceipt.id || completedBibitReceipt.receiptDocNo || completedBibitReceipt.docNo}`) &&
+        !(receiptCompletionDetails && details === receiptCompletionDetails);
+    });
+
+    // Ubah pengeluaran bibit menjadi narasi yang sejajar dengan alur Mata
+    // Entres: pengeluaran fisik, nomor penerimaan otomatis, dan sisa kuota.
+    auditItems = auditItems.map(event => {
+      const details = String(event?.details || '');
+      const dispatchMatch = details.match(/^Pengeluaran bibit #(\d+) sebanyak ([\d.,]+) Pkk(?: \((.*)\))? telah diproses oleh Mantri Bibitan$/i);
+      if (!dispatchMatch) return event;
+      const remainingQty = Number(item.remainingQty ?? Math.max(0, Number(item.approvedQty || item.requestedQty || 0) - Number(item.totalIssuedQty || item.actualIssuedQty || 0)));
+      const batchSummary = dispatchMatch[3] ? ` (${dispatchMatch[3]})` : '';
+      return {
+        ...event,
+        details: `Mantri Bibitan (${event.name || event.actorName || 'Mantri Bibitan'}) mencatat pengeluaran fisik: ${dispatchMatch[2]} Pkk${batchSummary}. Dokumen penerimaan ${completedBibitReceipt.receiptDocNo || completedBibitReceipt.docNo || '-'} otomatis dibuat di Kebun Pemohon. Sisa kuota: ${remainingQty.toLocaleString('id-ID')}`
+      };
+    });
+
+    // Audit receipt dimulai dari pembuatan otomatis; tahap itu sudah terwakili
+    // oleh event pengeluaran di sisi kebun sumber. Ambil tahap setelahnya.
+    auditItems.push(...receiptAudit.filter(event => String(event?.eventType || '').toUpperCase() !== 'CREATE'));
+  }
+
+  // Hilangkan event yang tercatat dua kali pada data lama, tanpa membuang
+  // tahapan berbeda dari aktor yang sama.
+  const seenAuditEvents = new Set();
+  auditItems = auditItems.filter(event => {
+    const details = String(event?.details || '').replace(/\s*\[receipt-completion:[^\]]+\]/g, '').trim();
+    const actor = String(event?.userId || event?.actorId || event?.name || event?.actorName || '').trim().toLowerCase();
+    const key = `${actor}|${String(event?.eventType || '').toUpperCase()}|${details.toLowerCase()}`;
+    if (seenAuditEvents.has(key)) return false;
+    seenAuditEvents.add(key);
+    return true;
+  });
+
   return `
     <!-- TIMELINE & AUDIT TRAIL -->
     <div style="margin-top: 12px; margin-bottom: 6px; padding-top: 10px; border-top: 1px dashed #E2E8F0;">
@@ -1295,6 +1456,7 @@ function renderTimelineStepper(item) {
             const actorRole = a.position || a.actorRole || a.role || a.rawRole || '';
             const eventTime = a.timestamp || a.createdAt || a.date || item.createdAt || item.date;
             let eventDesc = a.note || a.details || a.description || a.event || a.eventType || 'Permintaan Bibit Diajukan';
+            eventDesc = String(eventDesc).replace(/\s*\[receipt-completion:[^\]]+\]/g, '').trim();
             if (eventDesc === 'CREATE') eventDesc = 'Permintaan Bibit Kebun Sepupu diajukan';
             if (eventDesc === 'UPDATE') eventDesc = 'Pembaruan Dokumen';
             if (eventDesc === 'VERIFY') eventDesc = 'Verifikasi Dokumen';
@@ -1354,53 +1516,11 @@ function renderSingleCard(item, index, currentUser) {
   const sourceName = sourceEstate ? sourceEstate.estate_name : (item.estateId || '-');
   const targetName = targetEstate ? targetEstate.estate_name : (item.targetEstateName || item.targetEstateId || '-');
 
-  // Status Badge Colors & Labels
-  let badgeBg = '#EFF6FF';
-  let badgeColor = '#1D4ED8';
-  let badgeBorder = '#BFDBFE';
-  let badgeText = status;
-
-  if (status === 'SELESAI' || status === 'APPROVED') {
-    badgeBg = '#DCFCE7';
-    badgeColor = '#15803D';
-    badgeBorder = '#BBF7D0';
-    badgeText = 'Selesai';
-  } else if (status === 'TERVERIFIKASI') {
-    badgeBg = '#DCFCE7';
-    badgeColor = '#15803D';
-    badgeBorder = '#BBF7D0';
-    badgeText = 'Terverifikasi';
-  } else if (status === 'MENUNGGU_VERIFIKASI_ASISTEN_KEPALA') {
-    badgeBg = '#FEF3C7';
-    badgeColor = '#B45309';
-    badgeBorder = '#FDE68A';
-    badgeText = 'Menunggu Verifikasi Askep';
-  } else if (status === 'PERLU_REVISI_ASISTEN_KEPALA') {
-    badgeBg = '#FFF1F2';
-    badgeColor = '#BE123C';
-    badgeBorder = '#FECDD3';
-    badgeText = 'Perlu Revisi Askep';
-  } else if (status === 'MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN' || status === 'MENUNGGU_VERIFIKASI_ASISTEN' || status === 'MENUNGGU_VERIFIKASI') {
-    badgeBg = '#FEF3C7';
-    badgeColor = '#B45309';
-    badgeBorder = '#FDE68A';
-    badgeText = 'Menunggu Verifikasi Asisten';
-  } else if (status === 'PERLU_REVISI_PENGURUS') {
-    badgeBg = '#FFF1F2';
-    badgeColor = '#BE123C';
-    badgeBorder = '#FECDD3';
-    badgeText = 'Perlu Revisi Pengurus';
-  } else if (status === 'DIPROSES') {
-    badgeBg = '#FEF3C7';
-    badgeColor = '#B45309';
-    badgeBorder = '#FDE68A';
-    badgeText = 'Diproses';
-  } else if (status === 'DITOLAK' || status === 'REJECTED') {
-    badgeBg = '#FEE2E2';
-    badgeColor = '#B91C1C';
-    badgeBorder = '#FECACA';
-    badgeText = 'Ditolak';
-  }
+  const statusPresentation = getWorkflowStatusPresentation(status, item.statusLabel);
+  const badgeBg = statusPresentation.background;
+  const badgeColor = statusPresentation.color;
+  const badgeBorder = statusPresentation.border;
+  const badgeText = statusPresentation.label;
 
   const formattedDate = formatDate(item.requiredDate || item.date || item.createdAt);
   const qtyFormatted = parseInt(item.qty || item.requestedQty || 0, 10).toLocaleString('id-ID');
@@ -1431,7 +1551,7 @@ function renderSingleCard(item, index, currentUser) {
           class="btn-card-askep-return" 
           data-index="${index}" 
           type="button" 
-          style="flex: 1; border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.75rem; font-weight: 700; padding: 7px 8px; border-radius: 6px; cursor: pointer;"
+          style="flex:1; min-width:0; min-height:46px; border:1px solid #DC2626; color:#DC2626; background:#FFFFFF; font-size:0.82rem; font-weight:700; padding:8px 10px; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.25; box-sizing:border-box; white-space:normal;"
         >
           Kembalikan ke Pengurus
         </button>
@@ -1439,7 +1559,7 @@ function renderSingleCard(item, index, currentUser) {
           class="btn-card-askep-process" 
           data-index="${index}" 
           type="button" 
-          style="flex: 1; background: #116834; color: #FFFFFF; border: none; font-size: 0.75rem; font-weight: 700; padding: 7px 8px; border-radius: 6px; cursor: pointer;"
+          style="flex:1; min-width:0; min-height:46px; background:#116834; color:#FFFFFF; border:1px solid #116834; font-size:0.82rem; font-weight:700; padding:8px 10px; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.25; box-sizing:border-box; white-space:normal;"
         >
           Verifikasi & Teruskan
         </button>
@@ -1452,7 +1572,7 @@ function renderSingleCard(item, index, currentUser) {
           class="btn-card-return" 
           data-index="${index}" 
           type="button" 
-          style="flex: 1; border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.75rem; font-weight: 700; padding: 7px 8px; border-radius: 6px; cursor: pointer;"
+          style="flex:1; min-width:0; min-height:46px; border:1px solid #DC2626; color:#DC2626; background:#FFFFFF; font-size:0.82rem; font-weight:700; padding:8px 10px; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.25; box-sizing:border-box; white-space:normal;"
         >
           Kembalikan ke Asisten Kepala
         </button>
@@ -1460,7 +1580,7 @@ function renderSingleCard(item, index, currentUser) {
           class="btn-card-verify" 
           data-index="${index}" 
           type="button" 
-          style="flex: 1; background: #116834; color: #FFFFFF; border: none; font-size: 0.75rem; font-weight: 700; padding: 7px 8px; border-radius: 6px; cursor: pointer;"
+          style="flex:1; min-width:0; min-height:46px; background:#116834; color:#FFFFFF; border:1px solid #116834; font-size:0.82rem; font-weight:700; padding:8px 10px; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.25; box-sizing:border-box; white-space:normal;"
         >
           Verifikasi & Teruskan
         </button>
@@ -1572,7 +1692,7 @@ function renderSingleCard(item, index, currentUser) {
           class="btn-card-askep-return" 
           data-index="${index}" 
           type="button" 
-          style="border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.72rem; font-weight: 700; padding: 5px 9px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
+          style="flex:1; min-width:0; min-height:46px; border:1px solid #DC2626; color:#DC2626; background:#FFFFFF; font-size:.82rem; font-weight:700; padding:8px 10px; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.25; box-sizing:border-box; white-space:normal;"
         >
           Kembalikan
         </button>
@@ -1580,7 +1700,7 @@ function renderSingleCard(item, index, currentUser) {
           class="btn-card-askep-process" 
           data-index="${index}" 
           type="button" 
-          style="background: #116834; color: #FFFFFF; border: 1px solid #116834; font-size: 0.72rem; font-weight: 700; padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
+          style="flex:1; min-width:0; min-height:46px; background:#116834; color:#FFFFFF; border:1px solid #116834; font-size:.82rem; font-weight:700; padding:8px 10px; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.25; box-sizing:border-box; white-space:normal;"
         >
           Verifikasi
         </button>
@@ -1591,7 +1711,7 @@ function renderSingleCard(item, index, currentUser) {
           class="btn-card-return" 
           data-index="${index}" 
           type="button" 
-          style="border: 1px solid #DC2626; color: #DC2626; background: #FFFFFF; font-size: 0.72rem; font-weight: 700; padding: 5px 9px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
+          style="flex:1; min-width:0; min-height:46px; border:1px solid #DC2626; color:#DC2626; background:#FFFFFF; font-size:.82rem; font-weight:700; padding:8px 10px; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.25; box-sizing:border-box; white-space:normal;"
         >
           Kembalikan
         </button>
@@ -1599,7 +1719,7 @@ function renderSingleCard(item, index, currentUser) {
           class="btn-card-verify" 
           data-index="${index}" 
           type="button" 
-          style="background: #116834; color: #FFFFFF; border: 1px solid #116834; font-size: 0.72rem; font-weight: 700; padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box; white-space: nowrap;"
+          style="flex:1; min-width:0; min-height:46px; background:#116834; color:#FFFFFF; border:1px solid #116834; font-size:.82rem; font-weight:700; padding:8px 10px; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.25; box-sizing:border-box; white-space:normal;"
         >
           Verifikasi
         </button>
@@ -1608,7 +1728,7 @@ function renderSingleCard(item, index, currentUser) {
 
     unexpandedFooter = `
       ${actionGroupHtml ? `<div class="action-footer" style="display: flex; gap: 6px; align-items: center; justify-content: space-between; border-top: 1px dashed #F1F5F9; padding-top: 8px; margin-top: 6px;">
-        <div class="action-group" style="display: flex; flex:1; gap: 6px; align-items: center; flex-wrap: wrap;">
+        <div class="action-group" style="display:flex; flex:1; gap:8px; align-items:stretch;">
           ${actionGroupHtml}
         </div>
       </div>` : ''}
@@ -1619,14 +1739,14 @@ function renderSingleCard(item, index, currentUser) {
     <div class="request-card" data-card-index="${index}" style="background: #FFFFFF; border: 1px solid ${isExpanded ? '#116834' : '#E2E8F0'}; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: border-color 0.15s ease;">
       
       <!-- ROW 1: NO DOKUMEN & BADGE STATUS -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #F1F5F9;">
-        <div style="min-width: 0; flex: 1;">
-          <div style="font-size: 0.68rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.2;">Dokumen Permintaan</div>
-          <div style="font-size: 0.95rem; font-weight: 800; color: #116834; line-height: 1.3; margin-top: 2px; word-break: break-all;">${esc(docNo)}</div>
-        </div>
-        <span style="font-size: 0.65rem; font-weight: 700; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; padding: 3px 8px; border-radius: 6px; text-transform: uppercase; flex-shrink: 0; line-height: 1.25;">
+      <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid #F1F5F9; min-width:0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; min-width:0;">
+          <div style="font-size:.68rem; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.05em; line-height:1.2;">Dokumen Permintaan</div>
+        <span style="font-size: 0.65rem; font-weight: 700; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; padding: 3px 8px; border-radius: 6px; text-transform: none; flex: 0 1 auto; min-width:0; max-width:58%; text-align:center; white-space:normal; overflow-wrap:anywhere; line-height: 1.25;">
           ${esc(badgeText)}
         </span>
+        </div>
+        <div style="font-size:.95rem; font-weight:800; color:#116834; line-height:1.35; overflow-wrap:anywhere; word-break:break-word;">${esc(docNo)}</div>
       </div>
 
       <!-- ROW 2: KEBUN ASAL → KEBUN DITUJU -->

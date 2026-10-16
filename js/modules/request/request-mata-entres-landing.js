@@ -30,6 +30,7 @@ import { getCfnaByCode } from '../../data/cfna-master.js';
 import { formatDate, todayISO, nowISO, esc } from '../../core/utils.js';
 import { createReceiptFromDispatch, getReceiptKspTransactions, updateReceiptKsp } from '../../core/receipt-ksp-manager.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { getWorkflowStatusPresentation } from '../../core/workflow-status-presentation.js';
 import { RECEIPT_KSP_STATUS, RECEIPT_KSP_STATUS_LABELS } from '../../core/receipt-ksp-constants.js';
 import { getFifoAllocationBreakdown } from '../../core/entres-inventory-service.js';
 import {
@@ -81,7 +82,7 @@ export const MATA_ENTRES_STATUS_LABELS = {
   TERVERIFIKASI: 'Siap Pengeluaran',
   PENGELUARAN_BERJALAN: 'Pengeluaran Berjalan',
   DIKELUARKAN: 'Mata Entres Dikeluarkan',
-  MENUNGGU_PENERIMAAN_PENGURUS: 'Menunggu Penerimaan Pengurus',
+  MENUNGGU_PENERIMAAN_PENGURUS: 'Menunggu Penerimaan',
   MENUNGGU_PENERIMAAN_MANTRI_BIBITAN: 'Menunggu Penerimaan Mantri Bibitan',
   DIKEMBALIKAN_KE_PENGURUS: 'Dikembalikan ke Pengurus',
   SEDANG_DIPROSES: 'Sedang Diproses',
@@ -118,16 +119,16 @@ export const MATA_ENTRES_STATUS_BADGES = {
  */
 export function getRequestDispatchAggregate(requestId, fallbackRequest = {}) {
   const allDispatches = storage.get('dispatch_transactions', []);
-  const childDispatches = allDispatches.filter(d => 
-    d && d.status !== 'VOID' && 
+  const childDispatches = allDispatches.filter(d =>
+    d && d.status !== 'VOID' &&
     (d.type === 'MATA_ENTRES' || d.transactionType === 'PENGELUARAN_MATA_ENTRES') &&
     (d.parentRequestId === requestId || d.parentRequestDocNo === fallbackRequest.docNo || (requestId && d.parentRequestId === fallbackRequest.id))
   );
 
-  const totalIssuedMata = childDispatches.reduce((acc, d) => 
+  const totalIssuedMata = childDispatches.reduce((acc, d) =>
     acc + (Number(d.jumlahMataEntresDikeluarkan !== undefined && d.jumlahMataEntresDikeluarkan !== null ? d.jumlahMataEntresDikeluarkan : (d.details?.[0]?.mataQty || 0)) || 0), 0);
 
-  const totalIssuedBatang = childDispatches.reduce((acc, d) => 
+  const totalIssuedBatang = childDispatches.reduce((acc, d) =>
     acc + (Number(d.jumlahBatangDikeluarkan !== undefined && d.jumlahBatangDikeluarkan !== null ? d.jumlahBatangDikeluarkan : (d.details?.[0]?.qty || 0)) || 0), 0);
 
   // Kuantitas Resmi Mata Entres (NULL JIKA RECORD HISTORIS HANYA PUNYA BATANG)
@@ -355,8 +356,7 @@ export function canPerformMantriBibitanFinalReceipt(tx, currentUser) {
 
   const status = (tx.status || '').toUpperCase();
   return (
-    status === MATA_ENTRES_STATUS.MENUNGGU_PENERIMAAN_MANTRI_BIBITAN ||
-    (status === MATA_ENTRES_STATUS.DIKELUARKAN && !tx.initialArrival)
+    status === MATA_ENTRES_STATUS.MENUNGGU_PENERIMAAN_MANTRI_BIBITAN
   );
 }
 
@@ -376,11 +376,30 @@ export function canPerformRequesterReceipt(tx, currentUser) {
 
 export function filterMyMataEntresRequests(requests, currentUser) {
   if (!Array.isArray(requests) || !currentUser) return [];
+  const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
+  if (userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') {
+    // Mantri hanya melihat penerimaan akhir Mata Entres di halaman Permintaan.
+    // Pekerjaan pengeluaran tetap diproses melalui modul Pengeluaran.
+    return requests.filter(tx => tx.type === 'MATA_ENTRES' && canPerformMantriBibitanFinalReceipt(tx, currentUser));
+  }
   const currentUserId = currentUser.userId || currentUser.id || currentUser.code;
   const userEstateId = currentUser.estateId;
 
   return requests.filter(tx => {
     if (tx.type !== 'MATA_ENTRES') return false;
+    if (userRole === 'ASISTEN_BIBITAN') {
+      const currentUserIds = new Set([currentUser.userId, currentUser.id, currentUser.code].filter(Boolean).map(String));
+      const isOwner = [tx.userId, tx.createdByUserId, tx.createdByLoginCode]
+        .filter(Boolean)
+        .some(id => currentUserIds.has(String(id)));
+      const verifierIds = [
+        tx.asbVerification?.verifiedByUserId,
+        tx.asbReceiptVerification?.verifiedByUserId
+      ].filter(Boolean).map(String);
+      // Tampilkan permintaan milik sendiri dan dokumen yang memang sudah
+      // diverifikasi oleh Asisten Bibitan ini sebagai riwayat pribadinya.
+      return isOwner || verifierIds.some(id => currentUserIds.has(id));
+    }
     const isOwner = (
       (tx.userId && tx.userId === currentUserId) ||
       (tx.createdByUserId && tx.createdByUserId === currentUserId) ||
@@ -395,6 +414,8 @@ export function filterMyMataEntresRequests(requests, currentUser) {
 export function filterIncomingMataEntresRequests(requests, currentUser) {
   if (!Array.isArray(requests) || !currentUser) return [];
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
+  // Jangan tampilkan ulang antrean pengeluaran Mantri di halaman Permintaan.
+  if (userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') return [];
   const userEstateId = currentUser.estateId;
 
   return requests.filter(tx => {
@@ -424,13 +445,14 @@ export function getActionableMataEntresCount(requests, currentUser) {
   requests.forEach(tx => {
     if (tx.type !== 'MATA_ENTRES') return;
     if (userRole === 'PENGURUS') {
-      if (canPerformPengurusReceiverReview(tx, currentUser) || canPerformPengurusArrival(tx, currentUser)) count++;
+      // Antrean kedatangan setelah pengeluaran hanya tampil di menu Penerimaan.
+      if (canPerformPengurusReceiverReview(tx, currentUser)) count++;
     } else if (userRole === 'ASKEP' || userRole === 'ASISTEN_KEPALA') {
-      if (canPerformAskepVerification(tx, currentUser) || canPerformAskepReceiptRouting(tx, currentUser)) count++;
+      if (canPerformAskepVerification(tx, currentUser)) count++;
     } else if (userRole === 'ASISTEN_BIBITAN') {
-      if (canPerformAsistenBibitanVerification(tx, currentUser) || canPerformAsistenBibitanReceiptVerification(tx, currentUser)) count++;
+      if (canPerformAsistenBibitanVerification(tx, currentUser)) count++;
     } else if (userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') {
-      if (canPerformMantriDispatch(tx, currentUser) || canPerformMantriBibitanFinalReceipt(tx, currentUser)) count++;
+      if (canPerformMantriDispatch(tx, currentUser)) count++;
     }
   });
 
@@ -640,7 +662,7 @@ export async function processAsistenBibitanReturn(txId, reason, currentUser) {
 export async function processMantriDispatch(txId, formValues, currentUser) {
   assertAttendanceGateOrThrow(currentUser);
   const { jumlahBatangDikeluarkan, jumlahMataEntresDikeluarkan, tanggalPengeluaran, vehiclePlate, photoEvidence, notes } = formValues;
-  
+
   const allReqs = storage.get('requests_transactions', []);
   const parentReq = allReqs.find(t => t.id === txId || t.docNo === txId) || { id: txId, type: 'MATA_ENTRES' };
 
@@ -671,6 +693,11 @@ export async function processMantriDispatch(txId, formValues, currentUser) {
     jumlahBatangDikeluarkan: Number(jumlahBatangDikeluarkan || 0),
     jumlahMataEntresDikeluarkan: Number(jumlahMataEntresDikeluarkan),
     issuedQty: Number(jumlahBatangDikeluarkan || jumlahMataEntresDikeluarkan),
+    issuedByUserId: currentUser.userId || currentUser.code || currentUser.id,
+    issuedByName: currentUser.name || 'Mantri Bibitan',
+    issuedByRole: currentUser.role || currentUser.rawRole || 'MANTRI_BIBITAN',
+    issuedByEstateId: currentUser.estateId,
+    issuedByDivisionId: currentUser.divisionId,
     vehiclePlate: vehiclePlate ? vehiclePlate.trim().toUpperCase() : null,
     photoEvidence: photoEvidence || null,
     issuedDate: tanggalPengeluaran || todayISO(),
@@ -752,7 +779,7 @@ export async function processMantriDispatch(txId, formValues, currentUser) {
 }
 
 // 5. Pengurus Pemohon: Catat Kedatangan Awal
-export async function processPengurusArrival(txId, formValues, currentUser) {
+export async function processPengurusArrival(txId, formValues, currentUser, receiptId = null) {
   const { initialReceivedDate, notes } = formValues;
   const patch = {
     status: MATA_ENTRES_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_KEPALA,
@@ -770,7 +797,8 @@ export async function processPengurusArrival(txId, formValues, currentUser) {
 
   // Sync child receipt jika ada
   const receipts = getReceiptKspTransactions();
-  const childReceipt = receipts.find(r => r.parentRequestId === txId || r.dispatchDocNo === txId);
+  const childReceipt = (receiptId ? receipts.find(r => r.id === receiptId) : null) ||
+    receipts.find(r => r.parentRequestId === txId || r.dispatchDocNo === txId);
   if (childReceipt) {
     updateReceiptKsp(childReceipt.id, {
       status: RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_KEPALA,
@@ -1053,7 +1081,7 @@ export function openPengurusReviewModal(tx, currentUser, onSuccess) {
 
           <div style="margin-bottom: 10px;">
             <label style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.74rem;">
-              Estimasi Batang Fisik (Opsional)
+              Estimasi Jumlah Cabang (Opsional)
             </label>
             <input type="number" id="rev-approved-batang" value="${defaultBatang}" min="0" placeholder="Estimasi batang kayu entres..." style="width: 100%; box-sizing: border-box; min-height: 38px; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem;" />
           </div>
@@ -1169,9 +1197,9 @@ export function openAskepVerificationModal(tx, currentUser, onSuccess) {
   openModal({
     title: 'Verifikasi Askep & Pilih Divisi Bibitan Sumber',
     body: `
-      <div style="font-size: 0.82rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box;">
-        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-          <div style="display: grid; grid-template-columns: 42% 58%; gap: 4px 6px; font-size: 0.76rem; line-height: 1.35;">
+      <div style="width:100%; min-width:0; box-sizing:border-box; font-size:.82rem; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+          <div style="display:grid; grid-template-columns:minmax(0,42%) minmax(0,58%); gap:5px 8px; font-size:.76rem; line-height:1.4; overflow-wrap:anywhere;">
             <span style="color: #64748B;">No. Dokumen:</span>
             <span style="font-weight: 700; color: #116834;">${esc(tx.docNo)}</span>
             <span style="color: #64748B;">Klon Disetujui:</span>
@@ -1199,10 +1227,10 @@ export function openAskepVerificationModal(tx, currentUser, onSuccess) {
           </div>
 
           <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <button type="button" id="btn-return-pengurus" style="padding: 7px 14px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #DC2626; cursor: pointer;">
+            <button type="button" id="btn-return-pengurus" style="flex:1; min-width:0; min-height:44px; padding:8px 10px; background:#FFFFFF; border:1px solid #DC2626; border-radius:9px; font-size:.82rem; font-weight:700; color:#DC2626; cursor:pointer; text-align:center; line-height:1.25;">
               Kembalikan ke Pengurus
             </button>
-            <button type="submit" id="btn-submit-askep" style="padding: 7px 16px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer;">
+            <button type="submit" id="btn-submit-askep" style="flex:1; min-width:0; min-height:44px; padding:8px 10px; background:#116834; border:1px solid #116834; border-radius:9px; font-size:.82rem; font-weight:700; color:#FFFFFF; cursor:pointer; text-align:center; line-height:1.25;">
               Verifikasi &amp; Teruskan
             </button>
           </div>
@@ -1306,10 +1334,10 @@ export function openAsistenBibitanVerificationModal(tx, currentUser, onSuccess) 
           </div>
 
           <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <button type="button" id="btn-return-askep" style="padding: 7px 14px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #DC2626; cursor: pointer;">
+            <button type="button" id="btn-return-askep" style="flex:1; min-width:0; min-height:44px; padding:8px 10px; background:#FFFFFF; border:1px solid #DC2626; border-radius:9px; font-size:.82rem; font-weight:700; color:#DC2626; cursor:pointer; text-align:center; line-height:1.25;">
               Kembalikan ke Askep
             </button>
-            <button type="submit" id="btn-submit-asb" style="padding: 7px 16px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer;">
+            <button type="submit" id="btn-submit-asb" style="flex:1; min-width:0; min-height:44px; padding:8px 10px; background:#116834; border:1px solid #116834; border-radius:9px; font-size:.82rem; font-weight:700; color:#FFFFFF; cursor:pointer; text-align:center; line-height:1.25;">
               Verifikasi &amp; Teruskan
             </button>
           </div>
@@ -1545,7 +1573,7 @@ export async function openMantriDispatchModal(tx, currentUser, onSuccess) {
             <canvas id="camera-canvas" style="display: none;"></canvas>
             <div id="camera-error" style="display: none; color: white; text-align: center; padding: 20px;">
               <p style="font-weight: 700; margin-bottom: 6px;">Kamera tidak tersedia atau akses ditolak.</p>
-              <p style="font-size: 0.8rem; color: #aaa;">Ketuk tombol rana untuk foto simulasi.</p>
+              <p style="font-size: 0.8rem; color: #aaa;">Periksa izin kamera dan coba lagi.</p>
             </div>
           </main>
           <footer style="padding: 24px; display: flex; justify-content: center; align-items: center; position: absolute; bottom: 0; left: 0; right: 0; z-index: 10001; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);">
@@ -1630,6 +1658,7 @@ export async function openMantriDispatchModal(tx, currentUser, onSuccess) {
     if (cameraOverlay) {
       cameraOverlay.style.display = 'none';
     }
+    isCameraActive = false;
   }
 
   btnCloseCamera?.addEventListener('click', stopCamera);
@@ -1639,52 +1668,52 @@ export async function openMantriDispatchModal(tx, currentUser, onSuccess) {
     openCamera();
   });
 
-  btnShutter?.addEventListener('click', () => {
-    let dataUrl = '';
-    const ts = new Date().toISOString();
-    const displayTs = new Date().toLocaleString('id-ID');
-    const roleStr = typeof normalizeRole === 'function' ? normalizeRole(currentUser.role || currentUser.rawRole) : (currentUser.role || 'MANTRI_TANAMAN');
-
-    if (isCameraActive && videoEl && videoEl.videoWidth) {
-      canvasEl.width = videoEl.videoWidth;
-      canvasEl.height = videoEl.videoHeight;
-      const ctx = canvasEl.getContext('2d');
-      ctx.drawImage(videoEl, 0, 0);
-      
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(0, canvasEl.height - 40, canvasEl.width, 40);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = '16px sans-serif';
-      ctx.fillText(`${currentUser.name || 'Mantri'} • ${displayTs}`, 10, canvasEl.height - 15);
-      
-      dataUrl = canvasEl.toDataURL('image/jpeg', 0.85);
-    } else {
-      canvasEl.width = 400;
-      canvasEl.height = 400;
-      const ctx = canvasEl.getContext('2d');
-      ctx.fillStyle = '#116834';
-      ctx.fillRect(0, 0, 400, 400);
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(0, 360, 400, 40);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = '14px sans-serif';
-      ctx.fillText(displayTs, 10, 385);
-      ctx.font = 'bold 20px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('BUKTI PENGELUARAN', 200, 190);
-      ctx.font = '14px sans-serif';
-      ctx.fillText(tx.docNo, 200, 220);
-      dataUrl = canvasEl.toDataURL('image/jpeg', 0.85);
+  btnShutter?.addEventListener('click', async () => {
+    if (!isCameraActive || !videoEl?.videoWidth) {
+      toast('Kamera belum aktif. Buka kamera sebelum mengambil foto.', 'error');
+      return;
     }
+    const captureDate = new Date();
+    const ts = captureDate.toISOString();
+    const displayTs = captureDate.toLocaleString('id-ID');
+    const roleStr = typeof normalizeRole === 'function' ? normalizeRole(currentUser.role || currentUser.rawRole) : (currentUser.role || 'MANTRI_TANAMAN');
+    const position = await new Promise(resolve => {
+      if (!navigator.geolocation) return resolve(null);
+      navigator.geolocation.getCurrentPosition(pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }), () => resolve(null), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    });
+    canvasEl.width = videoEl.videoWidth;
+    canvasEl.height = videoEl.videoHeight;
+    const ctx = canvasEl.getContext('2d');
+    ctx.drawImage(videoEl, 0, 0);
+    const fontSize = Math.max(16, Math.round(canvasEl.width / 36));
+    const padding = Math.round(fontSize * 0.65);
+    const lineHeight = Math.round(fontSize * 1.45);
+    const lines = [
+      `${currentUser.code || currentUser.loginCode || currentUser.userId || currentUser.id || '-'} - ${currentUser.name || 'Mantri Bibitan'}`,
+      displayTs,
+      position ? `${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}` : 'Lokasi tidak tersedia'
+    ];
+    const stampHeight = padding * 2 + lineHeight * lines.length;
+    ctx.fillStyle = 'rgba(0,0,0,.68)';
+    ctx.fillRect(0, canvasEl.height - stampHeight, canvasEl.width, stampHeight);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `600 ${fontSize}px sans-serif`;
+    ctx.textBaseline = 'top';
+    lines.forEach((line, i) => ctx.fillText(line, padding, canvasEl.height - stampHeight + padding + i * lineHeight, canvasEl.width - padding * 2));
+    const dataUrl = canvasEl.toDataURL('image/jpeg', 0.88);
 
     currentPhotoMetadata = {
       image: dataUrl,
       capturedAt: ts,
       capturedByUserId: currentUser.userId || currentUser.code || currentUser.id,
+      capturedByCode: currentUser.code || currentUser.loginCode || currentUser.userId || currentUser.id,
       capturedByName: currentUser.name || 'Mantri Bibitan',
       capturedByRole: roleStr,
       capturedByEstateId: currentUser.estateId,
-      capturedByDivisionId: currentUser.divisionId
+      capturedByDivisionId: currentUser.divisionId,
+      latitude: position?.latitude ?? null,
+      longitude: position?.longitude ?? null,
+      locationCaptured: Boolean(position)
     };
 
     stopCamera();
@@ -1749,7 +1778,7 @@ export async function openMantriDispatchModal(tx, currentUser, onSuccess) {
 }
 
 // MODAL 5: Pengurus Pemohon Catat Kedatangan Awal
-export function openPengurusArrivalModal(tx, currentUser, onSuccess) {
+export function openPengurusArrivalModal(tx, currentUser, onSuccess, receiptId = null) {
   const dspBatang = tx.jumlahBatangDikeluarkan || tx.jumlahBatang || 0;
   const dspMata = tx.jumlahMataEntresDikeluarkan || tx.jumlahMataEntres || null;
 
@@ -1812,7 +1841,7 @@ export function openPengurusArrivalModal(tx, currentUser, onSuccess) {
     const notes = modalRoot.querySelector('#arr-notes')?.value;
 
     try {
-      await processPengurusArrival(tx.id, { initialReceivedDate, notes }, currentUser);
+      await processPengurusArrival(tx.id, { initialReceivedDate, notes }, currentUser, receiptId);
       closeModal();
       toast('Kedatangan mata entres berhasil dicatat dan diteruskan ke Askep.', 'success');
       if (typeof onSuccess === 'function') onSuccess();
@@ -1864,11 +1893,11 @@ export function openAskepReceiptRoutingModal(tx, currentUser, onSuccess) {
             <textarea id="rcp-askep-notes" rows="2" placeholder="Instruksi alokasi okulasi / penyiapan batang bawah..." style="width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem;"></textarea>
           </div>
 
-          <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <button type="button" id="btn-return-receipt-pgs" style="padding: 7px 14px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #DC2626; cursor: pointer;">
+          <div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:8px; width:100%;">
+            <button type="button" id="btn-return-receipt-pgs" style="width:100%; min-width:0; min-height:44px; box-sizing:border-box; padding:8px 10px; background:#FFFFFF; border:1px solid #DC2626; border-radius:8px; font-size:.78rem; font-weight:600; color:#DC2626; cursor:pointer; text-align:center; line-height:1.2; white-space:normal;">
               Kembalikan ke Pengurus
             </button>
-            <button type="submit" id="btn-submit-askep-receipt" style="padding: 7px 16px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer;">
+            <button type="submit" id="btn-submit-askep-receipt" style="width:100%; min-width:0; min-height:44px; box-sizing:border-box; padding:8px 10px; background:#116834; border:1px solid #116834; border-radius:8px; font-size:.78rem; font-weight:700; color:#FFFFFF; cursor:pointer; text-align:center; line-height:1.2; white-space:normal;">
               Verifikasi &amp; Teruskan ke Asisten Bibitan
             </button>
           </div>
@@ -1965,16 +1994,16 @@ export function openAsistenBibitanReceiptModal(tx, currentUser, onSuccess) {
         </div>
 
         <form id="form-asb-receipt" onsubmit="return false;">
-          <div style="margin-bottom: 12px;">
-            <label style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.74rem;">Catatan Verifikasi</label>
-            <textarea id="asb-receipt-notes" rows="2" placeholder="Catatan verifikasi penerimaan mata entres..." style="width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem;"></textarea>
+          <div style="margin-bottom:12px;">
+            <label style="display:block; font-weight:700; color:#1E293B; margin-bottom:4px; font-size:.76rem;">Catatan Verifikasi</label>
+            <textarea id="asb-receipt-notes" rows="2" placeholder="Catatan verifikasi penerimaan mata entres..." style="width:100%; min-height:48px; box-sizing:border-box; padding:8px 10px; border:1px solid #CBD5E1; border-radius:8px; font-size:.80rem; font-family:inherit; resize:vertical;"></textarea>
           </div>
 
-          <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <button type="button" id="btn-return-receipt-askep" style="padding: 7px 14px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #DC2626; cursor: pointer;">
+          <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; width:100%;">
+            <button type="button" id="btn-return-receipt-askep" style="width:100%; min-width:0; min-height:50px; box-sizing:border-box; padding:8px 10px; background:#FFFFFF; border:1px solid #FCA5A5; border-radius:8px; font-size:.80rem; font-weight:700; color:#DC2626; cursor:pointer; text-align:center; line-height:1.2; white-space:normal;">
               Kembalikan ke Askep
             </button>
-            <button type="submit" id="btn-submit-asb-receipt" style="padding: 7px 16px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer;">
+            <button type="submit" id="btn-submit-asb-receipt" style="width:100%; min-width:0; min-height:50px; box-sizing:border-box; padding:8px 10px; background:#116834; border:1px solid #116834; border-radius:8px; font-size:.80rem; font-weight:700; color:#FFFFFF; cursor:pointer; text-align:center; line-height:1.2; white-space:normal;">
               Verifikasi &amp; Teruskan ke Mantri
             </button>
           </div>
@@ -2075,7 +2104,7 @@ export function openMantriBibitanReceiptModal(tx, currentUser, onSuccess) {
 
         <form id="form-mantri-final-receipt" onsubmit="return false;">
           <div style="font-size: 0.78rem; font-weight: 800; color: #0F172A; text-transform: uppercase; letter-spacing: 0.02em; margin: 10px 0 8px 0; border-bottom: 1px solid #F1F5F9; padding-bottom: 4px;">
-            Realisasi Fisik yang Diterima
+            Rincian Penerimaan Mata Entres
           </div>
           
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
@@ -2296,13 +2325,13 @@ export function openMantriBibitanReceiptModal(tx, currentUser, onSuccess) {
       canvasEl.height = videoEl.videoHeight;
       const ctx = canvasEl.getContext('2d');
       ctx.drawImage(videoEl, 0, 0);
-      
+
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, canvasEl.height - 40, canvasEl.width, 40);
       ctx.fillStyle = '#FFFFFF';
       ctx.font = '16px sans-serif';
       ctx.fillText(`${currentUser.name || 'Mantri'} • ${displayTs}`, 10, canvasEl.height - 15);
-      
+
       dataUrl = canvasEl.toDataURL('image/jpeg', 0.85);
     } else {
       canvasEl.width = 400;
@@ -2601,9 +2630,15 @@ export async function renderRequestMataEntresLanding() {
   const user = session.get();
   const currentUser = getCurrentUserContext() || user || { role: 'PENGURUS', estateId: 'EST-TBS' };
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
+  if (userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') {
+    navigate('/dispatch');
+    return;
+  }
 
   if (!activeTab) {
-    if (userRole === 'ASKEP' || userRole === 'ASISTEN_KEPALA' || userRole === 'ASISTEN_BIBITAN' || userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') {
+    if (userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') {
+      activeTab = 'MY_REQUESTS';
+    } else if (userRole === 'ASKEP' || userRole === 'ASISTEN_KEPALA' || userRole === 'ASISTEN_BIBITAN') {
       activeTab = 'INCOMING_REQUESTS';
     } else {
       activeTab = 'MY_REQUESTS';
@@ -2624,7 +2659,7 @@ export async function renderRequestMataEntresLanding() {
   const incomingRequests = filterIncomingMataEntresRequests(allRequests, currentUser);
 
   const actionableIncomingCount = getActionableMataEntresCount(incomingRequests, currentUser);
-  const actionableMyCount = myRequests.filter(tx => canPerformRequesterReceipt(tx, currentUser)).length;
+  // Semua tindakan penerimaan Mata Entres dan notifikasinya berada di menu Penerimaan.
 
   const currentDataset = activeTab === 'MY_REQUESTS' ? myRequests : incomingRequests;
   const filteredList = filterMataEntresByStatus(currentDataset, activeStatusFilter);
@@ -2652,8 +2687,9 @@ export async function renderRequestMataEntresLanding() {
     description: 'Belum ada dokumen Permintaan Mata Entres pada tab ini.',
     customStyle: 'margin-top: 10px;'
   }) : filteredList.map((tx, idx) => {
-    const badge = MATA_ENTRES_STATUS_BADGES[tx.status] || { bg: '#F1F5F9', text: '#475569', border: '#CBD5E1' };
-    const label = MATA_ENTRES_STATUS_LABELS[tx.status] || tx.status;
+    const isExpanded = expandedCardIndex === idx;
+    const badge = getWorkflowStatusPresentation(tx.status, MATA_ENTRES_STATUS_LABELS[tx.status]);
+    const label = badge.label;
 
     const sourceName = esc(tx.sourceEstateName || tx.estateId || '-');
     const targetName = esc(tx.targetEstateName || tx.targetEstateId || '-');
@@ -2664,7 +2700,7 @@ export async function renderRequestMataEntresLanding() {
 
     // Contextual Action Determination
     let actionBtnHtml = '';
-    const btnActionStyle = 'padding: 5px 10px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.72rem; font-weight: 700; color: #FFFFFF; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 2px rgba(17,104,52,0.15); transition: background 0.15s ease; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; box-sizing: border-box;';
+    const btnActionStyle = 'width:100%; min-height:46px; padding:8px 12px; background:#116834; border:1px solid #116834; border-radius:10px; font-size:0.88rem; font-weight:700; color:#FFFFFF; cursor:pointer; box-shadow:0 2px 6px rgba(17,104,52,0.2); display:inline-flex; align-items:center; justify-content:center; line-height:1.2; box-sizing:border-box;';
 
     if (canPerformPengurusReceiverReview(tx, currentUser)) {
       actionBtnHtml = `<button class="btn-action-review" data-id="${tx.id}" style="${btnActionStyle}">Review Permintaan</button>`;
@@ -2674,63 +2710,70 @@ export async function renderRequestMataEntresLanding() {
       actionBtnHtml = `<button class="btn-action-asb" data-id="${tx.id}" style="${btnActionStyle}">Verifikasi Kesiapan</button>`;
     } else if (canPerformMantriDispatch(tx, currentUser)) {
       actionBtnHtml = `<button class="btn-action-dispatch" data-id="${tx.id}" style="${btnActionStyle}">Catat Pengeluaran</button>`;
-    } else if (canPerformPengurusArrival(tx, currentUser)) {
-      actionBtnHtml = `<button class="btn-action-arrival" data-id="${tx.id}" style="${btnActionStyle}">Terima &amp; Proses</button>`;
-    } else if (canPerformAskepReceiptRouting(tx, currentUser)) {
-      actionBtnHtml = `<button class="btn-action-rcp-askep" data-id="${tx.id}" style="${btnActionStyle}">Proses Verifikasi</button>`;
-    } else if (canPerformAsistenBibitanReceiptVerification(tx, currentUser)) {
-      actionBtnHtml = `<button class="btn-action-rcp-asb" data-id="${tx.id}" style="${btnActionStyle}">Verifikasi Bibitan</button>`;
-    } else if (canPerformMantriBibitanFinalReceipt(tx, currentUser)) {
-      actionBtnHtml = `<button class="btn-action-rcp-mantri" data-id="${tx.id}" style="${btnActionStyle}">Lanjut Penerimaan</button>`;
     }
 
+    const auditItems = Array.isArray(tx.auditTrail) ? tx.auditTrail : Array.isArray(tx.auditLog) ? tx.auditLog : [];
+    const progressItems = auditItems.length ? auditItems : [{
+      name: tx.requestedBy || tx.createdByName || 'Pemohon',
+      position: 'Pengurus Kebun',
+      timestamp: tx.createdAt || tx.requestDate || tx.date,
+      details: 'Permintaan Mata Entres diajukan'
+    }];
+    const expandedHtml = isExpanded ? `
+      <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #E2E8F0;">
+        <div style="display:grid; grid-template-columns:40% 60%; gap:7px 8px; font-size:.75rem;">
+          <span style="color:#64748B;">Pemohon</span><strong style="text-align:right; color:#1E293B;">${esc(tx.requestedBy || tx.createdByName || '-')}</strong>
+          <span style="color:#64748B;">Klon Diminta</span><strong style="text-align:right; color:#1E293B;">${esc(tx.klon || '-')}</strong>
+          <span style="color:#64748B;">Kode Alokasi</span><strong style="text-align:right; color:#1E293B; overflow-wrap:anywhere;">${esc(tx.allocationCode || '-')}</strong>
+          <span style="color:#64748B;">Tanggal Pengajuan</span><strong style="text-align:right; color:#1E293B;">${esc(formatDate(tx.createdAt || tx.requestDate || tx.date) || '-')}</strong>
+        </div>
+        <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #E2E8F0;">
+          <div style="font-weight:700; font-size:.80rem; color:#0F172A; margin-bottom:8px;">Status Progress Permintaan</div>
+          <div style="display:flex; flex-direction:column; gap:0; padding-left:2px;">
+            ${progressItems.map((entry, progressIndex) => {
+      const last = progressIndex === progressItems.length - 1;
+      const actor = entry.actorName || entry.name || entry.userName || entry.createdByName || entry.actorId || 'Pengguna';
+      const role = entry.position || entry.actorRole || entry.role || '';
+      const date = entry.timestamp || entry.createdAt || entry.date || tx.createdAt || tx.date;
+      const rawDescription = entry.details || entry.note || entry.description || entry.event || entry.eventType || 'Pembaruan permintaan';
+      const description = ({
+        CREATE: 'Permintaan Mata Entres diajukan',
+        SUBMIT: 'Permintaan Mata Entres diajukan',
+        UPDATE: 'Data permintaan diperbarui',
+        VERIFY: 'Permintaan diverifikasi',
+        APPROVE: 'Permintaan disetujui',
+        REJECT: 'Permintaan ditolak',
+        RETURN: 'Permintaan dikembalikan untuk perbaikan',
+        DISPATCH: 'Pengeluaran Mata Entres dicatat',
+        RECEIPT: 'Penerimaan Mata Entres dicatat'
+      })[String(rawDescription).trim().toUpperCase()] || rawDescription;
+      return `<div style="display:flex; gap:10px; position:relative;"><div style="display:flex; flex-direction:column; align-items:center; width:14px; flex-shrink:0;"><span style="width:8px; height:8px; border-radius:50%; background:#116834; margin-top:5px; border:2px solid #DCFCE7;"></span>${last ? '' : '<span style="width:2px; flex:1; min-height:18px; background:#CBD5E1; margin:3px 0;"></span>'}</div><div style="flex:1; padding-bottom:${last ? '4px' : '10px'}; min-width:0;"><div style="font-weight:700; font-size:.76rem; color:#0F172A;">${esc(actor)}${role ? `<span style="font-size:.70rem; color:#64748B; margin-left:4px;">(${esc(role)})</span>` : ''}</div><div style="font-size:.72rem; color:#64748B; margin-top:2px; line-height:1.35;"><strong style="color:#475569;">${esc(formatDate(date) || '-')}</strong><span style="margin:0 4px;">—</span>${esc(description)}</div></div></div>`;
+    }).join('')}
+          </div>
+        </div>
+      </div>
+    ` : '';
+
     return `
-      <div class="card-mata-entres" data-index="${idx}" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: all 0.15s ease;">
-        
-        <!-- ROW 1: NO DOKUMEN & BADGE STATUS -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px;">
-          <div style="font-size: 0.88rem; font-weight: 800; color: #116834; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            ${esc(tx.docNo)}
-          </div>
-          <span style="display: inline-block; font-size: 0.65rem; font-weight: 700; background: ${badge.bg}; color: ${badge.text}; border: 1px solid ${badge.border}; padding: 3px 8px; border-radius: 5px; text-transform: uppercase; flex-shrink: 0; white-space: nowrap;">
-            ${label}
-          </span>
+      <div class="card-mata-entres" data-index="${idx}" style="background:#FFFFFF; border:1px solid ${isExpanded ? '#116834' : '#E2E8F0'}; border-radius:12px; padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,.04);">
+        <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid #F1F5F9; min-width:0;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; min-width:0;"><div style="min-width:0; flex:1; font-size:.66rem; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.04em; line-height:1.35;">Dokumen Permintaan</div><span style="display:inline-flex; align-items:center; justify-content:center; flex:0 1 auto; min-width:0; max-width:58%; padding:4px 7px; border-radius:7px; border:1px solid ${badge.border}; background:${badge.background}; color:${badge.color}; font-size:.58rem; font-weight:750; line-height:1.3; letter-spacing:.01em; text-align:center; white-space:normal; overflow-wrap:anywhere; word-break:break-word; box-sizing:border-box;">${esc(label)}</span></div>
+          <div style="font-size:.95rem; font-weight:800; color:#116834; line-height:1.35; overflow-wrap:anywhere; word-break:break-word;">${esc(tx.docNo || '-')}</div>
         </div>
-
-        <!-- ROW 2: KEBUN PEMOHON → KEBUN PENGIRIM -->
-        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.78rem;">
-          <span style="font-weight: 700; color: #1E293B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;">${sourceName}</span>
-          <span style="color: #94A3B8; font-weight: 700; flex-shrink: 0;">→</span>
-          <span style="font-weight: 700; color: #116834; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;">${targetName}</span>
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:.78rem; background:#F8FAFC; padding:7px 10px; border-radius:7px; border:1px solid #F1F5F9;">
+          <span style="font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45%;">${sourceName}</span><span style="color:#94A3B8; font-weight:800;">→</span><span style="font-weight:700; color:#116834; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45%;">${targetName}</span>
         </div>
-
-        <!-- ROW 3: KLON • KODE ALOKASI -->
-        <div style="font-size: 0.75rem; color: #475569; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-          <span style="font-weight: 700; color: #116834;">${esc(tx.klon || '-')}</span>
-          ${tx.allocationCode ? `
-            <span style="color: #CBD5E1;">•</span>
-            <span style="font-weight: 600; color: #64748B;">Alokasi: <strong style="color: #334155;">${esc(tx.allocationCode)}</strong></span>
-          ` : ''}
+        <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; font-size:.78rem; margin-bottom:8px;">
+          <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">Pemohon</div><div style="font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(tx.requestedBy || tx.createdByName || '-')}</div></div>
+          <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">Klon Diminta</div><div style="font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(tx.klon || '-')}</div></div>
+          <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">Banyaknya Diminta</div><div style="font-weight:800; color:#116834;">${qtyFormatted}</div></div>
+          <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">Tanggal Dibutuhkan</div><div style="font-weight:600; color:#475569;">${esc(formattedRequiredDate || '-')}</div></div>
         </div>
-
-        <!-- ROW 4: BANYAKNYA & TANGGAL -->
-        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-bottom: 4px;">
-          <span style="font-weight: 800; color: #116834; font-size: 0.82rem;">${qtyFormatted}</span>
-          <span style="color: #64748B; font-size: 0.72rem;">Dibutuhkan: ${esc(formattedRequiredDate || '-')}</span>
-        </div>
-
-        <!-- CARD FOOTER ACTIONS -->
-        <div class="action-footer" style="display: flex; gap: 6px; align-items: center; justify-content: space-between; border-top: 1px dashed #F1F5F9; padding-top: 8px; margin-top: 6px;">
-          <div class="action-group" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-            ${actionBtnHtml}
-          </div>
-          <div class="detail-action" style="margin-left: auto;">
-            <button class="btn-view-detail" data-id="${tx.id}" type="button" style="background: transparent; border: 1px solid #CBD5E1; color: #334155; font-size: 0.72rem; font-weight: 600; padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; line-height: 1.2; box-sizing: border-box; white-space: nowrap;">
-              Detail ▼
-            </button>
-          </div>
-        </div>
-
+        <button class="btn-toggle-expand" data-index="${idx}" type="button" style="width:100%; min-height:36px; background:transparent; border:0; border-top:1px dashed #E2E8F0; padding:7px 0 2px; font-size:.74rem; color:#116834; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;">
+          <span>${isExpanded ? 'Sembunyikan Rincian' : 'Tampilkan Rincian'}</span><svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.2" fill="none" style="transform:rotate(${isExpanded ? '180deg' : '0deg'});"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        ${expandedHtml}
+        ${actionBtnHtml ? `<div class="action-footer" style="display:flex; margin-top:8px; padding-top:8px; border-top:1px dashed #F1F5F9;"><div class="action-group" style="width:100%;">${actionBtnHtml}</div></div>` : ''}
       </div>
     `;
   }).join('');
@@ -2770,7 +2813,6 @@ export async function renderRequestMataEntresLanding() {
             style="flex: 1; padding: 8px 4px; background: transparent; border: none; border-bottom: 2px solid ${activeTab === 'MY_REQUESTS' ? '#116834' : 'transparent'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: ${activeTab === 'MY_REQUESTS' ? '800' : '600'}; font-size: 0.80rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;"
           >
             <span>Permintaan Saya</span>
-            ${actionableMyCount > 0 ? `<span style="display: inline-block; width: 7px; height: 7px; background: #DC2626; border-radius: 50%;"></span>` : ''}
             <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 10px; background: ${activeTab === 'MY_REQUESTS' ? '#E8F5E9' : '#F1F5F9'}; color: ${activeTab === 'MY_REQUESTS' ? '#116834' : '#64748B'}; font-weight: 700;">
               ${myRequests.length}
             </span>
@@ -2847,6 +2889,14 @@ export async function renderRequestMataEntresLanding() {
   app.querySelectorAll('.tab-filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       activeStatusFilter = btn.dataset.filter;
+      renderRequestMataEntresLanding();
+    });
+  });
+
+  app.querySelectorAll('.btn-toggle-expand').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const index = Number(btn.dataset.index);
+      expandedCardIndex = expandedCardIndex === index ? -1 : index;
       renderRequestMataEntresLanding();
     });
   });

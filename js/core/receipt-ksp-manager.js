@@ -16,7 +16,7 @@ import {
   RECEIPT_KSP_STATUS_LABELS,
   RECEIPT_KSP_STORAGE_KEY
 } from './receipt-ksp-constants.js';
-import { addBatchStockFromReceipt, initBatchInventory } from './batch-inventory-service.js';
+import { addBatchStockFromReceipt, getBatchInventory, initBatchInventory } from './batch-inventory-service.js';
 
 /**
  * Generator Nomor Dokumen Penerimaan Kebun Sepupu Terstandarisasi
@@ -167,6 +167,8 @@ export function createReceiptFromDispatch(dispatchRecord, parentRequest, current
     transactionType: isMataEntres ? 'PENERIMAAN_MATA_ENTRES' : 'PENERIMAAN_BIBIT',
     parentRequestId: parentRequest.id,
     parentRequestDocNo: parentRequest.docNo || parentRequest.nomorDokumen || '-',
+    programId: parentRequest.programId || null,
+    programName: parentRequest.programName || parentRequest.programLabel || null,
     dispatchId: dispatchRecord.id,
     dispatchDocNo: dispatchRecord.docNo || dispatchRecord.dispatchNo,
     dispatchNo: dispatchRecord.dispatchNo || dispatchRecord.docNo,
@@ -337,6 +339,37 @@ export function createNurseryBatchesFromReceipt(receipt, detailsResults, current
 
     // Jika kuantitas layak > 0, bentuk nursery batch baru
     if (acceptedQty > 0) {
+      if (d.targetBatchId) {
+        const targetBatch = allNurseryBatches.find(batch =>
+          [batch.id, batch.batchId, batch.batchCode, batch.batchNo].filter(Boolean).map(String).includes(String(d.targetBatchId))
+        );
+        if (!targetBatch || targetBatch.statusMaster === 'INACTIVE' || targetBatch.status === 'INACTIVE') {
+          throw new Error(`Batch tujuan ${d.targetBatchCode || d.targetBatchId} tidak ditemukan atau tidak aktif.`);
+        }
+
+        const targetBatchId = targetBatch.id || targetBatch.batchId || targetBatch.batchCode || targetBatch.batchNo;
+        const targetBatchCode = targetBatch.batchCode || targetBatch.batchNo || targetBatch.name || targetBatchId;
+        getBatchInventory(targetBatchId);
+        addBatchStockFromReceipt(
+          targetBatchId,
+          acceptedQty,
+          {
+            id: `${receipt.id}:${d.id || d.sourceBatchId || 'DETAIL'}:${idx + 1}`,
+            receiptId: receipt.id,
+            receiptDocNo: receipt.receiptDocNo || receipt.docNo,
+            idempotencyKey: `MUT-${receipt.id}-DETAIL-${d.id || d.sourceBatchId || 'DETAIL'}-${idx + 1}-RECEIPT`
+          },
+          currentUser,
+          `Penerimaan bibit ${receipt.receiptDocNo || receipt.docNo} dialokasikan ke batch ${targetBatchCode}`
+        );
+        d.receivedBatchId = targetBatchId;
+        d.receivedBatchCode = targetBatchCode;
+        d.newBatchId = targetBatchId;
+        d.newBatchCode = targetBatchCode;
+        createdBatches.push({ ...targetBatch, id: targetBatchId, batchCode: targetBatchCode, receivedQty: acceptedQty, existing: true });
+        continue;
+      }
+
       const estateId = receipt.targetEstateId || currentUser.estateId;
       const divisionId = receipt.targetNextDivisionId || receipt.targetDivisionId || currentUser.divisionId || 'DIV-01';
       const cloneName = d.cloneId || receipt.clone || 'IRCA 19';

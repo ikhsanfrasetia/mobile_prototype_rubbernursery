@@ -46,7 +46,7 @@ const MODULE_SECTION_TITLES = {
   [MODULE_TYPES.KEBUN_ENTRES]: 'Kebun Entres',
   [MODULE_TYPES.MATERIAL]: 'Material & Bahan',
   [MODULE_TYPES.PEMELIHARAAN]: 'Rekam Pemeliharaan',
-  [MODULE_TYPES.PENGELUARAN]: 'Pengeluaran Bibit'
+  [MODULE_TYPES.PENGELUARAN]: 'Pengeluaran'
 };
 
 const SUBMITTED_LIFECYCLE_STATUSES = new Set([
@@ -680,20 +680,33 @@ export function getUniversalCardConfig(tx) {
     case MODULE_TYPES.PENGELUARAN: {
       const primaryEntity = disp.title || 'Pengeluaran Bibit';
       const primaryDoc = tx.docNo;
-      const qty = raw.issuedQty !== undefined ? raw.issuedQty : (raw.qtyDispatched || raw.quantity || raw.qty || 0);
-      const mainQty = `${formatSafeNumber(qty)} Pkk`;
-      const clone = raw.clone || raw.klon || '-';
-      const destination = raw.targetDivisionName || raw.targetEstateId || raw.destination || raw.targetDivision || '-';
+      const isMataEntres = String(raw.transactionType || '').toUpperCase().includes('MATA_ENTRES') ||
+        String(raw.type || '').toUpperCase() === 'MATA_ENTRES' ||
+        raw.jumlahMataEntresDikeluarkan !== undefined || raw.details?.some(detail => detail?.mataQty !== undefined);
+      const qty = isMataEntres
+        ? (raw.jumlahMataEntresDikeluarkan ?? raw.details?.reduce((total, detail) => total + (Number(detail?.mataQty) || 0), 0) ?? raw.issuedQty ?? 0)
+        : (raw.issuedQty ?? raw.qtyDispatched ?? raw.quantity ?? raw.qty ?? 0);
+      const unit = isMataEntres ? 'Mata' : 'Pkk';
+      const mainQty = disp.mainQty || `${formatSafeNumber(qty)} ${unit}`;
+      const clone = raw.clone || raw.klon || raw.details?.[0]?.klon || '-';
+      const destination = isMataEntres
+        ? (raw.sourceEstateName || raw.sourceEstateId || raw.requesterEstate || raw.requesterEstateId || raw.targetNextEstateName || raw.targetNextEstateId || '-')
+        : (raw.targetEstateName || raw.targetEstateId || raw.destination || raw.targetDivisionName || raw.targetDivisionId || raw.targetDivision || '-');
+      const source = isMataEntres
+        ? (raw.dispatchedFromEstateName || raw.estateName || raw.targetEstateName || raw.dispatchedFromEstateId || raw.estateId || raw.targetEstateId || '-')
+        : (raw.sourceEstateName || raw.sourceEstateId || raw.dispatchedFromEstateName || raw.dispatchedFromEstateId || raw.estateName || raw.estateId || '-');
       const vehicle = raw.vehiclePlate ? `Kendaraan: ${raw.vehiclePlate}` : '';
 
       return {
-        moduleLabel: 'PENGELUARAN',
+        moduleLabel: isMataEntres ? 'PENGELUARAN MATA ENTRES' : 'PENGELUARAN BIBIT',
         primaryEntity,
         primaryDoc,
         quantityText: mainQty,
         breakdownText: disp.breakdown || '',
         referenceText: vehicle,
-        contextText: `Tujuan: ${destination} · Klon: ${clone}`,
+        contextText: isMataEntres
+          ? `Asal: ${source} · Tujuan: ${destination} · Klon: ${clone}`
+          : `Tujuan: ${destination} · Klon: ${clone}`,
         dateText: dateFormatted
       };
     }

@@ -119,6 +119,8 @@ export const permissions = {
       return ASISTEN_AUTHORIZED_ROUTES.includes(normalizedPath);
     }
 
+    if (r === ROLES.MANTRI_TANAMAN && (route === '/request' || route.startsWith('/request/kebun-sendiri'))) return true;
+
     if (route.startsWith('/home')) return this.canAccessHome(r);
     if (route.startsWith('/splash')) return true; // Splash setelah login: semua role
     if (route.startsWith('/sync')) return true; // Sinkronisasi: semua role

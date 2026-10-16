@@ -328,13 +328,15 @@ export function renderReceiptLanding() {
 
   // --- MENU 2: PENERIMAAN BIBIT (NAVIGASI PENERIMAAN KEBUN SEPUPU) ---
   app.querySelector('#btn-bibit').addEventListener('click', () => {
+    storage.set('receipt_inbox_type', 'BIBIT');
     navigate('/reception/kebun-sepupu');
   });
 
   // --- MENU 3: PENERIMAAN MATA ENTRES ---
   app.querySelector('#btn-entres').addEventListener('click', () => {
     storage.set('mata_entres_origin_route', '/reception');
-    navigate('/request/mata-entres');
+    storage.set('receipt_inbox_type', 'MATA_ENTRES');
+    navigate('/reception/kebun-sepupu');
   });
 
   // --- POPOVER & CARD ACTIONS (LIHAT / EDIT / HAPUS) ---

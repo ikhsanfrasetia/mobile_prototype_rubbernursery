@@ -24,6 +24,7 @@ import { session } from '../../core/session.js';
 import { getCurrentUserContext, normalizeRole } from '../../core/user-context.js';
 import { storage } from '../../core/storage.js';
 import { renderStatusDots } from '../../core/status-dot-renderer.js';
+import { getWorkflowStatusPresentation } from '../../core/workflow-status-presentation.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
 import { requestRepository, batchRepository } from '../../db/repositories.js';
@@ -45,7 +46,8 @@ import { normalizeKlonName } from '../../data/klon-master.js';
 import { initBatchInventory } from '../../core/batch-inventory-service.js';
 import {
   openMantriDispatchModal,
-  openMataEntresDetailModal
+  canPerformMantriBibitanFinalReceipt,
+  openMantriBibitanReceiptModal
 } from '../request/request-mata-entres-landing.js';
 import {
   getGlobalAttendanceGateStatus,
@@ -356,8 +358,14 @@ export function filterDispatchRequests(requests, currentUser) {
   return requests.filter(tx => {
     const isKebunSendiri = tx.type === 'KEBUN_SENDIRI' || tx.transactionType === 'KEBUN_SENDIRI';
     const isMataEntres = tx.type === 'MATA_ENTRES';
+    const isMantriFinalReceipt = isMantri && isMataEntres && canPerformMantriBibitanFinalReceipt(tx, currentUser);
     const isRequestType = tx.type === 'KEBUN_SEPUPU' || isKebunSendiri || isMataEntres || !tx.type;
     if (!isRequestType) return false;
+
+    // Dokumen yang sudah dikirim ke tahap penerimaan hanya muncul di menu Penerimaan.
+    if (isMantriFinalReceipt) return false;
+    const workflowStatus = String(tx.status || '').toUpperCase();
+    if (isMantri && workflowStatus === 'MENUNGGU_PENERIMAAN_MANTRI_BIBITAN') return false;
 
     let senderEstate = null;
     let senderDivision = null;
@@ -685,7 +693,7 @@ export async function processDispatchShipment(parentRequest, formValues, current
     nextStatusLabel = isCompleted ? 'Menunggu Verifikasi Pengeluaran ASB' : 'Pengeluaran Berjalan';
   } else {
     nextStatus = isCompleted ? RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS : 'PENGELUARAN_BERJALAN';
-    nextStatusLabel = isCompleted ? (RECEIPT_KSP_STATUS_LABELS[RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS] || 'Menunggu Penerimaan Pengurus') : 'Pengeluaran Berjalan';
+    nextStatusLabel = isCompleted ? (RECEIPT_KSP_STATUS_LABELS[RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS] || 'Menunggu Penerimaan') : 'Pengeluaran Berjalan';
   }
 
   const batchSummaryStr = batchDetails.map(b => `${b.batchCode}: ${b.qty.toLocaleString('id-ID')} Pkk`).join(', ');
@@ -768,8 +776,8 @@ export function openDispatchModal(item, currentUser) {
 
   const docNo = item.docNo || '2026/NIR/001';
   const approvedClone = item.approvedClone || item.requestedClone || 'IRCA 19';
-  const approvedQty = parseInt(item.approvedQty || item.requestedQty || 0, 10);
-  const totalIssued = parseInt(item.totalIssuedQty || item.actualIssuedQty || 0, 10);
+  const approvedQty = parseInt(item.approvedQty || item.requestedQty || item.approval?.approvedBatang || item.jumlahBatang || 0, 10);
+  const totalIssued = parseInt(item.totalIssuedQty || item.actualIssuedQty || item.jumlahBatangDikeluarkan || item.pengeluaran?.jumlahBatang || 0, 10);
   const remainingQty = approvedQty - totalIssued;
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -935,22 +943,43 @@ export function openDispatchModal(item, currentUser) {
             </div>
 
             <!-- FOTO PENGELUARAN -->
-            <div style="margin-bottom: 12px; margin-top: 12px; border-top: 1px dashed #E2E8F0; padding-top: 12px;">
+            <div style="margin-bottom:12px; border:1px solid #E2E8F0; border-radius:8px; padding:12px; background:#FFFFFF;">
               <label style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 6px; font-size: 0.78rem;">
                 Foto Bukti Pengeluaran
               </label>
-              <div style="background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 6px; padding: 12px; text-align: center;">
-                <input type="file" id="input-dispatch-photo" accept="image/*" capture="environment" style="display: none;" />
-                <button type="button" id="btn-take-photo" style="background: #FFFFFF; border: 1px solid #CBD5E1; color: #475569; padding: 6px 12px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer;">
-                  📸 Ambil Foto
-                </button>
-                <div id="photo-preview-container" style="display: none; margin-top: 10px;">
-                  <img id="dispatch-photo-preview" src="" style="max-width: 100%; max-height: 150px; border-radius: 4px; border: 1px solid #E2E8F0;" />
-                  <div id="photo-metadata-display" style="font-size: 0.7rem; color: #64748B; text-align: left; margin-top: 6px; background: #FFFFFF; padding: 6px; border-radius: 4px; border: 1px solid #E2E8F0; word-break: break-word;">
-                    <!-- Metadata will be injected here -->
-                  </div>
+              <p style="font-size:.72rem; color:#64748B; margin:0 0 10px; line-height:1.35;">Ambil foto dokumentasi fisik bibit saat pengeluaran. Ketuk thumbnail untuk memperbesar.</p>
+              <div id="dispatch-photo-container" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                <div id="dispatch-photo-preview-item" style="display:none; position:relative; width:80px; height:80px; border-radius:6px; overflow:hidden; border:1px solid #CBD5E1; box-shadow:0 1px 3px rgba(0,0,0,.08); cursor:pointer;">
+                  <img id="dispatch-photo-preview" src="" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" alt="Foto Pengeluaran" title="Klik untuk memperbesar foto" />
+                  <button type="button" id="btn-dispatch-retake" title="Ambil Ulang Foto" style="position:absolute; top:4px; right:4px; background:rgba(0,0,0,.6); border:0; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#FFF; padding:0;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="#FFF" stroke-width="2.5" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  </button>
                 </div>
               </div>
+              <div id="dispatch-camera-trigger-box" style="display:block;">
+                <button type="button" id="btn-take-photo" style="width:100%; padding:10px; background:#F0FDF4; border:1px dashed #16A34A; border-radius:6px; font-size:.80rem; font-weight:700; color:#15803D; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                  Ambil Foto Kamera
+                </button>
+              </div>
+            </div>
+
+            <div id="dispatch-photo-viewer-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:10025; backdrop-filter:blur(4px);"></div>
+            <div id="dispatch-photo-viewer" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:92vw; max-height:85vh; z-index:10026; flex-direction:column; align-items:center; justify-content:center;">
+              <button type="button" id="btn-dispatch-close-photo-viewer" aria-label="Tutup" style="position:absolute; top:-44px; right:0; background:rgba(255,255,255,.25); border:1px solid rgba(255,255,255,.5); border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; color:#FFF; cursor:pointer;"><svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+              <img id="dispatch-photo-viewer-img" src="" alt="Foto Bukti Pengeluaran" style="max-width:90vw; max-height:80vh; object-fit:contain; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.8);" />
+            </div>
+            <div id="dispatch-camera-overlay" style="display:none; position:fixed; inset:0; background:#000; z-index:10020; flex-direction:column;">
+              <header style="display:flex; justify-content:space-between; align-items:center; padding:16px; position:absolute; top:0; left:0; right:0; z-index:10021;">
+                <button type="button" id="btn-dispatch-camera-close" aria-label="Tutup kamera" style="background:rgba(0,0,0,.5); border:0; border-radius:50%; width:40px; height:40px; display:flex; justify-content:center; align-items:center; cursor:pointer;"><svg viewBox="0 0 24 24" width="24" height="24" stroke="#FFF" stroke-width="2" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="6"></line></svg></button>
+              </header>
+              <main style="flex:1; display:flex; justify-content:center; align-items:center; overflow:hidden; position:relative;">
+                <video id="dispatch-camera-video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover;"></video><canvas id="dispatch-camera-canvas" style="display:none;"></canvas>
+                <div id="dispatch-camera-error" style="display:none; color:#FFF; text-align:center; padding:20px;"><p style="font-weight:700;">Kamera tidak tersedia atau akses ditolak.</p><p style="font-size:.8rem; color:#AAA;">Periksa izin kamera dan coba lagi.</p></div>
+              </main>
+              <footer style="padding:24px; display:flex; justify-content:center; align-items:center; position:absolute; bottom:0; left:0; right:0; z-index:10021; background:linear-gradient(to top,rgba(0,0,0,.8),transparent);">
+                <button id="btn-dispatch-camera-shutter" type="button" aria-label="Ambil foto" style="width:70px; height:70px; border-radius:50%; background:transparent; border:4px solid #FFF; display:flex; justify-content:center; align-items:center; cursor:pointer;"><div style="width:54px; height:54px; background:#FFF; border-radius:50%;"></div></button>
+              </footer>
             </div>
 
             <!-- LIVE ALLOCATION COUNTER -->
@@ -988,68 +1017,96 @@ export function openDispatchModal(item, currentUser) {
 
   // Photo Logic
   let currentPhotoMetadata = null;
-  const photoInput = root.querySelector('#input-dispatch-photo');
   const btnTakePhoto = root.querySelector('#btn-take-photo');
-  const previewContainer = root.querySelector('#photo-preview-container');
+  const previewContainer = root.querySelector('#dispatch-photo-preview-item');
   const photoPreview = root.querySelector('#dispatch-photo-preview');
-  const metaDisplay = root.querySelector('#photo-metadata-display');
-
-  btnTakePhoto?.addEventListener('click', () => {
-    photoInput?.click();
+  const cameraOverlay = root.querySelector('#dispatch-camera-overlay');
+  const cameraVideo = root.querySelector('#dispatch-camera-video');
+  const cameraCanvas = root.querySelector('#dispatch-camera-canvas');
+  const cameraError = root.querySelector('#dispatch-camera-error');
+  const cameraTriggerBox = root.querySelector('#dispatch-camera-trigger-box');
+  const photoViewerOverlay = root.querySelector('#dispatch-photo-viewer-overlay');
+  const photoViewer = root.querySelector('#dispatch-photo-viewer');
+  const photoViewerImg = root.querySelector('#dispatch-photo-viewer-img');
+  const hidePhotoViewer = () => {
+    if (photoViewerOverlay) photoViewerOverlay.style.display = 'none';
+    if (photoViewer) photoViewer.style.display = 'none';
+  };
+  previewContainer?.addEventListener('click', () => {
+    if (!photoPreview?.src || !photoViewerOverlay || !photoViewer || !photoViewerImg) return;
+    photoViewerImg.src = photoPreview.src;
+    photoViewerOverlay.style.display = 'block';
+    photoViewer.style.display = 'flex';
   });
-
-  photoInput?.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        photoPreview.src = ev.target.result;
-        previewContainer.style.display = 'block';
-
-        const ts = new Date().toISOString();
-        const roleStr = typeof normalizeRole === 'function' ? normalizeRole(currentUser.role || currentUser.rawRole) : (currentUser.role || currentUser.rawRole || 'MANTRI_TANAMAN');
-
-        currentPhotoMetadata = {
-          image: ev.target.result,
-          capturedAt: ts,
-          capturedByUserId: currentUser.userId || currentUser.code || currentUser.id,
-          capturedByName: currentUser.name || 'Mantri',
-          capturedByRole: roleStr,
-          capturedByEstateId: currentUser.estateId,
-          capturedByDivisionId: currentUser.divisionId,
-          latitude: null,
-          longitude: null,
-          locationCaptured: false
-        };
-
-        metaDisplay.innerHTML = `
-          <div><strong>Nama:</strong> ${esc(currentPhotoMetadata.capturedByName)}</div>
-          <div><strong>Waktu:</strong> ${esc(formatDate(ts))}</div>
-          <div id="meta-location"><strong>Lokasi:</strong> Mendapatkan koordinat...</div>
-        `;
-
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              currentPhotoMetadata.latitude = pos.coords.latitude;
-              currentPhotoMetadata.longitude = pos.coords.longitude;
-              currentPhotoMetadata.locationCaptured = true;
-              const locDiv = root.querySelector('#meta-location');
-              if (locDiv) locDiv.innerHTML = `<strong>Lokasi:</strong> ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;
-            },
-            (err) => {
-              const locDiv = root.querySelector('#meta-location');
-              if (locDiv) locDiv.innerHTML = `<strong>Lokasi:</strong> Lokasi tidak tersedia`;
-            },
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-          );
-        } else {
-          const locDiv = root.querySelector('#meta-location');
-          if (locDiv) locDiv.innerHTML = `<strong>Lokasi:</strong> Tidak didukung browser`;
-        }
-      };
-      reader.readAsDataURL(file);
+  photoViewerOverlay?.addEventListener('click', hidePhotoViewer);
+  root.querySelector('#btn-dispatch-close-photo-viewer')?.addEventListener('click', hidePhotoViewer);
+  root.querySelector('#btn-dispatch-retake')?.addEventListener('click', event => {
+    event.stopPropagation();
+    hidePhotoViewer();
+    currentPhotoMetadata = null;
+    photoPreview.src = '';
+    if (previewContainer) previewContainer.style.display = 'none';
+    if (cameraTriggerBox) cameraTriggerBox.style.display = 'block';
+  });
+  let cameraStream = null;
+  const getPhotoPosition = () => new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }), () => resolve(null), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  });
+  const stopDispatchCamera = () => {
+    cameraStream?.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+    if (cameraOverlay) cameraOverlay.style.display = 'none';
+  };
+  btnTakePhoto?.addEventListener('click', async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Kamera tidak didukung pada perangkat ini.');
+      cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      cameraVideo.srcObject = cameraStream;
+      cameraOverlay.style.display = 'flex';
+      if (cameraError) cameraError.style.display = 'none';
+      cameraVideo.style.display = 'block';
+      await cameraVideo.play();
+    } catch (error) {
+      stopDispatchCamera();
+      cameraOverlay.style.display = 'flex';
+      if (cameraError) cameraError.style.display = 'block';
+      cameraVideo.style.display = 'none';
+      toast(error.message || 'Akses kamera gagal. Izinkan akses kamera lalu coba lagi.', 'error');
     }
+  });
+  root.querySelector('#btn-dispatch-camera-close')?.addEventListener('click', stopDispatchCamera);
+  root.querySelector('#btn-dispatch-camera-shutter')?.addEventListener('click', async () => {
+    if (!cameraVideo?.videoWidth) return;
+    const ts = new Date();
+    const position = await getPhotoPosition();
+    cameraCanvas.width = cameraVideo.videoWidth;
+    cameraCanvas.height = cameraVideo.videoHeight;
+    const ctx = cameraCanvas.getContext('2d');
+    ctx.drawImage(cameraVideo, 0, 0);
+    const scale = cameraCanvas.width / 640;
+    const fontSize = Math.max(16, Math.round(18 * scale));
+    const lines = [
+      `${currentUser.code || currentUser.loginCode || currentUser.userId || currentUser.id || '-'} - ${currentUser.name || 'Mantri Bibitan'}`,
+      ts.toLocaleString('id-ID'),
+      position ? `${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}` : 'Lokasi tidak tersedia'
+    ];
+    const padding = Math.round(fontSize * 0.65);
+    const lineHeight = Math.round(fontSize * 1.45);
+    const stampHeight = padding * 2 + lineHeight * lines.length;
+    ctx.fillStyle = 'rgba(0,0,0,.68)';
+    ctx.fillRect(0, cameraCanvas.height - stampHeight, cameraCanvas.width, stampHeight);
+    ctx.fillStyle = '#fff';
+    ctx.font = `600 ${fontSize}px sans-serif`;
+    ctx.textBaseline = 'top';
+    lines.forEach((line, i) => ctx.fillText(line, padding, cameraCanvas.height - stampHeight + padding + i * lineHeight, cameraCanvas.width - padding * 2));
+    const image = cameraCanvas.toDataURL('image/jpeg', 0.88);
+    const roleStr = normalizeRole(currentUser.role || currentUser.rawRole) || 'MANTRI_TANAMAN';
+    currentPhotoMetadata = { image, capturedAt: ts.toISOString(), capturedByUserId: currentUser.code || currentUser.loginCode || currentUser.userId || currentUser.id, capturedByCode: currentUser.code || currentUser.loginCode || currentUser.userId || currentUser.id, capturedByName: currentUser.name || 'Mantri Bibitan', capturedByRole: roleStr, capturedByEstateId: currentUser.estateId, capturedByDivisionId: currentUser.divisionId, latitude: position?.latitude ?? null, longitude: position?.longitude ?? null, locationCaptured: Boolean(position) };
+    photoPreview.src = image;
+    previewContainer.style.display = 'block';
+    cameraTriggerBox.style.display = 'none';
+    stopDispatchCamera();
   });
 
   // Helper sync counters
@@ -1156,7 +1213,11 @@ export function openDispatchModal(item, currentUser) {
   });
 
   // Cancel
-  root.querySelector('#btn-cancel-dispatch')?.addEventListener('click', closeModal);
+  root.querySelector('#btn-cancel-dispatch')?.addEventListener('click', () => {
+    stopDispatchCamera();
+    hidePhotoViewer();
+    closeModal();
+  });
 
   // Submit
   root.querySelector('#btn-submit-dispatch')?.addEventListener('click', async () => {
@@ -1204,16 +1265,36 @@ export function openDispatchModal(item, currentUser) {
  * Buka Modal Detail Dokumen Permintaan & Riwayat Pengeluaran (Read-Only)
  */
 export function openDispatchDetailModal(item) {
-  const docNo = item.docNo || '2026/NIR/001';
-  const sourceEstate = resolveEstate(item.estateId);
-  const sourceEstateName = sourceEstate ? sourceEstate.estate_name : (item.estateId || '-');
-  const targetEstate = resolveEstate(item.targetEstateId);
+  const isMataEntres = item.type === 'MATA_ENTRES';
+  const isKebunSendiri = item.type === 'KEBUN_SENDIRI' || item.transactionType === 'KEBUN_SENDIRI';
+  const docNo = item.docNo || item.nomorDokumen || '2026/NIR/001';
+  const sourceEstate = resolveEstate(item.sourceEstateId || item.requesterEstateId || item.estateId || item.requesterEstate);
+  const sourceEstateName = sourceEstate ? sourceEstate.estate_name : (item.sourceEstateName || item.requesterEstate || item.estateId || '-');
+  const targetEstate = resolveEstate(item.targetEstateId || item.targetEstate);
   const targetEstateName = targetEstate ? targetEstate.estate_name : (item.targetEstateId || '-');
 
   const approvedQty = parseInt(item.approvedQty || item.requestedQty || 0, 10);
   const totalIssued = parseInt(item.totalIssuedQty || item.actualIssuedQty || 0, 10);
   const remainingQty = approvedQty - totalIssued;
-  const approvedClone = item.approvedClone || item.requestedClone || '-';
+  const approvedClone = item.approval?.approvedKlon || item.approvedClone || item.requestedClone || item.klon || '-';
+  const docTypeLabel = isMataEntres ? 'Permintaan Mata Entres' : (isKebunSendiri ? 'Permintaan Bibit Kebun Sendiri' : 'Permintaan Bibit Kebun Sepupu');
+  const requestedQtyLabel = isMataEntres
+    ? `${Number(item.jumlahMataEntres || item.approval?.approvedMataEntres || 0).toLocaleString('id-ID')} Mata / ${Number(item.jumlahBatang || item.approval?.approvedBatang || 0).toLocaleString('id-ID')} Batang`
+    : `${Number(item.requestedQty || item.qty || 0).toLocaleString('id-ID')} Pkk`;
+  const approvedQtyLabel = isMataEntres
+    ? `${Number(item.approval?.approvedMataEntres || item.jumlahMataEntres || 0).toLocaleString('id-ID')} Mata / ${Number(item.approval?.approvedBatang || item.jumlahBatang || 0).toLocaleString('id-ID')} Batang`
+    : `${approvedQty.toLocaleString('id-ID')} Pkk`;
+  const issuedQtyLabel = isMataEntres
+    ? `${Number(item.jumlahMataEntresDikeluarkan || item.pengeluaran?.jumlahMataEntres || 0).toLocaleString('id-ID')} Mata / ${Number(item.jumlahBatangDikeluarkan || item.pengeluaran?.jumlahBatang || 0).toLocaleString('id-ID')} Batang`
+    : `${totalIssued.toLocaleString('id-ID')} Pkk`;
+  const remainingQtyLabel = isMataEntres
+    ? `${Math.max(0, Number(item.approval?.approvedMataEntres || item.jumlahMataEntres || 0) - Number(item.jumlahMataEntresDikeluarkan || item.pengeluaran?.jumlahMataEntres || 0)).toLocaleString('id-ID')} Mata`
+    : `${remainingQty.toLocaleString('id-ID')} Pkk`;
+  const auditTrail = Array.isArray(item.auditTrail) ? item.auditTrail : Array.isArray(item.auditLog) ? item.auditLog : [];
+  const askepAudit = [...auditTrail].reverse().find(entry => /ASKEP|ASISTEN_KEPALA/i.test(`${entry.event || ''} ${entry.eventType || ''} ${entry.actorRole || entry.role || ''}`));
+  const askepName = item.verifiedAskepByName || item.askepVerification?.verifiedByName || item.askepVerification?.verifiedBy || askepAudit?.actorName || askepAudit?.name || '';
+  const askepAt = item.verifiedAskepAt || item.askepVerification?.verifiedAt || askepAudit?.timestamp || askepAudit?.createdAt || '';
+  const askepNotes = item.askepVerification?.notes || askepAudit?.note || askepAudit?.details || '';
 
   const shipments = getDispatchTransactions(item.id);
 
@@ -1244,11 +1325,28 @@ export function openDispatchDetailModal(item) {
     }).join('');
   }
 
+  if (isMataEntres) {
+    shipmentsListHtml = `
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 12px; display:grid; grid-template-columns:45% 55%; gap:7px; font-size:.76rem;">
+        <span style="color:#64748B;">Klon</span><strong style="text-align:right;">${esc(approvedClone)}</strong>
+        <span style="color:#64748B;">Disetujui</span><strong style="color:#116834; text-align:right;">${approvedQtyLabel}</strong>
+        <span style="color:#64748B;">Sudah Keluar</span><strong style="color:#0369A1; text-align:right;">${issuedQtyLabel}</strong>
+        <span style="color:#64748B;">Sisa</span><strong style="color:${remainingQty > 0 ? '#DC2626' : '#166534'}; text-align:right;">${remainingQtyLabel}</strong>
+        <span style="color:#64748B;">Tanggal Dibutuhkan</span><strong style="text-align:right;">${esc(formatDate(item.requiredDate || item.date || '-'))}</strong>
+      </div>
+    `;
+  }
+
   openModal({
-    title: 'Detail Permintaan & Pengeluaran',
+    title: `Detail ${docTypeLabel}`,
     body: `
       <div style="padding: 4px 0; font-size: 0.82rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
         
+        <div style="margin-bottom:12px; padding:10px 12px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div style="min-width:0;"><div style="font-size:.68rem; color:#64748B; font-weight:700; text-transform:uppercase;">${esc(docTypeLabel)}</div><div style="font-weight:800; color:#116834; overflow-wrap:anywhere;">${esc(docNo)}</div></div>
+          <span style="font-size:.68rem; font-weight:800; color:${getWorkflowStatusPresentation(item.status || 'TERVERIFIKASI').color}; background:${getWorkflowStatusPresentation(item.status || 'TERVERIFIKASI').background}; border:1px solid ${getWorkflowStatusPresentation(item.status || 'TERVERIFIKASI').border}; border-radius:999px; padding:5px 8px; text-align:center;">${esc(getWorkflowStatusPresentation(item.status || 'TERVERIFIKASI').label)}</span>
+        </div>
+
         <!-- SECTION 1: PERMINTAAN AWAL -->
         <div style="margin-bottom: 12px;">
           <div style="font-weight: 800; color: #116834; font-size: 0.80rem; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em;">
@@ -1274,7 +1372,7 @@ export function openDispatchDetailModal(item) {
             <span style="font-weight: 700; color: #1E293B; text-align: right;">${esc(item.requestedClone || item.klon || '-')}</span>
 
             <span style="color: #64748B;">Banyaknya Diminta:</span>
-            <span style="font-weight: 700; color: #1E293B; text-align: right;">${(item.requestedQty || item.qty || 0).toLocaleString('id-ID')} Pkk</span>
+            <span style="font-weight: 700; color: #1E293B; text-align: right;">${requestedQtyLabel}</span>
 
             <span style="color: #64748B;">Tanggal Dibutuhkan:</span>
             <span style="font-weight: 600; color: #1E293B; text-align: right;">${esc(formatDate(item.requiredDate || item.date))}</span>
@@ -1288,7 +1386,7 @@ export function openDispatchDetailModal(item) {
           </div>
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; display: grid; grid-template-columns: 45% 55%; gap: 4px; font-size: 0.76rem;">
             <span style="color: #64748B;">Banyaknya Disetujui:</span>
-            <span style="font-weight: 800; color: #116834; text-align: right;">${approvedQty.toLocaleString('id-ID')} Pkk</span>
+            <span style="font-weight: 800; color: #116834; text-align: right;">${approvedQtyLabel}</span>
 
             <span style="color: #64748B;">Klon Disetujui:</span>
             <span style="font-weight: 700; color: #116834; text-align: right;">${esc(approvedClone)}</span>
@@ -1298,6 +1396,19 @@ export function openDispatchDetailModal(item) {
 
             <span style="color: #64748B;">Pengurus Pemroses:</span>
             <span style="font-weight: 600; color: #1E293B; text-align: right;">${esc(item.processedByName || 'Pengurus')}</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <div style="font-weight:800; color:#116834; font-size:.80rem; margin-bottom:6px; text-transform:uppercase; letter-spacing:.02em;">Verifikasi Asisten Kepala</div>
+          <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:8px 10px; display:grid; grid-template-columns:45% 55%; gap:5px; font-size:.76rem;">
+            <span style="color:#64748B;">Status Verifikasi:</span>
+            <span style="font-weight:700; color:${askepName ? '#116834' : '#64748B'}; text-align:right;">${askepName ? 'Terverifikasi' : 'Belum diverifikasi'}</span>
+            <span style="color:#64748B;">Asisten Kepala:</span>
+            <span style="font-weight:600; color:#1E293B; text-align:right; overflow-wrap:anywhere;">${esc(askepName || '-')}</span>
+            <span style="color:#64748B;">Waktu Verifikasi:</span>
+            <span style="font-weight:600; color:#1E293B; text-align:right;">${esc(askepAt ? formatDate(askepAt) : '-')}</span>
+            ${askepNotes ? `<span style="color:#64748B;">Catatan:</span><span style="font-weight:600; color:#1E293B; text-align:right; overflow-wrap:anywhere;">${esc(askepNotes)}</span>` : ''}
           </div>
         </div>
 
@@ -1319,7 +1430,7 @@ export function openDispatchDetailModal(item) {
         <div>
           <div style="font-weight: 800; color: #116834; font-size: 0.80rem; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em; display: flex; justify-content: space-between;">
             <span>4. Riwayat Transaksi Pengeluaran</span>
-            <span style="font-size: 0.74rem; color: #64748B;">Sisa: ${remainingQty.toLocaleString('id-ID')} Pkk</span>
+            <span style="font-size: 0.74rem; color: #64748B;">Sisa: ${remainingQtyLabel}</span>
           </div>
           ${shipmentsListHtml}
         </div>
@@ -1443,7 +1554,8 @@ export async function renderDispatchLanding() {
       const sourceEstate = resolveEstate(item.sourceEstateId || item.estateId || item.requesterEstate);
       const sourceEstateName = sourceEstate ? sourceEstate.estate_name : (item.sourceEstateName || item.estateId || 'Kebun Peminta');
 
-      const isActionable = canPerformMantriDispatchAction(item, currentUser);
+      const canFinalizeMataEntresReceipt = isMataEntres && canPerformMantriBibitanFinalReceipt(item, currentUser);
+      const isActionable = canPerformMantriDispatchAction(item, currentUser) || canFinalizeMataEntresReceipt;
       const isExpanded = expandedCardIndex === idx;
 
       // Status badge styling
@@ -1457,7 +1569,8 @@ export async function renderDispatchLanding() {
         dispatchFlags.push({ key: 'CENTRAL_SIAP_KIRIM', label: 'Siap Keluar' });
       }
 
-      let badgeText = isSelesaiStatus(statusRaw) ? (statusRaw === 'DITERIMA_DENGAN_SELISIH' ? 'Diterima (Selisih)' : 'Selesai') : (isBerjalanStatus(statusRaw) ? (isMataEntres ? (statusRaw === 'DIKELUARKAN' ? 'Dikeluarkan' : 'Dalam Perjalanan') : 'Berjalan') : 'Siap Keluar');
+      const statusPresentation = getWorkflowStatusPresentation(statusRaw);
+      const badgeText = statusPresentation.label;
 
       // Metrics & Summary
       let summaryHtml = '';
@@ -1469,13 +1582,11 @@ export async function renderDispatchLanding() {
         const issuedMata = item.jumlahMataEntresDikeluarkan !== null && item.jumlahMataEntresDikeluarkan !== undefined ? item.jumlahMataEntresDikeluarkan : (item.pengeluaran?.jumlahMataEntres || 0);
 
         summaryHtml = `
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px;">
-            <div style="display: grid; grid-template-columns: 42% 58%; gap: 4px 6px; font-size: 0.72rem; color: #475569; line-height: 1.35;">
-              <div>Klon: <strong style="color: #1E293B;">${esc(approvedKlon)}</strong></div>
-              <div style="text-align: right;">Disetujui: <strong style="color: #116834;">${approvedBatang.toLocaleString('id-ID')} Btg / ${approvedMata.toLocaleString('id-ID')} Mata</strong></div>
-              <div>Sudah Keluar: <strong style="color: #0369A1;">${issuedBatang.toLocaleString('id-ID')} Btg / ${issuedMata.toLocaleString('id-ID')} Mata</strong></div>
-              <div style="text-align: right;">Status: <strong style="color: ${isSelesaiStatus(statusRaw) ? '#166534' : (isBerjalanStatus(statusRaw) ? '#0369A1' : '#B45309')};">${badgeText}</strong></div>
-            </div>
+          <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:9px 10px; margin-bottom:10px; display:grid; grid-template-columns:1fr 1fr; gap:7px 10px; font-size:.72rem; line-height:1.35;">
+            <div><div style="color:#64748B;">Klon</div><strong style="color:#1E293B;">${esc(approvedKlon)}</strong></div>
+            <div style="text-align:right;"><div style="color:#64748B;">Disetujui</div><strong style="color:#116834;">${approvedBatang.toLocaleString('id-ID')} Btg / ${approvedMata.toLocaleString('id-ID')} Mata</strong></div>
+            <div><div style="color:#64748B;">Sudah Keluar</div><strong style="color:#0369A1;">${issuedBatang.toLocaleString('id-ID')} Btg / ${issuedMata.toLocaleString('id-ID')} Mata</strong></div>
+            <div style="text-align:right;"><div style="color:#64748B;">Status</div><strong style="color:${statusPresentation.color};">${badgeText}</strong></div>
           </div>
         `;
       } else {
@@ -1485,13 +1596,11 @@ export async function renderDispatchLanding() {
         const approvedClone = item.approvedClone || item.requestedClone || 'IRCA 19';
 
         summaryHtml = `
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; font-size: 0.72rem; color: #475569; line-height: 1.35;">
-              <div>Klon: <strong style="color: #1E293B;">${esc(approvedClone)}</strong></div>
-              <div style="text-align: right;">Disetujui: <strong style="color: #116834;">${approvedQty.toLocaleString('id-ID')} Pkk</strong></div>
-              <div>Sudah Keluar: <strong style="color: #0369A1;">${totalIssued.toLocaleString('id-ID')} Pkk</strong></div>
-              <div style="text-align: right;">Sisa: <strong style="color: ${remainingQty > 0 ? '#DC2626' : '#166534'};">${remainingQty.toLocaleString('id-ID')} Pkk</strong></div>
-            </div>
+          <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:9px 10px; margin-bottom:10px; display:grid; grid-template-columns:1fr 1fr; gap:7px 10px; font-size:.72rem; line-height:1.35;">
+            <div><div style="color:#64748B;">Klon</div><strong style="color:#1E293B;">${esc(approvedClone)}</strong></div>
+            <div style="text-align:right;"><div style="color:#64748B;">Disetujui</div><strong style="color:#116834;">${approvedQty.toLocaleString('id-ID')} Pkk</strong></div>
+            <div><div style="color:#64748B;">Sudah Keluar</div><strong style="color:#0369A1;">${totalIssued.toLocaleString('id-ID')} Pkk</strong></div>
+            <div style="text-align:right;"><div style="color:#64748B;">Sisa</div><strong style="color:${remainingQty > 0 ? '#DC2626' : '#166534'};">${remainingQty.toLocaleString('id-ID')} Pkk</strong></div>
           </div>
         `;
       }
@@ -1509,8 +1618,8 @@ export async function renderDispatchLanding() {
             <button class="btn-card-detail" data-idx="${idx}" type="button" style="flex: 1; padding: 7px 10px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; color: #475569; font-size: 0.74rem; font-weight: 700; cursor: pointer;">
               Detail
             </button>
-            <button class="btn-card-proses-dispatch" data-idx="${idx}" type="button" style="flex: 2; padding: 7px 12px; background: #116834; border: none; border-radius: 6px; color: #FFFFFF; font-size: 0.76rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
-              <span>${isMataEntres ? 'Rekam Pengeluaran Entres' : 'Proses Pengeluaran'}</span>
+            <button class="btn-card-proses-dispatch" data-idx="${idx}" type="button" data-final-receipt="${canFinalizeMataEntresReceipt ? 'true' : 'false'}" style="flex:2; min-height:42px; padding:8px 12px; background:#116834; border:none; border-radius:8px; color:#FFFFFF; font-size:.78rem; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; text-align:center; line-height:1.25; white-space:normal;">
+              <span>${canFinalizeMataEntresReceipt ? 'Konfirmasi Penerimaan Entres' : (isMataEntres ? 'Proses Pengeluaran' : 'Proses Pengeluaran')}</span>
             </button>
           </div>
         `;
@@ -1525,7 +1634,7 @@ export async function renderDispatchLanding() {
               <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                 ${renderStatusDots(dispatchFlags)}
                 <span style="font-weight: 800; color: #1E293B; font-size: 0.84rem; line-height: 1.25;">${esc(docNo)}</span>
-                ${isMataEntres ? `<span style="font-size: 0.60rem; font-weight: 800; color: #15803D; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 1px 6px; border-radius: 4px; white-space: nowrap; line-height: 1.2;">MATA ENTRES</span>` : ''}
+                <span style="font-size:.60rem; font-weight:800; color:#15803D; background:#F0FDF4; border:1px solid #BBF7D0; padding:2px 6px; border-radius:5px; white-space:nowrap; line-height:1.2;">${isMataEntres ? 'MATA ENTRES' : (item.type === 'KEBUN_SENDIRI' || item.transactionType === 'KEBUN_SENDIRI' ? 'KEBUN SENDIRI' : 'KEBUN SEPUPU')}</span>
               </div>
               <div style="font-size: 0.72rem; color: #64748B; margin-top: 3px;">
                 Tujuan: <strong style="color: #334155;">${esc(sourceEstateName)}</strong>
@@ -1618,11 +1727,7 @@ export async function renderDispatchLanding() {
       const idx = parseInt(btn.dataset.idx, 10);
       const item = filteredItems[idx];
       if (item) {
-        if (item.type === 'MATA_ENTRES') {
-          openMataEntresDetailModal(item);
-        } else {
-          openDispatchDetailModal(item);
-        }
+        openDispatchDetailModal(item);
       }
     });
   });
@@ -1634,7 +1739,11 @@ export async function renderDispatchLanding() {
       const item = filteredItems[idx];
       if (item) {
         if (item.type === 'MATA_ENTRES') {
-          openMantriDispatchModal(item, currentUser, () => renderDispatchLanding());
+          if (btn.dataset.finalReceipt === 'true') {
+            openMantriBibitanReceiptModal(item, currentUser, () => renderDispatchLanding());
+          } else {
+            openMantriDispatchModal(item, currentUser, () => renderDispatchLanding());
+          }
         } else {
           openDispatchModal(item, currentUser);
         }

@@ -46,8 +46,8 @@ export const ASISTEN_BIBITAN_MAIN_MENUS = Object.freeze([
   {
     id: 'penerimaan',
     key: 'PENERIMAAN_BIBIT',
-    title: 'Penerimaan<br>Bibit',
-    label: 'Penerimaan Bibit',
+    title: 'Penerimaan',
+    label: 'Penerimaan',
     route: '/reception/kebun-sepupu',
     iconName: 'documentPlus',
     order: 1
@@ -55,8 +55,8 @@ export const ASISTEN_BIBITAN_MAIN_MENUS = Object.freeze([
   {
     id: 'permintaan-bibit',
     key: 'PERMINTAAN_BIBIT',
-    title: 'Permintaan<br>Bibit',
-    label: 'Permintaan Bibit',
+    title: 'Permintaan',
+    label: 'Permintaan',
     route: '/request',
     iconName: 'documentPlus',
     order: 2
@@ -64,8 +64,8 @@ export const ASISTEN_BIBITAN_MAIN_MENUS = Object.freeze([
   {
     id: 'pengeluaran-bibit',
     key: 'PENGELUARAN_BIBIT',
-    title: 'Pengeluaran<br>Bibit',
-    label: 'Pengeluaran Bibit',
+    title: 'Pengeluaran',
+    label: 'Pengeluaran',
     route: '/dispatch',
     iconName: 'sprout',
     order: 3
@@ -625,7 +625,7 @@ export const FEATURE_REGISTRY = Object.freeze([
     submenuKey: 'PERMINTAAN_BIBIT_ESTATE',
     label: 'Daftar Permintaan Bibit',
     description: 'Melihat batch permintaan bibit dari kebun sepupu / unit pemesan.',
-    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.MANTRI_TANAMAN, ROLES.ASISTEN]),
+    roleKeys: Object.freeze([ROLES.PENGURUS, ROLES.ASKEP, ROLES.ASISTEN, ROLES.MANTRI_TANAMAN]),
     expectedScope: SCOPE_TYPES.ESTATE,
     implementationStatus: IMPLEMENTATION_STATUS.EXISTING,
     actionKeys: Object.freeze([ACTIONS.VIEW, ACTIONS.MONITOR]),

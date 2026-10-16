@@ -24,14 +24,20 @@ import { navigate } from '../../core/router.js';
 import { session } from '../../core/session.js';
 import { getCurrentUserContext, normalizeRole, resolveUserContext } from '../../core/user-context.js';
 import { storage } from '../../core/storage.js';
+import { requestRepository } from '../../db/repositories.js';
 import { openModal, closeModal } from '../../components/modal.js';
 import { toast } from '../../components/toast.js';
-import { AUDIT_EVENT_TYPES } from '../../core/transaction-actor.js';
+import { AUDIT_EVENT_TYPES, applyTransactionActor } from '../../core/transaction-actor.js';
 import { formatDate, esc } from '../../core/utils.js';
 import { renderEmptyStateCard } from '../../components/empty-state.js';
+import { getWorkflowStatusPresentation } from '../../core/workflow-status-presentation.js';
 import { BLOCK_MASTER, BLOCK_STATUS } from '../../data/block-master.js';
-import { getNurseryDivisionsByEstate } from '../../data/estate-master.js';
-import {
+import { getAllBatches } from '../../data/batch-master.js';
+import { getBatchContext } from '../../core/master-context-service.js';
+import { getActivePrograms, resolveProgram } from '../../data/program-master.js';
+import { normalizeKlonName } from '../../data/klon-master.js';
+import { getNurseryDivisionsByEstate, resolveEstate } from '../../data/estate-master.js';
+  import {
   RECEIPT_KSP_STATUS,
   RECEIPT_KSP_STATUS_LABELS,
   RECEIPT_KSP_STORAGE_KEY,
@@ -46,11 +52,86 @@ import {
   getReceiptKspTransactions,
   getReceiptKspById,
   updateReceiptKsp,
-  createNurseryBatchesFromReceipt,
-  generateReceiptNewBatchCode
+  createNurseryBatchesFromReceipt
 } from '../../core/receipt-ksp-manager.js';
+import {
+  canPerformRequesterReceipt,
+  matchEstateHelper as matchMataEntresEstate,
+  matchDivisionHelper as matchMataEntresDivision,
+  openPengurusArrivalModal,
+  openAskepReceiptRoutingModal,
+  openAskepReceiptReturnModal as openMataEntresAskepReturnModal,
+  openAsistenBibitanReceiptModal,
+  openMantriBibitanReceiptModal
+} from '../request/request-mata-entres-landing.js';
 
 let activeStatusFilter = 'SEMUA';
+const expandedReceiptIds = new Set();
+
+function getMantriReceiptPrograms(receipt, currentUser) {
+  const estateValue = receipt.targetNextEstateId || receipt.targetEstateId || currentUser.estateId;
+  const divisionValue = receipt.targetNextDivisionId || receipt.targetDivisionId || currentUser.divisionId;
+  if (!estateValue || !divisionValue) return [];
+  const estate = resolveEstate(estateValue);
+  const estateId = String(estate?.estate_id || estateValue).trim().toUpperCase();
+  const divisionId = String(divisionValue).trim().toUpperCase();
+  const sameEstate = program => {
+    const ids = [program.estateId, program.estateCode, ...(program.estateIds || [])]
+      .map(value => String(value || '').trim().toUpperCase()).filter(Boolean);
+    return ids.some(value => {
+      const resolved = resolveEstate(value);
+      return value === estateId || String(resolved?.estate_id || '').toUpperCase() === estateId;
+    });
+  };
+  return getActivePrograms().filter(program => {
+    const divisions = [program.divisionId, program.divisionCode, ...(program.divisionIds || [])]
+      .map(value => String(value || '').trim().toUpperCase()).filter(Boolean);
+    return sameEstate(program) && divisions.includes(divisionId);
+  });
+}
+
+function getMantriReceiptBatchOptions(receipt, currentUser, detail, selectedProgramId) {
+  const requests = storage.get('requests_transactions', []);
+  const parentRequest = Array.isArray(requests)
+    ? requests.find(request => request.id === receipt.parentRequestId || request.docNo === receipt.parentRequestDocNo)
+    : null;
+  const programValue = selectedProgramId || receipt.nurseryProgramId || receipt.programId || parentRequest?.programId || receipt.programName || parentRequest?.programName;
+  const estateValue = receipt.targetNextEstateId || receipt.targetEstateId || currentUser.estateId;
+  const divisionValue = receipt.targetNextDivisionId || receipt.targetDivisionId || currentUser.divisionId;
+  if (!estateValue || !divisionValue) return [];
+  const program = resolveProgram(programValue);
+  const targetProgramId = String(program?.id || programValue).trim().toUpperCase();
+  const targetEstate = resolveEstate(estateValue);
+  const targetEstateId = String(targetEstate?.estate_id || estateValue).trim().toUpperCase();
+  const targetDivisionId = String(divisionValue).trim().toUpperCase();
+  const normalize = value => String(value || '').trim().toUpperCase();
+  const programAliases = new Set([targetProgramId, normalize(programValue), normalize(program?.code), ...(program?.legacyCodes || []).map(normalize)].filter(Boolean));
+  const estateAliases = new Set([targetEstateId, normalize(estateValue), ...(program?.estateIds || []).map(normalize)].filter(Boolean));
+  const divisionAliases = new Set([targetDivisionId, normalize(program?.divisionId), normalize(program?.divisionCode), ...(program?.divisionIds || []).map(normalize)].filter(Boolean));
+  const sameAlias = (value, aliases, resolver) => {
+    if (!value) return false;
+    const candidate = resolver(value);
+    const canonical = candidate?.id || candidate?.estate_id;
+    return aliases.has(normalize(value)) || (canonical && aliases.has(normalize(canonical)));
+  };
+  const sameProgram = (ctx, batch) => {
+    const value = ctx.programId || ctx.programCode || batch.programId || batch.programCode || batch.program_id || batch.program_code;
+    return Boolean(value && sameAlias(value, programAliases, resolveProgram));
+  };
+  const sameEstate = (ctx, batch) => {
+    const value = ctx.estateId || ctx.estateCode || batch.estateId || batch.estateCode || batch.estate_id || batch.estate_code;
+    return sameAlias(value, estateAliases, resolveEstate);
+  };
+
+  return getAllBatches({}).filter(batch => {
+    const batchId = batch.id || batch.batchId || batch.batchCode || batch.batchNo;
+    const context = getBatchContext(batchId) || batch;
+    const batchDivision = context.divisionId || context.divisionCode || batch.divisionId || batch.divisionCode || batch.division_id || batch.division_code;
+    return sameEstate(context, batch) && divisionAliases.has(normalize(batchDivision)) && sameProgram(context, batch) &&
+    batch.statusMaster !== 'INACTIVE' &&
+    batch.status !== 'INACTIVE';
+  });
+}
 
 /**
  * Mengambil daftar divisi lapangan aktif untuk suatu estate dari canonical block-master
@@ -122,13 +203,147 @@ export function getActiveBlocksForDivision(estateIdOrCode, divisionIdOrCode) {
  */
 export function isBibitReceipt(receipt) {
   if (!receipt) return false;
-  if (receipt.type === 'MATA_ENTRES' || receipt.transactionType === 'PENERIMAAN_MATA_ENTRES') return false;
-  return receipt.type === 'KEBUN_SEPUPU' || receipt.transactionType === 'PENERIMAAN_BIBIT' || !receipt.type;
+  const transactionType = String(receipt.transactionType || '').trim().toUpperCase();
+  if (transactionType === 'PENERIMAAN_BIBIT') return true;
+  if (transactionType === 'PENERIMAAN_MATA_ENTRES') return false;
+  if (String(receipt.type || '').trim().toUpperCase() === 'MATA_ENTRES') return false;
+  // Record Bibit versi lama kadang hanya memiliki type KEBUN_SEPUPU,
+  // sedangkan record Mata Entres selalu dapat dikenali dari type/transactionType.
+  return String(receipt.type || '').trim().toUpperCase() === 'KEBUN_SEPUPU' || !receipt.type;
+}
+
+function isMataEntresReceipt(receipt) {
+  if (!receipt) return false;
+  const transactionType = String(receipt.transactionType || '').trim().toUpperCase();
+  if (transactionType === 'PENERIMAAN_BIBIT') return false;
+  return String(receipt.type || '').trim().toUpperCase() === 'MATA_ENTRES' || transactionType === 'PENERIMAAN_MATA_ENTRES';
+}
+
+function getReceiptEstateRoute(item) {
+  const sourceId = item.sourceEstateId || item.dispatchedFromEstateId || item.estateId;
+  const targetId = item.targetEstateId || item.requesterEstateId;
+  const sourceName = item.sourceEstateName && item.sourceEstateName !== '-'
+    ? item.sourceEstateName
+    : (resolveEstate(sourceId)?.estate_name || sourceId || '-');
+  const targetName = item.targetEstateName && item.targetEstateName !== '-'
+    ? item.targetEstateName
+    : (resolveEstate(targetId)?.estate_name || targetId || '-');
+  return { sourceName, targetName };
+}
+
+function getMataEntresParentRequest(receipt) {
+  if (!receipt?.parentRequestId) return null;
+  const requests = storage.get('requests_transactions', []);
+  return Array.isArray(requests)
+    ? requests.find(tx => tx.type === 'MATA_ENTRES' && tx.id === receipt.parentRequestId) || null
+    : null;
+}
+
+async function syncCompletedBibitReceiptToRequest(receipt, currentUser, completionPatch, auditDetails) {
+  if (!receipt?.parentRequestId) return;
+  const requestId = receipt.parentRequestId;
+  const requests = storage.get('requests_transactions', []);
+  const localIndex = Array.isArray(requests)
+    ? requests.findIndex(request => request.id === requestId || request.docNo === receipt.parentRequestDocNo)
+    : -1;
+
+  try {
+    const updatedRequest = await requestRepository.update(
+      requestId,
+      completionPatch,
+      currentUser,
+      AUDIT_EVENT_TYPES.APPROVE,
+      auditDetails
+    );
+    if (Array.isArray(requests) && localIndex >= 0) {
+      requests[localIndex] = { ...requests[localIndex], ...updatedRequest };
+      storage.set('requests_transactions', requests);
+    }
+  } catch (error) {
+    // Keep the UI timeline available when IndexedDB is unavailable or the
+    // request was created only in local storage (legacy/prototype records).
+    if (Array.isArray(requests) && localIndex >= 0) {
+      requests[localIndex] = applyTransactionActor(
+        { ...requests[localIndex], ...completionPatch },
+        AUDIT_EVENT_TYPES.APPROVE,
+        currentUser,
+        auditDetails
+      );
+      storage.set('requests_transactions', requests);
+    } else {
+      console.warn('[receipt] unable to sync completed Bibit receipt to its request:', error);
+    }
+  }
+}
+
+function canViewMataEntresReceipt(receipt, currentUser, parentRequest = getMataEntresParentRequest(receipt)) {
+  if (!receipt || !parentRequest || !currentUser) return false;
+  const role = normalizeRole(currentUser.role || currentUser.rawRole);
+  const userEstate = currentUser.estateId;
+  const receivingEstate = receipt.targetEstateId || receipt.requesterEstateId || parentRequest.sourceEstateId || parentRequest.estateId || parentRequest.requesterEstate;
+  if (!userEstate || !receivingEstate || !matchesReceiptEstate(receivingEstate, userEstate)) return false;
+
+  // Penerimaan pada sisi pemohon tetap menjadi riwayat di kebun penerima.
+  if (role === 'PENGURUS') return true;
+
+  const userDivision = currentUser.divisionId;
+  const receivingDivision = receipt.targetNextDivisionId || receipt.targetDivisionId ||
+    parentRequest.targetNextDivisionId || parentRequest.targetDivisionId || parentRequest.divisionId;
+  if (!userDivision || !receivingDivision) return false;
+  if (!matchMataEntresDivision(receivingDivision, userDivision)) return false;
+
+  return role === 'ASKEP' || role === 'ASISTEN_KEPALA' || role === 'ASISTEN_BIBITAN' || role === 'MANTRI_TANAMAN' || role === 'MANTRI';
+}
+
+function canonicalReceiptEstateId(estateId) {
+  if (!estateId) return '';
+  const resolved = resolveEstate(estateId);
+  if (resolved) return resolved.estate_id;
+  const clean = String(estateId).trim().toUpperCase();
+  if (clean === 'EST-001' || clean === 'EST-002' || clean.includes('TBS') || clean.includes('TANAHBESIH')) return 'EST-TBS';
+  if (clean === 'EST-003' || clean.includes('APM') || clean.includes('AEKPAMINGKE')) return 'EST-APM';
+  return clean;
+}
+
+function matchesReceiptEstate(receiptEstateId, userEstateId) {
+  if (!receiptEstateId || !userEstateId) return false;
+  return canonicalReceiptEstateId(receiptEstateId) === canonicalReceiptEstateId(userEstateId);
+}
+
+function getReceiptNurseryDivisionId(receipt) {
+  const estateId = receipt?.targetNextEstateId || receipt?.targetEstateId;
+  const divisionId = receipt?.targetNextDivisionId || receipt?.targetDivisionId;
+  if (!estateId || !divisionId) return null;
+  const cleanDivisionId = String(divisionId).trim().toUpperCase();
+  const nurseryDivision = getNurseryDivisionsByEstate(estateId).find(d =>
+    String(d.divisionId || d.divisionCode || '').trim().toUpperCase() === cleanDivisionId
+  );
+  return nurseryDivision ? cleanDivisionId : null;
+}
+
+function isLegacyFieldRouteToNursery(receipt) {
+  if (!receipt || String(receipt.jalurPenerimaan || '').trim().toUpperCase() !== 'LAPANGAN') return false;
+  const status = String(receipt.status || '').trim().toUpperCase();
+  const isStillAwaitingVerification =
+    status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_LAPANGAN ||
+    status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN;
+  return isStillAwaitingVerification && Boolean(getReceiptNurseryDivisionId(receipt));
+}
+
+function isReceiptAssignedToAsistenBibitan(receipt) {
+  const targetRole = String(receipt?.targetNextRole || receipt?.targetRole || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  const status = String(receipt?.status || '').trim().toUpperCase();
+  const jalur = String(receipt?.jalurPenerimaan || '').trim().toUpperCase();
+  if (status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN) {
+    return targetRole === 'ASISTEN_BIBITAN' || !targetRole || jalur === 'BIBITAN';
+  }
+  // Record lama LAPANGAN yang Divisinya juga Divisi Bibitan hanya menjadi
+  // tugas Asisten Bibitan selama statusnya masih menunggu pemeriksaan.
+  return isLegacyFieldRouteToNursery(receipt);
 }
 
 export function canPerformPengurusReceiptAction(receipt, currentUser) {
   if (!receipt || !currentUser) return false;
-  if (!isBibitReceipt(receipt)) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== 'PENGURUS') return false;
 
@@ -169,7 +384,13 @@ export function canPerformAskepReceiptAction(receipt, currentUser) {
   return (
     status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_KEPALA &&
     (nextRole === 'ASKEP' || nextRole === 'ASISTEN_KEPALA' || !nextRole)
-  );
+  ) || (
+      // Izinkan Askep membetulkan jalur yang keliru selama dokumen belum
+      // diproses Asisten Lapangan.
+      status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_LAPANGAN &&
+      nextRole === 'ASISTEN' &&
+      String(receipt.jalurPenerimaan || '').toUpperCase() === 'LAPANGAN'
+    );
 }
 
 /**
@@ -219,24 +440,18 @@ export function canPerformAsistenBibitanReceiptAction(receipt, currentUser) {
   if (userRole !== 'ASISTEN_BIBITAN') return false;
 
   const userEstateId = currentUser.estateId;
-  const userDivisionId = currentUser.divisionId;
-  const targetEstate = receipt.targetNextEstateId || receipt.targetEstateId;
-  const targetDivision = receipt.targetNextDivisionId;
-
-  if (!userEstateId || targetEstate !== userEstateId) return false;
-  if (userDivisionId && targetDivision && targetDivision !== userDivisionId) return false;
-
-  const status = (receipt.status || '').toUpperCase();
-  const nextRole = (receipt.targetNextRole || '').toUpperCase();
-  const jalur = (receipt.jalurPenerimaan || '').toUpperCase();
-
-  if (jalur !== 'BIBITAN') return false;
-
-  const isActionableStatus = (
-    status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN
-  );
-
-  return isActionableStatus && (nextRole === 'ASISTEN_BIBITAN' || !nextRole);
+  const matchesTargetEstate = matchesReceiptEstate(receipt.targetNextEstateId, userEstateId) ||
+    matchesReceiptEstate(receipt.targetEstateId, userEstateId);
+  if (!matchesTargetEstate) return false;
+  if (isLegacyFieldRouteToNursery(receipt)) {
+    const userDivisionId = String(currentUser.divisionId || '').trim().toUpperCase();
+    return Boolean(userDivisionId && userDivisionId === getReceiptNurseryDivisionId(receipt));
+  }
+  const status = String(receipt.status || '').trim().toUpperCase();
+  const targetRole = String(receipt.targetNextRole || receipt.targetRole || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  return status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN &&
+    isReceiptAssignedToAsistenBibitan(receipt) &&
+    (targetRole === 'ASISTEN_BIBITAN' || !targetRole);
 }
 
 /**
@@ -282,21 +497,26 @@ export function canPerformMantriBibitanReceiptAction(receipt, currentUser) {
 export function getActionableReceiptCount(receipts, currentUser) {
   if (!Array.isArray(receipts) || !currentUser) return 0;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
+  const mataEntresCount = receipts.filter(receipt => {
+    if (!isMataEntresReceipt(receipt)) return false;
+    const parentRequest = getMataEntresParentRequest(receipt);
+    return Boolean(parentRequest && canPerformRequesterReceipt(parentRequest, currentUser));
+  }).length;
 
   if (userRole === 'PENGURUS') {
-    return receipts.filter(r => canPerformPengurusReceiptAction(r, currentUser)).length;
+    return mataEntresCount + receipts.filter(r => !isMataEntresReceipt(r) && canPerformPengurusReceiptAction(r, currentUser)).length;
   }
   if (userRole === 'ASKEP' || userRole === 'ASISTEN_KEPALA') {
-    return receipts.filter(r => canPerformAskepReceiptAction(r, currentUser)).length;
+    return mataEntresCount + receipts.filter(r => !isMataEntresReceipt(r) && canPerformAskepReceiptAction(r, currentUser)).length;
   }
   if (userRole === 'ASISTEN') {
-    return receipts.filter(r => canPerformAsistenLapanganReceiptAction(r, currentUser)).length;
+    return mataEntresCount + receipts.filter(r => !isMataEntresReceipt(r) && canPerformAsistenLapanganReceiptAction(r, currentUser)).length;
   }
   if (userRole === 'ASISTEN_BIBITAN') {
-    return receipts.filter(r => canPerformAsistenBibitanReceiptAction(r, currentUser)).length;
+    return mataEntresCount + receipts.filter(r => !isMataEntresReceipt(r) && canPerformAsistenBibitanReceiptAction(r, currentUser)).length;
   }
   if (userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') {
-    return receipts.filter(r => canPerformMantriBibitanReceiptAction(r, currentUser)).length;
+    return mataEntresCount + receipts.filter(r => !isMataEntresReceipt(r) && canPerformMantriBibitanReceiptAction(r, currentUser)).length;
   }
   return 0;
 }
@@ -316,10 +536,34 @@ export function filterReceiptKspRequests(receipts, currentUser) {
   if (!userEstateId) return [];
 
   return receipts.filter(r => {
-    // Isolasi Domain Positif: Hanya record domain Bibit Kebun Sepupu
+    // Penerimaan Mata Entres masuk ke inbox Pengurus yang sama; tahap berikutnya
+    // dan seluruh tahap berikutnya diproses dari inbox Penerimaan.
+    if (isMataEntresReceipt(r)) {
+      const parentRequest = getMataEntresParentRequest(r);
+      if (!parentRequest) return false;
+      const receiptStatus = String(r.status || '').toUpperCase();
+      const isCompletedReceipt = [
+        RECEIPT_KSP_STATUS.DITERIMA,
+        RECEIPT_KSP_STATUS.DITERIMA_DENGAN_SELISIH,
+        RECEIPT_KSP_STATUS.SELESAI
+      ].includes(receiptStatus);
+      if (isCompletedReceipt) return canViewMataEntresReceipt(r, currentUser, parentRequest);
+      if (userRole === 'ASKEP' || userRole === 'ASISTEN_KEPALA') {
+        const sourceEstateId = parentRequest.sourceEstateId || parentRequest.estateId || parentRequest.requesterEstate;
+        return Boolean(
+          parentRequest.askepReceiptVerification &&
+          userEstateId &&
+          sourceEstateId &&
+          matchMataEntresEstate(sourceEstateId, userEstateId)
+        );
+      }
+      return canPerformRequesterReceipt(parentRequest, currentUser);
+    }
+    // Isolasi Domain Positif: selain Pengurus, proses ini hanya menangani Bibit.
     if (!isBibitReceipt(r)) return false;
 
-    const matchEstate = r.targetEstateId === userEstateId || r.targetNextEstateId === userEstateId;
+    const matchEstate = matchesReceiptEstate(r.targetNextEstateId, userEstateId) ||
+      matchesReceiptEstate(r.targetEstateId, userEstateId);
     if (!matchEstate) return false;
 
     // Jika Asisten Lapangan, filter ketat berdasarkan Divisi dan Jalur LAPANGAN
@@ -329,11 +573,9 @@ export function filterReceiptKspRequests(receipts, currentUser) {
       return matchDivision && isLapangan;
     }
 
-    // Jika Asisten Bibitan, filter ketat berdasarkan Divisi dan Jalur BIBITAN
+    // Gunakan role tujuan sebagai penentu penerima; dokumen legacy tetap dikenali lewat status + jalur.
     if (userRole === 'ASISTEN_BIBITAN') {
-      const matchDivision = !userDivisionId || !r.targetNextDivisionId || r.targetNextDivisionId === userDivisionId || r.targetDivisionId === userDivisionId;
-      const isBibitan = r.jalurPenerimaan === 'BIBITAN';
-      return matchDivision && isBibitan;
+      return isReceiptAssignedToAsistenBibitan(r);
     }
 
     // Jika Mantri Bibitan, filter ketat berdasarkan Divisi dan Jalur BIBITAN
@@ -364,6 +606,10 @@ export function filterReceiptKspByStatus(receipts, statusFilter, currentUser = n
     const s = (r.status || '').toUpperCase();
 
     if (statusFilter === 'ACTIONABLE' || statusFilter === 'MENUNGGU_PENERIMAAN' || statusFilter === 'MENUNGGU_VERIFIKASI') {
+      if (isMataEntresReceipt(r)) {
+        const parentRequest = getMataEntresParentRequest(r);
+        return Boolean(parentRequest && canPerformRequesterReceipt(parentRequest, currentUser));
+      }
       if (userRole === 'PENGURUS') {
         return canPerformPengurusReceiptAction(r, currentUser);
       }
@@ -472,25 +718,37 @@ export function processAskepVerification(receiptId, formValues, currentUser) {
     throw new Error('Divisi tujuan wajib dipilih.');
   }
 
+  const fieldDivisions = getFieldDivisionsForEstate(receipt.targetEstateId);
+  const nurseryDivisions = getNurseryDivisionsByEstate(receipt.targetEstateId);
   const validDivisions = jalurPenerimaan === 'LAPANGAN'
-    ? getFieldDivisionsForEstate(receipt.targetEstateId)
-    : getNurseryDivisionsByEstate(receipt.targetEstateId);
+    ? fieldDivisions
+    : nurseryDivisions;
 
   const selectedDiv = validDivisions.find(d => d.divisionId === targetDivisionId || d.divisionCode === targetDivisionId);
   if (!selectedDiv) {
     throw new Error(`Divisi '${targetDivisionId}' tidak valid atau tidak aktif pada kebun tujuan (${receipt.targetEstateName || receipt.targetEstateId}) untuk jalur ${jalurPenerimaan}.`);
   }
 
-  const nextStatus = jalurPenerimaan === 'LAPANGAN'
+  // Divisi yang juga terdaftar sebagai divisi pembibitan harus ditangani
+  // Asisten Bibitan, sekalipun pilihan jalur pada form adalah LAPANGAN.
+  const selectedDivisionHasNursery = nurseryDivisions.some(d =>
+    String(d.divisionId || d.divisionCode).trim().toUpperCase() ===
+    String(selectedDiv.divisionId || selectedDiv.divisionCode).trim().toUpperCase()
+  );
+  const finalJalurPenerimaan = jalurPenerimaan === 'LAPANGAN' && selectedDivisionHasNursery
+    ? 'BIBITAN'
+    : jalurPenerimaan;
+
+  const nextStatus = finalJalurPenerimaan === 'LAPANGAN'
     ? RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_LAPANGAN
     : RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN;
 
-  const nextRole = jalurPenerimaan === 'LAPANGAN'
+  const nextRole = finalJalurPenerimaan === 'LAPANGAN'
     ? 'ASISTEN'
     : 'ASISTEN_BIBITAN';
 
   const patch = {
-    jalurPenerimaan: jalurPenerimaan,
+    jalurPenerimaan: finalJalurPenerimaan,
     status: nextStatus,
     statusLabel: RECEIPT_KSP_STATUS_LABELS[nextStatus],
     targetNextRole: nextRole,
@@ -501,7 +759,14 @@ export function processAskepVerification(receiptId, formValues, currentUser) {
     askepVerifiedAt: new Date().toISOString()
   };
 
-  const auditDetails = `Asisten Kepala (${currentUser.name || currentUser.userId}) memverifikasi dokumen dan menetapkan jalur ${jalurPenerimaan} ke ${selectedDiv.divisionName}`;
+  const isRouteCorrection = receipt.status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_LAPANGAN &&
+    receipt.jalurPenerimaan === 'LAPANGAN';
+  const routeExplanation = jalurPenerimaan === 'LAPANGAN' && selectedDivisionHasNursery
+    ? `Pilihan LAPANGAN dialihkan ke Asisten Bibitan karena ${selectedDiv.divisionName} memiliki Divisi Bibitan.`
+    : `jalur ${finalJalurPenerimaan} ke ${selectedDiv.divisionName}`;
+  const auditDetails = isRouteCorrection
+    ? `Asisten Kepala (${currentUser.name || currentUser.userId}) mengoreksi jalur penerimaan: ${routeExplanation}`
+    : `Asisten Kepala (${currentUser.name || currentUser.userId}) memverifikasi dokumen dan menetapkan ${routeExplanation}`;
 
   return updateReceiptKsp(
     receiptId,
@@ -624,7 +889,7 @@ export function processAsistenLapanganDraft(receiptId, formValues, currentUser) 
 /**
  * Eksekusi Simpan & Selesaikan Penerimaan Fisik oleh Asisten Lapangan
  */
-export function processAsistenLapanganFinal(receiptId, formValues, currentUser) {
+export async function processAsistenLapanganFinal(receiptId, formValues, currentUser) {
   if (!receiptId) throw new Error('Receipt ID wajib ada');
   const receipt = getReceiptKspById(receiptId);
   if (!receipt) throw new Error(`Dokumen #${receiptId} tidak ditemukan`);
@@ -723,13 +988,27 @@ export function processAsistenLapanganFinal(receiptId, formValues, currentUser) 
 
   const auditDetails = `Asisten Lapangan (${currentUser.name || currentUser.userId}) menyelesaikan penerimaan fisik: ${accepted.toLocaleString('id-ID')} Layak, ${rejected.toLocaleString('id-ID')} Reject${discrepancy > 0 ? ` (Selisih: ${discrepancy} Pkk)` : ''}, dialokasikan ke ${blockVal.allocations.length} blok`;
 
-  return updateReceiptKsp(
+  const updatedReceipt = updateReceiptKsp(
     receiptId,
     patch,
     AUDIT_EVENT_TYPES.APPROVE,
     auditDetails,
     currentUser
   );
+  await syncCompletedBibitReceiptToRequest(receipt, currentUser, {
+    status: finalStatus,
+    statusLabel: RECEIPT_KSP_STATUS_LABELS[finalStatus],
+    workflowStage: 'SELESAI',
+    receiptDocNo: receipt.receiptDocNo || receipt.docNo,
+    receivedAt: new Date().toISOString(),
+    receivedByName: currentUser.name || currentUser.userId,
+    totalAcceptedQty: accepted,
+    totalRejectedQty: rejected,
+    discrepancyQty: discrepancy,
+    discrepancyReason: discrepancy > 0 ? discrepancyReason.trim() : null,
+    targetNextRole: null
+  }, auditDetails);
+  return updatedReceipt;
 }
 
 /**
@@ -771,6 +1050,9 @@ export function processAsistenBibitanVerification(receiptId, formValues, current
   const cleanNotes = (notes || verificationNotes) ? (notes || verificationNotes).trim() : null;
 
   const patch = {
+    // Normalisasi record lama LAPANGAN yang Divisi Tujuannya juga merupakan
+    // Divisi Bibitan sebelum diteruskan ke Mantri.
+    jalurPenerimaan: 'BIBITAN',
     status: RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_MANTRI_BIBITAN,
     statusLabel: RECEIPT_KSP_STATUS_LABELS[RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_MANTRI_BIBITAN],
     targetNextRole: 'MANTRI_TANAMAN',
@@ -783,7 +1065,7 @@ export function processAsistenBibitanVerification(receiptId, formValues, current
     asbVerificationNotes: cleanNotes
   };
 
-  const auditDetails = `Asisten Bibitan (${currentUser.name || currentUser.userId}) memverifikasi dokumen penerimaan dan meneruskan ke Mantri Bibitan${cleanNotes ? ` - Catatan: "${cleanNotes}"` : ''}`;
+  const auditDetails = `Asisten Bibitan (${currentUser.name || currentUser.userId}) memverifikasi dokumen penerimaan pada jalur BIBITAN dan meneruskan ke Mantri Bibitan${cleanNotes ? ` - Catatan: "${cleanNotes}"` : ''}`;
 
   return updateReceiptKsp(
     receiptId,
@@ -889,7 +1171,8 @@ export function processMantriBibitanDraft(receiptId, formValues, currentUser) {
         ...src,
         qtyAccepted: acc,
         qtyRejected: rej,
-        rejectReason: rej > 0 ? (d.rejectReason || rejectReason || null) : null
+        rejectReason: rej > 0 ? (d.rejectReason || rejectReason || null) : null,
+        targetBatchId: d.targetBatchId || src.targetBatchId || src.receivedBatchId || ''
       };
     });
   } else {
@@ -937,7 +1220,7 @@ export function processMantriBibitanDraft(receiptId, formValues, currentUser) {
  * @param {Object} currentUser
  * @returns {Object} Updated receipt record
  */
-export function processMantriBibitanFinal(receiptId, formValues, currentUser) {
+export async function processMantriBibitanFinal(receiptId, formValues, currentUser) {
   if (!receiptId) throw new Error('Receipt ID wajib ada');
   const receipt = getReceiptKspById(receiptId);
   if (!receipt) throw new Error(`Dokumen #${receiptId} tidak ditemukan`);
@@ -955,8 +1238,17 @@ export function processMantriBibitanFinal(receiptId, formValues, currentUser) {
     discrepancyReason,
     details = [],
     photoEvidence,
-    notes
+    notes,
+    nurseryProgramId
   } = formValues || {};
+
+  const receivingPrograms = getMantriReceiptPrograms(receipt, currentUser);
+  const nurseryProgram = receivingPrograms.find(program => String(program.id) === String(nurseryProgramId));
+  if (!nurseryProgram) {
+    throw new Error(receivingPrograms.length
+      ? 'Pilih program pembibitan aktif pada kebun dan divisi penerima.'
+      : 'Belum ada program pembibitan aktif pada kebun dan divisi penerima.');
+  }
 
   const shipped = parseInt(receipt.totalShippedQty || 0, 10);
   const examDate = examinationDate || inspectionDate || new Date().toISOString().split('T')[0];
@@ -994,6 +1286,14 @@ export function processMantriBibitanFinal(receiptId, formValues, currentUser) {
     const dtlGrowthStage = src.growthStage || 'Rubber Advance Planting Material';
     const dtlCloneId = src.cloneId || receipt.clone || 'IRCA 19';
     const dtlCategory = src.category || 'Polibag Besar';
+    const targetBatchId = formDtl?.targetBatchId || src.targetBatchId || src.receivedBatchId || '';
+    const targetBatch = targetBatchId
+      ? getMantriReceiptBatchOptions(receipt, currentUser, { cloneId: dtlCloneId, growthStage: dtlGrowthStage }, nurseryProgram.id)
+        .find(batch => [batch.id, batch.batchId, batch.batchCode, batch.batchNo].filter(Boolean).map(String).includes(String(targetBatchId)))
+      : null;
+    if (acc > 0 && !targetBatch) {
+      throw new Error(`Pilih batch tujuan aktif untuk batch sumber ${src.sourceBatchCode || `#${i + 1}`}.`);
+    }
 
     acceptedSum += acc;
     rejectedSum += rej;
@@ -1005,7 +1305,9 @@ export function processMantriBibitanFinal(receiptId, formValues, currentUser) {
       growthStage: dtlGrowthStage,
       qtyAccepted: acc,
       qtyRejected: rej,
-      rejectReason: rej > 0 ? dtlRejectReason.trim() : null
+      rejectReason: rej > 0 ? dtlRejectReason.trim() : null,
+      targetBatchId: targetBatch ? (targetBatch.id || targetBatch.batchId || targetBatch.batchCode || targetBatch.batchNo) : '',
+      targetBatchCode: targetBatch ? (targetBatch.batchCode || targetBatch.batchNo || targetBatch.name) : ''
     });
   }
 
@@ -1035,8 +1337,8 @@ export function processMantriBibitanFinal(receiptId, formValues, currentUser) {
     throw new Error(photoVal.error);
   }
 
-  // 5. Generate New Nursery Batches (1 source batch detail -> 1 new nursery batch)
-  const newBatches = createNurseryBatchesFromReceipt(receipt, processedDetails, currentUser);
+  // 5. Alokasikan bibit layak ke batch aktif yang dipilih Mantri.
+  const allocatedBatches = createNurseryBatchesFromReceipt(receipt, processedDetails, currentUser);
 
   // 6. Final Status
   const finalStatus = discrepancy > 0
@@ -1054,7 +1356,11 @@ export function processMantriBibitanFinal(receiptId, formValues, currentUser) {
     photoEvidence: photoEvidence,
     mantriNotes: notes ? notes.trim() : null,
     details: processedDetails,
-    newBatches: newBatches.map(b => ({ id: b.id, batchCode: b.batchCode, qty: b.receivedQty })),
+    nurseryProgramId: nurseryProgram.id,
+    nurseryProgramCode: nurseryProgram.code,
+    nurseryProgramName: nurseryProgram.name,
+    allocatedBatches: allocatedBatches.map(b => ({ id: b.id, batchCode: b.batchCode, qty: b.receivedQty, existing: Boolean(b.existing) })),
+    newBatches: allocatedBatches.map(b => ({ id: b.id, batchCode: b.batchCode, qty: b.receivedQty, existing: Boolean(b.existing) })),
     targetNextRole: null,
     finalizedAt: new Date().toISOString(),
     finalizedByUserId: currentUser.userId || currentUser.id,
@@ -1062,21 +1368,56 @@ export function processMantriBibitanFinal(receiptId, formValues, currentUser) {
     finalizedByRole: currentUser.role || currentUser.rawRole || 'MANTRI_TANAMAN'
   };
 
-  const auditDetails = `Mantri Bibitan (${currentUser.name || currentUser.userId}) menyelesaikan penerimaan fisik: ${acceptedSum.toLocaleString('id-ID')} Layak, ${rejectedSum.toLocaleString('id-ID')} Reject${discrepancy > 0 ? ` (Selisih: ${discrepancy} Pkk)` : ''}, membentuk ${newBatches.length} batch pembibitan baru`;
+  const auditDetails = `Mantri Bibitan (${currentUser.name || currentUser.userId}) menyelesaikan penerimaan fisik: ${acceptedSum.toLocaleString('id-ID')} Layak, ${rejectedSum.toLocaleString('id-ID')} Reject${discrepancy > 0 ? ` (Selisih: ${discrepancy} Pkk)` : ''}, dialokasikan ke ${allocatedBatches.length} batch pembibitan`;
 
-  return updateReceiptKsp(
+  const updatedReceipt = updateReceiptKsp(
     receiptId,
     patch,
     AUDIT_EVENT_TYPES.APPROVE,
     auditDetails,
     currentUser
   );
+  await syncCompletedBibitReceiptToRequest(receipt, currentUser, {
+    status: finalStatus,
+    statusLabel: RECEIPT_KSP_STATUS_LABELS[finalStatus],
+    workflowStage: 'SELESAI',
+    receiptDocNo: receipt.receiptDocNo || receipt.docNo,
+    receivedAt: new Date().toISOString(),
+    receivedByName: currentUser.name || currentUser.userId,
+    totalAcceptedQty: acceptedSum,
+    totalRejectedQty: rejectedSum,
+    discrepancyQty: discrepancy,
+    discrepancyReason: discrepancy > 0 ? discrepancyReason.trim() : null,
+    nurseryProgramId: nurseryProgram.id,
+    nurseryProgramCode: nurseryProgram.code,
+    nurseryProgramName: nurseryProgram.name,
+    allocatedBatches: allocatedBatches.map(batch => ({ id: batch.id, batchCode: batch.batchCode, qty: batch.receivedQty })),
+    targetNextRole: null
+  }, auditDetails);
+  return updatedReceipt;
 }
 
 /**
  * Buka Modal Form Catat Penerimaan Awal (Role Pengurus)
  */
 export function openPengurusInitialReceiptModal(item, currentUser, onSuccess = null) {
+  if (isMataEntresReceipt(item)) {
+    if (!canPerformPengurusReceiptAction(item, currentUser)) {
+      toast('Anda tidak memiliki otorisasi untuk memproses penerimaan pada dokumen ini.', 'error');
+      return;
+    }
+    const requests = storage.get('requests_transactions', []);
+    const parentRequest = requests.find(request =>
+      request.id === item.parentRequestId || request.docNo === item.parentRequestDocNo
+    );
+    if (!parentRequest) {
+      toast('Dokumen permintaan Mata Entres terkait tidak ditemukan.', 'error');
+      return;
+    }
+    openPengurusArrivalModal(parentRequest, currentUser, onSuccess || renderReceiptKebunSepupuLanding, item.id);
+    return;
+  }
+
   if (!canPerformPengurusReceiptAction(item, currentUser)) {
     toast('Anda tidak memiliki otorisasi untuk memproses penerimaan pada dokumen ini.', 'error');
     return;
@@ -1220,9 +1561,15 @@ export function openAskepVerificationModal(item, currentUser, onSuccess = null) 
 
   const fieldDivisions = getFieldDivisionsForEstate(targetEstateId);
   const nurseryDivisions = getNurseryDivisionsByEstate(targetEstateId);
+  const initialJalur = item.jalurPenerimaan === 'BIBITAN' || item.jalurPenerimaan === 'LAPANGAN'
+    ? item.jalurPenerimaan
+    : null;
+  const divisionPreviewJalur = initialJalur || 'LAPANGAN';
+  const isRouteCorrection = item.status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_LAPANGAN &&
+    item.jalurPenerimaan === 'LAPANGAN';
 
   openModal({
-    title: 'Verifikasi Penerimaan & Tentukan Jalur',
+    title: isRouteCorrection ? 'Koreksi Jalur Penerimaan' : 'Verifikasi Penerimaan & Tentukan Jalur',
     body: `
       <div style="padding: 2px 0; font-size: 0.84rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; width: 100%;">
         <div style="margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #E2E8F0;">
@@ -1262,17 +1609,17 @@ export function openAskepVerificationModal(item, currentUser, onSuccess = null) 
             </label>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-              <label id="label-jalur-lapangan" style="display: flex; flex-direction: column; padding: 10px; border: 2px solid #116834; background: #F0FDF4; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
+              <label id="label-jalur-lapangan" style="display: flex; flex-direction: column; padding: 10px; border: 2px solid ${initialJalur === 'LAPANGAN' ? '#116834' : '#CBD5E1'}; background: ${initialJalur === 'LAPANGAN' ? '#F0FDF4' : '#FFFFFF'}; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
                 <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                  <input type="radio" name="radio-jalur" value="LAPANGAN" checked style="accent-color: #116834; cursor: pointer;" />
+                  <input type="radio" name="radio-jalur" value="LAPANGAN" ${initialJalur === 'LAPANGAN' ? 'checked' : ''} style="accent-color: #116834; cursor: pointer;" />
                   <span style="font-weight: 700; color: #116834; font-size: 0.84rem;">Jalur Lapangan</span>
                 </div>
                 <span style="font-size: 0.72rem; color: #4B5563; line-height: 1.3;">Penanaman langsung ke blok tanaman (Asisten Lapangan).</span>
               </label>
 
-              <label id="label-jalur-bibitan" style="display: flex; flex-direction: column; padding: 10px; border: 1px solid #CBD5E1; background: #FFFFFF; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
+              <label id="label-jalur-bibitan" style="display: flex; flex-direction: column; padding: 10px; border: ${initialJalur === 'BIBITAN' ? '2px solid #116834' : '1px solid #CBD5E1'}; background: ${initialJalur === 'BIBITAN' ? '#F0FDF4' : '#FFFFFF'}; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;">
                 <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                  <input type="radio" name="radio-jalur" value="BIBITAN" style="accent-color: #116834; cursor: pointer;" />
+                  <input type="radio" name="radio-jalur" value="BIBITAN" ${initialJalur === 'BIBITAN' ? 'checked' : ''} style="accent-color: #116834; cursor: pointer;" />
                   <span style="font-weight: 700; color: #334155; font-size: 0.84rem;">Jalur Bibitan</span>
                 </div>
                 <span style="font-size: 0.72rem; color: #4B5563; line-height: 1.3;">Ditempatkan di nursery tambahan / batch baru (Asisten Bibitan).</span>
@@ -1290,7 +1637,7 @@ export function openAskepVerificationModal(item, currentUser, onSuccess = null) 
               required
             ></select>
             <div id="division-help-text" style="font-size: 0.70rem; color: #64748B; margin-top: 4px;">
-              Menampilkan divisi lapangan aktif pada kebun ${esc(item.targetEstateName || targetEstateId)}.
+              Pilihan Lapangan pada divisi yang juga memiliki pembibitan akan diteruskan ke Asisten Bibitan.
             </div>
           </div>
 
@@ -1306,18 +1653,18 @@ export function openAskepVerificationModal(item, currentUser, onSuccess = null) 
             ></textarea>
           </div>
 
-          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+          <div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:8px; width:100%;">
             <button 
               type="button" 
               id="btn-cancel-verify" 
-              style="padding: 8px 16px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.82rem; font-weight: 600; color: #475569; cursor: pointer;"
+              style="width:100%; min-width:0; min-height:44px; box-sizing:border-box; padding:8px 10px; background:#FFFFFF; border:1px solid #CBD5E1; border-radius:8px; font-size:.78rem; font-weight:600; color:#475569; cursor:pointer; white-space:normal; line-height:1.2;"
             >
               Batal
             </button>
             <button 
               type="submit" 
               id="btn-submit-verify" 
-              style="padding: 8px 18px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.82rem; font-weight: 700; color: #FFFFFF; cursor: pointer;"
+              style="width:100%; min-width:0; min-height:44px; box-sizing:border-box; padding:8px 10px; background:#116834; border:1px solid #116834; border-radius:8px; font-size:.78rem; font-weight:700; color:#FFFFFF; cursor:pointer; white-space:normal; line-height:1.2;"
             >
               Verifikasi & Teruskan
             </button>
@@ -1348,12 +1695,12 @@ export function openAskepVerificationModal(item, currentUser, onSuccess = null) 
     }
     if (helpText) {
       helpText.textContent = jalur === 'LAPANGAN'
-        ? `Menampilkan ${list.length} divisi lapangan aktif pada kebun ${item.targetEstateName || targetEstateId}.`
+        ? `Menampilkan ${list.length} divisi lapangan aktif. Jika divisi juga memiliki pembibitan, dokumen diteruskan ke Asisten Bibitan.`
         : `Menampilkan ${list.length} divisi pembibitan aktif pada kebun ${item.targetEstateName || targetEstateId}.`;
     }
   };
 
-  updateDivisionOptions('LAPANGAN');
+  updateDivisionOptions(divisionPreviewJalur);
 
   modalEl.querySelectorAll('input[name="radio-jalur"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
@@ -1389,9 +1736,10 @@ export function openAskepVerificationModal(item, currentUser, onSuccess = null) 
     }
 
     try {
-      processAskepVerification(item.id, { jalurPenerimaan: radioVal, targetDivisionId: divVal, notes: notesVal }, currentUser);
+      const updatedReceipt = processAskepVerification(item.id, { jalurPenerimaan: radioVal, targetDivisionId: divVal, notes: notesVal }, currentUser);
       closeModal();
-      toast(`Dokumen penerimaan berhasil diverifikasi ke ${radioVal === 'LAPANGAN' ? 'Asisten Lapangan' : 'Asisten Bibitan'}.`, 'success');
+      const nextTeam = updatedReceipt.jalurPenerimaan === 'LAPANGAN' ? 'Asisten Lapangan' : 'Asisten Bibitan';
+      toast(`Dokumen penerimaan berhasil diverifikasi ke ${nextTeam}.`, 'success');
       if (typeof onSuccess === 'function') onSuccess();
       else renderReceiptKebunSepupuLanding();
     } catch (err) {
@@ -1520,7 +1868,7 @@ export function openAsistenLapanganPhysicalReceiptModal(item, currentUser, onSuc
   openModal({
     title: 'Pemeriksaan Fisik & Alokasi Blok Lapangan',
     body: `
-      <div style="padding: 2px 0; font-size: 0.82rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; width: 100%;">
+      <div style="padding:0; font-size:.78rem; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:#1E293B; box-sizing:border-box; width:100%;">
         
         <!-- SUMMARY SECTION -->
         <div style="margin-bottom: 12px; padding: 8px 10px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px;">
@@ -1933,7 +2281,7 @@ export function openAsistenLapanganPhysicalReceiptModal(item, currentUser, onSuc
   });
 
   // Simpan & Selesaikan
-  modalEl.querySelector('#form-physical-receipt')?.addEventListener('submit', (e) => {
+  modalEl.querySelector('#form-physical-receipt')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
       examinationDate: modalEl.querySelector('#input-exam-date')?.value,
@@ -1947,7 +2295,7 @@ export function openAsistenLapanganPhysicalReceiptModal(item, currentUser, onSuc
     };
 
     try {
-      processAsistenLapanganFinal(item.id, payload, currentUser);
+      await processAsistenLapanganFinal(item.id, payload, currentUser);
       closeModal();
       toast(`Penerimaan fisik ${item.receiptDocNo || item.docNo} berhasil diselesaikan.`, 'success');
       if (typeof onSuccess === 'function') onSuccess();
@@ -1988,12 +2336,12 @@ export function openAsistenBibitanVerificationModal(item, currentUser, onSuccess
   `).join('');
 
   openModal({
-    title: 'Verifikasi & Penerusan Bibitan',
+    title: 'Verifikasi Asisten Bibitan',
     body: `
-      <div style="padding: 2px 0; font-size: 0.82rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; width: 100%;">
+      <div style="padding:0; font-size:.78rem; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:#1E293B; box-sizing:border-box; width:100%;">
         
         <!-- SUMMARY SECTION A: PERMINTAAN & PENGELUARAN -->
-        <div style="margin-bottom: 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px;">
+        <div style="margin-bottom: 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <div style="font-weight: 700; color: #1E293B;">${esc(item.receiptDocNo || item.docNo)}</div>
             <div style="font-weight: 700; color: #116834; font-size: 0.88rem;">${shippedQty.toLocaleString('id-ID')} Pkk</div>
@@ -2012,9 +2360,9 @@ export function openAsistenBibitanVerificationModal(item, currentUser, onSuccess
         </div>
 
         <!-- SUMMARY SECTION B: PENERIMAAN AWAL & ROUTING ASKEP -->
-        <div style="margin-bottom: 12px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 10px;">
+        <div style="margin-bottom: 12px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px 12px;">
           <div style="font-size: 0.74rem; font-weight: 700; color: #166534; margin-bottom: 4px;">
-            Penerimaan Awal Pengurus & Routing Askep
+            Penerimaan Awal Pengurus & Verifikasi Askep
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.74rem; color: #166534;">
             <div>Tanggal Tiba: <strong>${item.initialReceivedDate ? formatDate(item.initialReceivedDate) : '-'}</strong></div>
@@ -2027,7 +2375,7 @@ export function openAsistenBibitanVerificationModal(item, currentUser, onSuccess
         </div>
 
         <!-- SUMMARY SECTION C: RINCIAN BATCH SUMBER -->
-        <div style="margin-bottom: 14px; border: 1px solid #E2E8F0; border-radius: 6px; overflow: hidden;">
+        <div style="margin-bottom: 14px; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
           <div style="padding: 6px 10px; background: #F8FAFC; border-bottom: 1px solid #E2E8F0; font-size: 0.74rem; font-weight: 700; color: #475569;">
             Daftar Batch Sumber Pengeluaran
           </div>
@@ -2047,45 +2395,33 @@ export function openAsistenBibitanVerificationModal(item, currentUser, onSuccess
         </div>
 
         <form id="form-asb-verify" onsubmit="return false;">
-          <div style="margin-bottom: 16px;">
+          <div style="margin-bottom: 12px;">
             <label for="input-asb-notes" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
-              Catatan Verifikasi Asisten Bibitan (Opsional)
+              Catatan Verifikasi
             </label>
             <textarea 
               id="input-asb-notes" 
               rows="2" 
-              placeholder="Instruksi penataan bibit untuk Mantri Bibitan..."
-              style="width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem; font-family: inherit; resize: vertical;"
+              placeholder="Catatan verifikasi penerimaan bibit..."
+              style="width: 100%; min-height:48px; box-sizing:border-box; padding:8px 10px; border:1px solid #CBD5E1; border-radius:8px; font-size:.80rem; font-family:inherit; resize:vertical;"
             ></textarea>
           </div>
 
-          <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+          <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; width:100%;">
             <button 
               type="button" 
               id="btn-asb-return" 
-              style="padding: 8px 12px; background: #FFFFFF; border: 1px solid #FCA5A5; border-radius: 6px; font-size: 0.80rem; font-weight: 600; color: #DC2626; cursor: pointer;"
+              style="width:100%; min-width:0; min-height:50px; box-sizing:border-box; padding:8px 10px; background:#FFFFFF; border:1px solid #FCA5A5; border-radius:8px; font-size:.80rem; font-weight:700; color:#DC2626; cursor:pointer; text-align:center; line-height:1.2; white-space:normal;"
             >
               Kembalikan ke Askep
             </button>
-            <div style="display: flex; gap: 8px;">
-              <button 
-                type="button" 
-                id="btn-asb-cancel" 
-                style="padding: 8px 14px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem; font-weight: 600; color: #475569; cursor: pointer;"
-              >
-                Batal
-              </button>
-              <button 
-                type="submit" 
-                id="btn-asb-submit" 
-                style="padding: 8px 18px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.80rem; font-weight: 700; color: #FFFFFF; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"
-              >
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                Verifikasi & Teruskan ke Mantri
-              </button>
-            </div>
+            <button
+              type="submit"
+              id="btn-asb-submit"
+              style="width:100%; min-width:0; min-height:50px; box-sizing:border-box; padding:8px 10px; background:#116834; border:1px solid #116834; border-radius:8px; font-size:.80rem; font-weight:700; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.2; white-space:normal;"
+            >
+              Verifikasi &amp; Teruskan ke Mantri
+            </button>
           </div>
         </form>
       </div>
@@ -2094,10 +2430,6 @@ export function openAsistenBibitanVerificationModal(item, currentUser, onSuccess
 
   const modalEl = document.getElementById('modal-root');
   if (!modalEl) return;
-
-  modalEl.querySelector('#btn-asb-cancel')?.addEventListener('click', () => {
-    closeModal();
-  });
 
   modalEl.querySelector('#btn-asb-return')?.addEventListener('click', () => {
     closeModal();
@@ -2224,8 +2556,17 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
   const growthStage = primaryDetail.growthStage || 'Rubber Advance Planting Material';
   const category = primaryDetail.category || 'Polibag Besar';
   const shippedQty = parseInt(item.totalShippedQty || 0, 10);
-  const targetEstateId = item.targetEstateId || currentUser.estateId;
   const targetDivisionId = item.targetNextDivisionId || item.targetDivisionId || currentUser.divisionId || 'DIV-01';
+  const receivingPrograms = getMantriReceiptPrograms(item, currentUser);
+  const requestsForProgram = storage.get('requests_transactions', []);
+  const parentRequestForProgram = Array.isArray(requestsForProgram)
+    ? requestsForProgram.find(request => request.id === item.parentRequestId || request.docNo === item.parentRequestDocNo)
+    : null;
+  const targetProgramLabel = item.programName || parentRequestForProgram?.programName || item.programId || parentRequestForProgram?.programId || 'Program tidak tercatat';
+  const incomingProgram = resolveProgram(item.programId || parentRequestForProgram?.programId || item.programName || parentRequestForProgram?.programName);
+  let selectedNurseryProgramId = receivingPrograms.length === 1
+    ? receivingPrograms[0].id
+    : (receivingPrograms.find(program => program.id === incomingProgram?.id)?.id || '');
 
   const sourceDetails = Array.isArray(item.details) && item.details.length > 0 ? item.details : [{
     sourceBatchId: item.sourceBatchId || 'BATCH-01',
@@ -2245,8 +2586,6 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
     const dAcc = d.qtyAccepted !== undefined && d.qtyAccepted !== null ? parseInt(d.qtyAccepted, 10) : (sourceDetails.length === 1 && item.totalAcceptedQty !== undefined ? item.totalAcceptedQty : dShipped);
     const dRej = d.qtyRejected !== undefined && d.qtyRejected !== null ? parseInt(d.qtyRejected, 10) : (sourceDetails.length === 1 && item.totalRejectedQty !== undefined ? item.totalRejectedQty : 0);
     const dRejReason = d.rejectReason || (sourceDetails.length === 1 ? item.rejectReason : '') || '';
-    const newBatchCodePreview = generateReceiptNewBatchCode(targetEstateId, d.cloneId || klonName, d.sourceBatchCode);
-
     return {
       sourceBatchId: d.sourceBatchId || d.batchId || `BATCH-${idx + 1}`,
       sourceBatchCode: d.sourceBatchCode || d.batchCode || `B-0${idx + 1}`,
@@ -2257,9 +2596,12 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
       qtyAccepted: dAcc,
       qtyRejected: dRej,
       rejectReason: dRejReason,
-      newBatchCode: newBatchCodePreview
+      targetBatchId: d.targetBatchId || d.receivedBatchId || d.newBatchId || '',
     };
   });
+  const eligibleBatchesByDetail = detailRowsState.map(detail =>
+    getMantriReceiptBatchOptions(item, currentUser, detail, selectedNurseryProgramId)
+  );
 
   // Initial Photo Data
   let capturedPhoto = item.photoEvidence || null;
@@ -2267,60 +2609,69 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
   const initialNotes = item.mantriNotes || item.asistenNotes || '';
 
   openModal({
-    title: 'Penerimaan Fisik & Pembentukan Batch Baru',
+    title: 'Penerimaan Fisik Bibit',
     body: `
-      <div style="padding: 2px 0; font-size: 0.82rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; width: 100%;">
+      <div style="padding:0; font-size:.78rem; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:#1E293B; box-sizing:border-box; width:100%;">
         
         <!-- SUMMARY SECTION -->
-        <div style="margin-bottom: 12px; padding: 8px 10px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <div style="font-weight: 700; color: #1E293B;">${esc(item.receiptDocNo || item.docNo)}</div>
-            <div style="font-weight: 700; color: #116834;">${shippedQty.toLocaleString('id-ID')} Pkk (${esc(klonName)})</div>
-          </div>
-          <div style="font-size: 0.72rem; color: #64748B;">
-            SPB: <strong>${esc(item.parentRequestDocNo || '-')}</strong> • DSP: <strong>${esc(item.dispatchDocNo || '-')}</strong> • Asal: <strong>${esc(item.sourceEstateName || item.sourceEstateId)}</strong> • Divisi: <strong>${esc(targetDivisionId)}</strong>
-          </div>
+          <div style="margin-bottom:10px; padding:10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; display:grid; grid-template-columns:minmax(0,1fr); gap:7px; overflow-wrap:anywhere;">
+            <div><div style="font-size:.68rem; color:#64748B;">No. Penerimaan</div><div style="font-weight:750; color:#0F172A;">${esc(item.receiptDocNo || item.docNo)}</div></div>
+            <div><div style="font-size:.68rem; color:#64748B;">Dikirim</div><div style="font-weight:700; color:#1E293B;">${shippedQty.toLocaleString('id-ID')} Pkk · ${esc(klonName)}</div></div>
+            <div><div style="font-size:.68rem; color:#64748B;">No. Permintaan</div><div style="font-weight:650; color:#334155;">${esc(item.parentRequestDocNo || '-')}</div></div>
+            <div><div style="font-size:.68rem; color:#64748B;">No. Pengeluaran</div><div style="font-weight:650; color:#334155;">${esc(item.dispatchDocNo || '-')}</div></div>
+            <div><div style="font-size:.68rem; color:#64748B;">Asal</div><div style="font-weight:650; color:#334155;">${esc(item.sourceEstateName || item.sourceEstateId || '-')}</div></div>
+            <div><div style="font-size:.68rem; color:#64748B;">Divisi Tujuan</div><div style="font-weight:650; color:#334155;">${esc(targetDivisionId)}</div></div>
+            <div><div style="font-size:.68rem; color:#64748B;">Program Pengiriman</div><div style="font-weight:650; color:#334155;">${esc(targetProgramLabel)}</div></div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label for="input-mantri-nursery-program" style="display:block; font-weight:700; color:#334155; margin-bottom:4px; font-size:.74rem;">Program Pembibitan <span style="color:#DC2626;">*</span></label>
+          <select id="input-mantri-nursery-program" style="width:100%; box-sizing:border-box; min-height:38px; padding:7px 9px; border:1px solid #CBD5E1; background:#FFFFFF; border-radius:6px; color:#1E293B; font-size:.78rem;" ${receivingPrograms.length <= 1 ? 'disabled' : ''}>
+            <option value="">${receivingPrograms.length ? 'Pilih program pembibitan' : 'Belum ada program aktif di divisi penerima'}</option>
+            ${receivingPrograms.map(program => `<option value="${esc(program.id)}" ${program.id === selectedNurseryProgramId ? 'selected' : ''}>${esc(program.name)} · ${esc(program.code)}</option>`).join('')}
+          </select>
+          <div style="margin-top:3px; font-size:.66rem; color:#64748B; line-height:1.35;">Program diambil dari kebun dan divisi Mantri penerima.</div>
         </div>
 
         <form id="form-mantri-physical-receipt" onsubmit="return false;">
           
           <!-- Tanggal Penerimaan -->
           <div style="margin-bottom: 12px;">
-            <label for="input-exam-date" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 3px; font-size: 0.76rem;">
+            <label for="input-exam-date" style="display:block; font-weight:700; color:#334155; margin-bottom:4px; font-size:.74rem;">
               Tanggal Penerimaan Fisik <span style="color: #DC2626;">*</span>
             </label>
             <input 
               type="date" 
               id="input-exam-date" 
               value="${todayStr}"
-              style="width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem;"
+              style="width:100%; box-sizing:border-box; min-height:38px; padding:7px 9px; border:1px solid #CBD5E1; background:#FFFFFF; color:#1E293B; border-radius:6px; font-size:.78rem;"
               required
             />
           </div>
 
-          <!-- DETAIL PER BATCH SUMBER -->
+          <!-- PEMERIKSAAN FISIK PER BATCH SUMBER -->
           <div style="margin-bottom: 12px;">
-            <div style="font-weight: 700; color: #1E293B; font-size: 0.78rem; margin-bottom: 6px;">
+            <div style="font-weight:700; color:#334155; font-size:.76rem; margin-bottom:6px;">
               Rincian Penerimaan Fisik per Batch Sumber (${detailRowsState.length} Batch)
             </div>
 
             <div id="mantri-batch-rows-container">
               ${detailRowsState.map((b, idx) => `
-                <div class="batch-detail-card" data-index="${idx}" style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 10px; margin-bottom: 8px;">
-                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                <div class="batch-detail-card" data-index="${idx}" style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:8px; padding:10px; margin-bottom:8px;">
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:7px;">
                     <div>
-                      <div style="font-size: 0.70rem; color: #64748B;">Batch Sumber</div>
-                      <div style="font-weight: 700; color: #1E293B; font-size: 0.82rem;">${esc(b.sourceBatchCode)} (${esc(b.cloneId)})</div>
+                      <div style="font-size:.68rem; color:#64748B;">Batch Sumber</div>
+                      <div style="font-weight:700; color:#1E293B; font-size:.78rem;">${esc(b.sourceBatchCode)} · ${esc(b.cloneId)}</div>
                     </div>
                     <div style="text-align: right;">
-                      <div style="font-size: 0.70rem; color: #64748B;">Dikirim</div>
-                      <div style="font-weight: 700; color: #116834; font-size: 0.82rem;">${b.qtyShipped.toLocaleString('id-ID')} Pkk</div>
+                      <div style="font-size:.68rem; color:#64748B;">Dikirim</div>
+                      <div style="font-weight:700; color:#1E293B; font-size:.78rem;">${b.qtyShipped.toLocaleString('id-ID')} Pkk</div>
                     </div>
                   </div>
 
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
                     <div>
-                      <label style="display: block; font-size: 0.70rem; font-weight: 600; color: #166534; margin-bottom: 2px;">
+                      <label style="display:block; font-size:.70rem; font-weight:650; color:#334155; margin-bottom:3px;">
                         Jumlah Layak (Pkk) <span style="color: #DC2626;">*</span>
                       </label>
                       <input 
@@ -2330,13 +2681,13 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
                         value="${b.qtyAccepted}" 
                         min="0" 
                         max="${b.qtyShipped}"
-                        style="width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #86EFAC; background: #F0FDF4; border-radius: 6px; font-weight: 700; color: #166534; font-size: 0.82rem;"
+                        style="width:100%; box-sizing:border-box; min-height:38px; padding:7px 8px; border:1px solid #CBD5E1; background:#FFFFFF; border-radius:6px; font-weight:700; color:#1E293B; font-size:.80rem;"
                         required
                       />
                     </div>
 
                     <div>
-                      <label style="display: block; font-size: 0.70rem; font-weight: 600; color: #991B1B; margin-bottom: 2px;">
+                      <label style="display:block; font-size:.70rem; font-weight:650; color:#334155; margin-bottom:3px;">
                         Jumlah Reject (Pkk)
                       </label>
                       <input 
@@ -2346,14 +2697,14 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
                         value="${b.qtyRejected}" 
                         min="0" 
                         max="${b.qtyShipped}"
-                        style="width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #FCA5A5; background: #FEF2F2; border-radius: 6px; font-weight: 700; color: #991B1B; font-size: 0.82rem;"
+                        style="width:100%; box-sizing:border-box; min-height:38px; padding:7px 8px; border:1px solid #CBD5E1; background:#FFFFFF; border-radius:6px; font-weight:700; color:#1E293B; font-size:.80rem;"
                       />
                     </div>
                   </div>
 
                   <!-- REJECT REASON PER BATCH -->
                   <div class="container-batch-reject" data-index="${idx}" style="display: ${b.qtyRejected > 0 ? 'block' : 'none'}; margin-bottom: 6px;">
-                    <label style="display: block; font-weight: 600; color: #991B1B; margin-bottom: 2px; font-size: 0.72rem;">
+                    <label style="display:block; font-weight:650; color:#334155; margin-bottom:3px; font-size:.70rem;">
                       Alasan Reject / Rusak <span style="color: #DC2626;">*</span>
                     </label>
                     <input 
@@ -2362,29 +2713,38 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
                       data-index="${idx}" 
                       value="${esc(b.rejectReason || '')}"
                       placeholder="Contoh: Batang patah, polibag robek..."
-                      style="width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid #FCA5A5; border-radius: 4px; font-size: 0.76rem;"
+                      style="width:100%; box-sizing:border-box; min-height:36px; padding:6px 8px; border:1px solid #CBD5E1; border-radius:6px; font-size:.76rem; color:#1E293B;"
                     />
                   </div>
 
-                  <!-- PREVIEW BATCH BARU YANG DIBENTUK -->
-                  <div style="background: #F0FDF4; border: 1px dashed #86EFAC; border-radius: 4px; padding: 6px 8px; font-size: 0.70rem; color: #166534; display: flex; justify-content: space-between; align-items: center;">
-                    <span>Batch Baru yang Dibentuk:</span>
-                    <strong class="label-new-batch-code" data-index="${idx}">${esc(b.newBatchCode)}</strong>
+                  <div style="margin-bottom:6px;">
+                    <label for="input-target-batch-${idx}" style="display:block; font-size:.70rem; font-weight:650; color:#334155; margin-bottom:4px;">
+                      Batch Penerimaan <span style="color:#B91C1C;">*</span>
+                    </label>
+                    <select id="input-target-batch-${idx}" class="input-target-batch" data-index="${idx}" style="width:100%; box-sizing:border-box; min-height:38px; padding:7px 9px; border:1px solid #CBD5E1; background:#FFFFFF; border-radius:6px; color:#1E293B; font-size:.78rem;" ${eligibleBatchesByDetail[idx].length ? '' : 'disabled'}>
+                      <option value="">${eligibleBatchesByDetail[idx].length ? 'Pilih batch penerimaan' : (selectedNurseryProgramId ? 'Belum ada batch aktif pada program ini' : 'Pilih program pembibitan terlebih dahulu')}</option>
+                      ${eligibleBatchesByDetail[idx].map(batch => {
+                        const batchId = batch.id || batch.batchId || batch.batchCode || batch.batchNo;
+                        const batchLabel = batch.batchCode || batch.batchNo || batch.name || batchId;
+                        return `<option value="${esc(batchId)}" ${String(batchId) === String(b.targetBatchId) ? 'selected' : ''}>${esc(batchLabel)}${batch.name && batch.name !== batchLabel ? ` — ${esc(batch.name)}` : ''}</option>`;
+                      }).join('')}
+                    </select>
+                    <div style="margin-top:3px; font-size:.66rem; color:#64748B; line-height:1.35;">Pilihan mengikuti program, divisi, klon, dan tahap pembibitan.</div>
                   </div>
                 </div>
               `).join('')}
             </div>
 
             <!-- Total Bar & Live Calculation -->
-            <div id="mantri-total-calc-bar" style="font-size: 0.72rem; padding: 6px 10px; border-radius: 6px; background: #F1F5F9; color: #475569; display: flex; justify-content: space-between; align-items: center; border: 1px solid #E2E8F0;">
+            <div id="mantri-total-calc-bar" style="font-size:.70rem; padding:8px 10px; border-radius:7px; background:#F8FAFC; color:#475569; display:grid; grid-template-columns:minmax(0,1fr); gap:5px; border:1px solid #E2E8F0; line-height:1.4; overflow-wrap:anywhere;">
               <span>Total Dikirim: <strong>${shippedQty.toLocaleString('id-ID')} Pkk</strong></span>
-              <span id="mantri-discrepancy-label">Total Fisik: <strong>${shippedQty.toLocaleString('id-ID')} Pkk</strong> (Lengkap)</span>
+              <span id="mantri-discrepancy-label">Total Diterima: <strong>${shippedQty.toLocaleString('id-ID')} Pkk</strong> (Lengkap)</span>
             </div>
           </div>
 
           <!-- REASON DISCREPANCY (CONDITIONAL) -->
           <div id="container-discrepancy-reason-mantri" style="display: none; margin-bottom: 12px;">
-            <label for="input-discrepancy-reason-mantri" style="display: block; font-weight: 700; color: #D97706; margin-bottom: 3px; font-size: 0.76rem;">
+            <label for="input-discrepancy-reason-mantri" style="display:block; font-weight:700; color:#334155; margin-bottom:4px; font-size:.74rem;">
               Alasan Selisih Fisik Pengiriman <span style="color: #DC2626;">*</span>
             </label>
             <input 
@@ -2392,20 +2752,20 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
               id="input-discrepancy-reason-mantri" 
               value="${esc(initialDiscrepancyReason)}"
               placeholder="Contoh: Jumlah fisik di bak truk kurang dari manifes pengantar..."
-              style="width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid #FCD34D; border-radius: 6px; font-size: 0.80rem;"
+              style="width:100%; box-sizing:border-box; min-height:38px; padding:7px 9px; border:1px solid #CBD5E1; background:#FFFFFF; border-radius:6px; font-size:.78rem; color:#1E293B;"
             />
           </div>
 
           <!-- SECTION FOTO KAMERA -->
-          <div style="margin-bottom: 14px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px; background: #FFFFFF;">
-            <label style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 6px; font-size: 0.78rem;">
+          <div style="margin-bottom:10px; border:1px solid #E2E8F0; border-radius:8px; padding:10px; background:#FFFFFF;">
+            <label style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:.74rem;">
               Bukti Foto Fisik Bibit di Nursery <span style="color: #DC2626;">*</span>
             </label>
             
-            <div id="photo-preview-box-mantri" style="display: ${capturedPhoto ? 'flex' : 'none'}; align-items: center; gap: 10px; background: #F0FDF4; border: 1px solid #BBF7D0; padding: 8px; border-radius: 6px; margin-bottom: 8px;">
-              <img id="img-photo-preview-mantri" src="${capturedPhoto ? capturedPhoto.dataUrl : ''}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; border: 1px solid #86EFAC;" alt="Foto" />
-              <div style="flex: 1; font-size: 0.72rem; color: #166534;">
-                <div style="font-weight: 700;">Foto Kamera Tersedia</div>
+            <div id="photo-preview-box-mantri" style="display:${capturedPhoto ? 'flex' : 'none'}; align-items:center; gap:10px; background:#F8FAFC; border:1px solid #E2E8F0; padding:8px; border-radius:6px; margin-bottom:8px;">
+              <img id="img-photo-preview-mantri" src="${capturedPhoto ? capturedPhoto.dataUrl : ''}" style="width:50px; height:50px; object-fit:cover; border-radius:4px; border:1px solid #CBD5E1;" alt="Foto" />
+              <div style="flex:1; font-size:.70rem; color:#475569;">
+                <div style="font-weight:700; color:#1E293B;">Foto Kamera Tersedia</div>
                 <div>Sumber: <strong>CAMERA</strong> • Oleh: <strong>${esc(currentUser.name || currentUser.userId)}</strong></div>
               </div>
               <button type="button" id="btn-retake-photo-mantri" style="background: transparent; border: none; color: #DC2626; font-size: 0.72rem; font-weight: 700; cursor: pointer;">Ulangi</button>
@@ -2415,7 +2775,7 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
               <button 
                 type="button" 
                 id="btn-open-camera-mantri" 
-                style="width: 100%; padding: 8px; background: #F8FAFC; border: 1px dashed #94A3B8; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #334155; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                style="width:100%; min-height:40px; padding:8px; background:#FFFFFF; border:1px dashed #94A3B8; border-radius:6px; font-size:.76rem; font-weight:700; color:#334155; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;"
               >
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
@@ -2426,39 +2786,46 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
             </div>
           </div>
 
+          <div id="mantri-camera-overlay" style="display:none; position:fixed; inset:0; background:#000; z-index:10020; flex-direction:column;">
+            <header style="display:flex; justify-content:flex-end; padding:16px; position:absolute; top:0; left:0; right:0; z-index:10021;">
+              <button type="button" id="btn-mantri-camera-close" aria-label="Tutup kamera" style="background:rgba(0,0,0,.5); border:0; border-radius:50%; width:40px; height:40px; display:flex; justify-content:center; align-items:center; cursor:pointer; color:#fff; font-size:24px;">×</button>
+            </header>
+            <main style="flex:1; display:flex; justify-content:center; align-items:center; overflow:hidden; position:relative;">
+              <video id="mantri-camera-video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover;"></video>
+              <canvas id="mantri-camera-canvas" style="display:none;"></canvas>
+              <div id="mantri-camera-error" style="display:none; color:#FFF; text-align:center; padding:20px;"><p style="font-weight:700;">Kamera tidak tersedia atau akses ditolak.</p><p style="font-size:.8rem; color:#AAA;">Periksa izin kamera dan coba lagi.</p></div>
+            </main>
+            <footer style="padding:24px; display:flex; justify-content:center; align-items:center; position:absolute; bottom:0; left:0; right:0; z-index:10021; background:linear-gradient(to top,rgba(0,0,0,.8),transparent);">
+              <button id="btn-mantri-camera-shutter" type="button" aria-label="Ambil foto" style="width:70px; height:70px; border-radius:50%; background:transparent; border:4px solid #FFF; display:flex; justify-content:center; align-items:center; cursor:pointer;"><div style="width:54px; height:54px; background:#FFF; border-radius:50%;"></div></button>
+            </footer>
+          </div>
+
           <!-- Catatan Mantri -->
-          <div style="margin-bottom: 16px;">
-            <label for="input-mantri-notes" style="display: block; font-weight: 700; color: #1E293B; margin-bottom: 4px; font-size: 0.76rem;">
+          <div style="margin-bottom:10px;">
+            <label for="input-mantri-notes" style="display:block; font-weight:700; color:#334155; margin-bottom:4px; font-size:.74rem;">
               Catatan Mantri Bibitan (Opsional)
             </label>
             <textarea 
               id="input-mantri-notes" 
               rows="2" 
-              placeholder="Catatan penataan batch baru, kondisi media, baris bedengan..."
-              style="width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.80rem; resize: vertical;"
+              placeholder="Catatan alokasi batch atau kondisi bibit..."
+              style="width:100%; box-sizing:border-box; min-height:56px; padding:7px 9px; border:1px solid #CBD5E1; border-radius:6px; font-size:.78rem; color:#1E293B; resize:vertical;"
             >${esc(initialNotes)}</textarea>
           </div>
 
           <!-- ACTION BUTTONS -->
-          <div style="display: flex; gap: 6px; justify-content: flex-end; align-items: center;">
+          <div style="display:grid; grid-template-columns:minmax(0,1fr); gap:8px;">
             <button 
               type="button" 
               id="btn-cancel-mantri-modal" 
-              style="padding: 7px 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #475569; cursor: pointer;"
+              style="width:100%; min-height:42px; padding:7px 10px; background:#FFFFFF; border:1px solid #CBD5E1; border-radius:6px; font-size:.74rem; font-weight:650; color:#475569; cursor:pointer;"
             >
               Batal
             </button>
             <button 
-              type="button" 
-              id="btn-save-draft-mantri" 
-              style="padding: 7px 14px; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #334155; cursor: pointer;"
-            >
-              Simpan Sementara
-            </button>
-            <button 
               type="submit" 
               id="btn-save-final-mantri" 
-              style="padding: 7px 16px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer;"
+              style="width:100%; min-height:44px; padding:8px 12px; background:#116834; border:1px solid #116834; border-radius:6px; font-size:.78rem; font-weight:700; color:#FFFFFF; cursor:pointer;"
             >
               Selesaikan Penerimaan
             </button>
@@ -2477,6 +2844,25 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
   const photoPreviewBox = modalEl.querySelector('#photo-preview-box-mantri');
   const cameraTrigger = modalEl.querySelector('#camera-capture-trigger-mantri');
   const imgPhotoPreview = modalEl.querySelector('#img-photo-preview-mantri');
+  const cameraOverlay = modalEl.querySelector('#mantri-camera-overlay');
+  const cameraVideo = modalEl.querySelector('#mantri-camera-video');
+  const cameraCanvas = modalEl.querySelector('#mantri-camera-canvas');
+  const cameraError = modalEl.querySelector('#mantri-camera-error');
+  let cameraStream = null;
+  const stopMantriCamera = () => {
+    cameraStream?.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+    if (cameraVideo) cameraVideo.srcObject = null;
+    if (cameraOverlay) cameraOverlay.style.display = 'none';
+  };
+  const getMantriPhotoPosition = () => new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      position => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  });
 
   // Calculation updater
   const updateCalculations = () => {
@@ -2513,12 +2899,12 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
 
     if (discrepancy > 0) {
       if (containerDiscrepancy) containerDiscrepancy.style.display = 'block';
-      if (discrepancyLabel) discrepancyLabel.innerHTML = `Total Fisik: <strong>${totalPhysical.toLocaleString('id-ID')} Pkk</strong> (<span style="color: #D97706; font-weight: 700;">Selisih: ${discrepancy.toLocaleString('id-ID')} Pkk</span>)`;
+      if (discrepancyLabel) discrepancyLabel.innerHTML = `Total Diterima: <strong>${totalPhysical.toLocaleString('id-ID')} Pkk</strong> (<span style="color: #D97706; font-weight: 700;">Selisih: ${discrepancy.toLocaleString('id-ID')} Pkk</span>)`;
     } else if (discrepancy < 0) {
       if (discrepancyLabel) discrepancyLabel.innerHTML = `<span style="color: #DC2626; font-weight: 700;">Kelebihan: ${Math.abs(discrepancy).toLocaleString('id-ID')} Pkk (Tidak Valid)</span>`;
     } else {
       if (containerDiscrepancy) containerDiscrepancy.style.display = 'none';
-      if (discrepancyLabel) discrepancyLabel.innerHTML = `Total Fisik: <strong>${totalPhysical.toLocaleString('id-ID')} Pkk</strong> (<span style="color: #166534; font-weight: 700;">Lengkap ✅</span>)`;
+      if (discrepancyLabel) discrepancyLabel.innerHTML = `Total Diterima: <strong>${totalPhysical.toLocaleString('id-ID')} Pkk</strong> (<span style="color: #166534; font-weight: 700;">Lengkap ✅</span>)`;
     }
   };
 
@@ -2527,49 +2913,99 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
     inp.addEventListener('input', updateCalculations);
   });
 
+  modalEl.querySelector('#input-mantri-nursery-program')?.addEventListener('change', event => {
+    selectedNurseryProgramId = event.target.value;
+    detailRowsState.forEach((detail, index) => {
+      detail.targetBatchId = '';
+      eligibleBatchesByDetail[index] = getMantriReceiptBatchOptions(item, currentUser, detail, selectedNurseryProgramId);
+      const select = modalEl.querySelector(`#input-target-batch-${index}`);
+      if (!select) return;
+      const batches = eligibleBatchesByDetail[index];
+      select.innerHTML = `<option value="">${batches.length ? 'Pilih batch penerimaan' : (selectedNurseryProgramId ? 'Belum ada batch aktif pada program ini' : 'Pilih program pembibitan terlebih dahulu')}</option>` +
+        batches.map(batch => {
+          const batchId = batch.id || batch.batchId || batch.batchCode || batch.batchNo;
+          const batchLabel = batch.batchCode || batch.batchNo || batch.name || batchId;
+          return `<option value="${esc(batchId)}">${esc(batchLabel)}${batch.name && batch.name !== batchLabel ? ` — ${esc(batch.name)}` : ''}</option>`;
+        }).join('');
+      select.disabled = !batches.length;
+    });
+  });
+
+  modalEl.querySelectorAll('.input-target-batch').forEach(select => {
+    select.addEventListener('change', () => {
+      const index = Number(select.dataset.index);
+      if (detailRowsState[index]) detailRowsState[index].targetBatchId = select.value;
+    });
+  });
+
   // Photo / Camera Logic
   modalEl.querySelector('#btn-open-camera-mantri')?.addEventListener('click', async () => {
-    let lat = null;
-    let lon = null;
     try {
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          pos => { lat = pos.coords.latitude; lon = pos.coords.longitude; },
-          () => { },
-          { timeout: 2000 }
-        );
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Kamera tidak didukung pada perangkat ini.');
+      cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      if (cameraVideo) {
+        cameraVideo.srcObject = cameraStream;
+        cameraVideo.style.display = 'block';
+        await cameraVideo.play();
       }
-    } catch { }
+      if (cameraError) cameraError.style.display = 'none';
+      if (cameraOverlay) cameraOverlay.style.display = 'flex';
+    } catch (error) {
+      stopMantriCamera();
+      if (cameraOverlay) cameraOverlay.style.display = 'flex';
+      if (cameraVideo) cameraVideo.style.display = 'none';
+      if (cameraError) cameraError.style.display = 'block';
+      toast(error.message || 'Akses kamera gagal. Izinkan akses kamera lalu coba lagi.', 'error');
+    }
+  });
 
-    const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 240;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#116834';
-    ctx.fillRect(0, 0, 320, 240);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = '14px sans-serif';
-    ctx.fillText(`SIGMA NURSERY • ${item.receiptDocNo || item.docNo}`, 16, 40);
-    ctx.fillText(`Date: ${new Date().toISOString()}`, 16, 70);
-    ctx.fillText(`Inspector: ${currentUser.name || currentUser.userId}`, 16, 100);
-    ctx.fillText(`Role: MANTRI_TANAMAN`, 16, 130);
+  modalEl.querySelector('#btn-mantri-camera-close')?.addEventListener('click', stopMantriCamera);
+  modalEl.querySelector('#btn-mantri-camera-shutter')?.addEventListener('click', async () => {
+    if (!cameraVideo?.videoWidth || !cameraCanvas) {
+      toast('Kamera belum siap. Tunggu sebentar lalu coba lagi.', 'error');
+      return;
+    }
+    const capturedAt = new Date();
+    const position = await getMantriPhotoPosition();
+    cameraCanvas.width = cameraVideo.videoWidth;
+    cameraCanvas.height = cameraVideo.videoHeight;
+    const context = cameraCanvas.getContext('2d');
+    context.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+    const scale = cameraCanvas.width / 640;
+    const fontSize = Math.max(16, Math.round(18 * scale));
+    const userId = currentUser.code || currentUser.loginCode || currentUser.userId || currentUser.id || '-';
+    const lines = [
+      `${userId} - ${currentUser.name || 'Mantri Bibitan'}`,
+      capturedAt.toLocaleString('id-ID'),
+      position ? `${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}` : 'Lokasi tidak tersedia'
+    ];
+    const padding = Math.round(fontSize * .65);
+    const lineHeight = Math.round(fontSize * 1.45);
+    const stampHeight = padding * 2 + lineHeight * lines.length;
+    context.fillStyle = 'rgba(0,0,0,.68)';
+    context.fillRect(0, cameraCanvas.height - stampHeight, cameraCanvas.width, stampHeight);
+    context.fillStyle = '#fff';
+    context.font = `600 ${fontSize}px sans-serif`;
+    context.textBaseline = 'top';
+    lines.forEach((line, index) => context.fillText(line, padding, cameraCanvas.height - stampHeight + padding + index * lineHeight, cameraCanvas.width - padding * 2));
 
     capturedPhoto = {
       id: `PHOTO-${Date.now()}`,
       receiptId: item.id,
-      dataUrl: canvas.toDataURL('image/jpeg', 0.8),
-      capturedAt: new Date().toISOString(),
-      capturedByUserId: currentUser.userId || currentUser.id,
-      capturedByName: currentUser.name || currentUser.userId,
-      capturedByRole: currentUser.role || 'MANTRI_TANAMAN',
+      dataUrl: cameraCanvas.toDataURL('image/jpeg', .88),
+      capturedAt: capturedAt.toISOString(),
+      capturedByUserId: userId,
+      capturedByName: currentUser.name || 'Mantri Bibitan',
+      capturedByRole: normalizeRole(currentUser.role || currentUser.rawRole) || 'MANTRI_TANAMAN',
       source: PHOTO_SOURCE.CAMERA,
-      latitude: lat,
-      longitude: lon
+      latitude: position?.latitude ?? null,
+      longitude: position?.longitude ?? null,
+      locationCaptured: Boolean(position)
     };
-
     if (imgPhotoPreview) imgPhotoPreview.src = capturedPhoto.dataUrl;
     if (photoPreviewBox) photoPreviewBox.style.display = 'flex';
     if (cameraTrigger) cameraTrigger.style.display = 'none';
+    stopMantriCamera();
     toast('Foto pemeriksaan fisik berhasil diambil dari kamera perangkat.', 'success');
   });
 
@@ -2581,39 +3017,18 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
 
   // Cancel Button
   modalEl.querySelector('#btn-cancel-mantri-modal')?.addEventListener('click', () => {
+    stopMantriCamera();
     closeModal();
   });
 
-  // Simpan Sementara (Draft)
-  modalEl.querySelector('#btn-save-draft-mantri')?.addEventListener('click', () => {
-    updateCalculations();
-    const payload = {
-      examinationDate: modalEl.querySelector('#input-exam-date')?.value,
-      details: detailRowsState,
-      discrepancyReason: modalEl.querySelector('#input-discrepancy-reason-mantri')?.value,
-      photoEvidence: capturedPhoto,
-      notes: modalEl.querySelector('#input-mantri-notes')?.value
-    };
-
-    try {
-      processMantriBibitanDraft(item.id, payload, currentUser);
-      closeModal();
-      toast(`Draft pemeriksaan fisik ${item.receiptDocNo || item.docNo} berhasil disimpan.`, 'info');
-      if (typeof onSuccess === 'function') onSuccess();
-      else renderReceiptKebunSepupuLanding();
-    } catch (err) {
-      console.error('[receipt] mantri draft error:', err);
-      toast(err.message || 'Gagal menyimpan draft', 'error');
-    }
-  });
-
   // Simpan & Selesaikan Penerimaan (Final)
-  modalEl.querySelector('#form-mantri-physical-receipt')?.addEventListener('submit', (e) => {
+  modalEl.querySelector('#form-mantri-physical-receipt')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     updateCalculations();
 
     const payload = {
       examinationDate: modalEl.querySelector('#input-exam-date')?.value,
+      nurseryProgramId: selectedNurseryProgramId,
       details: detailRowsState,
       discrepancyReason: modalEl.querySelector('#input-discrepancy-reason-mantri')?.value,
       photoEvidence: capturedPhoto,
@@ -2621,9 +3036,9 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
     };
 
     try {
-      processMantriBibitanFinal(item.id, payload, currentUser);
+      await processMantriBibitanFinal(item.id, payload, currentUser);
       closeModal();
-      toast(`Penerimaan fisik ${item.receiptDocNo || item.docNo} berhasil diselesaikan. Batch baru telah terbentuk.`, 'success');
+      toast(`Penerimaan fisik ${item.receiptDocNo || item.docNo} selesai dan bibit dialokasikan ke batch pilihan.`, 'success');
       if (typeof onSuccess === 'function') onSuccess();
       else renderReceiptKebunSepupuLanding();
     } catch (err) {
@@ -2641,18 +3056,23 @@ export function openMantriBibitanPhysicalReceiptModal(item, currentUser, onSucce
 export function openReceiptDetailModal(item) {
   if (!item) return;
 
+  const isMataEntres = isMataEntresReceipt(item);
   const primaryDetail = (item.details && item.details[0]) || {};
-  const batchListStr = (item.details || []).map(b => `${b.sourceBatchCode || b.sourceBatchId} (${(b.qtyShipped || 0).toLocaleString('id-ID')} Pkk)`).join(', ') || '-';
-  const shippedQty = parseInt(item.totalShippedQty || 0, 10);
-  const statusLabel = RECEIPT_KSP_STATUS_LABELS[item.status] || item.statusLabel || item.status;
+  const batchListStr = (item.details || []).map(b => `${b.sourceBatchCode || b.sourceBatchId} (${(b.qtyShipped || 0).toLocaleString('id-ID')} ${isMataEntres ? 'Batang' : 'Pkk'})`).join(', ') || '-';
+  const shippedQty = parseInt(isMataEntres ? (item.totalShippedMata ?? item.totalShippedQty ?? 0) : (item.totalShippedQty || 0), 10);
+  const shippedBatang = parseInt(item.totalShippedBatang || 0, 10);
+  const shippedText = `${shippedQty.toLocaleString('id-ID')} ${isMataEntres ? 'Mata' : 'Pkk'}${isMataEntres && shippedBatang ? ` (${shippedBatang.toLocaleString('id-ID')} Batang)` : ''}`;
+  const statusPresentation = getWorkflowStatusPresentation(item.status, RECEIPT_KSP_STATUS_LABELS[item.status] || item.statusLabel);
+  const statusLabel = statusPresentation.label;
 
   const allocationsList = Array.isArray(item.blockAllocations) && item.blockAllocations.length > 0
     ? item.blockAllocations.map(a => `${a.blockName || a.blockCode} (${(a.allocatedQty || 0).toLocaleString('id-ID')} Pkk)`).join(', ')
     : '-';
 
-  const newBatchesListStr = Array.isArray(item.newBatches) && item.newBatches.length > 0
-    ? item.newBatches.map(b => `${b.batchCode} (${(b.qty || 0).toLocaleString('id-ID')} Pkk)`).join(', ')
-    : (Array.isArray(item.details) ? item.details.filter(d => d.newBatchCode).map(d => `${d.newBatchCode} (${(d.qtyAccepted || 0).toLocaleString('id-ID')} Pkk)`).join(', ') : '-');
+  const allocatedBatches = Array.isArray(item.allocatedBatches) && item.allocatedBatches.length > 0 ? item.allocatedBatches : item.newBatches;
+  const newBatchesListStr = Array.isArray(allocatedBatches) && allocatedBatches.length > 0
+    ? allocatedBatches.map(b => `${b.batchCode} (${(b.qty || 0).toLocaleString('id-ID')} Pkk)`).join(', ')
+    : (Array.isArray(item.details) ? item.details.filter(d => d.receivedBatchCode || d.newBatchCode).map(d => `${d.receivedBatchCode || d.newBatchCode} (${(d.qtyAccepted || 0).toLocaleString('id-ID')} Pkk)`).join(', ') : '-');
 
   openModal({
     title: `Detail Penerimaan: ${item.receiptDocNo || item.docNo}`,
@@ -2670,8 +3090,8 @@ export function openReceiptDetailModal(item) {
               <div style="font-weight: 600;">${esc(item.parentRequestDocNo || '-')}</div>
             </div>
             <div>
-              <div style="font-size: 0.70rem; color: #64748B;">Program Pembibitan</div>
-              <div style="font-weight: 600;">${esc(item.programName || item.programId || 'Program Nursery 2026')}</div>
+              <div style="font-size: 0.70rem; color: #64748B;">${isMataEntres ? 'Jenis Permintaan' : 'Program Pembibitan'}</div>
+              <div style="font-weight: 600;">${isMataEntres ? 'Mata Entres' : esc(item.programName || item.programId || 'Program Nursery 2026')}</div>
             </div>
             <div>
               <div style="font-size: 0.70rem; color: #64748B;">Klon</div>
@@ -2687,12 +3107,12 @@ export function openReceiptDetailModal(item) {
             </div>
             <div>
               <div style="font-size: 0.70rem; color: #64748B;">Kategori</div>
-              <div style="font-weight: 600;">${esc(primaryDetail.category || 'Polibag Besar')}</div>
+              <div style="font-weight: 600;">${isMataEntres ? 'Mata Entres' : esc(primaryDetail.category || 'Polibag Besar')}</div>
             </div>
-            <div>
+            ${!isMataEntres ? `<div>
               <div style="font-size: 0.70rem; color: #64748B;">Tahapan Pertumbuhan</div>
               <div style="font-weight: 600;">${esc(primaryDetail.growthStage || 'Rubber Advance Planting Material')}</div>
-            </div>
+            </div>` : ''}
           </div>
         </div>
 
@@ -2712,7 +3132,7 @@ export function openReceiptDetailModal(item) {
             </div>
             <div>
               <div style="font-size: 0.70rem; color: #64748B;">Jumlah Dikeluarkan</div>
-              <div style="font-weight: 700; color: #116834;">${shippedQty.toLocaleString('id-ID')} Pkk</div>
+              <div style="font-weight: 700; color: #116834;">${shippedText}</div>
             </div>
             <div>
               <div style="font-size: 0.70rem; color: #64748B;">Plat Kendaraan</div>
@@ -2741,11 +3161,11 @@ export function openReceiptDetailModal(item) {
             </div>
             <div>
               <div style="font-size: 0.70rem; color: #64748B;">Status</div>
-              <div><span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; background: #FEF3C7; color: #92400E;">${esc(statusLabel)}</span></div>
+              <div><span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; background: ${statusPresentation.background}; color: ${statusPresentation.color}; border:1px solid ${statusPresentation.border};">${esc(statusLabel)}</span></div>
             </div>
             <div>
               <div style="font-size: 0.70rem; color: #64748B;">Total Dikirim</div>
-              <div style="font-weight: 700; color: #116834;">${shippedQty.toLocaleString('id-ID')} Pkk</div>
+              <div style="font-weight: 700; color: #116834;">${shippedText}</div>
             </div>
             <div>
               <div style="font-size: 0.70rem; color: #64748B;">Tanggal Tiba</div>
@@ -2829,7 +3249,7 @@ export function openReceiptDetailModal(item) {
         ${(item.finalizedByUserId || item.totalAcceptedQty !== undefined || (item.newBatches && item.newBatches.length > 0)) ? `
           <div style="margin-bottom: 16px;">
             <div style="font-size: 0.74rem; font-weight: 700; color: #116834; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">
-              E. Hasil Pemeriksaan Fisik & Batch Baru
+              E. Hasil Pemeriksaan Fisik & Alokasi Batch
             </div>
             <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
               <div>
@@ -2848,7 +3268,7 @@ export function openReceiptDetailModal(item) {
               ` : ''}
               ${(newBatchesListStr && newBatchesListStr !== '-') ? `
                 <div style="grid-column: span 2;">
-                  <div style="font-size: 0.70rem; color: #64748B; margin-bottom: 2px;">Batch Pembibitan Baru yang Dibentuk</div>
+                  <div style="font-size: 0.70rem; color: #64748B; margin-bottom: 2px;">Batch Pembibitan Tujuan</div>
                   <div style="font-weight: 700; color: #116834; font-size: 0.80rem;">
                     ${esc(newBatchesListStr)}
                   </div>
@@ -2901,9 +3321,17 @@ export function renderReceiptKebunSepupuLanding() {
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
 
   const allReceipts = getReceiptKspTransactions();
-  const scopedReceipts = filterReceiptKspRequests(allReceipts, currentUser);
+  const inboxType = storage.get('receipt_inbox_type', 'ALL');
+  const roleScopedReceipts = filterReceiptKspRequests(allReceipts, currentUser);
+  const scopedReceipts = inboxType === 'BIBIT'
+    ? roleScopedReceipts.filter(isBibitReceipt)
+    : inboxType === 'MATA_ENTRES'
+      ? roleScopedReceipts.filter(isMataEntresReceipt)
+      : roleScopedReceipts;
   const filteredList = filterReceiptKspByStatus(scopedReceipts, activeStatusFilter, currentUser);
   const actionableCount = getActionableReceiptCount(scopedReceipts, currentUser);
+  const inProgressCount = filterReceiptKspByStatus(scopedReceipts, 'DIPROSES', currentUser).length;
+  const completedCount = filterReceiptKspByStatus(scopedReceipts, 'SELESAI', currentUser).length;
 
   const isAskep = userRole === 'ASKEP' || userRole === 'ASISTEN_KEPALA';
   const isAsistenLapangan = userRole === 'ASISTEN';
@@ -2912,7 +3340,7 @@ export function renderReceiptKebunSepupuLanding() {
   const actionableTabLabel = (isAskep || isAsistenBibitan) ? 'Menunggu Verifikasi' : ((isAsistenLapangan || isMantriBibitan) ? 'Menunggu Pemeriksaan' : 'Menunggu Penerimaan');
 
   app.innerHTML = `
-    <div class="page receipt-ksp-page" style="display: flex; flex-direction: column; min-height: 100vh; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box;">
+    <div class="page receipt-ksp-page" style="display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box;">
       
       <!-- HEADER -->
       <header style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 16px; background: #FFFFFF; border-bottom: 1px solid #E2E8F0; position: sticky; top: 0; z-index: 20;">
@@ -2923,9 +3351,9 @@ export function renderReceiptKebunSepupuLanding() {
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
           </button>
-          <div>
-            <h1 style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0; line-height: 1.2;">Penerimaan Bibit</h1>
-            ${isAsistenBibitan ? '' : `<div style="font-size: 0.70rem; color: #64748B;">Kebun Sepupu • ${esc(currentUser?.estateName || currentUser?.estateId || '-')}${currentUser?.divisionName ? ` • ${esc(currentUser.divisionName)}` : ''}</div>`}
+          <div style="min-width:0;">
+            <h1 style="font-size: 1.02rem; font-weight: 800; color: #0F172A; margin: 0; line-height: 1.2;">Penerimaan</h1>
+            ${isAsistenBibitan ? '' : `<div style="font-size: 0.68rem; color: #64748B; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(currentUser?.estateName || currentUser?.estateId || '')}${currentUser?.divisionName && currentUser.divisionName !== currentUser.estateName ? ` • ${esc(currentUser.divisionName)}` : ''}</div>`}
           </div>
         </div>
         
@@ -2941,14 +3369,14 @@ export function renderReceiptKebunSepupuLanding() {
       </header>
 
       <!-- MAIN CONTAINER -->
-      <main style="flex: 1; padding: 14px 16px; max-width: 800px; width: 100%; margin: 0 auto; box-sizing: border-box;">
+      <main style="flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 14px 20px; max-width: 620px; width: 100%; margin: 0 auto; box-sizing: border-box;">
         
         <!-- STATUS FILTER TABS -->
         <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px; scrollbar-width: none;">
           ${renderFilterTab('SEMUA', 'Semua', scopedReceipts.length, activeStatusFilter)}
           ${renderFilterTab('ACTIONABLE', actionableTabLabel, actionableCount, activeStatusFilter, actionableCount > 0)}
-          ${renderFilterTab('DIPROSES', 'Diproses', filterReceiptKspByStatus(scopedReceipts, 'DIPROSES', currentUser).length, activeStatusFilter)}
-          ${renderFilterTab('SELESAI', 'Selesai', filterReceiptKspByStatus(scopedReceipts, 'SELESAI', currentUser).length, activeStatusFilter)}
+          ${renderFilterTab('DIPROSES', 'Diproses', inProgressCount, activeStatusFilter)}
+          ${renderFilterTab('SELESAI', 'Selesai', completedCount, activeStatusFilter)}
         </div>
 
         <!-- LIST TRANSAKSI INBOX -->
@@ -2983,6 +3411,15 @@ export function renderReceiptKebunSepupuLanding() {
     });
   });
 
+  app.querySelectorAll('.btn-toggle-receipt-details').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      if (expandedReceiptIds.has(id)) expandedReceiptIds.delete(id);
+      else expandedReceiptIds.add(id);
+      renderReceiptKebunSepupuLanding();
+    });
+  });
+
   // Action: Pengurus Catat Penerimaan
   app.querySelectorAll('.btn-action-initial-receipt').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2992,6 +3429,30 @@ export function renderReceiptKebunSepupuLanding() {
         openPengurusInitialReceiptModal(item, currentUser, () => {
           renderReceiptKebunSepupuLanding();
         });
+      }
+    });
+  });
+
+  app.querySelectorAll('.btn-action-mata-entres-receipt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const receipt = getReceiptKspById(btn.dataset.id);
+      const parentRequest = receipt && getMataEntresParentRequest(receipt);
+      if (!receipt || !parentRequest || !canPerformRequesterReceipt(parentRequest, currentUser)) return;
+      const onSuccess = renderReceiptKebunSepupuLanding;
+      const role = normalizeRole(currentUser.role || currentUser.rawRole);
+      if (role === 'PENGURUS') openPengurusArrivalModal(parentRequest, currentUser, onSuccess, receipt.id);
+      else if (role === 'ASKEP' || role === 'ASISTEN_KEPALA') openAskepReceiptRoutingModal(parentRequest, currentUser, onSuccess);
+      else if (role === 'ASISTEN_BIBITAN') openAsistenBibitanReceiptModal(parentRequest, currentUser, onSuccess);
+      else if (role === 'MANTRI_TANAMAN' || role === 'MANTRI') openMantriBibitanReceiptModal(parentRequest, currentUser, onSuccess);
+    });
+  });
+
+  app.querySelectorAll('.btn-action-mata-entres-askep-return').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const receipt = getReceiptKspById(btn.dataset.id);
+      const parentRequest = receipt && getMataEntresParentRequest(receipt);
+      if (parentRequest && canPerformRequesterReceipt(parentRequest, currentUser)) {
+        openMataEntresAskepReturnModal(parentRequest, currentUser, renderReceiptKebunSepupuLanding);
       }
     });
   });
@@ -3084,7 +3545,7 @@ function renderFilterTab(key, label, count, currentActive, hasDot = false) {
 function renderEmptyState() {
   return renderEmptyStateCard({
     title: 'Tidak Ada Dokumen Penerimaan',
-    description: 'Belum ada pengiriman bibit yang masuk ke divisi/kebun ini untuk filter terpilih.',
+    description: 'Belum ada pengiriman bibit atau mata entres yang masuk ke kebun ini untuk filter terpilih.',
     customStyle: 'margin-top: 10px;'
   });
 }
@@ -3098,105 +3559,85 @@ function renderReceiptCardList(list, currentUser) {
   const isMantriBibitan = userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI';
 
   return list.map(item => {
+    if (isMataEntresReceipt(item)) return renderMataEntresReceiptCard(item, currentUser);
+
+    const expanded = expandedReceiptIds.has(item.id);
     const isPengurusActionable = isPengurus && canPerformPengurusReceiptAction(item, currentUser);
     const isAskepActionable = isAskep && canPerformAskepReceiptAction(item, currentUser);
+    const isRouteCorrection = isAskepActionable &&
+      item.status === RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_LAPANGAN &&
+      item.jalurPenerimaan === 'LAPANGAN';
     const isAsistenLapanganActionable = isAsistenLapangan && canPerformAsistenLapanganReceiptAction(item, currentUser);
     const isAsistenBibitanActionable = isAsistenBibitan && canPerformAsistenBibitanReceiptAction(item, currentUser);
     const isMantriActionable = isMantriBibitan && canPerformMantriBibitanReceiptAction(item, currentUser);
+    const normalizedBibitanRoute = isAsistenBibitan && isLegacyFieldRouteToNursery(item);
     const isActionable = isPengurusActionable || isAskepActionable || isAsistenLapanganActionable || isAsistenBibitanActionable || isMantriActionable;
 
     const primaryDetail = (item.details && item.details[0]) || {};
     const klonName = primaryDetail.cloneId || item.clone || '-';
     const growthStage = primaryDetail.growthStage || 'Rubber Advance Planting Material';
     const category = primaryDetail.category || 'Polibag Besar';
-    const shippedQty = parseInt(item.totalShippedQty || 0, 10);
+    const isMataEntres = isMataEntresReceipt(item);
+    const shippedQty = parseInt(isMataEntres ? (item.totalShippedMata ?? item.totalShippedQty ?? 0) : (item.totalShippedQty || 0), 10);
+    const shippedBatang = parseInt(item.totalShippedBatang || 0, 10);
     const vehiclePlate = item.vehiclePlate || 'Tidak tercatat';
-    const statusLabel = RECEIPT_KSP_STATUS_LABELS[item.status] || item.statusLabel || item.status;
+    const displayStatus = normalizedBibitanRoute
+      ? RECEIPT_KSP_STATUS.MENUNGGU_VERIFIKASI_ASISTEN_BIBITAN
+      : item.status;
+    const displayJalur = normalizedBibitanRoute ? 'BIBITAN' : item.jalurPenerimaan;
+    const statusPresentation = getWorkflowStatusPresentation(displayStatus, RECEIPT_KSP_STATUS_LABELS[displayStatus] || item.statusLabel);
+    const statusLabel = statusPresentation.label;
+    const { sourceName, targetName } = getReceiptEstateRoute(item);
 
     return `
-      <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); transition: box-shadow 0.15s ease;">
+      <div style="background:#FFFFFF; border:1px solid ${expanded ? '#116834' : '#DCE5EF'}; border-radius:12px; padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(15,23,42,.05); min-width:0; box-sizing:border-box;">
         
         <!-- HEADER CARD: DOC NO & STATUS -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 8px;">
-          <div>
-            <div style="font-size: 0.72rem; color: #64748B; font-weight: 600;">No. Penerimaan</div>
-            <div style="font-size: 0.92rem; font-weight: 700; color: #0F172A;">${esc(item.receiptDocNo || item.docNo)}</div>
+        <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid #F1F5F9; min-width:0;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; min-width:0;">
+            <span style="font-size:.66rem; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.04em; line-height:1.35;">NO.PENERIMAAN</span>
+            <span style="display:inline-flex; align-items:center; justify-content:center; flex:0 1 auto; min-width:0; max-width:56%; padding:4px 7px; border-radius:7px; border:1px solid ${statusPresentation.border}; background:${statusPresentation.background}; color:${statusPresentation.color}; font-size:.58rem; font-weight:750; line-height:1.3; text-align:center; white-space:normal; overflow-wrap:anywhere; box-sizing:border-box;">${esc(statusLabel)}</span>
           </div>
-          <div style="text-align: right;">
-            <span style="display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; background: ${isActionable ? '#FEF3C7' : '#F1F5F9'}; color: ${isActionable ? '#92400E' : '#475569'}; border: 1px solid ${isActionable ? '#FDE68A' : '#E2E8F0'};">
-              ${esc(statusLabel)}
-            </span>
+          <div style="min-width:0; flex:1;">
+            <div style="font-size:.95rem; font-weight:800; color:#116834; line-height:1.35; white-space:nowrap;">${esc(item.receiptDocNo || item.docNo || '-')}</div>
           </div>
         </div>
 
-        <!-- DETAILS GRID -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; padding: 10px; background: #F8FAFC; border-radius: 6px; margin-bottom: 12px; border: 1px solid #F1F5F9;">
-          <div>
-            <div style="font-size: 0.68rem; color: #64748B;">No. Permintaan (NIR)</div>
-            <div style="font-size: 0.78rem; font-weight: 600; color: #334155;">${esc(item.parentRequestDocNo || '-')}</div>
-          </div>
-          <div>
-            <div style="font-size: 0.68rem; color: #64748B;">No. Pengeluaran (DSP)</div>
-            <div style="font-size: 0.78rem; font-weight: 600; color: #334155;">${esc(item.dispatchDocNo || '-')}</div>
-          </div>
-          <div>
-            <div style="font-size: 0.68rem; color: #64748B;">Program</div>
-            <div style="font-size: 0.78rem; font-weight: 600; color: #334155;">${esc(item.programName || item.programId || 'Program Nursery 2026')}</div>
-          </div>
-          <div>
-            <div style="font-size: 0.68rem; color: #64748B;">Kebun Asal</div>
-            <div style="font-size: 0.78rem; font-weight: 600; color: #334155;">${esc(item.sourceEstateName || item.sourceEstateId || '-')}</div>
-          </div>
-          <div>
-            <div style="font-size: 0.68rem; color: #64748B;">Klon & Kategori</div>
-            <div style="font-size: 0.78rem; font-weight: 600; color: #334155;">${esc(klonName)} • ${esc(category)}</div>
-          </div>
-          <div>
-            <div style="font-size: 0.68rem; color: #64748B;">Tahapan Pertumbuhan</div>
-            <div style="font-size: 0.78rem; font-weight: 600; color: #334155;">${esc(growthStage)}</div>
-          </div>
-          <div>
-            <div style="font-size: 0.68rem; color: #64748B;">Jumlah Dikirim</div>
-            <div style="font-size: 0.85rem; font-weight: 700; color: #116834;">${shippedQty.toLocaleString('id-ID')} Pkk</div>
-          </div>
-          <div>
-            <div style="font-size: 0.68rem; color: #64748B;">Plat Kendaraan</div>
-            <div style="font-size: 0.78rem; font-weight: 600; color: #334155;">${esc(vehiclePlate)}</div>
-          </div>
-          <div>
-            <div style="font-size: 0.68rem; color: #64748B;">Tanggal Tiba</div>
-            <div style="font-size: 0.78rem; font-weight: 600; color: #334155;">${item.initialReceivedDate ? formatDate(item.initialReceivedDate) : '-'}</div>
-          </div>
-          ${item.jalurPenerimaan ? `
-            <div>
-              <div style="font-size: 0.68rem; color: #64748B;">Jalur & Divisi</div>
-              <div style="font-weight: 700; color: #116834;">${esc(item.jalurPenerimaan)} • ${esc(item.targetNextDivisionName || item.targetNextDivisionId)}</div>
-            </div>
-          ` : ''}
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:.78rem; background:#F8FAFC; padding:7px 10px; border-radius:7px; border:1px solid #F1F5F9; min-width:0;">
+          <span style="font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45%;">${esc(sourceName)}</span>
+          <span style="color:#94A3B8; font-weight:800; flex-shrink:0;">→</span>
+          <span style="font-weight:700; color:#116834; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45%;">${esc(targetName)}</span>
         </div>
-
-        <!-- ACTION BUTTONS -->
-        <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
-          <button 
-            type="button" 
-            class="btn-view-detail" 
-            data-id="${item.id}"
-            style="padding: 6px 12px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #475569; cursor: pointer;"
-          >
-            Lihat Detail
-          </button>
+        <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; font-size:.78rem; margin-bottom:8px;">
+          <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">No. Permintaan</div><div style="font-weight:700; color:#1E293B; overflow-wrap:anywhere;">${esc(item.parentRequestDocNo || '-')}</div></div>
+          <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">No. Pengeluaran</div><div style="font-weight:700; color:#1E293B; overflow-wrap:anywhere;">${esc(item.dispatchDocNo || '-')}</div></div>
+          <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">Klon</div><div style="font-weight:700; color:#1E293B; overflow-wrap:anywhere;">${esc(klonName)} • ${esc(category)}</div></div>
+          <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">Jumlah Dikirim</div><div style="font-weight:800; color:#116834;">${shippedQty.toLocaleString('id-ID')} Pkk</div></div>
+        </div>
+        ${expanded ? `
+          <div style="margin-top:8px; padding:10px 0 2px; border-top:1px dashed #E2E8F0; display:grid; grid-template-columns:40% 60%; gap:7px 8px; font-size:.75rem;">
+            <span style="color:#64748B;">Jenis Penerimaan</span><strong style="text-align:right; color:#1E293B;">${esc(item.programName || item.programId || 'Bibit')}</strong>
+            <span style="color:#64748B;">Tahapan Pertumbuhan</span><strong style="text-align:right; color:#1E293B; overflow-wrap:anywhere;">${esc(growthStage)}</strong>
+            <span style="color:#64748B;">Kategori</span><strong style="text-align:right; color:#1E293B;">${esc(category)}</strong>
+            <span style="color:#64748B;">Tanggal Pengeluaran</span><strong style="text-align:right; color:#1E293B;">${esc(formatDate(item.dispatchDate) || '-')}</strong>
+            <span style="color:#64748B;">Tanggal Kedatangan</span><strong style="text-align:right; color:#1E293B;">${esc(formatDate(item.initialReceivedDate) || '-')}</strong>
+            <span style="color:#64748B;">Kendaraan</span><strong style="text-align:right; color:#1E293B;">${esc(vehiclePlate)}</strong>
+            ${displayJalur ? `<span style="color:#64748B;">Jalur & Divisi</span><strong style="text-align:right; color:#1E293B;">${esc(displayJalur)} • ${esc(item.targetNextDivisionName || item.targetNextDivisionId)}</strong>` : ''}
+          </div>
+        ` : ''}
+        <button class="btn-toggle-receipt-details" data-id="${esc(item.id)}" type="button" style="width:100%; min-height:36px; background:transparent; border:0; border-top:1px dashed #E2E8F0; padding:7px 0 2px; font-size:.74rem; color:#116834; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;">
+          <span>${expanded ? 'Sembunyikan Rincian' : 'Tampilkan Rincian'}</span><svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.2" fill="none" style="transform:rotate(${expanded ? '180deg' : '0deg'});"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        ${isActionable ? `<div style="display:flex; flex-direction:column; gap:8px; margin-top:8px; padding-top:8px; border-top:1px dashed #F1F5F9;">
           
           ${isPengurusActionable ? `
             <button 
               type="button" 
               class="btn-action-initial-receipt" 
               data-id="${item.id}"
-              style="padding: 6px 14px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"
+              style="width:100%; height:46px; min-height:46px; box-sizing:border-box; padding:6px 12px; background:#116834; border:1px solid #116834; border-radius:6px; font-size:.78rem; font-weight:700; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; line-height:1.2; text-align:center; box-shadow:0 2px 6px rgba(17,104,52,.2);"
             >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-              Catat Penerimaan Awal
+              Terima &amp; Proses
             </button>
           ` : ''}
 
@@ -3205,7 +3646,7 @@ function renderReceiptCardList(list, currentUser) {
               type="button" 
               class="btn-action-askep-return" 
               data-id="${item.id}"
-              style="padding: 6px 12px; background: #FFFFFF; border: 1px solid #FCA5A5; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #DC2626; cursor: pointer;"
+              style="width:100%; height:46px; min-height:46px; box-sizing:border-box; padding:6px 12px; background:#FFFFFF; border:1px solid #FCA5A5; border-radius:6px; font-size:.78rem; font-weight:600; color:#DC2626; cursor:pointer; text-align:center; line-height:1.2;"
             >
               Kembalikan ke Pengurus
             </button>
@@ -3213,12 +3654,9 @@ function renderReceiptCardList(list, currentUser) {
               type="button" 
               class="btn-action-askep-verify" 
               data-id="${item.id}"
-              style="padding: 6px 14px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"
+              style="width:100%; height:46px; min-height:46px; box-sizing:border-box; padding:6px 12px; background:#116834; border:1px solid #116834; border-radius:6px; font-size:.78rem; font-weight:700; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.2;"
             >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-              Verifikasi & Tentukan Jalur
+              ${isRouteCorrection ? 'Simpan Perubahan Jalur' : 'Verifikasi dan Teruskan Penerimaan'}
             </button>
           ` : ''}
 
@@ -3227,7 +3665,7 @@ function renderReceiptCardList(list, currentUser) {
               type="button" 
               class="btn-action-asisten-lapangan" 
               data-id="${item.id}"
-              style="padding: 6px 14px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"
+              style="width:100%; height:46px; min-height:46px; box-sizing:border-box; padding:6px 12px; background:#116834; border:1px solid #116834; border-radius:6px; font-size:.78rem; font-weight:700; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:4px; text-align:center; line-height:1.2; box-shadow:0 2px 6px rgba(17,104,52,.2);"
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -3241,12 +3679,9 @@ function renderReceiptCardList(list, currentUser) {
               type="button" 
               class="btn-action-asb-verify" 
               data-id="${item.id}"
-              style="padding: 6px 14px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"
+              style="width:100%; height:46px; min-height:46px; box-sizing:border-box; padding:6px 12px; background:#116834; border:1px solid #116834; border-radius:6px; font-size:.78rem; font-weight:700; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.2; box-shadow:0 2px 6px rgba(17,104,52,.2);"
             >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-              Verifikasi & Teruskan ke Mantri
+              Verifikasi &amp; Teruskan ke Mantri
             </button>
           ` : ''}
 
@@ -3255,17 +3690,83 @@ function renderReceiptCardList(list, currentUser) {
               type="button" 
               class="btn-action-mantri-bibitan" 
               data-id="${item.id}"
-              style="padding: 6px 14px; background: #116834; border: 1px solid #116834; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #FFFFFF; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"
+              style="width:100%; height:46px; min-height:46px; box-sizing:border-box; padding:6px 12px; background:#116834; border:1px solid #116834; border-radius:6px; font-size:.78rem; font-weight:700; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.2; box-shadow:0 2px 6px rgba(17,104,52,.2);"
             >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
               Penerimaan Fisik & Batch
             </button>
           ` : ''}
         </div>
+        ` : ''}
 
       </div>
     `;
   }).join('');
+}
+
+function renderMataEntresReceiptCard(item, currentUser) {
+  const expanded = expandedReceiptIds.has(item.id);
+  const parentRequest = getMataEntresParentRequest(item);
+  const actionable = Boolean(parentRequest && canPerformRequesterReceipt(parentRequest, currentUser));
+  const role = normalizeRole(currentUser.role || currentUser.rawRole);
+  const primaryDetail = item.details?.[0] || {};
+  const shippedMata = Number(item.totalShippedMata ?? item.totalShippedQty ?? 0);
+  const shippedBatang = Number(item.totalShippedBatang || 0);
+  const acceptedMata = Number(item.totalAcceptedMata ?? parentRequest?.jumlahMataEntresDiterima ?? 0);
+  const acceptedBatang = Number(item.totalAcceptedBatang ?? parentRequest?.jumlahBatangDiterima ?? 0);
+  const isCompleted = [RECEIPT_KSP_STATUS.DITERIMA, RECEIPT_KSP_STATUS.DITERIMA_DENGAN_SELISIH, RECEIPT_KSP_STATUS.SELESAI]
+    .includes(String(item.status || '').toUpperCase());
+  const clone = primaryDetail.cloneId || '-';
+  const { sourceName, targetName } = getReceiptEstateRoute(item);
+  const statusPresentation = getWorkflowStatusPresentation(item.status, RECEIPT_KSP_STATUS_LABELS[item.status] || item.statusLabel || 'Dalam Proses');
+  const statusLabel = statusPresentation.label;
+  const receiptActionLabel = role === 'ASKEP' || role === 'ASISTEN_KEPALA'
+    ? 'Verifikasi dan Teruskan Penerimaan'
+    : (role === 'ASISTEN_BIBITAN'
+      ? 'Verifikasi &amp; Teruskan ke Mantri'
+      : ((role === 'MANTRI_TANAMAN' || role === 'MANTRI') ? 'Penerimaan Fisik &amp; Batch' : 'Terima &amp; Proses'));
+
+  return `
+    <article style="background:#FFFFFF; border:1px solid ${expanded ? '#116834' : '#DCE5EF'}; border-radius:12px; padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(15,23,42,.05); min-width:0; box-sizing:border-box;">
+      <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid #F1F5F9; min-width:0;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; min-width:0;">
+          <span style="font-size:.66rem; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.04em; line-height:1.35;">NO.PENERIMAAN</span>
+          <span style="display:inline-flex; align-items:center; justify-content:center; flex:0 1 auto; min-width:0; max-width:56%; padding:4px 7px; border-radius:7px; border:1px solid ${statusPresentation.border}; background:${statusPresentation.background}; color:${statusPresentation.color}; font-size:.58rem; font-weight:750; line-height:1.3; text-align:center; white-space:normal; overflow-wrap:anywhere; box-sizing:border-box;">${esc(statusLabel)}</span>
+        </div>
+        <div style="font-size:.95rem; font-weight:800; color:#116834; line-height:1.35; white-space:nowrap;">${esc(item.receiptDocNo || item.docNo || '-')}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:.78rem; background:#F8FAFC; padding:7px 10px; border-radius:7px; border:1px solid #F1F5F9; min-width:0;">
+        <span style="font-weight:700; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45%;">${esc(sourceName)}</span>
+        <span style="color:#94A3B8; font-weight:800; flex-shrink:0;">→</span>
+        <span style="font-weight:700; color:#116834; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45%;">${esc(targetName)}</span>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; font-size:.78rem; margin-bottom:8px;">
+        <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">No. Permintaan</div><div style="font-weight:700; color:#1E293B; overflow-wrap:anywhere;">${esc(item.parentRequestDocNo || '-')}</div></div>
+        <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">No. Pengeluaran</div><div style="font-weight:700; color:#1E293B; overflow-wrap:anywhere;">${esc(item.dispatchDocNo || '-')}</div></div>
+        <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">Klon</div><div style="font-weight:700; color:#1E293B;">${esc(clone)}</div></div>
+        <div><div style="font-size:.68rem; color:#64748B; font-weight:600;">Jumlah Dikirim</div><div style="font-weight:800; color:#116834;">${shippedMata.toLocaleString('id-ID')} Mata${shippedBatang ? ` · ${shippedBatang.toLocaleString('id-ID')} Batang` : ''}</div></div>
+      </div>
+      ${expanded ? `
+        <div style="margin-top:8px; padding:10px 0 2px; border-top:1px dashed #E2E8F0; display:grid; grid-template-columns:40% 60%; gap:7px 8px; font-size:.75rem;">
+          <span style="color:#64748B;">Kebun Pengirim</span><strong style="text-align:right; color:#1E293B; overflow-wrap:anywhere;">${esc(sourceName)}</strong>
+          <span style="color:#64748B;">Kebun Penerima</span><strong style="text-align:right; color:#1E293B; overflow-wrap:anywhere;">${esc(targetName)}</strong>
+          <span style="color:#64748B;">Tanggal Pengeluaran</span><strong style="text-align:right; color:#1E293B;">${esc(formatDate(item.dispatchDate) || '-')}</strong>
+          <span style="color:#64748B;">Tanggal Kedatangan</span><strong style="text-align:right; color:#1E293B;">${esc(formatDate(item.initialReceivedDate) || '-')}</strong>
+          <span style="color:#64748B;">Kendaraan</span><strong style="text-align:right; color:#1E293B;">${esc(item.vehiclePlate || '-')}</strong>
+          ${isCompleted ? `
+            <span style="color:#64748B;">Jumlah Diterima</span><strong style="text-align:right; color:#1E293B;">${acceptedMata.toLocaleString('id-ID')} Mata · ${acceptedBatang.toLocaleString('id-ID')} Batang</strong>
+            <span style="color:#64748B;">Tanggal Penerimaan</span><strong style="text-align:right; color:#1E293B;">${esc(formatDate(item.examinationDate || parentRequest?.tanggalPenerimaan || parentRequest?.penerimaan?.tanggal) || '-')}</strong>
+          ` : ''}
+        </div>
+      ` : ''}
+      <button class="btn-toggle-receipt-details" data-id="${esc(item.id)}" type="button" style="width:100%; min-height:36px; background:transparent; border:0; border-top:1px dashed #E2E8F0; padding:7px 0 2px; font-size:.74rem; color:#116834; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;">
+        <span>${expanded ? 'Sembunyikan Rincian' : 'Tampilkan Rincian'}</span><svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.2" fill="none" style="transform:rotate(${expanded ? '180deg' : '0deg'});"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </button>
+      ${actionable ? `
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px; padding-top:8px; border-top:1px dashed #F1F5F9;">
+          ${(role === 'ASKEP' || role === 'ASISTEN_KEPALA') ? `<button class="btn-action-mata-entres-askep-return" data-id="${esc(item.id)}" type="button" style="width:100%; height:46px; min-height:46px; box-sizing:border-box; padding:6px 12px; background:#FFFFFF; border:1px solid #FCA5A5; border-radius:6px; font-size:.78rem; font-weight:600; color:#DC2626; cursor:pointer; text-align:center; line-height:1.2;">Kembalikan ke Pengurus</button>` : ''}
+          <button class="btn-action-mata-entres-receipt" data-id="${esc(item.id)}" type="button" style="width:100%; height:46px; min-height:46px; box-sizing:border-box; padding:6px 12px; background:#116834; border:1px solid #116834; border-radius:6px; font-size:.78rem; font-weight:700; color:#FFFFFF; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; text-align:center; line-height:1.2; box-shadow:0 2px 6px rgba(17,104,52,.2);">${receiptActionLabel}</button>
+        </div>
+      ` : ''}
+    </article>
+  `;
 }

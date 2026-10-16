@@ -121,22 +121,13 @@ export function getSubMenuItemsForRole(userRole) {
 
   // MANTRI_TANAMAN / MANTRI
   if (role === 'MANTRI_TANAMAN' || role === 'MANTRI') {
-    return [
-      {
-        id: 'ksp-bibit',
-        title: 'Daftar Permintaan<br>Kebun Sepupu',
-        rawTitle: 'Daftar Permintaan Kebun Sepupu',
-        icon: ICONS.approvalKsp,
-        route: '/request/kebun-sepupu'
-      },
-      {
-        id: 'me-bibit',
-        title: 'Daftar Permintaan<br>Mata Entres',
-        rawTitle: 'Daftar Permintaan Mata Entres',
-        icon: ICONS.spbEntres,
-        route: '/request/mata-entres'
-      }
-    ];
+    return [{
+      id: 'ksp-bibit-sendiri',
+      title: 'Permintaan Bibit<br>Kebun Sendiri',
+      rawTitle: 'Permintaan Bibit Kebun Sendiri',
+      icon: ICONS.spbBibit,
+      route: '/request/kebun-sendiri'
+    }];
   }
 
   // Default / PENGURUS
@@ -171,6 +162,11 @@ export async function renderRequestLanding() {
 
   const user = session.get();
   const userCtx = getCurrentUserContext() || resolveUserContext(user);
+  const userRole = normalizeRole(userCtx?.role || userCtx?.rawRole);
+  if (userRole === 'MANTRI_TANAMAN' || userRole === 'MANTRI') {
+    navigate('/request/kebun-sendiri');
+    return;
+  }
   const activeSubMenuItems = getSubMenuItemsForRole(userCtx?.role || userCtx?.rawRole);
 
   let allRequests = [];

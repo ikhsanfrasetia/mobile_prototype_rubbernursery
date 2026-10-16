@@ -13,6 +13,7 @@ import { toast } from '../../components/toast.js';
 import { navigate } from '../../core/router.js';
 import { formatStandardDocNo, esc } from '../../core/utils.js';
 import { ROLE_LABELS, ROLES } from '../../core/permissions.js';
+import { getWorkflowStatusPresentation } from '../../core/workflow-status-presentation.js';
 import { 
   syncAllSeedingsToSelectionPool, 
   syncAllSeedingsToPreGraftingSelectionDocuments, 
@@ -80,8 +81,8 @@ const MENU_ITEMS = [
   { id: 'kebun-entres', title: 'Kebun<br>Entres', icon: ICONS.entres, route: '/entres' },
   { id: 'material', title: 'Material &<br>Bahan', icon: ICONS.sprout, route: '/material' },
   { id: 'pemeliharaan', title: 'Rekam<br>Pemeliharaan', icon: ICONS.documentPlus, route: '/nursery-activity' },
-  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' },
-  { id: 'pengeluaran', title: 'Pengeluaran', icon: ICONS.sprout, route: '/dispatch' }
+  { id: 'pengeluaran', title: 'Pengeluaran', icon: ICONS.sprout, route: '/dispatch' },
+  { id: 'permintaan-bibit', title: 'Permintaan', icon: ICONS.documentPlus, route: '/request' }
 ];
 
 import { getCurrentUserContext, resolveUserContext } from '../../core/user-context.js';
@@ -125,20 +126,20 @@ export function hasActionablePenerimaan(receipts, requests, userCtx) {
 }
 
 const PENGURUS_MENU_ITEMS = [
-  { id: 'penerimaan', title: 'Penerimaan<br>Bibit', icon: ICONS.documentPlus, route: '/reception/kebun-sepupu' },
-  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' },
-  { id: 'pengeluaran-bibit', title: 'Pengeluaran<br>Bibit', icon: ICONS.sprout, route: '/dispatch' }
+  { id: 'penerimaan', title: 'Penerimaan', icon: ICONS.documentPlus, route: '/reception/kebun-sepupu' },
+  { id: 'permintaan-bibit', title: 'Permintaan', icon: ICONS.documentPlus, route: '/request' },
+  { id: 'pengeluaran-bibit', title: 'Pengeluaran', icon: ICONS.sprout, route: '/dispatch' }
 ];
 
 const ASKEP_MENU_ITEMS = [
-  { id: 'penerimaan', title: 'Penerimaan<br>Bibit', icon: ICONS.documentPlus, route: '/reception/kebun-sepupu' },
-  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' },
-  { id: 'pengeluaran-bibit', title: 'Pengeluaran<br>Bibit', icon: ICONS.sprout, route: '/dispatch' }
+  { id: 'penerimaan', title: 'Penerimaan', icon: ICONS.documentPlus, route: '/reception/kebun-sepupu' },
+  { id: 'permintaan-bibit', title: 'Permintaan', icon: ICONS.documentPlus, route: '/request' },
+  { id: 'pengeluaran-bibit', title: 'Pengeluaran', icon: ICONS.sprout, route: '/dispatch' }
 ];
 
 const ASISTEN_MENU_ITEMS = [
-  { id: 'penerimaan', title: 'Penerimaan<br>Bibit', icon: ICONS.documentPlus, route: '/reception/kebun-sepupu' },
-  { id: 'permintaan-bibit', title: 'Permintaan<br>Bibit', icon: ICONS.documentPlus, route: '/request' }
+  { id: 'penerimaan', title: 'Penerimaan', icon: ICONS.documentPlus, route: '/reception/kebun-sepupu' },
+  { id: 'permintaan-bibit', title: 'Permintaan', icon: ICONS.documentPlus, route: '/request' }
 ];
 
 function getPengurusRequestNotifications(requests, receipts, userCtx) {
@@ -161,7 +162,7 @@ function getPengurusRequestNotifications(requests, receipts, userCtx) {
     TERVERIFIKASI: 'Terverifikasi',
     MENUNGGU_PENGELUARAN_BIBIT: 'Menunggu Pengeluaran Bibit',
     PENGELUARAN_BERJALAN: 'Pengeluaran Berjalan',
-    MENUNGGU_PENERIMAAN_PENGURUS: 'Menunggu Penerimaan Pengurus',
+    MENUNGGU_PENERIMAAN_PENGURUS: 'Menunggu Penerimaan',
     MENUNGGU_PENERIMAAN: 'Menunggu Penerimaan',
     SELESAI: 'Selesai',
     DITOLAK: 'Ditolak',
@@ -198,7 +199,7 @@ function getPengurusRequestNotifications(requests, receipts, userCtx) {
       id: `request:${record.id || record.docNo || Math.random()}`,
       category: routeInfo.label,
       docNo: record.docNo || record.nomorDokumen || 'Dokumen permintaan',
-      status: statusLabels[status] || status.replaceAll('_', ' ').toLocaleLowerCase('id-ID').replace(/(^|\s)\S/g, char => char.toLocaleUpperCase('id-ID')),
+      status: getWorkflowStatusPresentation(status, statusLabels[status]).label,
       detail: latestAudit?.details || latestAudit?.note || latestAudit?.description || record.statusNote || record.returnReason || record.revisionReason || '',
       date: formatNotificationDate(record.updatedAt || record.submittedAt || record.createdAt || record.date),
       route: routeInfo.route,
@@ -208,7 +209,7 @@ function getPengurusRequestNotifications(requests, receipts, userCtx) {
   const receiptItems = (Array.isArray(receipts) ? receipts : []).flatMap(record => {
     if (!isRelatedToPengurus(record)) return [];
     const status = String(record.status || '').toUpperCase();
-    const label = statusLabels[status] || status.replaceAll('_', ' ').toLocaleLowerCase('id-ID').replace(/(^|\s)\S/g, char => char.toLocaleUpperCase('id-ID')) || 'Dalam Proses';
+    const label = getWorkflowStatusPresentation(status, statusLabels[status]).label;
     return [{
       id: `receipt:${record.id || record.receiptDocNo || record.docNo || Math.random()}`,
       category: 'Penerimaan Bibit',
@@ -472,6 +473,7 @@ function renderBerandaPengurus() {
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
+  const hasRequestProcessNotification = hasActionableRequest || hasActionableReceipt || hasActionableDispatch;
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -523,7 +525,14 @@ function renderBerandaPengurus() {
             <line x1="3" y1="18" x2="21" y2="18"></line>
           </svg>
         </button>
-        <h1 class="beranda-header-title">Beranda</h1>
+        <h1 class="beranda-header-title" style="flex:1; margin:0;">Beranda</h1>
+        <button id="beranda-notif-btn" type="button" aria-label="Notifikasi proses" title="Notifikasi proses" style="position:relative; display:flex; align-items:center; justify-content:center; width:40px; height:40px; margin-left:auto; border:0; border-radius:10px; background:transparent; color:#116834; cursor:pointer;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+            <path d="M10 21h4"></path>
+          </svg>
+          ${hasRequestProcessNotification ? '<span style="position:absolute; top:5px; right:5px; width:9px; height:9px; border-radius:50%; background:#D32F2F; box-shadow:0 0 0 2px #FFFFFF;"></span>' : ''}
+        </button>
       </header>
 
       <main class="beranda-body">
@@ -536,6 +545,24 @@ function renderBerandaPengurus() {
 
   // Drawer Toggle
   app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
+
+  app.querySelector('#beranda-notif-btn')?.addEventListener('click', async () => {
+    let latestRequests = Array.isArray(allRequests) ? [...allRequests] : [];
+    try {
+      const dbRequests = await requestRepository.list();
+      if (Array.isArray(dbRequests) && dbRequests.length) {
+        const merged = new Map();
+        [...latestRequests, ...dbRequests].forEach((record, index) => {
+          const key = String(record?.id || record?.docNo || record?.nomorDokumen || `request-${index}`);
+          merged.set(key, record);
+        });
+        latestRequests = [...merged.values()];
+      }
+    } catch (_) {}
+
+    const latestReceipts = storage.get('receipt_ksp_transactions', []);
+    showPengurusRequestNotifications(getPengurusRequestNotifications(latestRequests, latestReceipts, userCtx));
+  });
 
   // Menu clicks
   app.querySelectorAll('.beranda-menu-card').forEach((card) => {
@@ -866,9 +893,6 @@ export function renderBeranda() {
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const hasPendingPenerimaan = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
 
-  // Hitung pending permintaan untuk Mantri Bibitan
-  const hasPendingPermintaan = hasActionablePermintaan(allRequests, userCtx);
-
   // Hitung pending konsolidasi untuk Mantri
   const pendingMandoranWorkerCount = getPendingMandoranConsolidationCount(userCtx);
   const savedMandoranConsolidationCount = getSavedMandoranConsolidationCount(userCtx);
@@ -898,8 +922,7 @@ export function renderBeranda() {
       (item.id === 'okulasi' && (hasPendingOkulasi || hasPendingRegrafting || hasReturnedBudding)) ||
       (item.id === 'pemeriksaan' && hasPendingPemeriksaan) ||
       (item.id === 'pengeluaran' && hasPendingPengeluaran) ||
-      (item.id === 'penerimaan' && hasPendingPenerimaan) ||
-      (item.id === 'permintaan-bibit' && hasPendingPermintaan)
+      (item.id === 'penerimaan' && hasPendingPenerimaan)
     );
 
     if (hasNotification) {

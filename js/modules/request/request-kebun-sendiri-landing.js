@@ -46,7 +46,7 @@ export function canUserCreateKebunSendiri(currentUser) {
 export function canPerformAskepAction(tx, currentUser) {
   if (!tx || !currentUser) return false;
   if (tx.type !== 'KEBUN_SENDIRI' && tx.transactionType !== 'KEBUN_SENDIRI') return false;
-  
+
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== ROLES.ASKEP && userRole !== 'ASISTEN_KEPALA') return false;
 
@@ -68,7 +68,7 @@ export function canPerformAskepAction(tx, currentUser) {
 export function canPerformPengurusAction(tx, currentUser) {
   if (!tx || !currentUser) return false;
   if (tx.type !== 'KEBUN_SENDIRI' && tx.transactionType !== 'KEBUN_SENDIRI') return false;
-  
+
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== ROLES.PENGURUS) return false;
 
@@ -90,7 +90,7 @@ export function canPerformPengurusAction(tx, currentUser) {
 export function canPerformAsbVerifyAction(tx, currentUser) {
   if (!tx || !currentUser) return false;
   if (tx.type !== 'KEBUN_SENDIRI' && tx.transactionType !== 'KEBUN_SENDIRI') return false;
-  
+
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== ROLES.ASISTEN_BIBITAN) return false;
 
@@ -108,7 +108,7 @@ export function canPerformAsbVerifyAction(tx, currentUser) {
 export function canPerformAsbDispatchVerificationAction(tx, currentUser) {
   if (!tx || !currentUser) return false;
   if (tx.type !== 'KEBUN_SENDIRI' && tx.transactionType !== 'KEBUN_SENDIRI') return false;
-  
+
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
   if (userRole !== ROLES.ASISTEN_BIBITAN) return false;
 
@@ -211,8 +211,8 @@ export function getActionableIncomingCount(incomingRequests, currentUser) {
   }
 
   if (userRole === ROLES.ASISTEN_BIBITAN) {
-    return incomingRequests.filter(tx => 
-      canPerformAsbVerifyAction(tx, currentUser) || 
+    return incomingRequests.filter(tx =>
+      canPerformAsbVerifyAction(tx, currentUser) ||
       canPerformAsbDispatchVerificationAction(tx, currentUser)
     ).length;
   }
@@ -360,25 +360,18 @@ export async function renderRequestKebunSendiriLanding() {
   `;
 
   // Status Filter Pills
-  const statusFilterPills = ['SEMUA', 'DIAJUKAN', 'DIPROSES', 'SELESAI', 'DITOLAK'].map(filter => {
-    const isSelected = activeStatusFilter === filter;
-    const label = filter === 'SEMUA' ? 'Semua' : filter.charAt(0) + filter.slice(1).toLowerCase();
-    const bg = isSelected ? '#116834' : '#FFFFFF';
-    const fg = isSelected ? '#FFFFFF' : '#475569';
-    const border = isSelected ? '#116834' : '#E2E8F0';
-    const fw = isSelected ? '700' : '600';
-    const shadow = isSelected ? '0 1px 2px rgba(17, 104, 52, 0.15)' : 'none';
-    return `
-      <button class="status-filter-btn" data-filter="${filter}" type="button" style="padding: 6px 14px; min-height: 32px; border-radius: 9999px; font-size: 0.76rem; font-weight: ${fw}; border: 1px solid ${border}; background: ${bg}; color: ${fg}; cursor: pointer; white-space: nowrap; line-height: 1.2; box-shadow: ${shadow}; transition: all 0.15s ease;">
-        ${label}
-      </button>
-    `;
-  }).join('');
-
   const statusFiltersHtml = `
     <div style="background: #F8FAFC; padding: 10px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; -ms-overflow-style: none; border-bottom: 1px solid #E2E8F0; flex-shrink: 0;">
       <div style="display: flex; gap: 8px; min-width: max-content;">
-        ${statusFilterPills}
+        ${['SEMUA', 'DIAJUKAN', 'DIPROSES', 'SELESAI', 'DITOLAK'].map(filter => {
+    const isSelected = activeStatusFilter === filter;
+    const label = filter === 'SEMUA' ? 'Semua' : filter.charAt(0) + filter.slice(1).toLowerCase();
+    return `
+            <button class="status-filter-btn" data-filter="${filter}" type="button" style="padding: 6px 14px; min-height: 32px; border-radius: 9999px; font-size: 0.76rem; font-weight: ${isSelected ? '700' : '600'}; border: 1px solid ${isSelected ? '#116834' : '#E2E8F0'}; background: ${isSelected ? '#116834' : '#FFFFFF'}; color: ${isSelected ? '#FFFFFF' : '#475569'}; cursor: pointer; white-space: nowrap; line-height: 1.2; box-shadow: ${isSelected ? '0 1px 2px rgba(17, 104, 52, 0.15)' : 'none'}; transition: all 0.15s ease;">
+              ${label}
+            </button>
+          `;
+  }).join('')}
       </div>
     </div>
   `;
@@ -427,12 +420,12 @@ export async function renderRequestKebunSendiriLanding() {
       `;
     } else if (canRequesterReceipt) {
       actionBtnHtml = `
-        <button class="btn-action-requester-receipt" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #16A34A; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(22,163,74,0.15);">
+        <button class="btn-action-requester-receipt" data-id="${esc(tx.id)}" type="button" style="width: 100%; min-height: 40px; padding: 8px 12px; background: #116834; color: #FFFFFF; font-weight: 700; font-size: 0.82rem; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 1px 2px rgba(22,163,74,0.15);">
           <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none">
             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
             <circle cx="12" cy="13" r="4"></circle>
           </svg>
-          Terima Bibit (Kamera Wajib)
+          Proses Penerimaan Bibit
         </button>
       `;
     }
@@ -503,15 +496,15 @@ export async function renderRequestKebunSendiriLanding() {
                       </thead>
                       <tbody>
                         ${tx.distributionItems.map((d, dIdx) => {
-                          const isLast = dIdx === tx.distributionItems.length - 1;
-                          return `
+      const isLast = dIdx === tx.distributionItems.length - 1;
+      return `
                             <tr style="${isLast ? '' : 'border-bottom: 1px solid #F1F5F9;'}">
                               <td style="padding: 8px 10px; font-weight: 700; color: #0F172A; text-align: left;">${esc(d.cloneId || d.klon || '-')}</td>
                               <td style="padding: 8px 10px; font-weight: 600; color: #334155; text-align: left;">${esc(d.blockCode || d.blockName || d.blockId || '-')}</td>
                               <td style="padding: 8px 10px; text-align: right; font-weight: 800; color: #116834; white-space: nowrap;">${(d.qty || 0).toLocaleString('id-ID')} Pkk</td>
                             </tr>
                           `;
-                        }).join('')}
+    }).join('')}
                       </tbody>
                     </table>
                   </div>
@@ -521,7 +514,7 @@ export async function renderRequestKebunSendiriLanding() {
 
             <!-- TIMELINE & AUDIT TRAIL -->
             <div style="margin-bottom: 4px;">
-              <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Status Progress Permintaan</div>
+              <div style="font-weight: 700; font-size: 0.80rem; color: #0F172A; margin-bottom: 8px;">Timeline & Audit Trail:</div>
               ${auditItems.length === 0 ? `
                 <div style="font-size: 0.74rem; color: #94A3B8; font-style: italic; padding: 4px 0;">
                   Belum ada riwayat audit trail tersimpan.
@@ -529,17 +522,17 @@ export async function renderRequestKebunSendiriLanding() {
               ` : `
                 <div style="display: flex; flex-direction: column; gap: 0; padding-left: 2px;">
                   ${auditItems.map((a, aIdx) => {
-                    const isLast = aIdx === auditItems.length - 1;
-                    const actorName = a.actorName || a.name || a.userName || a.createdByName || a.actorId || a.userId || tx.requestedBy || 'User';
-                    const actorRole = a.position || a.actorRole || a.role || a.rawRole || '';
-                    const eventTime = a.timestamp || a.createdAt || a.date || tx.createdAt || tx.date;
-                    let eventDesc = a.note || a.details || a.description || a.event || a.eventType || 'Permintaan Bibit Diajukan';
-                    if (eventDesc === 'CREATE') eventDesc = 'Permintaan Bibit Kebun Sendiri diajukan';
-                    if (eventDesc === 'UPDATE') eventDesc = 'Pembaruan Dokumen';
-                    if (eventDesc === 'UPDATE_STATUS') eventDesc = 'Pembaruan Status Permintaan';
-                    if (eventDesc === 'SUBMIT') eventDesc = 'Dokumen Berhasil Diajukan';
+      const isLast = aIdx === auditItems.length - 1;
+      const actorName = a.actorName || a.name || a.userName || a.createdByName || a.actorId || a.userId || tx.requestedBy || 'User';
+      const actorRole = a.position || a.actorRole || a.role || a.rawRole || '';
+      const eventTime = a.timestamp || a.createdAt || a.date || tx.createdAt || tx.date;
+      let eventDesc = a.note || a.details || a.description || a.event || a.eventType || 'Permintaan Bibit Diajukan';
+      if (eventDesc === 'CREATE') eventDesc = 'Permintaan Bibit Kebun Sendiri diajukan';
+      if (eventDesc === 'UPDATE') eventDesc = 'Pembaruan Dokumen';
+      if (eventDesc === 'UPDATE_STATUS') eventDesc = 'Pembaruan Status Permintaan';
+      if (eventDesc === 'SUBMIT') eventDesc = 'Dokumen Berhasil Diajukan';
 
-                    return `
+      return `
                       <div style="display: flex; gap: 10px; position: relative;">
                         <!-- Left indicator & line -->
                         <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex-shrink: 0;">
@@ -560,7 +553,7 @@ export async function renderRequestKebunSendiriLanding() {
                         </div>
                       </div>
                     `;
-                  }).join('')}
+    }).join('')}
                 </div>
               `}
             </div>
@@ -1284,6 +1277,6 @@ export async function updateWorkflowStatus(tx, nextStatus, options = {}) {
     if (typeof document !== 'undefined' && document.getElementById('app')) {
       renderRequestKebunSendiriLanding();
     }
-  } catch (_) {}
+  } catch (_) { }
   return updatedTx;
 }

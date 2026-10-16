@@ -3,8 +3,8 @@
  * Form Pembuatan Permintaan Bibit Kebun Sendiri (Role Asisten Bibitan & Asisten Lapangan)
  *
  * Transaction Type: KEBUN_SENDIRI
- * Otorisasi Create: HANYA ASISTEN_BIBITAN & ASISTEN (Asisten Lapangan/Divisi)
- * Larangan: PENGURUS, ASKEP, MANTRI_TANAMAN dilarang membuat request ini.
+ * Otorisasi Create: ASISTEN_BIBITAN, ASISTEN (Asisten Lapangan/Divisi), dan MANTRI_TANAMAN.
+ * Larangan: PENGURUS dan ASKEP dilarang membuat request ini.
  * Karakteristik: Tanpa kebun tujuan (targetEstateId = null, targetDivisionId = null).
  * Detail Distribusi: Inline Editable Table (No | Klon | Blok | Banyaknya (Pkk) | Aksi).
  */
@@ -39,9 +39,9 @@ import {
 
 /**
  * Daftar role yang diizinkan membuat Permintaan Kebun Sendiri.
- * HANYA ASISTEN_BIBITAN dan ASISTEN (Asisten Lapangan/Divisi).
+ * ASISTEN_BIBITAN, ASISTEN (Asisten Lapangan/Divisi), dan Mantri Bibitan.
  */
-export const ALLOWED_CREATE_ROLES = [ROLES.ASISTEN_BIBITAN, ROLES.ASISTEN];
+export const ALLOWED_CREATE_ROLES = [ROLES.ASISTEN_BIBITAN, ROLES.ASISTEN, ROLES.MANTRI_TANAMAN];
 
 /**
  * Validasi otorisasi user untuk membuat permohonan Kebun Sendiri
@@ -49,7 +49,7 @@ export const ALLOWED_CREATE_ROLES = [ROLES.ASISTEN_BIBITAN, ROLES.ASISTEN];
 export function canCreateRequestKebunSendiri(currentUser) {
   if (!currentUser) return false;
   const userRole = normalizeRole(currentUser.role || currentUser.rawRole);
-  return ALLOWED_CREATE_ROLES.includes(userRole);
+  return ALLOWED_CREATE_ROLES.includes(userRole) || userRole === 'MANTRI';
 }
 
 /**
@@ -631,7 +631,7 @@ function openReviewModal(data) {
 export async function submitRequestKebunSendiri(data) {
   // Service-level authorization guard
   const creatorRole = normalizeRole(data.user?.role || data.user?.rawRole || '');
-  if (!ALLOWED_CREATE_ROLES.includes(creatorRole)) {
+  if (!ALLOWED_CREATE_ROLES.includes(creatorRole) && creatorRole !== 'MANTRI') {
     toast('Otorisasi ditolak: Hanya Asisten Bibitan atau Asisten Lapangan yang dapat membuat Permintaan Bibit Kebun Sendiri.', 'error');
     console.error(`[submitRequestKebunSendiri] ACCESS DENIED: role '${creatorRole}' tidak berwenang.`);
     throw new Error(`ACCESS_DENIED: Role '${creatorRole}' tidak diizinkan membuat request KEBUN_SENDIRI.`);

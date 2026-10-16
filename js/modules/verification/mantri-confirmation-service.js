@@ -71,7 +71,7 @@ export const MODULE_LABELS = Object.freeze({
   [MODULE_TYPES.SELEKSI_PRA_OKULASI]: 'Pemeriksaan Pra-Okulasi',
   [MODULE_TYPES.PENYELEKSIAN]: 'Penyeleksian Bibit',
   [MODULE_TYPES.PEMELIHARAAN]: 'Rekam Pemeliharaan',
-  [MODULE_TYPES.PENGELUARAN]: 'Pengeluaran Bibit',
+  [MODULE_TYPES.PENGELUARAN]: 'Pengeluaran',
   [MODULE_TYPES.MATERIAL]: 'Material & Bahan',
   [MODULE_TYPES.SIMULASI_GUDANG]: 'Simulasi Issue Gudang'
 });
@@ -563,6 +563,11 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
     const id = item.id || item.docNo || item.receiptId;
     if (!id || seenReceiptIds.has(id)) return;
     seenReceiptIds.add(id);
+
+    // Penerimaan yang dibuat otomatis dari proses Pengeluaran Bibit/Entres
+    // ditujukan ke pihak kebun penerima, bukan konfirmasi transaksi Mantri.
+    // Jangan masukkan dokumen turunan ini ke antrean Central Hub Mantri.
+    if (item.dispatchId || item.dispatchDocNo || item.parentRequestId) return;
 
     const bDate = extractBusinessDate(item);
     const isToday = (bDate === todayStr);
@@ -1219,11 +1224,26 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
 
     const docNo = item.docNo || item.dispatchNo || item.id || `DSP-${id}`;
     const actor = item.mantri || item.dispatcher || item.actorName || item.issuedByName || user?.name || 'Mantri Bibitan';
-    const qty = item.issuedQty !== undefined ? item.issuedQty : (item.qtyDispatched || item.quantity || item.qty || item.totalBatang || 0);
-    const formattedQty = formatSafeNumber(qty);
-    const clone = item.clone || item.klon || '-';
-    const destination = item.targetDivisionName || item.targetEstateId || item.destination || item.targetDivision || item.targetEstate || '-';
-    const summary = `Dispatch: ${formattedQty} Pkk ke ${destination} (Klon: ${clone})`;
+    const transactionType = String(item.transactionType || '').toUpperCase();
+    const isMataEntres = transactionType.includes('MATA_ENTRES') ||
+      String(item.type || '').toUpperCase() === 'MATA_ENTRES' ||
+      item.jumlahMataEntresDikeluarkan !== undefined ||
+      item.details?.some(detail => detail?.mataQty !== undefined);
+    const clone = item.clone || item.klon || item.details?.[0]?.klon || '-';
+    const destination = isMataEntres
+      ? (item.sourceEstateName || item.sourceEstateId || item.requesterEstate || item.requesterEstateId || item.targetNextEstateName || item.targetNextEstateId || '-')
+      : (item.targetEstateName || item.targetEstateId || item.destination || item.targetDivisionName || item.targetDivisionId || item.targetDivision || '-');
+    const source = isMataEntres
+      ? (item.dispatchedFromEstateName || item.estateName || item.targetEstateName || item.dispatchedFromEstateId || item.estateId || item.targetEstateId || '-')
+      : (item.sourceEstateName || item.sourceEstateId || item.dispatchedFromEstateName || item.dispatchedFromEstateId || item.estateName || item.estateId || '-');
+    const issuedQty = isMataEntres
+      ? (item.jumlahMataEntresDikeluarkan ?? item.details?.reduce((total, detail) => total + (Number(detail?.mataQty) || 0), 0) ?? item.issuedQty ?? 0)
+      : (item.issuedQty ?? item.qtyDispatched ?? item.quantity ?? item.qty ?? item.totalBatang ?? 0);
+    const unit = isMataEntres ? 'Mata' : 'Pkk';
+    const formattedQty = formatSafeNumber(issuedQty);
+    const title = isMataEntres ? 'Pengeluaran Mata Entres' : 'Pengeluaran Bibit';
+    const summary = `${title}: ${formattedQty} ${unit} dari ${source} ke ${destination} (Klon: ${clone})`;
+    const mataStemQty = item.jumlahBatangDikeluarkan ?? item.details?.reduce((total, detail) => total + (Number(detail?.qty) || 0), 0);
 
     normalizedList.push({
       id: String(id),
@@ -1238,14 +1258,24 @@ export function getMantriTodayTransactions(userContext = null, targetDate = null
       rawRecord: item,
       storageKey: 'dispatch_transactions',
       display: {
-        title: 'Pengeluaran Bibit',
-        info: `Tujuan ${destination} · Klon ${clone}`,
-        mainQty: `${formattedQty} Pkk`,
-        unit: 'Pkk',
-        fields: [
+        title,
+        info: isMataEntres ? `Asal ${source} · Tujuan ${destination} · Klon ${clone}` : `Tujuan ${destination} · Klon ${clone}`,
+        mainQty: `${formattedQty} ${unit}`,
+        unit,
+        fields: isMataEntres ? [
+          { label: 'No. Permintaan', value: item.parentRequestDocNo || '-' },
           { label: 'Klon', value: clone },
-          { label: 'Tujuan Pengiriman', value: destination },
-          { label: 'Jumlah Pengeluaran', value: `${formattedQty} Pkk`, highlight: true },
+          { label: 'Kebun Asal', value: source },
+          { label: 'Kebun Tujuan', value: destination },
+          { label: 'Jumlah Mata Entres', value: `${formattedQty} Mata`, highlight: true },
+          ...(mataStemQty !== undefined ? [{ label: 'Jumlah Batang', value: `${formatSafeNumber(mataStemQty)} Batang` }] : []),
+          { label: 'Kendaraan / Plat', value: item.vehiclePlate || '-' }
+        ] : [
+          { label: 'No. Permintaan', value: item.parentRequestDocNo || '-' },
+          { label: 'Klon', value: clone },
+          { label: 'Kebun Tujuan', value: destination },
+          ...(item.targetDivisionName || item.targetDivisionId ? [{ label: 'Divisi Tujuan', value: item.targetDivisionName || item.targetDivisionId }] : []),
+          { label: 'Jumlah Bibit', value: `${formattedQty} Pkk`, highlight: true },
           { label: 'Kendaraan / Plat', value: item.vehiclePlate || '-' }
         ]
       }
