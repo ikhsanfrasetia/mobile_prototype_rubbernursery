@@ -332,11 +332,10 @@ export function renderReceiptBenih() {
       <div id="sheet-kembali" style="display: none; position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 12px 12px 0 0; padding: 24px 16px; z-index: 101; flex-direction: column;">
         <h3 style="font-size: 1.05rem; font-weight: 700; color: #111111; text-align: center; margin: 0 0 12px 0;">Simpan Perubahan?</h3>
         <p style="font-size: 0.95rem; color: #666666; text-align: center; margin: 0 0 24px 0;">Anda memiliki data yang sedang diisi/diubah. Apakah Anda ingin menyimpannya terlebih dahulu?</p>
-        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-          <button id="btn-kembali-batal" type="button" style="flex: 1; height: 48px; background: #FFFFFF; color: #D32F2F; border: 1px solid #D32F2F; border-radius: 6px; font-weight: 700; font-size: 1rem;">Buang</button>
+        <div style="display: flex; gap: 12px;">
+          <button id="btn-kembali-batal" type="button" style="flex: 1; height: 48px; background: #FFFFFF; color: #D32F2F; border: 1px solid #D32F2F; border-radius: 6px; font-weight: 700; font-size: 1rem;">Kembali</button>
           <button id="btn-kembali-simpan" type="button" style="flex: 1; height: 48px; background: #116834; color: #FFFFFF; border: none; border-radius: 6px; font-weight: 700; font-size: 1rem;">Simpan</button>
         </div>
-        <button id="btn-kembali-tutup" type="button" style="width: 100%; height: 48px; background: transparent; color: #116834; border: none; font-weight: 600; font-size: 0.95rem;">Kembali Edit</button>
       </div>
 
       <!-- BOTTOM SHEET SUMBER -->
@@ -998,7 +997,7 @@ export function renderReceiptBenih() {
     app.querySelector('#sheet-kembali').style.display = 'flex';
   });
 
-  app.querySelector('#btn-kembali-tutup').addEventListener('click', closeModals);
+  app.querySelector('#btn-kembali-tutup')?.addEventListener('click', closeModals);
 
   app.querySelector('#btn-kembali-batal').addEventListener('click', () => {
     // Clear temp form storage and clear edit index

@@ -27,6 +27,7 @@ import {
 } from '../../db/repositories.js';
 import { resetDatabase } from '../../db/indexeddb.js';
 import { renderProcessMappingPortal } from '../process-mapping/process-mapping-ui.js';
+import { renderInfoCenterPortal } from '../info-center/info-center-ui.js';
 import { cleanAllTransactionalData } from '../../core/storage-registry.js';
 import { setWorkspaceViewMode } from '../../core/workspace-view.js';
 
@@ -436,7 +437,7 @@ const INITIAL_NOTES = [
 ];
 
 let notes = [];
-let activeWorkspaceTab = 'notes'; // 'notes' | 'flow' | 'transactions' | 'process-mapping'
+let activeWorkspaceTab = 'notes'; // 'notes' | 'flow' | 'transactions' | 'process-mapping' | 'info-center'
 let activeTxTab = 'reception'; // 'attendance' | 'reception' | 'seeding' | 'budding' | 'inspection' | 'regrafting' | 'selection' | 'syncQueue'
 let txSearchQuery = '';
 let txStatusFilter = 'ALL';
@@ -795,6 +796,9 @@ function saveNotesLocally() {
 }
 
 function setWorkspaceTab(tab) {
+  if (tab === 'info-center' || tab === 'process-mapping') {
+    tab = 'notes';
+  }
   activeWorkspaceTab = tab;
   try {
     const url = new URL(window.location.href);
@@ -1048,10 +1052,15 @@ export async function syncAllTxFromMobileDB(targetModId = null) {
 export function initReviewWorkspace() {
   const params = new URLSearchParams(window.location.search);
   const tabParam = params.get('tab');
-  if (tabParam && ['notes', 'transactions', 'process-mapping'].includes(tabParam)) {
+  if (tabParam && ['notes', 'transactions'].includes(tabParam)) {
     activeWorkspaceTab = tabParam;
-  } else if (tabParam === 'flow') {
+  } else if (tabParam === 'flow' || tabParam === 'info-center' || tabParam === 'process-mapping') {
     activeWorkspaceTab = 'notes';
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('tab');
+      window.history.replaceState({}, '', url);
+    } catch (_) { }
   }
 
   loadNotes();
@@ -1225,10 +1234,18 @@ export function renderReviewPanel() {
         <span>Data Transaksi</span>
         <span class="tab-badge-pulse" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd;">8 Modul (CRUD)</span>
       </button>
+      <!-- [TEMPORARILY HIDDEN] Tab 3: Pemetaan Alur Proses Aplikasi (Disembunyikan sementara, siap diaktifkan kembali)
       <button class="workspace-main-tab-btn ${activeWorkspaceTab === 'process-mapping' ? 'is-active' : ''}" id="tab-main-process-mapping" type="button">
         <span>🗺️</span>
         <span>Pemetaan Alur Proses Aplikasi</span>
       </button>
+      -->
+      <!-- [TEMPORARILY HIDDEN] Tab 4: Pusat Informasi Aplikasi (Disembunyikan sementara, siap diaktifkan kembali)
+      <button class="workspace-main-tab-btn ${activeWorkspaceTab === 'info-center' ? 'is-active' : ''}" id="tab-main-info-center" type="button">
+        <span>📚</span>
+        <span>Pusat Informasi Aplikasi</span>
+      </button>
+      -->
     </div>
   `;
 
@@ -1559,6 +1576,10 @@ export function renderReviewPanel() {
     html += `
       <div class="process-mapping-container" id="process-mapping-container"></div>
     `;
+  } else if (activeWorkspaceTab === 'info-center') {
+    html += `
+      <div class="info-center-container" id="info-center-container"></div>
+    `;
   }
 
   container.innerHTML = html;
@@ -1585,6 +1606,19 @@ export function renderReviewPanel() {
     setWorkspaceTab('process-mapping');
     renderReviewPanel();
   });
+
+  container.querySelector('#tab-main-info-center')?.addEventListener('click', () => {
+    setWorkspaceTab('info-center');
+    renderReviewPanel();
+  });
+
+  if (activeWorkspaceTab === 'info-center') {
+    const icContainer = container.querySelector('#info-center-container');
+    if (icContainer) {
+      renderInfoCenterPortal(icContainer);
+    }
+    return;
+  }
 
   if (activeWorkspaceTab === 'process-mapping') {
     const pmContainer = container.querySelector('#process-mapping-container');

@@ -84,6 +84,20 @@ import {
 import {
   renderDocument
 } from './process-mapping-doc-renderer.js';
+import { session } from '../../core/session.js';
+
+// Mapping Role Sesi Simulator HP ke ID Role Pemetaan Alur Proses
+const SESSION_TO_PM_ROLE = Object.freeze({
+  'MANTRI_TANAMAN': 'mantri-bibitan',
+  'ASISTEN_BIBITAN': 'asisten-bibitan',
+  'ASISTEN': 'asisten-divisi',
+  'ASKEP': 'asisten-kepala',
+  'PENGURUS': 'pengurus',
+  'PENGURUS_KEBUN_SEPUPU': 'pengurus'
+});
+
+let isSessionListenerRegistered = false;
+let userManuallySelectedRole = false;
 
 // Global UI State
 let isManageMode = false;
@@ -130,8 +144,8 @@ let modalDocType = DOCUMENT_TYPES.RTM_REPORT;
 let toastMessage = null;
 let toastTimer = null;
 
-// Portal Navigation State ('dashboard' | 'reference' | 'reports')
-let currentNavTab = 'dashboard';
+// Portal Navigation State ('mapping' | 'dashboard' | 'reference' | 'reports')
+let currentNavTab = 'mapping';
 
 // Reference Tab Filter State
 let refFilterType = 'ALL'; // 'ALL' | 'KF' | 'KNF'
@@ -347,6 +361,14 @@ export async function renderProcessMappingPortal(container) {
     isManageMode = false;
   }
 
+  // Sinkronisasi otomatis ke role HP jika belum dipilih manual oleh pengguna
+  if (!userManuallySelectedRole) {
+    const rawRole = session.getRole();
+    if (rawRole && SESSION_TO_PM_ROLE[rawRole]) {
+      currentRole = SESSION_TO_PM_ROLE[rawRole];
+    }
+  }
+
   const { roleObj, roleModules, roleRequirements, hasData } = getRoleScopedData(currentRole, store);
 
   // If currentModuleId is not in roleModules, reset to 'ALL'
@@ -510,6 +532,7 @@ function renderHeader(metadata) {
         </div>
 
         <nav class="pm-header-nav">
+          <button type="button" class="pm-nav-link ${currentNavTab === 'mapping' ? 'is-active' : ''}" id="pm-nav-mapping">Peta Alur</button>
           <button type="button" class="pm-nav-link ${currentNavTab === 'dashboard' ? 'is-active' : ''}" id="pm-nav-dashboard">Dashboard</button>
           <button type="button" class="pm-nav-link ${currentNavTab === 'reference' ? 'is-active' : ''}" id="pm-nav-reference">Reference</button>
           <button type="button" class="pm-nav-link ${currentNavTab === 'reports' ? 'is-active' : ''}" id="pm-nav-reports">Reports</button>
@@ -545,11 +568,15 @@ function renderHeader(metadata) {
 }
 
 function renderSidebar(roleObj, currentMod, roles, modules, commonFeatures, hasData) {
+  const currentSessionUser = session.getUser() || {};
   return `
     <aside class="pm-sidebar">
       <!-- Role Selector -->
       <div class="pm-sidebar-section">
-        <span class="pm-section-label">Pilih Role</span>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <span class="pm-section-label" style="margin:0;">Pilih Role</span>
+          ${currentSessionUser.name ? `<span style="font-size:0.72rem; color:#15803d; background:#dcfce7; padding:2px 7px; border-radius:4px; font-weight:600; border:1px solid #bbf7d0;" title="Sesi aktif pada simulator HP">📱 Sesi: ${escapeHtml(currentSessionUser.name)} (${escapeHtml(currentSessionUser.position || currentSessionUser.role)})</span>` : ''}
+        </div>
         <div class="pm-select-wrapper">
           <select id="pm-role-select" class="pm-role-select">
             ${roles
@@ -4767,9 +4794,30 @@ function attachPortalEvents(container, store) {
   // Role Selector
   container.querySelector('#pm-role-select')?.addEventListener('change', (e) => {
     currentRole = e.target.value;
+    userManuallySelectedRole = true;
     currentModuleId = 'ALL';
     renderProcessMappingPortal(container);
   });
+
+  if (!isSessionListenerRegistered) {
+    isSessionListenerRegistered = true;
+    const onSessionOrHashChange = () => {
+      const pmContainer = document.getElementById('process-mapping-container');
+      if (pmContainer && pmContainer.isConnected) {
+        const rawRole = session.getRole();
+        if (rawRole && SESSION_TO_PM_ROLE[rawRole]) {
+          const targetPmRole = SESSION_TO_PM_ROLE[rawRole];
+          if (targetPmRole !== currentRole) {
+            currentRole = targetPmRole;
+            userManuallySelectedRole = false;
+            renderProcessMappingPortal(pmContainer);
+          }
+        }
+      }
+    };
+    window.addEventListener('hashchange', onSessionOrHashChange);
+    window.addEventListener('focus', onSessionOrHashChange);
+  }
 
   // Module Nav Buttons in Sidebar
   container.querySelectorAll('.pm-module-item[data-module-id]').forEach((btn) => {

@@ -351,8 +351,13 @@ export function canPerformPengurusReceiptAction(receipt, currentUser) {
   const targetEstate = receipt.targetNextEstateId || receipt.targetEstateId;
   if (!userEstateId || targetEstate !== userEstateId) return false;
 
-  const status = (receipt.status || '').toUpperCase();
+  // Jika sudah dicatat penerimaan awal oleh Pengurus dan target berikutnya bukan lagi PENGURUS
   const nextRole = (receipt.targetNextRole || '').toUpperCase();
+  if ((receipt.receivedAt || receipt.initialReceivedDate) && nextRole && nextRole !== 'PENGURUS') {
+    return false;
+  }
+
+  const status = (receipt.status || '').toUpperCase();
 
   const isActionableStatus = (
     status === RECEIPT_KSP_STATUS.MENUNGGU_PENERIMAAN_PENGURUS ||
@@ -686,13 +691,47 @@ export function processPengurusInitialReceipt(receiptId, formValues, currentUser
 
   const auditDetails = `Pengurus (${currentUser.name || currentUser.userId}) mencatat penerimaan awal pada tanggal ${formatDate(finalDate)} dan meneruskan ke Asisten Kepala`;
 
-  return updateReceiptKsp(
+  const updatedReceipt = updateReceiptKsp(
     receiptId,
     patch,
     AUDIT_EVENT_TYPES.APPROVE,
     auditDetails,
     currentUser
   );
+
+  // Sinkronisasi status parent request jika ada
+  if (receipt.parentRequestId || receipt.parentRequestDocNo || receipt.dispatchDocNo) {
+    try {
+      const allRequests = storage.get('requests_transactions', []);
+      const pIdx = allRequests.findIndex(req => 
+        req.id === receipt.parentRequestId || 
+        req.docNo === receipt.parentRequestDocNo || 
+        req.nomorDokumen === receipt.parentRequestDocNo ||
+        req.id === receipt.dispatchDocNo
+      );
+      if (pIdx !== -1) {
+        allRequests[pIdx] = {
+          ...allRequests[pIdx],
+          status: 'MENUNGGU_VERIFIKASI_ASISTEN_KEPALA',
+          statusLabel: 'Menunggu Verifikasi Asisten Kepala',
+          targetNextRole: 'ASKEP',
+          initialArrival: {
+            arrivedAt: new Date().toISOString(),
+            initialReceivedDate: finalDate,
+            receivedByName: currentUser.name || 'Pengurus',
+            notes: (notes || pengurusNotes) ? (notes || pengurusNotes).trim() : null
+          },
+          updatedAt: new Date().toISOString()
+        };
+        storage.set('requests_transactions', allRequests);
+        try {
+          requestRepository.put(allRequests[pIdx]);
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  return updatedReceipt;
 }
 
 export function processAskepVerification(receiptId, formValues, currentUser) {

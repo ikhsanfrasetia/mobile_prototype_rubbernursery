@@ -224,6 +224,25 @@ function getPengurusRequestNotifications(requests, receipts, userCtx) {
   return [...requestItems, ...receiptItems].sort((a, b) => b.sortDate - a.sortDate).slice(0, 20);
 }
 
+export function getPengurusNotificationUnreadStatus(requests, receipts, userCtx) {
+  const notifItems = getPengurusRequestNotifications(requests, receipts, userCtx);
+  if (!notifItems.length) return false;
+
+  const userKey = userCtx?.userId || userCtx?.id || userCtx?.code || userCtx?.role || 'default';
+  const lastSeen = Number(storage.get(`notif_last_seen_${userKey}`, 0)) || 0;
+
+  if (lastSeen === 0) {
+    return notifItems.length > 0;
+  }
+
+  return notifItems.some(item => (item.sortDate || 0) > lastSeen);
+}
+
+export function markPengurusNotificationAsViewed(userCtx) {
+  const userKey = userCtx?.userId || userCtx?.id || userCtx?.code || userCtx?.role || 'default';
+  storage.set(`notif_last_seen_${userKey}`, Date.now());
+}
+
 function showPengurusRequestNotifications(items) {
   const body = items.length ? `
     <div style="display:flex; flex-direction:column; gap:9px; max-height:58vh; overflow-y:auto;">
@@ -270,7 +289,7 @@ function renderBerandaAskep() {
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
-  const hasRequestProcessNotification = hasActionableRequest || hasActionableReceipt || hasActionableDispatch;
+  const hasUnseenNotifications = getPengurusNotificationUnreadStatus(allRequests, allReceipts, userCtx);
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -325,7 +344,7 @@ function renderBerandaAskep() {
         <h1 class="beranda-header-title" style="flex:1; margin:0;">Beranda</h1>
         <button id="beranda-notif-btn" type="button" aria-label="Notifikasi proses permintaan" title="Notifikasi proses permintaan" style="position:relative; width:38px; height:38px; flex:0 0 38px; display:flex; align-items:center; justify-content:center; border:0; border-radius:50%; background:transparent; color:#116834; cursor:pointer;">
           <svg viewBox="0 0 24 24" width="23" height="23" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg>
-          ${hasRequestProcessNotification ? '<span aria-hidden="true" style="position:absolute; top:5px; right:5px; width:9px; height:9px; border:2px solid #FFFFFF; border-radius:50%; background:#D71920;"></span>' : ''}
+          ${hasUnseenNotifications ? '<span aria-hidden="true" style="position:absolute; top:5px; right:5px; width:9px; height:9px; border:2px solid #FFFFFF; border-radius:50%; background:#D71920;"></span>' : ''}
         </button>
       </header>
 
@@ -341,6 +360,10 @@ function renderBerandaAskep() {
   app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
 
   app.querySelector('#beranda-notif-btn')?.addEventListener('click', async () => {
+    markPengurusNotificationAsViewed(userCtx);
+    const dot = app.querySelector('#beranda-notif-btn span');
+    if (dot) dot.remove();
+
     let latestRequests = Array.isArray(allRequests) ? [...allRequests] : [];
     try {
       const databaseRequests = await requestRepository.list();
@@ -473,7 +496,7 @@ function renderBerandaPengurus() {
 
   const allReceipts = storage.get('receipt_ksp_transactions', []);
   const hasActionableReceipt = hasActionablePenerimaan(allReceipts, allRequests, userCtx);
-  const hasRequestProcessNotification = hasActionableRequest || hasActionableReceipt || hasActionableDispatch;
+  const hasUnseenNotifications = getPengurusNotificationUnreadStatus(allRequests, allReceipts, userCtx);
 
   // Background sync from IndexedDB if available
   requestRepository.list().then((dbList) => {
@@ -531,7 +554,7 @@ function renderBerandaPengurus() {
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
             <path d="M10 21h4"></path>
           </svg>
-          ${hasRequestProcessNotification ? '<span style="position:absolute; top:5px; right:5px; width:9px; height:9px; border-radius:50%; background:#D32F2F; box-shadow:0 0 0 2px #FFFFFF;"></span>' : ''}
+          ${hasUnseenNotifications ? '<span style="position:absolute; top:5px; right:5px; width:9px; height:9px; border-radius:50%; background:#D32F2F; box-shadow:0 0 0 2px #FFFFFF;"></span>' : ''}
         </button>
       </header>
 
@@ -547,6 +570,10 @@ function renderBerandaPengurus() {
   app.querySelector('#beranda-drawer-btn')?.addEventListener('click', openDrawer);
 
   app.querySelector('#beranda-notif-btn')?.addEventListener('click', async () => {
+    markPengurusNotificationAsViewed(userCtx);
+    const dot = app.querySelector('#beranda-notif-btn span');
+    if (dot) dot.remove();
+
     let latestRequests = Array.isArray(allRequests) ? [...allRequests] : [];
     try {
       const dbRequests = await requestRepository.list();

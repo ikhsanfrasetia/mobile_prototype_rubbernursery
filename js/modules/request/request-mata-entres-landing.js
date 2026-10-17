@@ -289,12 +289,43 @@ export function canPerformPengurusArrival(tx, currentUser) {
   const sourceEstate = tx.sourceEstateId || tx.estateId || tx.requesterEstate;
   if (!userEstate || !matchEstateHelper(sourceEstate, userEstate)) return false;
 
+  // Jika tx sudah ada catatan kedatangan dan target berikutnya bukan lagi PENGURUS
+  if (tx.initialArrival && tx.targetNextRole && tx.targetNextRole !== 'PENGURUS') {
+    return false;
+  }
+
+  // Jika child receipt di receipt_ksp_transactions sudah diproses oleh Pengurus
+  try {
+    const allReceipts = storage.get('receipt_ksp_transactions', []);
+    const childReceipt = allReceipts.find(r => 
+      r.parentRequestId === tx.id || 
+      (tx.docNo && (r.parentRequestDocNo === tx.docNo || r.dispatchDocNo === tx.docNo)) || 
+      r.id === tx.receiptId
+    );
+    if (childReceipt) {
+      const childStatus = String(childReceipt.status || '').toUpperCase();
+      const childNextRole = String(childReceipt.targetNextRole || '').toUpperCase();
+      if ((childReceipt.receivedAt || childReceipt.initialReceivedDate) && childNextRole && childNextRole !== 'PENGURUS') {
+        return false;
+      }
+      if (childStatus !== MATA_ENTRES_STATUS.MENUNGGU_PENERIMAAN_PENGURUS && 
+          childStatus !== MATA_ENTRES_STATUS.DIKEMBALIKAN_KE_PENGURUS && 
+          childNextRole !== 'PENGURUS') {
+        return false;
+      }
+    }
+  } catch (_) {}
+
   const status = (tx.status || '').toUpperCase();
-  return (
+  const nextRole = (tx.targetNextRole || '').toUpperCase();
+
+  const isCandidateStatus = (
     status === MATA_ENTRES_STATUS.MENUNGGU_PENERIMAAN_PENGURUS ||
     status === MATA_ENTRES_STATUS.DIKELUARKAN ||
     status === MATA_ENTRES_STATUS.DIKEMBALIKAN_KE_PENGURUS
   );
+
+  return isCandidateStatus && (nextRole === 'PENGURUS' || !nextRole || status === MATA_ENTRES_STATUS.DIKELUARKAN);
 }
 
 export function canPerformAskepReceiptRouting(tx, currentUser) {

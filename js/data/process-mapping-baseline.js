@@ -39,21 +39,9 @@ export const PROCESS_MAPPING_BASELINE = {
     },
     {
       "id": "pengurus",
-      "name": "Pengurus Kebun Peminta",
+      "name": "Pengurus Kebun",
       "status": "Confirmed",
-      "desc": "Pemohon dan penerima alokasi bibit/mata entres cross-estate (kebun sepupu)."
-    },
-    {
-      "id": "tekniker-1",
-      "name": "Tekniker I",
-      "status": "Confirmed",
-      "desc": "Pengawas mutu teknis agronomi pembibitan karet (Role master aktif, requirement kosong pada baseline saat ini)."
-    },
-    {
-      "id": "ktu",
-      "name": "KTU",
-      "status": "Confirmed",
-      "desc": "Kepala Tata Usaha / Verifikasi administrasi dan pembukuan kebun (Role master aktif, requirement kosong pada baseline saat ini)."
+      "desc": "Penanggung jawab operasional kebun serta pemohon dan penerima alokasi bibit/mata entres."
     }
   ],
   "commonFeatures": [
